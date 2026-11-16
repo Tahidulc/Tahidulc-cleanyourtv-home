@@ -22,14 +22,18 @@ import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.common.VideoSize;
 import androidx.media3.common.util.UnstableApi;
-import androidx.media3.exoplayer.DefaultLoadControl;
-import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.ExoPlayer;
 
 import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.engine.Streams;
+import com.gathin.homefieldtv.prefs.Adaptive;
+import com.gathin.homefieldtv.prefs.Afr;
+import com.gathin.homefieldtv.prefs.Backups;
+import com.gathin.homefieldtv.prefs.Picture;
+import com.gathin.homefieldtv.prefs.PlayerPrefs;
+import com.gathin.homefieldtv.prefs.PlayerSetup;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -43,7 +47,6 @@ import java.util.List;
 @OptIn(markerClass = UnstableApi.class)
 final class LiveTv {
     static final int IDLE = 0, LOADING = 1, PLAYING = 2, RETRYING = 3, FAILED = 4;
-    private static final int RETRIES = 4;
     private static final long STALL_MS = 15_000L;
     /** Previews: a still picture stands in for the stream, and its format for the player's. */
     static Bitmap previewStill;
@@ -67,13 +70,25 @@ final class LiveTv {
     private boolean asHls;
     private long bufferingSince;
     private int videoW, videoH, rawW, rawH;
+    /**
+     * Settings → Player → When a stream fails → Switch to a backup copy: the channel's copies in the other playlists and
+     * groups, the best picture first, found when first needed (null until then, and always when staying on the channel).
+     */
+    private List<Channel> copies;
+    /** This stream is the provider's HLS form of an MPEG-TS address (Adaptive), not yet seen playing; or it failed. */
+    private boolean hlsTried, hlsRefused, everReady;
+    /** Settings → Player → Match frame rate: this stream's rate being read, while it is full screen. */
+    private Afr.Probe probe;
 
     private final Runnable retry = this::prepare;
     private final Runnable stallCheck = new Runnable() {
         @Override public void run() {
             if (player == null) return;
             if (state == LOADING && bufferingSince > 0 && SystemClock.elapsedRealtime() - bufferingSince > STALL_MS) {
-                dropped();
+                // The provider's HLS form that never started: its MPEG-TS (only this channel; a slow start says
+                // nothing of the playlist). Else the same stream again.
+                if (hlsTried && !everReady) refuseHls(false);
+                else dropped();
                 return;
             }
             h.postDelayed(this, 2000);
@@ -121,29 +136,59 @@ final class LiveTv {
         layout();
         picture.setVisibility(cur == null ? View.GONE : View.VISIBLE);
         showNote();
+        frameRate();
+    }
+
+    /** Whether the picture has the whole screen (its shape and the TV's refresh rate are Settings' only then). */
+    private boolean full() {
+        int lw = layer.getWidth() > 0 ? layer.getWidth() : layer.getResources().getDisplayMetrics().widthPixels;
+        int lh = layer.getHeight() > 0 ? layer.getHeight() : layer.getResources().getDisplayMetrics().heightPixels;
+        return !where.isEmpty() && where.width() >= lw - 1 && where.height() >= lh - 1;
+    }
+
+    /** Full screen: the TV's refresh rate matched to the stream's (Settings); else the TV's own. */
+    private void frameRate() {
+        android.app.Activity a = layer.getContext() instanceof android.app.Activity ? (android.app.Activity) layer.getContext() : null;
+        if (player == null || !full() || !PlayerPrefs.matchFrameRate(app)) {
+            if (probe != null && player != null) player.clearVideoFrameMetadataListener(probe);
+            probe = null;
+            Afr.reset(a);
+            return;
+        }
+        if (probe != null || a == null) return;
+        probe = new Afr.Probe(a);
+        player.setVideoFrameMetadataListener(probe);
+        probe.format(player.getVideoFormat());
+    }
+
+    /** The picture placed again (its shape changed in the player's menu). */
+    void refit() {
+        layout();
+    }
+
+    /** The player now, for the player's menu (its sound tracks); null when nothing plays. */
+    ExoPlayer player() {
+        return player;
     }
 
     Rect where() {
         return where;
     }
 
-    /** The picture kept to its own shape inside where it goes (a 4:3 channel with bars at its sides). */
+    /**
+     * The picture kept to its own shape inside where it goes (a 4:3 channel with bars at its sides); full screen, in the
+     * shape Settings or the player's menu chose for the channel (Fit, Fill, Zoom, 16:9, 4:3).
+     */
     private void layout() {
         if (where.isEmpty()) return;
         int x = where.left, y = where.top, w = where.width(), hh = where.height();
-        if (videoW > 0 && videoH > 0 && !Exec.inline) {
-            float va = videoW / (float) videoH, ra = w / (float) hh;
-            if (Math.abs(va - ra) > 0.03f) {
-                if (va > ra) {
-                    int nh = Math.round(w / va);
-                    y += (hh - nh) / 2;
-                    hh = nh;
-                } else {
-                    int nw = Math.round(hh * va);
-                    x += (w - nw) / 2;
-                    w = nw;
-                }
-            }
+        if (!Exec.inline) {
+            int mode = full() && cur != null ? PlayerPrefs.aspectFor(app, cur.key) : PlayerPrefs.FIT;
+            int[] p = Picture.place(mode, videoW, videoH, x, y, w, hh);
+            x = p[0];
+            y = p[1];
+            w = p[2];
+            hh = p[3];
         }
         FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) picture.getLayoutParams();
         if (lp.width != w || lp.height != hh || lp.leftMargin != x || lp.topMargin != y) {
@@ -198,10 +243,10 @@ final class LiveTv {
         return new String[]{LiveText.size(w, hh), LiveText.fps(fps)};
     }
 
-    /** The copy playing: the channel's own, or its copy in another playlist. */
+    /** The copy playing: the channel's own, or (Settings: switch to a backup copy) one of its copies. */
     Channel stream() {
         if (cur == null) return null;
-        return alt > 0 && alt <= cur.alternates.size() ? cur.alternates.get(alt - 1) : cur;
+        return copies != null && alt > 0 && alt <= copies.size() ? copies.get(alt - 1) : cur;
     }
 
     /** A channel played; the same channel already playing carries on. */
@@ -215,6 +260,8 @@ final class LiveTv {
         cur = c;
         alt = 0;
         retries = 0;
+        copies = null;
+        hlsRefused = false;
         asHls = Streams.looksHls(stream().url);
         videoW = videoH = rawW = rawH = 0;
         Library.get(app).watched(c);
@@ -234,6 +281,8 @@ final class LiveTv {
     void stop() {
         h.removeCallbacks(retry);
         h.removeCallbacks(stallCheck);
+        probe = null;
+        Afr.reset(layer.getContext() instanceof android.app.Activity ? (android.app.Activity) layer.getContext() : null);
         if (player != null) {
             player.removeListener(listener);
             player.release();
@@ -261,6 +310,8 @@ final class LiveTv {
         if (cur == null) return;
         retries = 0;
         alt = 0;
+        copies = null;
+        hlsRefused = false;
         asHls = Streams.looksHls(stream().url);
         if (player == null) ensure();
         prepare();
@@ -268,13 +319,9 @@ final class LiveTv {
 
     private void ensure() {
         if (player != null) return;
-        // The TV's own decoders first; FFmpeg for the sound it can't play (AC-3, E-AC-3, MP2), which UK channels carry.
-        DefaultRenderersFactory renderers = new DefaultRenderersFactory(app)
-                .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
-                .setEnableDecoderFallback(true);
-        // A channel starts as soon as a second is in (two after a stall).
-        DefaultLoadControl load = new DefaultLoadControl.Builder().setBufferDurationsMs(15_000, 50_000, 1_000, 2_000).build();
-        player = new ExoPlayer.Builder(app, renderers).setLoadControl(load).build();
+        // As Settings → Player and Sound say: the buffer (a channel starts as soon as a second is in, two after a stall,
+        // as Homefield came), the TV's own decoders first with FFmpeg for the sound it can't play (AC-3, E-AC-3, MP2).
+        player = PlayerSetup.builder(app, true).build();
         player.setAudioAttributes(new AudioAttributes.Builder().setUsage(C.USAGE_MEDIA)
                 .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true);
         player.addListener(listener);
@@ -285,33 +332,87 @@ final class LiveTv {
         if (player == null || cur == null) return;
         h.removeCallbacks(stallCheck);
         Channel s = stream();
-        player.setMediaSource(Streams.source(s.url, s.userAgent, s.referrer, asHls));
+        // The provider's HLS form of an MPEG-TS channel first, so a drop is ridden out on its segments and the picture can
+        // adapt; MPEG-TS again where it doesn't play (Adaptive, Settings → Player).
+        String url = s.url;
+        boolean hls = asHls;
+        String hlsUrl = hlsRefused || !PlayerPrefs.hlsFirst(app) || Adaptive.hlsFailed(app, PlayerPrefs.playlistOf(s.key))
+                ? null : Adaptive.hlsFor(s.url);
+        hlsTried = hlsUrl != null;
+        if (hlsTried) {
+            url = hlsUrl;
+            hls = true;
+        }
+        everReady = false;
+        // A playlist's own user agent (Settings → Stream problems) over the channel's.
+        player.setMediaSource(Streams.source(url, PlayerPrefs.agent(app, s.key, s.userAgent), s.referrer, hls));
         player.prepare();
         player.setPlayWhenReady(true);
         bufferingSince = SystemClock.elapsedRealtime();
         set(LOADING);
         h.postDelayed(stallCheck, 2000);
+        // A new stream: its frame rate read again.
+        if (probe != null) player.clearVideoFrameMetadataListener(probe);
+        probe = null;
+        frameRate();
     }
 
-    /** Dropped: on to the same channel in the next playlist when there is one; then tried again 1, 2, 4, 8 s apart. */
+    /**
+     * Dropped or stalled. As Settings → Player → When a stream fails says:
+     * - Stay on the channel and adapt (the default): the same stream connected again, 1, 2, 4, then 8 s apart, for as
+     *   long as Settings → Stream problems say (keep trying, unless chosen otherwise); never another copy.
+     * - Switch to a backup copy: this copy tried again a little first (as often as Settings say, twice when that's
+     *   "keep trying"), then the channel's copies in the other playlists and groups, the best picture first; round
+     *   again when Settings say to keep trying.
+     */
     private void dropped() {
         if (cur == null) return;
         h.removeCallbacks(retry);
-        if (alt < cur.alternates.size()) {
+        int tries = PlayerPrefs.retries(app);
+        if (!PlayerPrefs.switchToBackup(app)) {
+            if (tries < 0 || retries < tries) reconnect();
+            else set(FAILED);
+            return;
+        }
+        int here = tries < 0 ? 2 : tries;
+        if (retries < here) {
+            reconnect();
+            return;
+        }
+        if (copies == null) copies = Adaptive.bestFirst(cur.alternates, Backups.more(Library.get(app).all(), cur));
+        if (alt < copies.size()) {
             alt++;
             retries = 0;
+            hlsRefused = false;
             asHls = Streams.looksHls(stream().url);
             set(RETRYING);
             prepare();
             return;
         }
-        if (retries < RETRIES) {
-            retries++;
-            set(RETRYING);
-            h.postDelayed(retry, Math.min(8000, 1000L << (retries - 1)));
-        } else {
-            set(FAILED);
+        if (tries < 0) {
+            // Every copy tried: round again from the channel's own.
+            alt = 0;
+            retries = 0;
+            asHls = Streams.looksHls(stream().url);
+            reconnect();
+            return;
         }
+        set(FAILED);
+    }
+
+    /** This channel back on its MPEG-TS address (the HLS form didn't play); the playlist's HLS skipped a while too if so. */
+    private void refuseHls(boolean forPlaylist) {
+        Channel s = stream();
+        if (forPlaylist && s != null) Adaptive.markHlsFailed(app, PlayerPrefs.playlistOf(s.key));
+        hlsRefused = true;
+        prepare();
+    }
+
+    /** The same stream connected again after a wait (1, 2, 4, then 8 s), "Reconnecting…" on the picture meanwhile. */
+    private void reconnect() {
+        retries++;
+        set(RETRYING);
+        h.postDelayed(retry, PlayerPrefs.backoffMs(retries));
     }
 
     private void set(int s) {
@@ -332,6 +433,7 @@ final class LiveTv {
             if (s == Player.STATE_READY) {
                 retries = 0;
                 bufferingSince = 0;
+                everReady = true;
                 set(PLAYING);
             } else if (s == Player.STATE_BUFFERING) {
                 bufferingSince = SystemClock.elapsedRealtime();
@@ -349,6 +451,12 @@ final class LiveTv {
             if (e.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
                 player.seekToDefaultPosition();
                 player.prepare();
+                return;
+            }
+            // The provider's HLS form never played: its MPEG-TS at once; HLS left alone for the whole playlist a while
+            // when the provider plainly doesn't offer it (refused, not found, not HLS), not for a dropped connection.
+            if (hlsTried && !everReady) {
+                refuseHls(Adaptive.notOffered(e.errorCode));
                 return;
             }
             // An address with no extension that is really HLS: once more as HLS.

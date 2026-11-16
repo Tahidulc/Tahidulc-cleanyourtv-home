@@ -60,6 +60,8 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
     private Backdrop browseBack;
     private BrowseInfo info;
     private BrowseRows rows;
+    /** The player's menu (MENU or the settings key): the picture's shape for this channel, the sound's delay and track. */
+    private PlayerMenu menu;
     /** The live screen's rows (the playlist's groups) and where the remote is in them. */
     private final List<Row> groups = new ArrayList<>();
     private int row, col;
@@ -110,6 +112,24 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
         banner = new Banner(tv);
         root.addView(browse, new FrameLayout.LayoutParams(-1, -1));
         root.addView(banner, new FrameLayout.LayoutParams(-1, -1));
+        menu = new PlayerMenu(tv, new PlayerMenu.Target() {
+            @Override public androidx.media3.common.Player player() {
+                return tv.live.player();
+            }
+
+            @Override public int aspect() {
+                Channel c = tv.live.channel();
+                return com.gathin.homefieldtv.prefs.PlayerPrefs.aspectFor(tv, c == null ? null : c.key);
+            }
+
+            @Override public void aspect(int mode) {
+                Channel c = tv.live.channel();
+                if (c == null) return;
+                com.gathin.homefieldtv.prefs.PlayerPrefs.setAspectFor(tv, c.key, mode);
+                tv.live.refit();
+            }
+        });
+        root.addView(menu, new FrameLayout.LayoutParams(-1, -1));
         return root;
     }
 
@@ -126,6 +146,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
     }
 
     @Override void hidden() {
+        if (menu != null) menu.close();
         tv.live.removeListener(this);
         h.removeCallbacks(hide);
         h.removeCallbacks(digitsDone);
@@ -162,7 +183,8 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
         if (m == BANNER) {
             recent = Library.get(tv).recent(tv.live.channel());
             if (pick >= recent.size()) pick = recent.size() - 1;
-            h.postDelayed(hide, pick >= 0 ? CHOOSING_MS : BANNER_MS);
+            // How long it stays: Settings → Player → Channel banner.
+            h.postDelayed(hide, pick >= 0 ? CHOOSING_MS : com.gathin.homefieldtv.prefs.PlayerPrefs.bannerMs(tv, BANNER_MS));
         } else {
             pick = -1;
         }
@@ -182,12 +204,12 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
         return all.get(((i + dir) % all.size() + all.size()) % all.size());
     }
 
-    /** A channel now: the banner comes up on it. */
+    /** A channel now: the banner comes up on it (unless Settings → Player → Channel banner is off). */
     private void tune(Channel c) {
         if (c == null) return;
         pick = -1;
         tv.live.play(c);
-        setMode(BANNER);
+        setMode(com.gathin.homefieldtv.prefs.PlayerPrefs.bannerSeconds(tv) <= 0 ? NONE : BANNER);
     }
 
     private void tuneDigits() {
@@ -321,6 +343,13 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
     // ---- the remote ---------------------------------------------------------------------------------------------
 
     @Override boolean key(int code, KeyEvent e) {
+        // The player's menu takes the D-pad while it is open; MENU or the settings key opens it.
+        if (menu != null && menu.isOpen()) return menu.key(code);
+        if (code == KeyEvent.KEYCODE_MENU || code == KeyEvent.KEYCODE_SETTINGS) {
+            setMode(NONE);
+            menu.open();
+            return true;
+        }
         if (code >= KeyEvent.KEYCODE_0 && code <= KeyEvent.KEYCODE_9) {
             digits += (char) ('0' + code - KeyEvent.KEYCODE_0);
             h.removeCallbacks(digitsDone);
@@ -373,6 +402,10 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
     }
 
     @Override void ok() {
+        if (menu != null && menu.isOpen()) {
+            menu.close();
+            return;
+        }
         switch (mode) {
             case BROWSE:
                 tune(browseChannel());
@@ -404,6 +437,10 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
     }
 
     @Override boolean back() {
+        if (menu != null && menu.isOpen()) {
+            menu.close();
+            return true;
+        }
         if (mode != NONE) {
             setMode(NONE);
             return true;
