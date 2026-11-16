@@ -32,6 +32,8 @@ import androidx.media3.ui.PlayerView;
 @OptIn(markerClass = UnstableApi.class)
 final class Playback {
     static final int RETRIES = 5;
+    /** Staying on the channel (Quality.stay): its own stream tried again this many times (about four and a half minutes). */
+    static final int STAY_RETRIES = 30;
     /** What the picture is doing: nothing open, opening (or buffering), playing, waiting to try again, given up. */
     static final int IDLE = 0, LOADING = 1, PLAYING = 2, RECONNECTING = 3, FAILED = 4;
     /** How long a stream plays on with no one showing it (a turn of the screen, a hand back) before it is let go. */
@@ -450,8 +452,9 @@ final class Playback {
 
     // ---- adaptive: down when it can't keep up, back up once steady -----------------------------------------------
 
+    /** Stepping between the channel's copies: only when the family chose to leave the channel for them (Quality.stay off). */
     private boolean adaptive() {
-        return Quality.choice(app) == Quality.ADAPTIVE && rungs.size() > 1 && !replaying;
+        return !Quality.stay(app) && Quality.choice(app) == Quality.ADAPTIVE && rungs.size() > 1 && !replaying;
     }
 
     private void stallBegan() {
@@ -573,8 +576,9 @@ final class Playback {
     }
 
     /**
-     * Dropped: on to the same channel in the next playlist when there is one (at once); then tried again a few times,
-     * a second, two, four, then eight apart; then given up (tap to try again).
+     * Dropped. Staying on the channel (the default): its own stream tried again, a second, two, four, eight, then ten
+     * apart, for about four and a half minutes; then given up (tap to try again). Otherwise, as before: on to the same
+     * channel in the next playlist when there is one (at once), then tried again a few times, then given up.
      */
     private void dropped() {
         // The replay at the end of what was kept: live again.
@@ -583,7 +587,8 @@ final class Playback {
             return;
         }
         Channel b = base();
-        if (b != null && alt < b.alternates.size()) {
+        boolean stay = Quality.stay(app);
+        if (!stay && b != null && alt < b.alternates.size()) {
             alt++;
             retries = 0;
             asHls = Streams.looksHls(stream());
@@ -592,14 +597,20 @@ final class Playback {
             prepare();
             return;
         }
-        if (retries < RETRIES) {
+        if (retries < (stay ? STAY_RETRIES : RETRIES)) {
             retries++;
             set(RECONNECTING);
             h.removeCallbacks(retry);
-            h.postDelayed(retry, Math.min(8000, 1000L << (retries - 1)));
+            h.postDelayed(retry, retryDelay(retries, stay));
         } else {
             set(FAILED);
         }
+    }
+
+    /** Pure: the wait before the nth try again: 1, 2, 4, 8 s, then 8 s (moving on) or 10 s (staying on the channel). */
+    static long retryDelay(int retries, boolean stay) {
+        long d = 1000L << Math.max(0, Math.min(4, retries - 1));
+        return Math.min(stay ? 10_000L : 8000L, d);
     }
 
     private final Player.Listener listener = new Player.Listener() {

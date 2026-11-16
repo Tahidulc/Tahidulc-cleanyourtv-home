@@ -622,3 +622,9 @@ numbers, ages and flags.
 **Your own channel first on a match's card (5.19).** When the broadcaster ESPN names for a game isn't in the family's
 playlists ("USA Net" for a game Sky shows here), the card's "Live on" names their likeliest channel instead, with its
 logo, and a tap plays it.
+
+**Stay on the channel when the connection drops (5.20).** When the connection struggles or drops, the channel playing
+stays: its own stream adapts its picture (an HLS stream's own versions) and is reconnected by itself, a second, two,
+four, eight, then ten seconds apart, for about four and a half minutes, rather than moving to the channel's
+lower-quality copy or a backup from another playlist. Settings → Live TV has the switch, "Stay on the channel when the
+connection drops"; off, it moves on as before.

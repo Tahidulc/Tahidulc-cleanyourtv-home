@@ -30,6 +30,22 @@ final class Quality {
         prefs(c).edit().putInt(CHOICE, choice).apply();
     }
 
+    private static final String STAY = "stay_on_channel";
+
+    /**
+     * When the connection drops: stay on the channel playing (on unless turned off): its own stream adapts its picture
+     * (an HLS stream's own versions) and is reconnected, never swapped for the channel's lower-quality copy or a backup
+     * from another playlist. Off, as before: down to a lower-quality copy when it can't keep up, on to a backup when it
+     * fails.
+     */
+    static boolean stay(Context c) {
+        return prefs(c).getBoolean(STAY, true);
+    }
+
+    static void setStay(Context c, boolean on) {
+        prefs(c).edit().putBoolean(STAY, on).apply();
+    }
+
     /** Data saver: 720p at most on mobile data (on unless turned off). */
     static boolean saver(Context c) {
         return prefs(c).getBoolean(SAVER, true);
