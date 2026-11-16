@@ -13,8 +13,9 @@ import java.util.Map;
  * An M3U or M3U8 playlist read line by line (large lists of tens of thousands of entries stay quick): #EXTM3U's guide
  * address (url-tvg, x-tvg-url or tvg-url), each #EXTINF's attributes in any order (tvg-id, tvg-name, tvg-logo,
  * group-title, tvg-chno) and its title after the first comma outside quotes, #EXTGRP, and #EXTVLCOPT's user agent and
- * referrer. Only live channels are kept as channels: entries that are films or series (a /movie/ or /series/ path, a
- * video file, or tvg-type other than live) are kept apart, for the catalogues (Catalog).
+ * referrer. Catch-up (Catchup) from catchup (or catchup-type), catchup-days, catchup-source, timeshift and tvg-rec, on
+ * the entry or, for every entry, on #EXTM3U. Only live channels are kept as channels: entries that are films or series
+ * (a /movie/ or /series/ path, a video file, or tvg-type other than live) are kept apart, for the catalogues (Catalog).
  */
 public final class M3u {
     private M3u() {}
@@ -35,6 +36,8 @@ public final class M3u {
         Map<String, String> attrs = null;
         String title = null, group = null, ua = null, ref = null;
         Map<String, Integer> seen = new HashMap<>();
+        // Catch-up said once on #EXTM3U, for every entry that doesn't say it itself.
+        Map<String, String> head = new HashMap<>();
         boolean first = true;
         for (String line; (line = br.readLine()) != null; ) {
             if (first) {
@@ -52,6 +55,7 @@ public final class M3u {
                     if (g == null) g = h.get("x-tvg-url");
                     if (g == null) g = h.get("tvg-url");
                     if (g != null && !g.trim().isEmpty()) r.guideUrl = firstOf(g);
+                    for (String k : CATCHUP) if (h.containsKey(k)) head.put(k, h.get(k));
                 } else if (upper.startsWith("#EXTINF")) {
                     int colon = line.indexOf(':');
                     String[] t = new String[1];
@@ -90,8 +94,10 @@ public final class M3u {
                 seen.put(key, n == null ? 1 : n + 1);
                 if (n != null) key = key + "#" + (n + 1);
                 String agent = ua != null ? ua : a.get("user-agent");
+                String[] cu = Catchup.m3u(or(a, head, "catchup", "catchup-type"), or(a, head, "catchup-days", null),
+                        or(a, head, "catchup-source", null), or(a, head, "timeshift", null), or(a, head, "tvg-rec", null), url);
                 r.channels.add(new Channel(key, name.trim(), g == null ? "" : g.trim(), a.get("tvg-logo"), url, id, agent, ref,
-                        number(a.get("tvg-chno"))));
+                        number(a.get("tvg-chno")), cu == null ? "" : cu[0], cu == null ? "" : cu[2], cu == null ? 0 : number(cu[1]), ""));
             }
             attrs = null;
             title = null;
@@ -140,6 +146,23 @@ public final class M3u {
         }
         if (title != null && title[0] == null) title[0] = "";
         return out;
+    }
+
+    /** The catch-up attributes, as #EXTINF and #EXTM3U carry them. */
+    private static final String[] CATCHUP = {"catchup", "catchup-type", "catchup-days", "catchup-source", "timeshift", "tvg-rec"};
+
+    /** The entry's own attribute (or its other name), else the playlist header's; null when neither says. */
+    private static String or(Map<String, String> entry, Map<String, String> head, String name, String other) {
+        String v = entry.get(name);
+        if (blank(v) && other != null) v = entry.get(other);
+        if (!blank(v)) return v;
+        v = head.get(name);
+        if (blank(v) && other != null) v = head.get(other);
+        return blank(v) ? null : v;
+    }
+
+    private static boolean blank(String s) {
+        return s == null || s.trim().isEmpty();
     }
 
     /** A film or series rather than a live channel. */

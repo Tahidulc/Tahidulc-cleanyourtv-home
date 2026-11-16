@@ -43,16 +43,25 @@ import java.util.Map;
  * through it is, and the next category's row below. Left and Right go along the row too; OK changes to the channel.
  *
  * The channel keys and the number keys change at once. Back, or a few seconds with no key, hides it all.
+ *
+ * Catch-up: where the provider keeps the programme on now in its archive (or the stream's own window reaches back to
+ * its start), the banner has "Watch from the start" over the logo (Left goes to it; the rewind key too), and the live
+ * screen tags it. OK held brings up a small menu for the channel: watch it, from the start, add it to the favourites.
  */
 final class LiveScreen extends Screen implements LiveTv.Listener {
     private static final long BANNER_MS = 6000, CHOOSING_MS = 9000, BROWSE_MS = 12000;
     private static final int NONE = 0, BANNER = 1, BROWSE = 2;
+    /** The banner's "Watch from the start", where the remote can be as on a recent channel. */
+    private static final int START_OVER = -2;
     private static final float LIFT = 1.07f;
 
     private Channel start;
+    /** From the guide: a programme to show from the archive as this screen opens (-1: none), and its end. */
+    private long catchupFrom = -1, catchupEnd;
     private int mode = BANNER;
-    /** The recent channel the remote is on in the banner's row, or -1 for none. */
+    /** The recent channel the remote is on in the banner's row, -1 for none, START_OVER for "Watch from the start". */
     private int pick = -1;
+    private PopMenu menu;
     private List<Channel> recent = new ArrayList<>();
     private String digits = "";
     private FrameLayout browse;
@@ -61,7 +70,9 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
     private BrowseInfo info;
     private BrowseRows rows;
     /** The player's menu (MENU or the settings key): the picture's shape for this channel, the sound's delay and track. */
-    private PlayerMenu menu;
+    private PlayerMenu playerMenu;
+    /** The scoreboard over a match (BoardLayer): it takes the remote first while its menu or its card is up. */
+    private BoardLayer board;
     /** The live screen's rows (the playlist's groups) and where the remote is in them. */
     private final List<Row> groups = new ArrayList<>();
     private int row, col;
@@ -84,6 +95,18 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
     LiveScreen(TvActivity tv, Channel c) {
         super(tv);
         this.start = c;
+    }
+
+    /** A channel's programme from its archive, from start (CatchupScreen over this screen); live when that closes. */
+    LiveScreen(TvActivity tv, Channel c, long from, long end) {
+        this(tv, c);
+        this.catchupFrom = from;
+        this.catchupEnd = end;
+    }
+
+    /** The channel before (-1) or after (1) the one playing, played live when this screen is next shown. */
+    void next(int dir) {
+        start = step(tv.live.channel(), dir);
     }
 
     @Override boolean overVideo() {
@@ -110,9 +133,12 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
         browse.addView(rows, new FrameLayout.LayoutParams(-1, -1));
         browse.setVisibility(View.GONE);
         banner = new Banner(tv);
+        menu = new PopMenu(tv);
+        board = new BoardLayer(tv);
+        root.addView(board, new FrameLayout.LayoutParams(-1, -1));
         root.addView(browse, new FrameLayout.LayoutParams(-1, -1));
         root.addView(banner, new FrameLayout.LayoutParams(-1, -1));
-        menu = new PlayerMenu(tv, new PlayerMenu.Target() {
+        playerMenu = new PlayerMenu(tv, new PlayerMenu.Target() {
             @Override public androidx.media3.common.Player player() {
                 return tv.live.player();
             }
@@ -130,10 +156,20 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
             }
         });
         root.addView(menu, new FrameLayout.LayoutParams(-1, -1));
+        root.addView(playerMenu, new FrameLayout.LayoutParams(-1, -1));
         return root;
     }
 
     @Override void shown() {
+        if (catchupFrom >= 0) {
+            // From the guide: the programme from the archive over this screen, which plays live once that closes.
+            long from = catchupFrom;
+            catchupFrom = -1;
+            Channel c = start;
+            start = null;
+            tv.push(new CatchupScreen(tv, c, from, catchupEnd));
+            return;
+        }
         tv.live.addListener(this);
         tv.live.place(tv.fullScreen());
         if (start != null) {
@@ -143,14 +179,17 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
             tv.live.play(tv.live.channel());
         }
         setMode(BANNER);
+        board.start();
     }
 
     @Override void hidden() {
-        if (menu != null) menu.close();
+        if (playerMenu != null) playerMenu.close();
+        board.stop();
         tv.live.removeListener(this);
         h.removeCallbacks(hide);
         h.removeCallbacks(digitsDone);
         h.removeCallbacks(askPicture);
+        if (menu != null && menu.isOpen()) menu.close();
     }
 
     @Override public void liveChanged() {
@@ -183,8 +222,9 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
         if (m == BANNER) {
             recent = Library.get(tv).recent(tv.live.channel());
             if (pick >= recent.size()) pick = recent.size() - 1;
+            if (pick == START_OVER && fromTheStart(tv.live.channel()) == null) pick = -1;
             // How long it stays: Settings → Player → Channel banner.
-            h.postDelayed(hide, pick >= 0 ? CHOOSING_MS : com.gathin.homefieldtv.prefs.PlayerPrefs.bannerMs(tv, BANNER_MS));
+            h.postDelayed(hide, pick != -1 ? CHOOSING_MS : com.gathin.homefieldtv.prefs.PlayerPrefs.bannerMs(tv, BANNER_MS));
         } else {
             pick = -1;
         }
@@ -210,6 +250,64 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
         pick = -1;
         tv.live.play(c);
         setMode(com.gathin.homefieldtv.prefs.PlayerPrefs.bannerSeconds(tv) <= 0 ? NONE : BANNER);
+    }
+
+    /**
+     * The programme on a channel now as {start, end} when it can be watched from its start (its archive keeps it, or
+     * the stream's own window reaches back to it, and it began more than a minute ago); null when it can't.
+     */
+    private long[] fromTheStart(Channel c) {
+        if (c == null) return null;
+        long now = System.currentTimeMillis();
+        Guide.Schedule s = Library.get(tv).schedule(c.key);
+        int i = s == null ? -1 : s.at(now);
+        if (i < 0 || now - s.start[i] < LiveTv.LIVE_EDGE_MS || !tv.live.canShow(c, s.start[i])) return null;
+        return new long[]{s.start[i], s.stop[i]};
+    }
+
+    /** The programme on now on a channel from its start (CatchupScreen over this screen). */
+    private void startOver(Channel c) {
+        long[] p = fromTheStart(c);
+        if (p == null) return;
+        pick = -1;
+        h.removeCallbacks(hide);
+        mode = NONE;
+        Fade.show(banner, false, 120);
+        Fade.show(browse, false, 120);
+        tv.push(new CatchupScreen(tv, c, p[0], p[1]));
+    }
+
+    /** OK held: a small menu for a channel (watch it, from the start, the favourites). */
+    private void openMenu(Channel c) {
+        if (c == null || menu == null) return;
+        boolean playing = tv.live.channel() != null && tv.live.channel().key.equals(c.key);
+        List<String[]> items = new ArrayList<>();
+        if (!playing) items.add(new String[]{"watch", "Watch " + c.name});
+        if (fromTheStart(c) != null) items.add(new String[]{"start", "Watch from the start"});
+        boolean fav = Library.get(tv).isFavourite(c);
+        items.add(new String[]{"fav", fav ? "Remove from favourites" : "Add to favourites"});
+        long now = System.currentTimeMillis();
+        Guide.Schedule s = Library.get(tv).schedule(c.key);
+        int i = s == null ? -1 : s.at(now);
+        String line = i >= 0 ? LiveText.span(s.start[i], s.stop[i]) + "  " + s.title[i] : "";
+        h.removeCallbacks(hide);
+        menu.open(c.name, line, items, 680f, 360f, key -> {
+            switch (key) {
+                case "watch":
+                    tune(c);
+                    break;
+                case "start":
+                    startOver(c);
+                    break;
+                default: {
+                    boolean on = Library.get(tv).toggleFavourite(c);
+                    android.widget.Toast.makeText(tv, on ? c.name + " added to your favourites" : c.name + " taken off your favourites",
+                            android.widget.Toast.LENGTH_SHORT).show();
+                    if (mode != NONE) setMode(mode);
+                    break;
+                }
+            }
+        });
     }
 
     private void tuneDigits() {
@@ -344,12 +442,14 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
 
     @Override boolean key(int code, KeyEvent e) {
         // The player's menu takes the D-pad while it is open; MENU or the settings key opens it.
+        if (playerMenu != null && playerMenu.isOpen()) return playerMenu.key(code);
         if (menu != null && menu.isOpen()) return menu.key(code);
         if (code == KeyEvent.KEYCODE_MENU || code == KeyEvent.KEYCODE_SETTINGS) {
             setMode(NONE);
-            menu.open();
+            playerMenu.open();
             return true;
         }
+        if (board.key(code)) return true;
         if (code >= KeyEvent.KEYCODE_0 && code <= KeyEvent.KEYCODE_9) {
             digits += (char) ('0' + code - KeyEvent.KEYCODE_0);
             h.removeCallbacks(digitsDone);
@@ -377,7 +477,8 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
                     browseAlong(1);
                     return true;
                 }
-                if (mode == BANNER && pick < recent.size() - 1) pick++;
+                if (mode == BANNER && pick == START_OVER) pick = -1;
+                else if (mode == BANNER && pick < recent.size() - 1) pick++;
                 setMode(BANNER);
                 return true;
             case KeyEvent.KEYCODE_DPAD_LEFT:
@@ -391,7 +492,17 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
                     return true;
                 }
                 if (pick >= 0) pick--;
+                // Left of the row: "Watch from the start", where the programme on now can be.
+                else if (pick == -1 && fromTheStart(tv.live.channel()) != null) pick = START_OVER;
                 setMode(BANNER);
+                return true;
+            case KeyEvent.KEYCODE_MEDIA_REWIND:
+            case KeyEvent.KEYCODE_MEDIA_PREVIOUS:
+                if (e.getRepeatCount() == 0) {
+                    Channel c = mode == BROWSE ? browseChannel() : tv.live.channel();
+                    if (fromTheStart(c) != null) startOver(c);
+                    else setMode(BANNER);
+                }
                 return true;
             case KeyEvent.KEYCODE_INFO:
                 setMode(mode == BANNER ? NONE : BANNER);
@@ -402,15 +513,24 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
     }
 
     @Override void ok() {
-        if (menu != null && menu.isOpen()) {
-            menu.close();
+        if (playerMenu != null && playerMenu.isOpen()) {
+            playerMenu.close();
             return;
         }
+        if (menu != null && menu.isOpen()) {
+            menu.ok();
+            return;
+        }
+        if (board.ok()) return;
         switch (mode) {
             case BROWSE:
                 tune(browseChannel());
                 return;
             case BANNER:
+                if (pick == START_OVER) {
+                    startOver(tv.live.channel());
+                    return;
+                }
                 if (pick >= 0 && pick < recent.size()) {
                     tune(recent.get(pick));
                     return;
@@ -428,19 +548,24 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
     }
 
     @Override void okLong() {
+        if (menu != null && menu.isOpen() || playerMenu != null && playerMenu.isOpen()) return;
+        // Over a match with nothing else up: the scoreboard's menu, as OK held over TiviMate on the launcher.
+        if (mode == NONE && board.okLong()) return;
         Channel c = mode == BROWSE ? browseChannel() : mode == BANNER && pick >= 0 && pick < recent.size() ? recent.get(pick) : tv.live.channel();
-        if (c == null) return;
-        boolean now = Library.get(tv).toggleFavourite(c);
-        android.widget.Toast.makeText(tv, now ? c.name + " added to your favourites" : c.name + " taken off your favourites",
-                android.widget.Toast.LENGTH_SHORT).show();
-        if (mode == NONE) setMode(BANNER);
+        openMenu(c);
     }
 
     @Override boolean back() {
-        if (menu != null && menu.isOpen()) {
-            menu.close();
+        if (playerMenu != null && playerMenu.isOpen()) {
+            playerMenu.close();
             return true;
         }
+        if (menu != null && menu.isOpen()) {
+            menu.close();
+            if (mode != NONE) setMode(mode);
+            return true;
+        }
+        if (board.back()) return true;
         if (mode != NONE) {
             setMode(NONE);
             return true;
@@ -464,6 +589,10 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
         private final TextPaint logoName = Dark.text(40, 700, Dark.TEXT), noneP = Dark.text(28, 500, Dark.MUTED);
         private final TextPaint tileP = Dark.text(24, 500, Dark.SOFT), tileOn = Dark.text(24, 600, Dark.TEXT), tileName = Dark.text(24, 700, Dark.TEXT);
         private final TextPaint hintP = Dark.text(26, 600, Dark.TEXT), digitP = Dark.text(64, 600, Dark.TEXT);
+        private final Paint startLit = Dark.fill(Dark.ACCENT), startBack = Dark.fill(Dark.alpha(Dark.RAIL, 0xD9)), startEdge = Dark.line(0x66FFFFFF, 1.5f);
+        private final Paint startRing = Dark.line(Dark.alpha(Dark.RING, 0xE6), 3f), iconLine = Dark.line(Dark.TEXT, 2.4f), iconFill = Dark.fill(Dark.TEXT);
+        private final Paint inkLine = Dark.line(Dark.ACCENT_INK, 2.4f), inkFill = Dark.fill(Dark.ACCENT_INK);
+        private final TextPaint startP = Dark.text(26, 600, Dark.TEXT), startInk = Dark.text(26, 700, Dark.ACCENT_INK);
         private final RectF r = new RectF();
         private float topFor = -1f, footFor = -1f, scroll;
         private long last;
@@ -571,6 +700,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
                 c.drawCircle(px, ay, Ui.f(9), lineAccent);
             }
             if (tv.live.state() == LiveTv.FAILED) hint(c, "OK to try again", right, Ui.f(560 + base));
+            else if (fromTheStart(ch) != null) startPill(c, Ui.f(96), Ui.f(560 + base), pick == START_OVER);
             alpha(255);
             boolean moving = fade.busy();
             if (row) moving |= drawRecent(c, w, now, lib);
@@ -669,6 +799,19 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
             return moving;
         }
 
+        /** "Watch from the start" over the logo: amber inside a ring where the remote is (Left from the row goes to it). */
+        private void startPill(Canvas c, float x, float base, boolean lit) {
+            String t = "Watch from the start";
+            TextPaint p = lit ? startInk : startP;
+            float icon = Ui.f(36), ph = Ui.f(54), pw = Ui.f(20) + icon + p.measureText(t) + Ui.f(26);
+            r.set(x, base - Ui.f(38), x + pw, base - Ui.f(38) + ph);
+            c.drawRoundRect(r, ph / 2f, ph / 2f, lit ? startLit : startBack);
+            if (lit) Dark.ring(c, r, ph / 2f, startRing);
+            else c.drawRoundRect(r, ph / 2f, ph / 2f, startEdge);
+            Dark.replay(c, x + Ui.f(20) + icon / 2f - Ui.f(4), r.centerY(), Ui.f(10), lit ? inkLine : iconLine, lit ? inkFill : iconFill);
+            c.drawText(t, x + Ui.f(20) + icon, r.centerY() + Ui.f(9), p);
+        }
+
         private void hint(Canvas c, String t, float right, float y) {
             float tw = hintP.measureText(t);
             r.set(right - tw - Ui.f(44), y - Ui.f(40), right, y + Ui.f(10));
@@ -694,7 +837,8 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
         private final TextPaint atP = Dark.text(22, 600, Dark.MUTED), laterP = Dark.text(22, 500, Dark.SOFT);
         private final TextPaint titleP = Dark.text(60, 600, Dark.TEXT), chanP = Dark.text(24, 500, Dark.MUTED);
         private final TextPaint timeP = Dark.text(24, 500, Dark.SOFT), descP = Dark.text(26, 400, Dark.SOFT);
-        private final TextPaint logoName = Dark.text(34, 700, Dark.TEXT);
+        private final TextPaint logoName = Dark.text(34, 700, Dark.TEXT), tagP = Dark.text(20, 600, Dark.SOFT);
+        private final Paint tagLine = Dark.line(0x80FFFFFF, 1.5f), iconLine = Dark.line(Dark.SOFT, 2f), iconFill = Dark.fill(Dark.SOFT);
         private final RectF r = new RectF();
         private String descKey = "";
         private StaticLayout descL;
@@ -751,6 +895,15 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
                 c.drawRoundRect(r, Ui.f(3), Ui.f(3), track);
                 r.set(bx, by, bx + bw * LiveText.progress(now, s.start[i], s.stop[i]), by + Ui.f(5));
                 c.drawRoundRect(r, Ui.f(3), Ui.f(3), accent);
+                if (fromTheStart(ch) != null) {
+                    // It can be watched from its start: how.
+                    String how = "From the start: hold OK";
+                    float tx = bx + bw + Ui.f(24), tw = Ui.f(40) + tagP.measureText(how) + Ui.f(14), th = Ui.f(34);
+                    r.set(tx, Ui.f(334) - Ui.f(25), tx + tw, Ui.f(334) - Ui.f(25) + th);
+                    c.drawRoundRect(r, th / 2f, th / 2f, tagLine);
+                    Dark.replay(c, tx + Ui.f(20), r.centerY(), Ui.f(8), iconLine, iconFill);
+                    c.drawText(how, tx + Ui.f(38), Ui.f(334) - Ui.f(1), tagP);
+                }
                 if (!s.desc[i].isEmpty()) {
                     String key = ch.key + "|" + s.start[i];
                     if (!key.equals(descKey) || descL == null) {

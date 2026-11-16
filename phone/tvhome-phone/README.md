@@ -608,3 +608,23 @@ phone's own recogniser, or an English model of about 40 MB downloaded once), whi
 picture and HDR (4K, 1080p, HDR10, HDR10+, HLG, DV) from the playlists' categories too, and from what the provider
 itself read of each stream, asked once a title as its poster shows. TorBox's films come first with every version the
 account has, with a moment's retry when TorBox is slow to answer.
+
+**Every channel, highlights, rated line-ups and club pages (5.18).** A game or event's page (football, F1, tennis, UFC,
+the NFL and NBA, golf) lists every channel from the family's playlists showing it, English first, with its logo, a 4K
+badge and live now or its start; a tap plays it. Highlights follow where they're found: ESPN's clips play in the app,
+FotMob's and YouTube's links open outside it. Line-ups come as the TV draws them: in formation on its blue pitch, each
+player's live rating on top of their picture, with number, flag, goals, assists, cards and the minute they went off,
+the subs with their ratings and the manager under it; the line-up alert and its notification use the same card. Tables
+show W, D and L, and a club's row opens its page: crest, position, form, last and next games, its season in figures
+(ESPN and FotMob, each with its place in the league), its leading players, and the squad by position with photos,
+numbers, ages and flags.
+
+**Your own channel first on a match's card (5.19).** When the broadcaster ESPN names for a game isn't in the family's
+playlists ("USA Net" for a game Sky shows here), the card's "Live on" names their likeliest channel instead, with its
+logo, and a tap plays it.
+
+**Stay on the channel when the connection drops (5.20).** When the connection struggles or drops, the channel playing
+stays: its own stream adapts its picture (an HLS stream's own versions) and is reconnected by itself, a second, two,
+four, eight, then ten seconds apart, for about four and a half minutes, rather than moving to the channel's
+lower-quality copy or a backup from another playlist. Settings → Live TV has the switch, "Stay on the channel when the
+connection drops"; off, it moves on as before.

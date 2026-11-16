@@ -9,6 +9,7 @@ import android.view.View;
 import android.widget.FrameLayout;
 
 import com.gathin.homefieldtv.engine.Catalog;
+import com.gathin.homefieldtv.engine.Catchup;
 import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.engine.Resume;
 import com.gathin.homefieldtv.engine.Source;
@@ -26,9 +27,9 @@ import java.util.Locale;
  */
 final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Host {
     private static final List<String> MENU = Arrays.asList("Your playlists", "Add an M3U playlist", "Add an Xtream Codes login",
-            "Refresh now", "Remove everything", "Channel logos", "Theme", "Posters", "Updates", "About");
+            "Refresh now", "Remove everything", "Channel logos", "Theme", "Posters", "Updates", "Scoreboard", "About");
     static final int PLAYLISTS = 0, ADD_M3U = 1, ADD_XTREAM = 2, REFRESH = 3, CLEAR = 4, LOGOS = 5, THEME = 6, POSTERS = 7, UPDATES = 8,
-            ABOUT = 9;
+            SCOREBOARD = 9, ABOUT = 10;
 
     private Strip strip;
     private ListPanel menu, content;
@@ -171,6 +172,8 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
                     out.add(new ListPanel.Item("all", ListPanel.TEXT, "Use all your playlists together", ""));
                 }
                 if (!all.isEmpty()) out.add(new ListPanel.Item(null, ListPanel.NOTE, counts(), ""));
+                String archive = archiveLine();
+                if (!all.isEmpty() && !archive.isEmpty()) out.add(new ListPanel.Item(null, ListPanel.NOTE, archive, ""));
                 break;
             }
             case ADD_M3U:
@@ -192,6 +195,7 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
                 out.add(new ListPanel.Item("refresh", ListPanel.TEXT, "Read everything again now", "Channels, the guide, films and TV shows"));
                 out.add(new ListPanel.Item(null, ListPanel.NOTE, lib.busy() || Catalog.get(tv).busy() ? "Reading your playlist…"
                         : status.isEmpty() ? counts() : status, ""));
+                if (!lib.busy() && !archiveLine().isEmpty()) out.add(new ListPanel.Item(null, ListPanel.NOTE, archiveLine(), ""));
                 break;
             case CLEAR:
                 if (confirm) {
@@ -226,6 +230,9 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
             }
             case UPDATES:
                 updates(out);
+                break;
+            case SCOREBOARD:
+                BoardSettings.fill(tv, out);
                 break;
             default:
                 out.add(new ListPanel.Item(null, ListPanel.NOTE, "Homefield TV " + version(), ""));
@@ -322,6 +329,14 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
         Library lib = Library.get(tv);
         Catalog cat = Catalog.get(tv);
         return String.format(Locale.UK, "%,d channels  ·  %,d films  ·  %,d TV shows", lib.count(), cat.films().size(), cat.series().size());
+    }
+
+    /** Catch-up: how many of the channels the provider keeps programmes for, and for how long ("" before they're in). */
+    private String archiveLine() {
+        Library lib = Library.get(tv);
+        if (!lib.ready()) return "";
+        int[] a = lib.archive();
+        return Catchup.summary(a[0], a[1]);
     }
 
     private static ListPanel.Item field(String key, String label, String value, String hint) {
@@ -502,6 +517,14 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
                 fillContent();
                 content.setFocus(confirm ? 1 : 0);
                 return;
+            case SCOREBOARD: {
+                int at = content.focusIndex();
+                if (BoardSettings.chosen(tv, t)) {
+                    fillContent();
+                    content.setFocus(at);
+                }
+                return;
+            }
             default:
         }
     }

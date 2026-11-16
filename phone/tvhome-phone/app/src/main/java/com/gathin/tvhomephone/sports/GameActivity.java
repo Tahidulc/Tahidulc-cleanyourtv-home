@@ -105,6 +105,8 @@ public class GameActivity extends AppCompatActivity {
         android.content.Context app = getApplicationContext();
         App.io.execute(() -> {
             String ch = Channels.best(this, game);
+            // A broadcaster the family's playlists don't have ("USA Net" for a game Sky shows here) gives way below.
+            boolean linked = ch != null && com.gathin.tvhomephone.live.LiveLinks.has(app, ch);
             List<com.gathin.tvhomephone.live.AlsoShowing.Listed> all = null;
             if (game.state != Game.POST) {
                 try {
@@ -117,8 +119,8 @@ public class GameActivity extends AppCompatActivity {
             App.main.post(() -> {
                 channel = ch;
                 listed = got;
-                // No British channel listed for it: the likeliest of the family's own in its place.
-                shown = ch == null && got != null && !got.isEmpty() ? got.get(0) : null;
+                // No broadcaster listed for it that the playlists have: the likeliest of the family's own in its place.
+                shown = !linked && got != null && !got.isEmpty() ? got.get(0) : null;
                 channelKnown = true;
                 if (isFinishing()) return;
                 paintHero();
@@ -237,7 +239,7 @@ public class GameActivity extends AppCompatActivity {
         actions.setGravity(Gravity.CENTER_HORIZONTAL);
         if (channel != null || shown != null) {
             com.gathin.tvhomephone.live.AlsoShowing.Listed s = shown;
-            View on = channel != null ? Ui.liveOn(this, channel) : Ui.liveOnPlaylist(this, s.name, s.logo,
+            View on = s == null ? Ui.liveOn(this, channel) : Ui.liveOnPlaylist(this, s.name, s.logo,
                     () -> com.gathin.tvhomephone.live.PlayerActivity.start(this, s.ch.key, com.gathin.tvhomephone.live.Library.ALL));
             on.setBackground(Ui.fill(this, 0x24FFFFFF, 18));
             on.setPadding(Ui.dp(this, 14), Ui.dp(this, 6), Ui.dp(this, 14), Ui.dp(this, 6));

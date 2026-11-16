@@ -15,6 +15,7 @@ import android.text.TextPaint;
 import android.view.KeyEvent;
 import android.view.View;
 
+import com.gathin.homefieldtv.engine.Catchup;
 import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Guide;
@@ -31,7 +32,9 @@ import java.util.List;
  * channel a strip opens: its picture (Sky's, else the channel's logo on its tile), its title, times, what it is (Live,
  * Starts in 12 min, HD or 4K) and two lines of what it is about. The rows below move down to make room as the strip
  * closes under the row left; its writing fades and rises into place. Up and Down go through the channels, Left and
- * Right through the programmes, the hours sliding along as they go.
+ * Right through the programmes, the hours sliding along as they go. On a channel whose provider keeps an archive
+ * (catch-up), Left goes on back into the programmes already shown, each marked with a circle arrow, as far as the
+ * archive goes; elsewhere Left from the programme on now goes to the categories.
  */
 final class GuideGrid extends View {
     interface Host {
@@ -71,6 +74,8 @@ final class GuideGrid extends View {
     private final Paint tick = Dark.fill(0x33FFFFFF), stripBack = Dark.fill(Dark.CARD), tileBack = Dark.fill(0xFF000000);
     private final Paint tagFill = Dark.fill(Dark.ACCENT), tagLine = Dark.line(0x80FFFFFF, 1.5f);
     private final Paint chevron = Dark.line(0xB3FFFFFF, 2f), chevronInk = Dark.line(0xB31E1606, 2f);
+    private final Paint markLine = Dark.line(0xCCFFFFFF, 2f), markFill = Dark.fill(0xCCFFFFFF);
+    private final Paint markInk = Dark.line(Dark.ACCENT_INK, 2f), markInkFill = Dark.fill(Dark.ACCENT_INK);
     private final Paint bmp = new Paint(Paint.FILTER_BITMAP_FLAG), picPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private final TextPaint numP = Dark.text(36, 300, Dark.SOFT), numLit = Dark.text(36, 400, Dark.TEXT), nameP = Dark.text(22, 600, Dark.SOFT);
     private final TextPaint spanP = Dark.text(19, 500, 0xB3FFFFFF), titleP = Dark.text(25, 600, Dark.TEXT);
@@ -155,6 +160,28 @@ final class GuideGrid extends View {
 
     int count() {
         return channels.size();
+    }
+
+    /** The programme the remote is on as {start, end}, or null when there is none. */
+    long[] times() {
+        Channel ch = channel();
+        Guide.Schedule s = ch == null ? null : lib.schedule(ch.key);
+        int i = s == null ? -1 : s.at(cursor);
+        return i < 0 ? null : new long[]{s.start[i], s.stop[i]};
+    }
+
+    /** The remote went back before the programmes on now (catch-up). */
+    boolean inPast() {
+        long now = System.currentTimeMillis();
+        return cursor < now - now % HALF;
+    }
+
+    /** Back to the time now (Back from the past). */
+    void toNow() {
+        long now = System.currentTimeMillis();
+        cursor = now;
+        winStart = now - now % HALF;
+        moved();
     }
 
     /** To the channel with this number, if the category has it. */
@@ -251,24 +278,36 @@ final class GuideGrid extends View {
                 return true;
             }
             case KeyEvent.KEYCODE_DPAD_LEFT: {
-                Guide.Schedule s = lib.schedule(channel().key);
+                Channel ch = channel();
+                Guide.Schedule s = lib.schedule(ch.key);
                 int i = s == null ? -1 : s.at(cursor);
-                boolean onNow = cursor <= now || (i >= 0 && s.start[i] <= now);
-                if (onNow) {
-                    if (host != null) host.leftEdge();
-                    return true;
+                if (Catchup.source(ch) != null) {
+                    // Catch-up: back through the programmes the provider's archive keeps; past the oldest, the categories.
+                    int n = s == null ? -1 : s.after(cursor);
+                    int p = s == null ? -1 : i >= 0 ? i - 1 : (n < 0 ? s.start.length : n) - 1;
+                    if (p < 0 || !Catchup.has(ch, s.start[p], now)) {
+                        if (host != null) host.leftEdge();
+                        return true;
+                    }
+                    cursor = s.start[p];
+                } else {
+                    boolean onNow = cursor <= now || (i >= 0 && s.start[i] <= now);
+                    if (onNow) {
+                        if (host != null) host.leftEdge();
+                        return true;
+                    }
+                    long prev;
+                    if (s != null && i > 0) prev = s.start[i - 1];
+                    else if (s != null && i < 0) {
+                        int n = s.after(cursor);
+                        int p = (n < 0 ? s.start.length : n) - 1;
+                        prev = p >= 0 ? s.start[p] : cursor - HALF;
+                    } else prev = cursor - cursor % HALF - (cursor % HALF == 0 ? HALF : 0);
+                    cursor = Math.max(prev, now);
                 }
-                long prev;
-                if (s != null && i > 0) prev = s.start[i - 1];
-                else if (s != null && i < 0) {
-                    int n = s.after(cursor);
-                    int p = (n < 0 ? s.start.length : n) - 1;
-                    prev = p >= 0 ? s.start[p] : cursor - HALF;
-                } else prev = cursor - cursor % HALF - (cursor % HALF == 0 ? HALF : 0);
-                cursor = Math.max(prev, now);
                 while (cursor < winStart) winStart -= HALF;
                 long floor = now - now % HALF;
-                if (winStart < floor) winStart = floor;
+                if (winStart < floor && cursor >= floor) winStart = floor;
                 moved();
                 return true;
             }
@@ -376,7 +415,8 @@ final class GuideGrid extends View {
     }
 
     private void drawRuler(Canvas c, long now) {
-        c.drawText(Ui.day(Math.max(winStart, now), now), Ui.f(X), Ui.f(RULER_Y), dayP);
+        // The day the hours start on (Yesterday, back in the archive).
+        c.drawText(Ui.day(winStart < now - now % HALF ? winStart : Math.max(winStart, now), now), Ui.f(X), Ui.f(RULER_Y), dayP);
         for (long t = winStart; t < winStart + WINDOW; t += HALF) {
             float x = xAt(t);
             c.drawRect(x, Ui.f(RULER_Y - 20), x + Math.max(1f, Ui.f(1.5f)), Ui.f(RULER_Y + 4), tick);
@@ -405,9 +445,11 @@ final class GuideGrid extends View {
         float gap = Ui.f(GAP);
         if (s == null) {
             // No guide for this channel: one block across.
-            drawBlock(c, Ui.f(PROG_X), top, Ui.f(RIGHT) - gap, bottom, "No programme information", ch.name, Dark.CARD, -1f, here, false);
+            drawBlock(c, Ui.f(PROG_X), top, Ui.f(RIGHT) - gap, bottom, "No programme information", ch.name, Dark.CARD, -1f, here, false, false);
             return;
         }
+        // Catch-up: how far back the provider's archive of this channel goes (MAX_VALUE: it keeps none).
+        long kept = Catchup.earliest(ch, now);
         boolean drewFocus = false;
         for (int i = 0; i < s.start.length; i++) {
             if (s.stop[i] <= winStart) continue;
@@ -416,20 +458,24 @@ final class GuideGrid extends View {
             if (x1 - x0 < Ui.f(6)) continue;
             boolean focused = here && s.start[i] <= cursor && cursor < s.stop[i];
             float airedTo = s.start[i] < now ? xAt(Math.min(now, s.stop[i])) : -1f;
+            boolean archived = s.stop[i] <= now && s.start[i] >= kept;
             drawBlock(c, x0, top, x1, bottom, LiveText.span(s.start[i], s.stop[i]), s.title[i], deep(s.title[i]), airedTo,
-                    focused, s.start[i] < winStart);
+                    focused, s.start[i] < winStart, archived);
             if (focused) drewFocus = true;
         }
         if (here && !drewFocus) {
             // Nothing in the guide at that time: the half hour the remote is on, lit.
             long a = cursor - cursor % HALF, b = a + HALF;
-            drawBlock(c, xAt(Math.max(a, winStart)), top, xAt(Math.min(b, winEnd)) - gap, bottom, "", "", Dark.CARD, -1f, true, false);
+            drawBlock(c, xAt(Math.max(a, winStart)), top, xAt(Math.min(b, winEnd)) - gap, bottom, "", "", Dark.CARD, -1f, true, false, false);
         }
     }
 
-    /** One programme's block: its colour (amber where the remote is), the part already shown, its times over its title. */
+    /**
+     * One programme's block: its colour (amber where the remote is), the part already shown, its times over its title,
+     * and catch-up's mark at its top right for a programme that has been shown and is in the provider's archive.
+     */
     private void drawBlock(Canvas c, float x0, float top, float x1, float bottom, String span, String title, int colour,
-                           float airedTo, boolean focused, boolean cut) {
+                           float airedTo, boolean focused, boolean cut, boolean archived) {
         r.set(x0, top, x1, bottom);
         float rad = Ui.f(8);
         boolean amber = focused && active;
@@ -459,10 +505,12 @@ final class GuideGrid extends View {
         }
         float room = x1 - tx - Ui.f(10);
         if (room < Ui.f(28)) return;
+        boolean mark = archived && x1 - x0 > Ui.f(64);
+        if (mark) Dark.replay(c, x1 - Ui.f(20), top + Ui.f(21), Ui.f(8), amber ? markInk : markLine, amber ? markInkFill : markFill);
         c.save();
         c.clipRect(x0, top, x1, bottom);
         TextPaint sp = amber ? spanInk : spanP, tp = amber ? titleInk : titleP;
-        if (!span.isEmpty()) c.drawText(Ui.fit(span, sp, room), tx, top + Ui.f(29), sp);
+        if (!span.isEmpty()) c.drawText(Ui.fit(span, sp, mark ? room - Ui.f(30) : room), tx, top + Ui.f(29), sp);
         if (!title.isEmpty()) c.drawText(Ui.fit(title, tp, room), tx, top + Ui.f(span.isEmpty() ? 46 : 59), tp);
         c.restore();
     }
@@ -517,8 +565,17 @@ final class GuideGrid extends View {
             if (!"Today".equals(day)) sp = day + ", " + sp;
             c.drawText(sp, lx, ly, stripSpan);
             lx += stripSpan.measureText(sp) + Ui.f(20);
-            if (s.start[i] <= now && now < s.stop[i]) lx = tag(c, "Live", lx, ly, true);
-            else lx = tag(c, LiveText.startsIn(now, s.start[i]), lx, ly, false);
+            boolean archived = Catchup.has(ch, s.start[i], now);
+            if (s.start[i] <= now && now < s.stop[i]) {
+                lx = tag(c, "Live", lx, ly, true);
+                // Its start is in the archive: held OK watches it from there.
+                if (archived && now - s.start[i] >= LiveTv.LIVE_EDGE_MS) lx = tag(c, "From the start", lx, ly, false);
+            } else if (s.stop[i] <= now) {
+                // Shown already: in the archive, OK plays it.
+                if (archived) lx = tag(c, "Catch-up", lx, ly, true);
+            } else {
+                lx = tag(c, LiveText.startsIn(now, s.start[i]), lx, ly, false);
+            }
         } else {
             String none = s == null ? "No programme information" : "Nothing in the guide at this time";
             c.drawText(none, lx, ly, stripSpan);

@@ -20,12 +20,15 @@ import androidx.media3.common.C;
 import androidx.media3.common.Format;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
+import androidx.media3.common.Timeline;
 import androidx.media3.common.VideoSize;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.exoplayer.ExoPlayer;
 
+import com.gathin.homefieldtv.engine.Catchup;
 import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Exec;
+import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.engine.Streams;
 import com.gathin.homefieldtv.prefs.Adaptive;
@@ -40,21 +43,47 @@ import java.util.List;
 
 /**
  * The one live picture: the mini TV on Home and in the guide, and full screen when watching. One player, moved and
- * resized rather than started again, because a provider usually allows one stream at a time. A channel that drops goes
- * on to its copy in the family's other playlist, then is tried again a few times. The stream's address is never
- * logged.
+ * resized rather than started again, because a provider usually allows one stream at a time. A channel that drops is
+ * connected again, as Settings → Player → When a stream fails says (dropped()). The stream's address is never logged.
+ *
+ * <p>Behind live (catch-up): a programme from the provider's archive (Catchup), asked for again from wherever the remote
+ * moves it to, going on into the next programme when one ends and back to live at the live edge; or, for a stream
+ * whose own window reaches back minutes (HLS with a long window), a move inside it.
  */
 @OptIn(markerClass = UnstableApi.class)
 final class LiveTv {
     static final int IDLE = 0, LOADING = 1, PLAYING = 2, RETRYING = 3, FAILED = 4;
+    /** How often a programme from the archive is asked for again once it has played. */
+    private static final int RETRIES = 4;
     private static final long STALL_MS = 15_000L;
+    /** A stream's own window counts as one to go back in from five minutes long. */
+    static final long MIN_WINDOW_MS = 5 * 60_000L;
+    /** Within a minute of now is live: the archive's newest minute may not be in it yet. */
+    static final long LIVE_EDGE_MS = 60_000L;
     /** Previews: a still picture stands in for the stream, and its format for the player's. */
     static Bitmap previewStill;
     static int previewWidth, previewHeight;
     static float previewFps;
+    /** Previews: the time the picture behind live is of. */
+    static long previewShown = -1;
 
     interface Listener {
         void liveChanged();
+    }
+
+    /** A programme playing from the archive: the channel, the time the request started at, how far to ask for. */
+    private static final class Archive {
+        final Channel channel;
+        long from, end;
+        /** The older Xtream address (timeshift.php) in use; whether it has played (later errors pick up where it got to). */
+        boolean older, played;
+        int retries;
+
+        Archive(Channel channel, long from, long end) {
+            this.channel = channel;
+            this.from = from;
+            this.end = end;
+        }
     }
 
     private final Context app;
@@ -64,6 +93,7 @@ final class LiveTv {
     private final TextView note;
     private final List<Listener> listeners = new ArrayList<>();
     private final Rect where = new Rect();
+    private final Timeline.Window tw = new Timeline.Window();
     private ExoPlayer player;
     private Channel cur;
     private int alt, retries, state = IDLE;
@@ -79,15 +109,18 @@ final class LiveTv {
     private boolean hlsTried, hlsRefused, everReady;
     /** Settings → Player → Match frame rate: this stream's rate being read, while it is full screen. */
     private Afr.Probe probe;
+    /** Catch-up: the archive playing (null: the live stream), moved back in the live stream's own window, paused. */
+    private Archive arc;
+    private boolean inWindow, held;
 
     private final Runnable retry = this::prepare;
     private final Runnable stallCheck = new Runnable() {
         @Override public void run() {
             if (player == null) return;
-            if (state == LOADING && bufferingSince > 0 && SystemClock.elapsedRealtime() - bufferingSince > STALL_MS) {
+            if (state == LOADING && !held && bufferingSince > 0 && SystemClock.elapsedRealtime() - bufferingSince > STALL_MS) {
                 // The provider's HLS form that never started: its MPEG-TS (only this channel; a slow start says
                 // nothing of the playlist). Else the same stream again.
-                if (hlsTried && !everReady) refuseHls(false);
+                if (arc == null && hlsTried && !everReady) refuseHls(false);
                 else dropped();
                 return;
             }
@@ -249,14 +282,26 @@ final class LiveTv {
         return copies != null && alt > 0 && alt <= copies.size() ? copies.get(alt - 1) : cur;
     }
 
-    /** A channel played; the same channel already playing carries on. */
+    /** A channel played live; the same channel already playing live carries on (behind live, it goes back to live). */
     void play(Channel c) {
         if (c == null) return;
-        if (cur != null && cur.key.equals(c.key) && player != null && state != FAILED) {
+        boolean same = cur != null && cur.key.equals(c.key);
+        if (same && arc == null && player != null && state != FAILED) {
             cur = c;
+            if (inWindow || held) {
+                // Moved back in the stream's own window: to its live edge.
+                inWindow = false;
+                held = false;
+                player.seekToDefaultPosition();
+                player.setPlayWhenReady(true);
+                set(state);
+            }
             if (!where.isEmpty()) picture.setVisibility(View.VISIBLE);
             return;
         }
+        arc = null;
+        inWindow = false;
+        held = false;
         cur = c;
         alt = 0;
         retries = 0;
@@ -283,6 +328,12 @@ final class LiveTv {
         h.removeCallbacks(stallCheck);
         probe = null;
         Afr.reset(layer.getContext() instanceof android.app.Activity ? (android.app.Activity) layer.getContext() : null);
+        if (arc != null && player != null) {
+            // Picked up again where it got to.
+            arc.from = Catchup.requestAt(kind(arc.channel), shownAt(), 0, 0);
+            arc.played = false;
+        }
+        inWindow = false;
         if (player != null) {
             player.removeListener(listener);
             player.release();
@@ -295,10 +346,12 @@ final class LiveTv {
     /** The playlists were removed or changed: no channel to go back to. */
     void forget() {
         stop();
+        arc = null;
+        held = false;
         cur = null;
     }
 
-    /** Played again after a stop (the same channel). */
+    /** Played again after a stop (the same channel, live). */
     void resume() {
         if (cur == null || player != null) return;
         Channel c = cur;
@@ -312,10 +365,165 @@ final class LiveTv {
         alt = 0;
         copies = null;
         hlsRefused = false;
-        asHls = Streams.looksHls(stream().url);
+        if (arc != null) {
+            arc.retries = 0;
+            arc.older = false;
+            asHls = false;
+        } else {
+            asHls = Streams.looksHls(stream().url);
+        }
         if (player == null) ensure();
         prepare();
     }
+
+    // ---- behind live -------------------------------------------------------------------------------------------------
+
+    /** Whether the picture is behind live: from the archive, or moved back in the stream's own window. */
+    boolean behind() {
+        return arc != null || inWindow;
+    }
+
+    /** Whether it plays from the provider's archive. */
+    boolean archived() {
+        return arc != null;
+    }
+
+    /** Paused behind live. */
+    boolean held() {
+        return held;
+    }
+
+    /** The time the picture is of (now when live). */
+    long shownAt() {
+        long now = System.currentTimeMillis();
+        if (Exec.inline) return previewShown >= 0 && behind() ? previewShown : now;
+        if (arc != null) return arc.from + (player == null ? 0 : Math.max(0, player.getCurrentPosition()));
+        if (inWindow && player != null) {
+            long[] w = window();
+            if (w != null) return Math.min(now, w[0] + Math.max(0, player.getCurrentPosition()));
+        }
+        return now;
+    }
+
+    /** The live stream's own window as times {from, to}, when it reaches back far enough to move in (null: it doesn't). */
+    long[] window() {
+        if (player == null || arc != null || cur == null) return null;
+        Timeline t = player.getCurrentTimeline();
+        if (t.isEmpty()) return null;
+        t.getWindow(player.getCurrentMediaItemIndex(), tw);
+        if (!tw.isLive() || !tw.isSeekable) return null;
+        long dur = tw.getDurationMs();
+        if (dur == C.TIME_UNSET || dur < MIN_WINDOW_MS) return null;
+        // Its own times where the stream gives them (EXT-X-PROGRAM-DATE-TIME), else its end taken as now.
+        long from = tw.windowStartTimeMs != C.TIME_UNSET ? tw.windowStartTimeMs : System.currentTimeMillis() - dur;
+        return new long[]{from, from + dur};
+    }
+
+    /** The earliest time channel c can be shown from (its archive, or its stream's window while it plays); MAX_VALUE: none. */
+    long earliest(Channel c) {
+        if (c == null) return Long.MAX_VALUE;
+        long e = Catchup.earliest(c, System.currentTimeMillis());
+        long[] w = cur != null && cur.key.equals(c.key) ? window() : null;
+        return w == null ? e : Math.min(e, w[0]);
+    }
+
+    /** Whether time t on channel c can be shown: its archive has it, or its stream's window does while it plays. */
+    boolean canShow(Channel c, long t) {
+        return c != null && t >= earliest(c) && t < System.currentTimeMillis();
+    }
+
+    /**
+     * Channel c shown from time t: inside its stream's window when that reaches back to it (no new request), else from
+     * its archive (asked for again, ending a little after the programme ending at programmeEnd); within a minute of
+     * now, live. dir: the way the remote moved it (+1 on, -1 back, 0 neither).
+     */
+    void showAt(Channel c, long t, long programmeEnd, int dir) {
+        if (c == null) return;
+        long now = System.currentTimeMillis();
+        if (t >= now - LIVE_EDGE_MS) {
+            play(c);
+            return;
+        }
+        boolean same = cur != null && cur.key.equals(c.key);
+        if (Exec.inline) {
+            if (!same) cur = c;
+            if (Catchup.source(c) != null) arc = new Archive(c, t, programmeEnd);
+            else inWindow = true;
+            previewShown = t;
+            if (!where.isEmpty()) {
+                layout();
+                picture.setVisibility(View.VISIBLE);
+            }
+            set(PLAYING);
+            return;
+        }
+        // Inside the live stream's own window: a move, nothing asked for again.
+        long[] w = same && arc == null ? window() : null;
+        if (w != null && t >= w[0] && player != null) {
+            inWindow = true;
+            player.seekTo(Math.max(0, t - w[0]));
+            player.setPlayWhenReady(!held);
+            set(state);
+            return;
+        }
+        Channel src = Catchup.source(c);
+        if (src == null) return;
+        // Already playing from an archive whose stream can be moved in (HLS): moved, not asked for again.
+        if (same && arc != null && player != null && player.isCurrentMediaItemSeekable()) {
+            long d = player.getDuration();
+            if (d != C.TIME_UNSET && t >= arc.from && t < arc.from + d - 5000) {
+                player.seekTo(t - arc.from);
+                player.setPlayWhenReady(!held);
+                set(state);
+                return;
+            }
+        }
+        long start = Catchup.requestAt(src.catchup, t, shownAt(), dir);
+        if (!same) {
+            cur = c;
+            alt = 0;
+            retries = 0;
+            Library.get(app).watched(c);
+        }
+        inWindow = false;
+        asHls = false;
+        videoW = videoH = rawW = rawH = 0;
+        arc = new Archive(c, start, programmeEnd > start ? programmeEnd : programmeEnd(c, start));
+        if (!where.isEmpty()) {
+            layout();
+            picture.setVisibility(View.VISIBLE);
+        }
+        ensure();
+        prepare();
+    }
+
+    /** Paused (or played on) behind live. */
+    void hold(boolean pause) {
+        held = pause;
+        if (player != null) player.setPlayWhenReady(!pause);
+        if (Exec.inline || player != null) set(state);
+    }
+
+    /** After a stop, the archive asked for again from where it got to. */
+    void resumeBehind() {
+        if (arc == null || player != null || Exec.inline) return;
+        ensure();
+        prepare();
+    }
+
+    private static String kind(Channel c) {
+        Channel s = Catchup.source(c);
+        return s == null ? "" : s.catchup;
+    }
+
+    /** The end of the programme on channel c at time t, from the guide (half an hour on when it has none). */
+    private long programmeEnd(Channel c, long t) {
+        Guide.Schedule s = Library.get(app).schedule(c.key);
+        int i = s == null ? -1 : s.at(t);
+        return i >= 0 ? s.stop[i] : t + 30 * 60_000L;
+    }
+
+    // ---- the player ------------------------------------------------------------------------------------------------
 
     private void ensure() {
         if (player != null) return;
@@ -331,23 +539,39 @@ final class LiveTv {
     private void prepare() {
         if (player == null || cur == null) return;
         h.removeCallbacks(stallCheck);
-        Channel s = stream();
-        // The provider's HLS form of an MPEG-TS channel first, so a drop is ridden out on its segments and the picture can
-        // adapt; MPEG-TS again where it doesn't play (Adaptive, Settings → Player).
-        String url = s.url;
-        boolean hls = asHls;
-        String hlsUrl = hlsRefused || !PlayerPrefs.hlsFirst(app) || Adaptive.hlsFailed(app, PlayerPrefs.playlistOf(s.key))
-                ? null : Adaptive.hlsFor(s.url);
-        hlsTried = hlsUrl != null;
-        if (hlsTried) {
-            url = hlsUrl;
-            hls = true;
-        }
+        h.removeCallbacks(retry);
         everReady = false;
-        // A playlist's own user agent (Settings → Stream problems) over the channel's.
-        player.setMediaSource(Streams.source(url, PlayerPrefs.agent(app, s.key, s.userAgent), s.referrer, hls));
+        hlsTried = false;
+        if (arc != null) {
+            // The archive's address, made now from the channel's live one (it holds the login: never logged).
+            long end = Catchup.requestEnd(arc.from, arc.end);
+            String url = arc.older ? Catchup.olderUrl(arc.channel, arc.from, end) : Catchup.url(arc.channel, arc.from, end,
+                    System.currentTimeMillis());
+            Channel s = Catchup.source(arc.channel);
+            if (url == null || s == null) {
+                set(FAILED);
+                return;
+            }
+            player.setMediaSource(Streams.source(url, PlayerPrefs.agent(app, s.key, s.userAgent), s.referrer,
+                    asHls || Streams.looksHls(url)));
+        } else {
+            Channel s = stream();
+            // The provider's HLS form of an MPEG-TS channel first, so a drop is ridden out on its segments and the
+            // picture can adapt; MPEG-TS again where it doesn't play (Adaptive, Settings → Stream problems).
+            String url = s.url;
+            boolean hls = asHls;
+            String hlsUrl = hlsRefused || !PlayerPrefs.hlsFirst(app) || Adaptive.hlsFailed(app, PlayerPrefs.playlistOf(s.key))
+                    ? null : Adaptive.hlsFor(s.url);
+            hlsTried = hlsUrl != null;
+            if (hlsTried) {
+                url = hlsUrl;
+                hls = true;
+            }
+            // A playlist's own user agent (Settings → Stream problems) over the channel's.
+            player.setMediaSource(Streams.source(url, PlayerPrefs.agent(app, s.key, s.userAgent), s.referrer, hls));
+        }
         player.prepare();
-        player.setPlayWhenReady(true);
+        player.setPlayWhenReady(!held);
         bufferingSince = SystemClock.elapsedRealtime();
         set(LOADING);
         h.postDelayed(stallCheck, 2000);
@@ -368,6 +592,10 @@ final class LiveTv {
     private void dropped() {
         if (cur == null) return;
         h.removeCallbacks(retry);
+        if (arc != null) {
+            archiveFailed(null);
+            return;
+        }
         int tries = PlayerPrefs.retries(app);
         if (!PlayerPrefs.switchToBackup(app)) {
             if (tries < 0 || retries < tries) reconnect();
@@ -415,6 +643,52 @@ final class LiveTv {
         h.postDelayed(retry, PlayerPrefs.backoffMs(retries));
     }
 
+    /** The archive ran out: on from where it got to (into the next programme), or live when that is now. */
+    private void archiveEnded() {
+        if (arc == null) return;
+        long t = shownAt(), now = System.currentTimeMillis();
+        if (t >= now - LIVE_EDGE_MS) {
+            play(arc.channel);
+            return;
+        }
+        arc.from = Catchup.requestAt(kind(arc.channel), t + 5000, 0, 0);
+        arc.end = programmeEnd(arc.channel, arc.from);
+        arc.played = false;
+        prepare();
+    }
+
+    /**
+     * The archive didn't play: once more as HLS for an address that is; before it has played, the older Xtream address,
+     * then once more a moment later; after it has, from where it got to, a few times; then it can't.
+     */
+    private void archiveFailed(PlaybackException e) {
+        if (arc == null) return;
+        if (e != null && !asHls && (e.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED
+                || e.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED)) {
+            asHls = true;
+            prepare();
+            return;
+        }
+        if (!arc.played && !arc.older && Catchup.XC.equals(kind(arc.channel))) {
+            arc.older = true;
+            asHls = false;
+            prepare();
+            return;
+        }
+        int most = arc.played ? RETRIES : 1;
+        if (arc.retries < most) {
+            arc.retries++;
+            if (arc.played) arc.from = Catchup.requestAt(kind(arc.channel), shownAt(), 0, 0);
+            arc.played = false;
+            arc.older = false;
+            asHls = false;
+            set(RETRYING);
+            h.postDelayed(retry, Math.min(8000, 1000L << (arc.retries - 1)));
+            return;
+        }
+        set(FAILED);
+    }
+
     private void set(int s) {
         state = s;
         showNote();
@@ -422,7 +696,9 @@ final class LiveTv {
     }
 
     private void showNote() {
-        String t = state == LOADING ? "" : state == RETRYING ? "Reconnecting…" : state == FAILED ? "This channel isn't working right now" : "";
+        String t = state == RETRYING ? "Reconnecting…"
+                : state == FAILED ? (arc != null ? "This programme couldn't be played from the provider's archive"
+                : "This channel isn't working right now") : "";
         note.setText(t);
         note.setVisibility(t.isEmpty() || where.isEmpty() ? View.GONE : View.VISIBLE);
     }
@@ -434,23 +710,35 @@ final class LiveTv {
                 retries = 0;
                 bufferingSince = 0;
                 everReady = true;
+                if (arc != null) {
+                    arc.played = true;
+                    arc.retries = 0;
+                }
                 set(PLAYING);
             } else if (s == Player.STATE_BUFFERING) {
                 bufferingSince = SystemClock.elapsedRealtime();
                 if (state == PLAYING) set(LOADING);
             } else if (s == Player.STATE_ENDED) {
+                if (arc != null) archiveEnded();
                 // A live stream doesn't end: the provider closed it.
-                dropped();
+                else dropped();
             }
         }
 
         @Override public void onPlayerError(@NonNull PlaybackException e) {
             // Only the kind of error: the stream's address (with the login in it) is never written out.
-            android.util.Log.w("HomefieldTv", "live: " + e.getErrorCodeName());
+            android.util.Log.w("HomefieldTv", (arc != null ? "archive: " : "live: ") + e.getErrorCodeName());
             if (player == null) return;
+            if (arc != null) {
+                archiveFailed(e);
+                return;
+            }
             if (e.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
+                // Paused or moved back past the start of the stream's window: live again.
+                inWindow = false;
                 player.seekToDefaultPosition();
                 player.prepare();
+                set(state);
                 return;
             }
             // The provider's HLS form never played: its MPEG-TS at once; HLS left alone for the whole playlist a while
@@ -467,6 +755,11 @@ final class LiveTv {
                 return;
             }
             dropped();
+        }
+
+        @Override public void onIsPlayingChanged(boolean playing) {
+            // Paused or played on behind live: the bar and its knob drawn again.
+            if (behind()) set(state);
         }
 
         @Override public void onVideoSizeChanged(@NonNull VideoSize size) {

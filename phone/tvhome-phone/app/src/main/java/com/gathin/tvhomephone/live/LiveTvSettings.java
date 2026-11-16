@@ -407,6 +407,11 @@ public final class LiveTvSettings {
             Quality.setAsk4k(c, on);
             Playback.get(c).requality(false);
         }));
+        // When the connection drops: stay on the channel, its picture adapting (on unless turned off).
+        col.addView(toggle(c, c.getString(R.string.live_stay), Quality.stay(c), on -> Quality.setStay(c, on)));
+        TextView stayNote = Ui.text(c, c.getString(R.string.live_stay_note), 13, Ui.DIM, false);
+        stayNote.setPadding(0, Ui.dp(c, 2), 0, Ui.dp(c, 6));
+        col.addView(stayNote);
         col.addView(label(c, c.getString(R.string.live3_rewind)));
         LinearLayout rRow = new LinearLayout(c);
         List<TextView> rs = new java.util.ArrayList<>();

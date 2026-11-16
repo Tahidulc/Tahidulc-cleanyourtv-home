@@ -51,6 +51,8 @@ public final class Library {
     private volatile Map<String, Integer> byKey = Collections.emptyMap();
     private volatile Map<String, Guide.Schedule> guide = Collections.emptyMap();
     private volatile String fingerprint = "", guideUrl = "", status = "";
+    /** Catch-up: {channels whose provider keeps an archive, the most days kept}. */
+    private volatile int[] archive = {0, 0};
     private volatile long loadedAt, guideAt;
     private volatile boolean read;
     private final AtomicBoolean busy = new AtomicBoolean(), guideBusy = new AtomicBoolean();
@@ -77,6 +79,8 @@ public final class Library {
     public boolean busy() { return busy.get(); }
     public String status() { return status; }
     public int count() { return channels.size(); }
+    /** Catch-up: {how many channels keep programmes, for up to how many days}. */
+    public int[] archive() { return archive; }
     public boolean hasGuide() { return !guide.isEmpty(); }
     /** The playlist's own groups, in first-seen order. */
     public List<String> groups() { return groups; }
@@ -261,10 +265,7 @@ public final class Library {
                 for (Sources.Entry e : Sources.inUse(app)) {
                     try {
                         Loaded l = e.id.equals(tried) ? first : fetch(e.source, e.id);
-                        for (Channel c : l.channels) {
-                            all.add(e.prefix().isEmpty() ? c : new Channel(e.prefix() + c.key, c.name, c.group, c.logo, c.url, c.tvgId,
-                                    c.userAgent, c.referrer, c.number));
-                        }
+                        for (Channel c : l.channels) all.add(e.prefix().isEmpty() ? c : c.keyed(e.prefix() + c.key));
                         if (!l.guideUrl.isEmpty() && !guides.contains(l.guideUrl)) guides.add(l.guideUrl);
                     } catch (IOException x) {
                         problems.add(e.name + ": " + (x.getMessage() == null ? "didn't load" : x.getMessage()));
@@ -308,6 +309,7 @@ public final class Library {
         guideUrl = "";
         status = "";
         loadedAt = 0;
+        archive = new int[]{0, 0};
         //noinspection ResultOfMethodCallIgnored
         file("channels.tsv").delete();
         clearGuide();
@@ -379,11 +381,17 @@ public final class Library {
             // An Xtream server's M3U address: its account's expiry date asked for too (no matter if it doesn't answer).
             String[] x = Sources.xtreamOf(s.m3uUrl);
             if (x != null) {
+                String zone = "";
                 try {
-                    Sources.note(app, id, new JSONObject(text(Xtream.api(x[0], x[1], x[2], null))).optJSONObject("user_info"));
+                    JSONObject acct = new JSONObject(text(Xtream.api(x[0], x[1], x[2], null)));
+                    Sources.note(app, id, acct.optJSONObject("user_info"));
+                    zone = timezone(acct);
                 } catch (IOException | JSONException | RuntimeException ignored) {
                     // no expiry date for it
                 }
+                // Its catch-up: as the playlist says, else as the player API says (which streams it keeps, how long).
+                Map<String, Integer> days = Catchup.count(l.channels)[0] > 0 ? null : archiveDays(x[0], x[1], x[2]);
+                l = new Loaded(Catchup.withXtream(l.channels, days, zone), l.guideUrl);
             }
             return l;
         }
@@ -394,9 +402,10 @@ public final class Library {
     private Loaded xtream(Source s, String id) throws IOException {
         String base = Xtream.base(s.server);
         if (base.isEmpty()) throw new IOException("Add the server's address");
-        String ext;
+        String ext, zone;
         try {
             JSONObject acct = new JSONObject(text(Xtream.api(base, s.user, s.pass, null)));
+            zone = timezone(acct);
             JSONObject ui = acct.optJSONObject("user_info");
             if (ui == null || !"1".equals(ui.optString("auth"))) throw new IOException("The login wasn't accepted");
             Sources.note(app, id, ui);
@@ -430,7 +439,7 @@ public final class Library {
                     jr.skipValue();
                     continue;
                 }
-                String sid = "", name = "", icon = "", epg = "", cat = "", type = "live";
+                String sid = "", name = "", icon = "", epg = "", cat = "", type = "live", kept = "", keptFor = "";
                 int num = 0;
                 jr.beginObject();
                 while (jr.hasNext()) {
@@ -444,13 +453,17 @@ public final class Library {
                         case "category_id": cat = v; break;
                         case "stream_type": type = v; break;
                         case "num": num = number(v); break;
+                        case "tv_archive": kept = v; break;
+                        case "tv_archive_duration": keptFor = v; break;
                         default: break;
                     }
                 }
                 jr.endObject();
                 if (sid.isEmpty() || (!type.isEmpty() && !type.equalsIgnoreCase("live") && !type.equalsIgnoreCase("created_live"))) continue;
                 String group = cats.get(cat);
-                out.add(new Channel("x:" + sid, name, group, icon, Xtream.stream(base, s.user, s.pass, sid, ext), epg, null, null, num));
+                int days = Catchup.xtreamDays(kept, keptFor);
+                out.add(new Channel("x:" + sid, name, group, icon, Xtream.stream(base, s.user, s.pass, sid, ext), epg, null, null, num,
+                        days > 0 ? Catchup.XC : "", "", days, zone));
             }
             jr.endArray();
         } catch (IllegalStateException | NumberFormatException e) {
@@ -469,6 +482,50 @@ public final class Library {
             out = sorted;
         }
         return new Loaded(out, s.guideUrl.isEmpty() ? Xtream.xmltv(base, s.user, s.pass) : s.guideUrl);
+    }
+
+    /** The Xtream server's time zone from its player API's answer (server_info.timezone), "" when it gives none. */
+    static String timezone(JSONObject acct) {
+        JSONObject si = acct == null ? null : acct.optJSONObject("server_info");
+        return si == null ? "" : si.optString("timezone", "").trim();
+    }
+
+    /**
+     * Which of an Xtream server's live streams it keeps an archive of, and for how many days (by stream id), from its
+     * player API: for its M3U playlist, which doesn't say. Nothing when it doesn't answer.
+     */
+    private static Map<String, Integer> archiveDays(String base, String user, String pass) {
+        Map<String, Integer> out = new HashMap<>();
+        try (InputStream in = Fetch.open(Xtream.api(base, user, pass, "get_live_streams"), null);
+             JsonReader jr = new JsonReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
+            jr.setLenient(true);
+            if (jr.peek() != JsonToken.BEGIN_ARRAY) return out;
+            jr.beginArray();
+            while (jr.hasNext()) {
+                if (jr.peek() != JsonToken.BEGIN_OBJECT) {
+                    jr.skipValue();
+                    continue;
+                }
+                String sid = "", kept = "", keptFor = "";
+                jr.beginObject();
+                while (jr.hasNext()) {
+                    String k = jr.nextName();
+                    switch (k) {
+                        case "stream_id": sid = value(jr); break;
+                        case "tv_archive": kept = value(jr); break;
+                        case "tv_archive_duration": keptFor = value(jr); break;
+                        default: jr.skipValue(); break;
+                    }
+                }
+                jr.endObject();
+                int d = Catchup.xtreamDays(kept, keptFor);
+                if (d > 0 && !sid.isEmpty()) out.put(sid, d);
+            }
+            jr.endArray();
+        } catch (IOException | IllegalStateException | NumberFormatException e) {
+            // No archive known: the channels play live as before.
+        }
+        return out;
     }
 
     static String value(JsonReader jr) throws IOException {
@@ -523,6 +580,7 @@ public final class Library {
         lower = low;
         byKey = keys;
         groups = Collections.unmodifiableList(new ArrayList<>(gs.keySet()));
+        archive = Catchup.count(ch);
         channels = ch;
         fingerprint = fp;
         guideUrl = gUrl == null ? "" : gUrl;
@@ -569,10 +627,12 @@ public final class Library {
                 }
                 Map<String, Guide.Schedule> g = new HashMap<>();
                 IOException last = null;
+                long now = System.currentTimeMillis();
+                Map<String, Long> since = since(now);
                 for (String url : urls.split(" ")) {
                     if (url.isEmpty()) continue;
                     try (InputStream in = Fetch.open(url, null)) {
-                        for (Map.Entry<String, Guide.Schedule> e : Guide.read(in, ids, names, System.currentTimeMillis()).entrySet()) {
+                        for (Map.Entry<String, Guide.Schedule> e : Guide.read(in, ids, names, now, since).entrySet()) {
                             if (!g.containsKey(e.getKey())) g.put(e.getKey(), e.getValue());
                         }
                     } catch (IOException e) {
@@ -593,6 +653,19 @@ public final class Library {
         });
     }
 
+    /**
+     * How far back the guide is kept for each channel with catch-up (by key): its archive, at most Guide.PAST_DAYS;
+     * the others keep the last hour (Guide.BEHIND_MS).
+     */
+    private Map<String, Long> since(long now) {
+        Map<String, Long> out = new HashMap<>();
+        for (Channel c : channels) {
+            Channel s = Catchup.source(c);
+            if (s != null) out.put(c.key, now - Math.min(s.archiveDays, Guide.PAST_DAYS) * 86_400_000L);
+        }
+        return out;
+    }
+
     // ---- the disk copy (the app's private files) --------------------------------------------------------------------
 
     private File file(String name) {
@@ -609,7 +682,7 @@ public final class Library {
     private void writeCache() {
         File f = file("channels.tsv"), tmp = file("channels.tsv.tmp");
         try (Writer w = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(tmp), StandardCharsets.UTF_8), 64 * 1024)) {
-            w.write("v1\t" + fingerprint + "\t" + loadedAt + "\t" + cell(guideUrl) + "\n");
+            w.write("v2\t" + fingerprint + "\t" + loadedAt + "\t" + cell(guideUrl) + "\n");
             // Each channel with its backups after it: read back, they are made one again (merged).
             for (Channel main : channels) {
                 List<Channel> rows = new ArrayList<>(1 + main.alternates.size());
@@ -617,7 +690,8 @@ public final class Library {
                 rows.addAll(main.alternates);
                 for (Channel c : rows) {
                     w.write(cell(c.key) + "\t" + cell(c.name) + "\t" + cell(c.group) + "\t" + cell(c.logo) + "\t" + cell(c.url) + "\t"
-                            + cell(c.tvgId) + "\t" + cell(c.userAgent) + "\t" + cell(c.referrer) + "\t" + c.number + "\n");
+                            + cell(c.tvgId) + "\t" + cell(c.userAgent) + "\t" + cell(c.referrer) + "\t" + c.number + "\t"
+                            + cell(c.catchup) + "\t" + cell(c.catchupSource) + "\t" + c.archiveDays + "\t" + cell(c.zone) + "\n");
                 }
             }
         } catch (IOException e) {
@@ -660,13 +734,19 @@ public final class Library {
         try (BufferedReader r = new BufferedReader(new InputStreamReader(new FileInputStream(f), StandardCharsets.UTF_8), 64 * 1024)) {
             String head = r.readLine();
             String[] h = head == null ? new String[0] : head.split("\t", -1);
-            if (h.length < 3 || !"v1".equals(h[0]) || !fp.equals(h[1])) return;
-            at = Long.parseLong(h[2]);
+            // v1 (before catch-up): shown at once, and read again from the providers straight away for the archive.
+            boolean v1 = h.length >= 3 && "v1".equals(h[0]);
+            if (h.length < 3 || !(v1 || "v2".equals(h[0])) || !fp.equals(h[1])) return;
+            at = v1 ? 0 : Long.parseLong(h[2]);
             gUrl = h.length > 3 ? h[3] : "";
             for (String line; (line = r.readLine()) != null; ) {
                 String[] c = line.split("\t", -1);
                 if (c.length < 9) continue;
-                list.add(new Channel(c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], number(c[8])));
+                if (c.length >= 13) {
+                    list.add(new Channel(c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], number(c[8]), c[9], c[10], number(c[11]), c[12]));
+                } else {
+                    list.add(new Channel(c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], number(c[8])));
+                }
             }
         } catch (IOException | NumberFormatException e) {
             return;
@@ -687,11 +767,13 @@ public final class Library {
             if (h.length < 3 || !"v2".equals(h[0]) || !fp.equals(h[1])) return;
             at = Long.parseLong(h[2]);
             Map<String, String> pool = new HashMap<>();
+            Map<String, Long> since = since(now);
             for (String line; (line = r.readLine()) != null; ) {
                 String[] c = line.split("\t", 5);
                 if (c.length < 4) continue;
                 long stop = Long.parseLong(c[2]);
-                if (stop < now - Guide.BEHIND_MS) continue;
+                Long from = since.get(c[0]);
+                if (stop < (from != null ? from : now - Guide.BEHIND_MS)) continue;
                 Guide.Builder bl = b.get(c[0]);
                 if (bl == null) b.put(c[0], bl = new Guide.Builder());
                 bl.add(Long.parseLong(c[1]), stop, shared(pool, c[3]), c.length > 4 ? shared(pool, c[4]) : "");

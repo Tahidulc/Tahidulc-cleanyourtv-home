@@ -29,6 +29,17 @@ public class LiveTextTest {
         assertEquals("18:40", LiveText.hm(july, ZoneId.of("Europe/London")));
     }
 
+    @Test public void catchUpsTimes() {
+        assertEquals("17:40:00", LiveText.hms(at(17, 40), UTC));
+        assertEquals("09:05:30", LiveText.hms(at(9, 5) + 30_000L, UTC));
+        assertEquals("Live", LiveText.behind(0));
+        assertEquals("Live", LiveText.behind(4_000L));
+        assertEquals("−0:05 behind live", LiveText.behind(5_000L));
+        assertEquals("−12:34 behind live", LiveText.behind(12 * MIN + 34_000L));
+        assertEquals("−1:02:03 behind live", LiveText.behind(62 * MIN + 3_000L));
+        assertEquals("Live", LiveText.behind(-3_000L));
+    }
+
     @Test public void howFarThrough() {
         assertEquals(0f, LiveText.progress(at(17, 40), at(17, 40), at(18, 40)), 0.0001f);
         assertEquals(0.5f, LiveText.progress(at(18, 10), at(17, 40), at(18, 40)), 0.0001f);
