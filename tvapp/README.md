@@ -21,8 +21,11 @@ wordmark are Homefield; it carries no Sky logo or name.
   already shown shaded, the programme the remote is on in amber. Under the channel's row a strip opens with the
   programme's picture (from Sky's public UK guide, else the channel's logo on its tile), its title, its times, Live or
   Starts in…, HD or 4K as the channel's name says, and two lines about it; the rows below move down to make room.
-  Left and Right move through time, Up and Down through the channels, OK watches, holding OK makes a channel a
-  favourite, the number keys go to a channel. No mini TV here: the stream is let go until a channel is chosen.
+  Left and Right move through time, Up and Down through the channels, OK watches, holding OK brings up a small menu
+  (watch it, from the start, add the channel to the favourites or take it off), the number keys go to a channel. On a
+  channel whose provider keeps an archive, Left goes on back into the programmes already shown, as far as the archive
+  goes (the guide keeps up to three days of them): each has a small circle arrow, its strip says Catch-up, OK plays it
+  from its start, and Back comes back to the time now. No mini TV here: the stream is let go until a channel is chosen.
 - **Live TV:** full screen. OK brings up the channel banner over a dark scrim: the channel's group and small logo at
   the top; its large logo, what's on (its times, how far through, what's left), the channel, the picture's size and
   frames a second as the player has them, what's next, a thin amber line across for how far through it is, and a row
@@ -34,7 +37,21 @@ wordmark are Homefield; it carries no Sky logo or name.
   through it is (on its black tile when there is no picture), and the next category's row below. Up and Down go
   through the channels, Left and Right along the row, OK changes to the one the remote is on. The channel keys and the
   number keys change at once; Back, or a few seconds with no key, hides it all. A stream that drops is tried on the
-  same channel in another playlist, then again.
+  same channel in another playlist, then again. Where the provider keeps the programme on now in its archive (or the
+  stream itself reaches back to its start), the banner has Watch from the start over the logo (Left from the row, or
+  the remote's rewind key) and the live screen says so; holding OK brings up the channel's menu.
+- **Catch-up:** a programme from the provider's archive: an Xtream Codes login's streams marked as kept (for the days
+  the server says, its times in the server's own time zone; the older timeshift.php address when the newer one
+  doesn't answer), and an M3U playlist's catchup, catchup-days and catchup-source (default, append, shift, Flussonic
+  and Xtream; {utc}, {start}, {end}, {duration}, {offset}, {lutc}, {Y}{m}{d}{H}{M}{S} and the like filled in; also the
+  older timeshift and tvg-rec), or an Xtream server's M3U address given its archive by the player API. Over the picture,
+  along the foot: the programme's title, its day and times, the channel and Catch-up (or how far behind live it is:
+  "−12:34 behind live"), then a bar across the programme from its start to its end, the part shown filled, the live
+  edge marked, the knob where the picture is with play or pause in it, and the time in a bubble while it moves. Left
+  and Right move it 10 seconds a press, more as they are held (30 seconds, a minute, three minutes), and the archive
+  is asked for from there a moment after the remote rests; OK plays or pauses; Up or Back go live. It goes on into the
+  next programme when one ends, and is live again at the live edge. The archive's address is made on the TV from the
+  channel's own, and like it is never shown or written out. Channels with no archive don't offer any of it.
 - **Moving about:** on the dark screens the picture behind cross-fades as the remote moves to another title or
   channel, the words fade in and rise into place a moment after, pages cross-fade into each other, and the poster or
   tile the remote is on grows a little inside a soft white ring. Opacity, a small move and scale only, nothing
@@ -63,10 +80,12 @@ wordmark are Homefield; it carries no Sky logo or name.
 - **Player:** the playback bar. OK pauses and plays, Left and Right go back and on (faster when held), Back keeps the
   place, and a series goes on to the next episode.
 - **Search:** channels, films and TV shows, typed on the on-screen keyboard.
-- **Settings:** the playlists (all of them together or one, their expiry dates), adding an M3U playlist or an Xtream
-  Codes login, reading them again, removing everything, and the channel logos: on black tiles (each logo trimmed and set
-  in the middle of a black tile, a dark one turned light) or as the playlist gives them. Theme: Homefield (as it came),
-  Midnight blue, Emerald, Crimson or Graphite, each with its own ground, panels, cards, accent, focus rings, guide
+- **Settings:** the playlists (all of them together or one, their expiry dates, and catch-up: "Catch-up: 120 channels
+  keep programmes for up to 7 days", or "Your provider keeps no catch-up for these channels"), adding an M3U playlist
+  or an Xtream Codes login, reading them again, removing everything, and the channel logos: on black tiles (each logo
+  trimmed and set in the middle of a black tile, a dark one turned light) or as the playlist gives them.
+  Theme: Homefield (as it came), Midnight blue, Emerald, Crimson or Graphite, each with its own ground, panels, cards,
+  accent, focus rings, guide
   colours and badges, and a tint for the blue screens; a picture of the app under the list takes each theme's colours
   as the remote moves through them, and OK keeps one (the screens start again in it, back on Settings). Posters:
   Portrait / Landscape. Updates: the version on this TV, Check for updates (it also looks quietly as the app starts)
@@ -119,3 +138,4 @@ The APK is `app/build/outputs/apk/release/app-release.apk`, signed with the debu
 | 1.3 | The TV guide and live TV in the dark look. The guide in the phone's guide's colours, with the categories (and their counts) down the side, the channel's band at the top over the programme's picture, and a strip under the channel's row with the programme's picture from Sky's public UK guide, its times, what it is and two lines about it. OK while watching brings up the banner with the picture's size and frame rate as the player has them and a row of the last ten channels watched on this TV; Up and Down bring up the live screen, the programme's picture behind and each category's channels as tiles with a picture of what's on, its title and a line about it. Pictures cross-fade, words fade and rise, pages cross-fade, and posters and tiles grow inside a ring as the remote moves. |
 | 1.4 | Colour themes in Settings, Theme: Homefield (as it came), Midnight blue, Emerald, Crimson and Graphite, each with its own ground, panels, cards, accent, focus rings, guide colours and New badge, and the blue screens tinted to match; a picture of the app under the list changes as the remote moves through them, and the one chosen is kept. Settings, Posters: Portrait / Landscape: landscape cards are 16:9 with the title's backdrop, as the phone's. The family's phone can send the channel it is watching to the TV while Homefield TV is open: played only when the TV's own playlists have it, from the home network only. |
 | 1.5 | Updates from inside the app: Settings, Updates shows the version on this TV, Check for updates and when it last looked. A newer version put on this TV (update.json and the APK in the app's own folder) is offered once its size, SHA-256, package, version and signing key check out: its name, what's new and Update now, which hands it to Android's installer (Android asks first; the first time it asks to let Homefield TV install apps). A dot on Settings while one waits; it looks quietly as the app starts; What's new once after an update. From the phone: its Stop lets go of the channel it sent, and the TV listens on port 47830 when it is free. |
+| 1.6 | Catch-up: programmes from the provider's archive (Xtream Codes' tv_archive in the server's time zone, M3U catchup, catchup-days and catchup-source of every kind) and the programme on now from its start. The guide goes back into the archive's programmes with a small circle arrow on each (OK plays one; Back comes back to now); the channel banner has Watch from the start; a bar across the programme with the live edge, the time in a bubble as it moves, Left and Right 10 seconds a press and faster held, OK to pause, Up to go live, on into the next programme. OK held in the guide and on live TV brings up a small menu (watch, from the start, favourites). Settings says how many channels keep programmes and for how long. |

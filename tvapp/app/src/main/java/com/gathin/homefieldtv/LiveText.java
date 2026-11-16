@@ -36,6 +36,24 @@ final class LiveText {
         return n < 10 ? "0" + n : String.valueOf(n);
     }
 
+    /** "19:42:31". */
+    static String hms(long t, ZoneId z) {
+        ZonedDateTime d = Instant.ofEpochMilli(t).atZone(z);
+        return two(d.getHour()) + ":" + two(d.getMinute()) + ":" + two(d.getSecond());
+    }
+
+    static String hms(long t) {
+        return hms(t, ZoneId.systemDefault());
+    }
+
+    /** How far behind live the picture is: "−12:34 behind live", "−1:02:03 behind live"; "Live" within a few seconds. */
+    static String behind(long ms) {
+        long s = Math.max(0L, ms / 1000);
+        if (s < 5) return "Live";
+        long h = s / 3600, m = s / 60 % 60, sec = s % 60;
+        return "−" + (h > 0 ? h + ":" + two((int) m) : String.valueOf(m)) + ":" + two((int) sec) + " behind live";
+    }
+
     /** How far through: 0 at its start, 1 at its end (0 for one with no length). */
     static float progress(long now, long start, long stop) {
         if (stop <= start) return 0f;

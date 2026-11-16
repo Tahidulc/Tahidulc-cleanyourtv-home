@@ -203,6 +203,12 @@ public final class TvActivity extends Activity {
         return top() == s;
     }
 
+    /** The screen under s (null: none, or s isn't open). */
+    Screen below(Screen s) {
+        int i = stack.indexOf(s);
+        return i > 0 ? stack.get(i - 1) : null;
+    }
+
     /** A screen opened over the one on top: it fades in over it, and the one under goes when it has. */
     void push(Screen s) {
         Screen was = top();
@@ -313,6 +319,12 @@ public final class TvActivity extends Activity {
     void watch(Channel c) {
         if (c == null) return;
         fromHome(new LiveScreen(this, c));
+    }
+
+    /** A programme on a channel from its start (catch-up, CatchupScreen), over the channel's live screen. */
+    void watchFrom(Channel c, long start, long end) {
+        if (c == null) return;
+        fromHome(new LiveScreen(this, c, start, end));
     }
 
     void openGuide(String category) {

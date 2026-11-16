@@ -65,6 +65,50 @@ public class M3uTest {
         assertFalse(M3u.isVod("http://h/live/1.m3u8", "live"));
     }
 
+    @Test public void catchupFromTheEntryOrThePlaylistHeader() throws Exception {
+        String list = "#EXTM3U url-tvg=\"http://guide.example/epg.xml\" catchup=\"append\" catchup-days=\"5\" catchup-source=\"?utc={utc}&lutc={lutc}\"\n"
+                + "#EXTINF:-1 tvg-id=\"one.example\",Made Up One\n"
+                + "http://tv.example/hls/one.m3u8\n"
+                + "#EXTINF:-1 tvg-id=\"two.example\" catchup=\"shift\" catchup-days=\"2\",Made Up Two\n"
+                + "http://tv.example/hls/two.m3u8\n"
+                + "#EXTINF:-1 tvg-id=\"three.example\" catchup=\"default\" catchup-source=\"http://archive.example/three/{utc}-{utcend}.ts\",Made Up Three\n"
+                + "http://tv.example/hls/three.m3u8\n"
+                + "#EXTINF:-1 tvg-id=\"four.example\" catchup=\"vod\",Made Up Four\n"
+                + "http://tv.example/hls/four.m3u8\n";
+        M3u.Result r = M3u.parse(new StringReader(list));
+        assertEquals("http://guide.example/epg.xml", r.guideUrl);
+        Channel one = r.channels.get(0), two = r.channels.get(1), three = r.channels.get(2), four = r.channels.get(3);
+        // As the header says.
+        assertEquals(Catchup.APPEND, one.catchup);
+        assertEquals(5, one.archiveDays);
+        assertEquals("?utc={utc}&lutc={lutc}", one.catchupSource);
+        // Its own words first.
+        assertEquals(Catchup.SHIFT, two.catchup);
+        assertEquals(2, two.archiveDays);
+        assertEquals(Catchup.DEFAULT, three.catchup);
+        assertEquals(5, three.archiveDays);
+        assertEquals("http://archive.example/three/{utc}-{utcend}.ts", three.catchupSource);
+        assertEquals("", four.catchup);
+        assertEquals(0, four.archiveDays);
+    }
+
+    @Test public void catchupDaysAloneOnAnXtreamPlaylist() throws Exception {
+        String list = "#EXTM3U\n"
+                + "#EXTINF:-1 tvg-id=\"one.example\" timeshift=\"7\",Made Up One\n"
+                + "http://box.example:8080/viewer/secret/101\n"
+                + "#EXTINF:-1 tvg-id=\"two.example\" tvg-rec=\"3\",Made Up Two\n"
+                + "http://tv.example/hls/two.m3u8\n"
+                + "#EXTINF:-1 tvg-id=\"three.example\",Made Up Three\n"
+                + "http://box.example:8080/viewer/secret/103\n";
+        M3u.Result r = M3u.parse(new StringReader(list));
+        assertEquals(Catchup.XC, r.channels.get(0).catchup);
+        assertEquals(7, r.channels.get(0).archiveDays);
+        assertEquals(Catchup.SHIFT, r.channels.get(1).catchup);
+        assertEquals(3, r.channels.get(1).archiveDays);
+        assertEquals("", r.channels.get(2).catchup);
+        assertEquals(0, r.channels.get(2).archiveDays);
+    }
+
     @Test public void barePlaylistWithoutExtinfStillReads() throws Exception {
         M3u.Result r = M3u.parse(new StringReader("http://h/live/one.ts\nhttp://h/live/two.m3u8?x=1\n"));
         assertEquals(2, r.channels.size());

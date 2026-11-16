@@ -9,6 +9,7 @@ import android.view.View;
 import android.widget.FrameLayout;
 
 import com.gathin.homefieldtv.engine.Catalog;
+import com.gathin.homefieldtv.engine.Catchup;
 import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.engine.Resume;
 import com.gathin.homefieldtv.engine.Source;
@@ -161,6 +162,8 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
                     out.add(new ListPanel.Item("all", ListPanel.TEXT, "Use all your playlists together", ""));
                 }
                 if (!all.isEmpty()) out.add(new ListPanel.Item(null, ListPanel.NOTE, counts(), ""));
+                String archive = archiveLine();
+                if (!all.isEmpty() && !archive.isEmpty()) out.add(new ListPanel.Item(null, ListPanel.NOTE, archive, ""));
                 break;
             }
             case ADD_M3U:
@@ -182,6 +185,7 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
                 out.add(new ListPanel.Item("refresh", ListPanel.TEXT, "Read everything again now", "Channels, the guide, films and TV shows"));
                 out.add(new ListPanel.Item(null, ListPanel.NOTE, lib.busy() || Catalog.get(tv).busy() ? "Reading your playlist…"
                         : status.isEmpty() ? counts() : status, ""));
+                if (!lib.busy() && !archiveLine().isEmpty()) out.add(new ListPanel.Item(null, ListPanel.NOTE, archiveLine(), ""));
                 break;
             case CLEAR:
                 if (confirm) {
@@ -312,6 +316,14 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
         Library lib = Library.get(tv);
         Catalog cat = Catalog.get(tv);
         return String.format(Locale.UK, "%,d channels  ·  %,d films  ·  %,d TV shows", lib.count(), cat.films().size(), cat.series().size());
+    }
+
+    /** Catch-up: how many of the channels the provider keeps programmes for, and for how long ("" before they're in). */
+    private String archiveLine() {
+        Library lib = Library.get(tv);
+        if (!lib.ready()) return "";
+        int[] a = lib.archive();
+        return Catchup.summary(a[0], a[1]);
     }
 
     private static ListPanel.Item field(String key, String label, String value, String hint) {
