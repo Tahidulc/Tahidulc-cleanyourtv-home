@@ -62,6 +62,12 @@ public final class Catalog {
         public final String plot;
         /** When the provider added it (ms), 0 when not known. */
         public final long added;
+        /**
+         * The picture its name (or its category's) says this copy has: PICTURE_4K, PICTURE_1080, PICTURE_720, PICTURE_SD,
+         * or 0 when it says none; and whether it says Dolby Vision or Dolby Atmos.
+         */
+        public final int picture;
+        public final boolean dolbyVision, atmos;
         final String source, id, ext, url, userAgent, referrer;
         /** The same title in the family's other playlists, played when this one doesn't start. */
         final List<Title> copies = new ArrayList<>(0);
@@ -85,12 +91,88 @@ public final class Catalog {
             this.url = url == null ? "" : url;
             this.userAgent = userAgent == null ? "" : userAgent;
             this.referrer = referrer == null ? "" : referrer;
+            this.picture = Math.max(pictureOf(rawName), pictureOf(category) == PICTURE_4K ? PICTURE_4K : 0);
+            this.dolbyVision = dolbyVisionOf(rawName) || dolbyVisionOf(category);
+            this.atmos = atmosOf(rawName) || atmosOf(category);
         }
 
         /** The playlist it is from. */
         public String playlist() {
             return source;
         }
+
+        /** The best picture this title has in any of the family's playlists (its copies' too). */
+        public int bestPicture() {
+            int p = picture;
+            for (Title c : copies) p = Math.max(p, c.picture);
+            return p;
+        }
+
+        /** Dolby Vision in any of its copies. */
+        public boolean anyDolbyVision() {
+            if (dolbyVision) return true;
+            for (Title c : copies) if (c.dolbyVision) return true;
+            return false;
+        }
+
+        /** Dolby Atmos in any of its copies. */
+        public boolean anyAtmos() {
+            if (atmos) return true;
+            for (Title c : copies) if (c.atmos) return true;
+            return false;
+        }
+    }
+
+    /** The pictures a name can say it has, best last. */
+    public static final int PICTURE_SD = 1, PICTURE_720 = 2, PICTURE_1080 = 3, PICTURE_4K = 4;
+
+    /** Pure: the picture a name says ("Dune (2021) 4K", "[UHD] Dune", "Dune 1080p"), else 0. "HD" alone says no lines. */
+    public static int pictureOf(String name) {
+        int best = 0;
+        for (String t : words(name)) {
+            switch (t) {
+                case "4k": case "uhd": case "2160p": case "2160": case "4kuhd": case "uhd4k": best = Math.max(best, PICTURE_4K); break;
+                case "1080p": case "1080": case "fhd": case "fullhd": best = Math.max(best, PICTURE_1080); break;
+                case "720p": case "720": best = Math.max(best, PICTURE_720); break;
+                case "sd": case "480p": case "576p": best = Math.max(best, PICTURE_SD); break;
+                default: break;
+            }
+        }
+        return best;
+    }
+
+    /** Pure: a name saying Dolby Vision ("DV", "DoVi", "Dolby Vision"). */
+    public static boolean dolbyVisionOf(String name) {
+        List<String> w = words(name);
+        for (int i = 0; i < w.size(); i++) {
+            String t = w.get(i);
+            if (t.equals("dv") || t.equals("dovi") || t.equals("dolbyvision")) return true;
+            if (t.equals("dolby") && i + 1 < w.size() && w.get(i + 1).equals("vision")) return true;
+        }
+        return false;
+    }
+
+    /** Pure: a name saying Dolby Atmos. */
+    public static boolean atmosOf(String name) {
+        return words(name).contains("atmos");
+    }
+
+    /** A name's words, lower case, split at anything but letters, digits and "+". */
+    private static List<String> words(String s) {
+        List<String> out = new ArrayList<>();
+        if (s == null || s.isEmpty()) return out;
+        StringBuilder b = new StringBuilder();
+        for (int i = 0; i < s.length(); i++) {
+            char ch = Character.toLowerCase(s.charAt(i));
+            if (Character.isLetterOrDigit(ch)) {
+                b.append(ch);
+            } else if (b.length() > 0) {
+                out.add(b.toString());
+                b.setLength(0);
+            }
+        }
+        if (b.length() > 0) out.add(b.toString());
+        return out;
     }
 
     /** One of a provider's categories with its titles, in the provider's order. */
@@ -166,10 +248,18 @@ public final class Catalog {
         public final int season, number;
         public final String title, plot, still;
         public final int minutes;
+        /** When it was first shown, as the provider gives it ("2022-10-09"); "" when not known. */
+        public final String aired;
         final String ext, url, userAgent, referrer;
 
         Episode(String id, int season, int number, String title, String plot, String still, int minutes, String ext, String url,
                 String userAgent, String referrer) {
+            this(id, season, number, title, plot, still, minutes, "", ext, url, userAgent, referrer);
+        }
+
+        Episode(String id, int season, int number, String title, String plot, String still, int minutes, String aired, String ext,
+                String url, String userAgent, String referrer) {
+            this.aired = clean(aired);
             this.id = id;
             this.season = season;
             this.number = number;
@@ -866,6 +956,7 @@ public final class Catalog {
                 int mins = secs > 0 ? Math.round(secs / 60f) : minutes(ei.optString("duration"));
                 eps.add(new Episode(e.optString("id"), season, number, episodeTitle(e.optString("title"), show, season, number),
                         ei.optString("plot"), first(ei.optString("movie_image"), ei.optString("cover_big")), mins,
+                        aired(first(ei.optString("releasedate"), ei.optString("release_date"), ei.optString("air_date"))),
                         e.optString("container_extension"), "", "", ""));
             }
         }
@@ -958,6 +1049,9 @@ public final class Catalog {
 
     private static final Pattern LEAD = Pattern.compile("^\\s*[\\[(|]?\\s*([A-Za-z0-9+]{1,6})\\s*[\\])|:\\-]+\\s*");
     private static final Pattern YEAR = Pattern.compile("(?:^|[\\s(\\[._-])((?:19|20)\\d{2})(?:$|[\\s)\\]._-])");
+    /** A picture or sound tag at a name's end, bracketed or not ("4K", "[UHD]", "(DV)", "Atmos"). */
+    private static final Pattern TRAIL = Pattern.compile("(?i)(?:[\\s._|-]+[\\[(]?|[\\[(])\\s*(?:4k|uhd|2160p|1080p|1080i|720p|fhd|hd|sd|"
+            + "hdr10\\+?|hdr|dv|dovi|dolby\\s*vision|dolby\\s*atmos|atmos|hevc|x26[45]|h26[45]|multi-?sub|multi)\\s*[\\])]?\\s*$");
     /** The tags providers put before a title: languages and countries, services, the picture and the like. */
     private static final Set<String> TAGS = new HashSet<>(java.util.Arrays.asList(
             "en", "eng", "english", "uk", "gb", "us", "usa", "multi", "multisub", "sub", "subs", "dub", "dubbed", "vf", "vost",
@@ -980,6 +1074,12 @@ public final class Catalog {
             if (!known) break;
             n = n.substring(lead.end());
             lead = LEAD.matcher(n);
+        }
+        // The picture's and sound's tags after it ("(2024) 4K", "[UHD] [DV]", "1080p Atmos"), then the year.
+        for (int i = 0; i < 6; i++) {
+            Matcher tail = TRAIL.matcher(n);
+            if (!tail.find() || tail.start() == 0) break;
+            n = n.substring(0, tail.start()).trim();
         }
         String y = n.replaceAll("\\s*[\\[(](?:19|20)\\d{2}[\\])]\\s*$", "").trim();
         if (!y.isEmpty()) n = y;
@@ -1086,12 +1186,29 @@ public final class Catalog {
     /** Previews only: a page's details made from plain values. */
     public static Details previewDetails(String plot, String genre, String cast, String director, String released, String backdrop,
                                          String rating, String age, int minutes, String[][] episodes) {
+        return previewDetails(plot, genre, cast, director, released, backdrop, rating, age, minutes, episodes, "");
+    }
+
+    /** Previews only: the same with a trailer; an episode's eighth value is when it was first shown. */
+    public static Details previewDetails(String plot, String genre, String cast, String director, String released, String backdrop,
+                                         String rating, String age, int minutes, String[][] episodes, String trailer) {
         List<Episode> eps = new ArrayList<>();
         if (episodes != null) {
             for (String[] e : episodes) {
-                eps.add(new Episode(e[0], Library.number(e[1]), Library.number(e[2]), e[3], e[4], e[5], Library.number(e[6]), "mp4", "", "", ""));
+                eps.add(new Episode(e[0], Library.number(e[1]), Library.number(e[2]), e[3], e[4], e[5], Library.number(e[6]),
+                        e.length > 7 ? aired(e[7]) : "", "mp4", "", "", ""));
             }
         }
-        return new Details(plot, genre, cast, director, released, backdrop, "", "", rating, age, minutes, episodes == null ? null : seasons(eps, null));
+        return new Details(plot, genre, cast, director, released, backdrop, "", trailer, rating, age, minutes,
+                episodes == null ? null : seasons(eps, null));
+    }
+
+    private static final Pattern DAY = Pattern.compile("((?:19|20)\\d{2})-(\\d{2})-(\\d{2})");
+
+    /** Pure: a provider's date ("2022-10-09", "2022-10-09 21:00:00") as its day ("2022-10-09"), else "". */
+    static String aired(String s) {
+        if (s == null) return "";
+        Matcher m = DAY.matcher(s);
+        return m.find() ? m.group(1) + "-" + m.group(2) + "-" + m.group(3) : "";
     }
 }

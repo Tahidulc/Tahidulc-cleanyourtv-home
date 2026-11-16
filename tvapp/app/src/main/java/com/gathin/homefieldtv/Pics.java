@@ -49,6 +49,25 @@ final class Pics {
      * screen that draws the black itself).
      */
     static final int CROP = 0, FIT = 1, FADE = 2, FADE_TALL = 3, TILE = 4, READY = 5;
+    /**
+     * POSTER is a poster card as the dark screens draw it (PosterArt): CROP with its corners rounded and its foot faded
+     * into the poster's own colour, all done once as it loads. DARK is CROP faded into the dark ground on the left and at
+     * the foot (a title's backdrop behind the writing); DARK_FULL fades only at the foot and a little at the left.
+     */
+    static final int POSTER = 6, DARK = 7, DARK_FULL = 8;
+
+    /** Each poster's fade colour as worked out when it loaded, by its address (0 until then). */
+    private static final java.util.Map<String, Integer> FADES = java.util.Collections.synchronizedMap(new java.util.LinkedHashMap<String, Integer>(64, 0.75f, true) {
+        @Override protected boolean removeEldestEntry(java.util.Map.Entry<String, Integer> e) {
+            return size() > 800;
+        }
+    });
+
+    /** A loaded poster's fade colour, or 0 when it hasn't loaded. */
+    static int fadeOf(String url) {
+        Integer c = url == null ? null : FADES.get(url);
+        return c == null ? 0 : c;
+    }
 
     /** Channel logos on black tiles (Settings, Channel logos): on unless switched off. */
     static volatile boolean tiles = true;
@@ -238,6 +257,8 @@ final class Pics {
             m.postTranslate(dx, dy);
             new Canvas(out).drawBitmap(src, m, p);
             if (src != out) src.recycle();
+            if (mode == POSTER) return poster(url, out);
+            if (mode == DARK || mode == DARK_FULL) return darkFade(out, mode == DARK_FULL);
             return mode == CROP ? out : fadeOut(out, mode == FADE_TALL);
         }
         float sc = Math.min(w / (float) src.getWidth(), h / (float) src.getHeight());
@@ -246,6 +267,54 @@ final class Pics {
         if (ow == src.getWidth() && oh == src.getHeight()) return src;
         Bitmap out = Bitmap.createScaledBitmap(src, ow, oh, true);
         if (out != src) src.recycle();
+        return out;
+    }
+
+    /**
+     * A poster card: its corners rounded (PosterArt.RADIUS of its width) and its foot faded into its own colour (the
+     * average of its lowest third, made deep: PosterArt.fadeColour), clear at 42% of the way down, solid at the foot.
+     */
+    private static Bitmap poster(String url, Bitmap src) {
+        int w = src.getWidth(), h = src.getHeight();
+        int third = Math.max(1, h / 3);
+        int[] px = new int[w * third];
+        src.getPixels(px, 0, w, 0, h - third, w, third);
+        int colour = PosterArt.fadeColour(PosterArt.average(px));
+        FADES.put(url, colour);
+        Bitmap out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(out);
+        Paint shape = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        shape.setShader(new android.graphics.BitmapShader(src, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP));
+        float r = w * PosterArt.RADIUS;
+        c.drawRoundRect(0, 0, w, h, r, r, shape);
+        Paint fade = new Paint(Paint.ANTI_ALIAS_FLAG);
+        fade.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_ATOP));
+        fade.setShader(PosterArt.fadeShader(colour, h));
+        c.drawRect(0, 0, w, h, fade);
+        src.recycle();
+        return out;
+    }
+
+    /** A backdrop faded into the dark ground: on its left (all but full) and at its foot, and a touch darker. */
+    private static Bitmap darkFade(Bitmap src, boolean full) {
+        int w = src.getWidth(), h = src.getHeight();
+        Bitmap out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(out);
+        c.drawBitmap(src, 0, 0, null);
+        src.recycle();
+        Paint m = new Paint();
+        m.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_IN));
+        float left = full ? 0.22f : 0.55f;
+        m.setShader(new LinearGradient(0, 0, w * left, 0, new int[]{0x00000000, 0x99000000, 0xFF000000},
+                new float[]{0f, 0.5f, 1f}, Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, w * left, h, m);
+        m.setShader(new LinearGradient(0, h * 0.45f, 0, h, new int[]{0xFF000000, 0x8C000000, 0x00000000},
+                new float[]{0f, 0.55f, 1f}, Shader.TileMode.CLAMP));
+        c.drawRect(0, h * 0.45f, w, h, m);
+        Paint dim = new Paint();
+        dim.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_ATOP));
+        dim.setColor(0x38000000);
+        c.drawRect(0, 0, w, h, dim);
         return out;
     }
 
