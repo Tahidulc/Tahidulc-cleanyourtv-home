@@ -25,6 +25,12 @@ import java.util.Locale;
  * playlists have of it (4K, 1080p or 720p in a white chip, and the Dolby Vision or Atmos mark where a name says so);
  * under the card the title and the year. Where the remote is, the card grows a little inside a white ring, its badges
  * still in sight. Every size comes from the card's width, so a row's posters and the grid's look alike.
+ *
+ * <p>Settings, Posters: Landscape makes each card 16:9 (as the phone's): its picture the title's wide backdrop (at
+ * w780; the poster where there is none), the title at the foot's left in at most half the card's width (where the phone
+ * puts the title's logo: there are none here), the genre and rating line left-aligned under it, the fade rising from
+ * 24% of the way down. The badges, the chips and the writing under the card stay the size a portrait card's are (its
+ * height is a portrait card's width).
  */
 final class PosterArt {
     /** The corners' radius, as a share of the card's width. */
@@ -43,6 +49,8 @@ final class PosterArt {
         /** Its genre ("Mystery"), "" for none; how far through it is (0 to 1), below 0 for none. */
         String genre = "";
         float progress = -1f;
+        /** Its page's wide picture where that has been read ("" otherwise): a landscape card's picture before the list's own. */
+        String backdrop = "";
         private StaticLayout over;
         private float overFor = -1f;
         private String underTitle, underYear, line, badge;
@@ -105,9 +113,24 @@ final class PosterArt {
 
     /** The fade over a poster h high: clear to 42% of the way down, 55% at 64%, 92% at 82%, solid at the foot. */
     static LinearGradient fadeShader(int colour, float h) {
+        return fadeShader(colour, h, false);
+    }
+
+    /** The fade over a card h high: a portrait one's as above; a landscape one's (as the phone's) rises higher. */
+    static LinearGradient fadeShader(int colour, float h, boolean wide) {
         int c = colour & 0x00FFFFFF;
-        return new LinearGradient(0, 0, 0, h, new int[]{c, c, 0x8C000000 | c, 0xEB000000 | c, 0xFF000000 | c},
-                new float[]{0f, 0.42f, 0.64f, 0.82f, 1f}, Shader.TileMode.CLAMP);
+        float[] at = fadeStops(wide);
+        int[] alpha = wide ? WIDE_ALPHA : TALL_ALPHA;
+        int[] colours = new int[alpha.length];
+        for (int i = 0; i < alpha.length; i++) colours[i] = alpha[i] << 24 | c;
+        return new LinearGradient(0, 0, 0, h, colours, at, Shader.TileMode.CLAMP);
+    }
+
+    private static final int[] TALL_ALPHA = {0, 0, 0x8C, 0xEB, 0xFF}, WIDE_ALPHA = {0, 0, 0x73, 0xE0, 0xFF};
+
+    /** Pure: where the fade's steps lie down a card: a landscape card's at 0.24, 0.52, 0.8 and its foot, as the phone's. */
+    static float[] fadeStops(boolean wide) {
+        return wide ? new float[]{0f, 0.24f, 0.52f, 0.8f, 1f} : new float[]{0f, 0.42f, 0.64f, 0.82f, 1f};
     }
 
     /** Pure: "New" for a title added in the last fortnight (added in ms; 0 not known), else "". */
@@ -169,7 +192,27 @@ final class PosterArt {
 
     private static Bitmap dolbyVision, atmos;
 
+    /** Settings, Posters: Portrait (2:3 posters) or Landscape (16:9 backdrops with the title over them). */
+    static boolean landscape;
+
+    static void setLandscape(Context c, boolean on) {
+        landscape = on;
+        c.getApplicationContext().getSharedPreferences("look", Context.MODE_PRIVATE).edit().putBoolean("posters_wide", on).apply();
+    }
+
+    /** A card's width for a portrait poster's width: wider for a landscape one, the same height as that is wide. */
+    static float cardWidth(float portraitWidth) {
+        return landscape ? portraitWidth * 16f / 9f : portraitWidth;
+    }
+
+    /** Pure: a TMDB picture's address at w780 (a w1280 or original one is far more than a card needs). */
+    static String w780(String url) {
+        if (url == null) return "";
+        return url.contains("image.tmdb.org/t/p/") ? url.replaceFirst("/t/p/(?:w\\d+|original)/", "/t/p/w780/") : url;
+    }
+
     static void init(Context c) {
+        landscape = c.getApplicationContext().getSharedPreferences("look", Context.MODE_PRIVATE).getBoolean("posters_wide", false);
         if (dolbyVision != null) return;
         try {
             dolbyVision = BitmapFactory.decodeResource(c.getResources(), R.drawable.fmt_dolby_vision);
@@ -181,19 +224,23 @@ final class PosterArt {
 
     /** The card's width (px) this was made for. */
     final float w;
-    private final float h, r;
+    /** Its height, its corners, and the size every badge and word is a share of (a portrait card's width). */
+    private final float h, r, u;
+    private final boolean wide;
     private final TextPaint overP, lineP, badgeP, chipP, nameP, nameOn, yearP;
     private final Paint card = Dark.fill(Dark.CARD), bmp = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
     private final Paint pill = Dark.fill(0), white = Dark.fill(0xFFFFFFFF), track = Dark.fill(0x59FFFFFF), bar = Dark.fill(0xFFFFFFFF);
-    private final Paint ring = Dark.line(0xFFFFFFFF, 3f), fade = new Paint(), plate = Dark.fill(0xB3111114);
+    private final Paint ring = Dark.line(Dark.RING, 3f), fade = new Paint(), plate = Dark.fill(0xB3111114);
     private final RectF rect = new RectF(), tmp = new RectF();
     private int fadeFor;
     private final int pw, ph;
 
     PosterArt(float widthPx) {
         w = widthPx;
-        h = w * 1.5f;
-        r = w * RADIUS;
+        wide = landscape;
+        h = wide ? w * 9f / 16f : w * 1.5f;
+        u = wide ? h : w;
+        r = u * RADIUS;
         pw = Math.round(w);
         ph = Math.round(h);
         overP = text(0.105f, 700, 0xFFFFFFFF);
@@ -203,13 +250,24 @@ final class PosterArt {
         nameP = text(0.084f, 500, 0xFFFFFFFF);
         nameOn = text(0.084f, 600, 0xFFFFFFFF);
         yearP = text(0.07f, 400, YEAR);
-        overP.setShadowLayer(w * 0.03f, 0, w * 0.006f, 0x99000000);
+        overP.setShadowLayer(u * 0.03f, 0, u * 0.006f, 0x99000000);
     }
 
     private TextPaint text(float share, int weight, int color) {
         TextPaint p = Dark.text(1, weight, color);
-        p.setTextSize(w * share);
+        p.setTextSize(u * share);
         return p;
+    }
+
+    /** The picture a card shows: a landscape one the backdrop (at w780; the poster when there is none). */
+    private String picture(Item it) {
+        if (!wide) return it.title.poster;
+        String b = !it.backdrop.isEmpty() ? it.backdrop : it.title.backdrop;
+        return b.isEmpty() ? it.title.poster : w780(b);
+    }
+
+    private int mode() {
+        return wide ? Pics.POSTER_WIDE : Pics.POSTER;
     }
 
     /** The card's height. */
@@ -219,7 +277,7 @@ final class PosterArt {
 
     /** The room under the card for the title and the year. */
     float under() {
-        return w * 0.27f;
+        return u * 0.27f;
     }
 
     /** The whole tile's height: the card and the writing under it. */
@@ -229,7 +287,7 @@ final class PosterArt {
 
     /** Asks for the poster's picture early, so it is there when the row slides on to it. */
     void prefetch(Item it, Runnable redraw) {
-        if (it != null && it.title != null) Pics.get(it.title.poster, pw, ph, Pics.POSTER, redraw);
+        if (it != null && it.title != null) Pics.get(picture(it), pw, ph, mode(), redraw);
     }
 
     /** One poster at (x, y): its card, then the writing under it; lifted inside a ring where the remote is. */
@@ -247,7 +305,8 @@ final class PosterArt {
             c.scale(s, s, x + w / 2f, y + h / 2f);
         }
         rect.set(x, y, x + w, y + h);
-        Bitmap b = t.poster.isEmpty() ? null : Pics.get(t.poster, pw, ph, Pics.POSTER, redraw);
+        String pic = picture(it);
+        Bitmap b = pic.isEmpty() ? null : Pics.get(pic, pw, ph, mode(), redraw);
         bmp.setAlpha(alpha);
         if (b != null) {
             c.drawBitmap(b, x, y, bmp);
@@ -258,7 +317,7 @@ final class PosterArt {
             card.setAlpha(alpha);
             c.drawRoundRect(rect, r, r, card);
             if (fadeFor != colour) {
-                fade.setShader(fadeShader(fadeColour(colour & 0xFFFFFF), h));
+                fade.setShader(fadeShader(fadeColour(colour & 0xFFFFFF), h, wide));
                 fadeFor = colour;
             }
             fade.setAlpha(alpha);
@@ -271,7 +330,7 @@ final class PosterArt {
         overWriting(c, it, x, y, alpha);
         badges(c, it, x, y, alpha);
         if (it.progress >= 0f) {
-            float bx = x + w * 0.07f, bw = w * 0.86f, by = y + h - w * 0.05f, bh = Math.max(2f, w * 0.022f);
+            float bx = x + u * 0.07f, bw = w - u * 0.14f, by = y + h - u * 0.05f, bh = Math.max(2f, u * 0.022f);
             track.setAlpha(alpha * 0x59 / 255);
             bar.setAlpha(alpha);
             tmp.set(bx, by - bh, bx + bw, by);
@@ -280,7 +339,7 @@ final class PosterArt {
             c.drawRoundRect(tmp, bh / 2, bh / 2, bar);
         }
         if (lift > 0f) {
-            ring.setStrokeWidth(Math.max(2f, w * 0.016f));
+            ring.setStrokeWidth(Math.max(2f, u * 0.016f));
             ring.setAlpha(Math.round(alpha * 0.92f * lift));
             Dark.ring(c, rect, r, ring);
         }
@@ -288,26 +347,30 @@ final class PosterArt {
         underWriting(c, it, x, y + h + h * (LIFT - 1f) / 2f * lift, focused, alpha);
     }
 
-    /** The title and the line under it, over the poster's fade. */
+    /**
+     * The title and the line under it, over the poster's fade: centred on a portrait card; on a landscape one at the
+     * foot's left, the title in at most half the card's width (where the phone puts the title's logo).
+     */
     private void overWriting(Canvas c, Item it, float x, float y, int alpha) {
         Catalog.Title t = it.title;
         if (it.line == null) it.line = line(it.genre, t.rating);
-        float lineBase = y + h - w * (it.progress >= 0f ? 0.11f : 0.075f);
+        float lineBase = y + h - u * (it.progress >= 0f ? 0.11f : 0.075f), pad = u * 0.07f;
         if (!it.line.isEmpty()) {
             lineP.setAlpha(alpha * 0xBF / 255);
-            String s = Ui.fit(it.line, lineP, w * 0.88f);
-            c.drawText(s, x + (w - lineP.measureText(s)) / 2f, lineBase, lineP);
+            String s = Ui.fit(it.line, lineP, wide ? w * 0.6f : w * 0.88f);
+            c.drawText(s, wide ? x + pad : x + (w - lineP.measureText(s)) / 2f, lineBase, lineP);
         }
         if (it.over == null || it.overFor != w) {
-            it.over = StaticLayout.Builder.obtain(t.name, 0, t.name.length(), overP, Math.round(w * 0.86f))
-                    .setAlignment(Layout.Alignment.ALIGN_CENTER).setMaxLines(2).setEllipsize(TextUtils.TruncateAt.END)
-                    .setIncludePad(false).setLineSpacing(0f, 0.95f).build();
+            int room = Math.round(wide ? w * 0.5f : w * 0.86f);
+            it.over = StaticLayout.Builder.obtain(t.name, 0, t.name.length(), overP, room)
+                    .setAlignment(wide ? Layout.Alignment.ALIGN_NORMAL : Layout.Alignment.ALIGN_CENTER).setMaxLines(2)
+                    .setEllipsize(TextUtils.TruncateAt.END).setIncludePad(false).setLineSpacing(0f, 0.95f).build();
             it.overFor = w;
         }
-        float top = (it.line.isEmpty() ? lineBase : lineBase - lineP.getTextSize() * 1.1f) - w * 0.03f - it.over.getHeight();
+        float top = (it.line.isEmpty() ? lineBase : lineBase - lineP.getTextSize() * 1.1f) - u * 0.03f - it.over.getHeight();
         overP.setAlpha(alpha);
         c.save();
-        c.translate(x + w * 0.07f, top);
+        c.translate(x + pad, top);
         it.over.draw(c);
         c.restore();
     }
@@ -315,40 +378,40 @@ final class PosterArt {
     /** New at the top left; the picture's chip and the Dolby mark at the top right. */
     private void badges(Canvas c, Item it, float x, float y, int alpha) {
         Catalog.Title t = it.title;
-        float m = w * 0.055f, bh = w * 0.13f, rad = w * 0.035f;
+        float m = u * 0.055f, bh = u * 0.13f, rad = u * 0.035f;
         if (it.badge == null) it.badge = badge(t.added, System.currentTimeMillis());
         if (!it.badge.isEmpty()) {
             float tw = badgeP.measureText(it.badge);
-            tmp.set(x + m, y + m, x + m + tw + w * 0.1f, y + m + bh);
-            pill.setColor(NEW);
+            tmp.set(x + m, y + m, x + m + tw + u * 0.1f, y + m + bh);
+            pill.setColor(Dark.BADGE);
             pill.setAlpha(alpha);
             c.drawRoundRect(tmp, rad, rad, pill);
-            badgeP.setColor(NEW_INK);
+            badgeP.setColor(Dark.ACCENT_INK);
             badgeP.setAlpha(alpha);
-            c.drawText(it.badge, tmp.left + w * 0.05f, tmp.centerY() + badgeP.getTextSize() * 0.36f, badgeP);
+            c.drawText(it.badge, tmp.left + u * 0.05f, tmp.centerY() + badgeP.getTextSize() * 0.36f, badgeP);
         }
         String q = chip(t.bestPicture());
         float right = x + w - m;
-        float ch = w * 0.115f;
+        float ch = u * 0.115f;
         if (!q.isEmpty()) {
             float tw = chipP.measureText(q);
-            tmp.set(right - tw - w * 0.07f, y + m, right, y + m + ch);
+            tmp.set(right - tw - u * 0.07f, y + m, right, y + m + ch);
             white.setAlpha(alpha);
-            c.drawRoundRect(tmp, w * 0.025f, w * 0.025f, white);
+            c.drawRoundRect(tmp, u * 0.025f, u * 0.025f, white);
             chipP.setAlpha(alpha);
-            c.drawText(q, tmp.left + w * 0.035f, tmp.centerY() + chipP.getTextSize() * 0.36f, chipP);
-            right = tmp.left - w * 0.035f;
+            c.drawText(q, tmp.left + u * 0.035f, tmp.centerY() + chipP.getTextSize() * 0.36f, chipP);
+            right = tmp.left - u * 0.035f;
         }
         Bitmap mark = t.anyDolbyVision() ? dolbyVision : t.anyAtmos() ? atmos : null;
         if (mark != null) {
-            float mh = w * 0.06f, mw = mh * mark.getWidth() / mark.getHeight();
+            float mh = u * 0.06f, mw = mh * mark.getWidth() / mark.getHeight();
             float left = right - mw;
             // Never under the New badge: left out where the poster is too narrow for both.
-            if (it.badge.isEmpty() || left > x + m + badgeP.measureText(it.badge) + w * 0.14f) {
+            if (it.badge.isEmpty() || left > x + m + badgeP.measureText(it.badge) + u * 0.14f) {
                 // On a dark plate of its own, so it reads over a bright poster too.
-                tmp.set(left - w * 0.025f, y + m, right + w * 0.025f, y + m + ch);
+                tmp.set(left - u * 0.025f, y + m, right + u * 0.025f, y + m + ch);
                 plate.setAlpha(alpha * 0xB3 / 255);
-                c.drawRoundRect(tmp, w * 0.025f, w * 0.025f, plate);
+                c.drawRoundRect(tmp, u * 0.025f, u * 0.025f, plate);
                 tmp.set(left, y + m + (ch - mh) / 2f, right, y + m + (ch + mh) / 2f);
                 bmp.setAlpha(alpha);
                 c.drawBitmap(mark, null, tmp, bmp);
@@ -366,10 +429,10 @@ final class PosterArt {
         }
         TextPaint p = focused ? nameOn : nameP;
         p.setAlpha(alpha);
-        c.drawText(it.underTitle, x, y + w * 0.125f, p);
+        c.drawText(it.underTitle, x, y + u * 0.125f, p);
         if (!it.underYear.isEmpty()) {
             yearP.setAlpha(alpha);
-            c.drawText(it.underYear, x, y + w * 0.225f, yearP);
+            c.drawText(it.underYear, x, y + u * 0.225f, yearP);
         }
     }
 

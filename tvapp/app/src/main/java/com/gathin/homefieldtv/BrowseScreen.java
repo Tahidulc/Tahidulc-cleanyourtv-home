@@ -135,6 +135,7 @@ final class BrowseScreen extends Screen implements Shelves.Host, PosterGrid.Host
         PosterArt.Item it = new PosterArt.Item(t);
         Catalog.Details d = Catalog.get(tv).cachedDetails(t);
         it.genre = d != null && !PosterArt.firstGenre(d.genre).isEmpty() ? PosterArt.firstGenre(d.genre) : PosterArt.genreOf(t.category);
+        if (d != null) it.backdrop = d.backdrop;
         Resume.Point p = t.series ? Resume.latest(tv, t.key) : Resume.get(tv, t.key, "");
         if (p != null && p.position > 0) it.progress = p.progress();
         return it;

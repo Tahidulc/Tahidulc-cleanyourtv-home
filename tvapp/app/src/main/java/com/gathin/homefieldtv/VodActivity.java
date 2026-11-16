@@ -85,6 +85,7 @@ public final class VodActivity extends Activity {
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         Ui.init(this);
+        Theme.apply(this);
         Pics.init(this);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         FrameLayout root = new FrameLayout(this);
@@ -192,11 +193,13 @@ public final class VodActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        Cast.hold(this);
         h.post(tick);
     }
 
     @Override protected void onPause() {
         super.onPause();
+        Cast.release();
         h.removeCallbacks(tick);
         save();
         if (player != null) player.pause();
@@ -465,8 +468,8 @@ public final class VodActivity extends Activity {
 
     private final class Bar extends View {
         private final Paint shade = new Paint(), line = Ui.fill(0x8CFFFFFF), done = Ui.fill(0xE6FFFFFF);
-        private final Paint knobRing = Ui.fill(0xFF1F7FD4), knob = Ui.fill(0xFF35B6F7), knobEdge = Ui.stroke(0x99FFFFFF, 2f);
-        private final Paint icon = Ui.fill(Ui.WHITE), cardBack = Ui.fill(0xE6062A66);
+        private final Paint knobRing = Ui.fill(Ui.tint(0xFF1F7FD4)), knob = Ui.fill(Ui.tint(0xFF35B6F7)), knobEdge = Ui.stroke(0x99FFFFFF, 2f);
+        private final Paint icon = Ui.fill(Ui.WHITE), cardBack = Ui.fill(Ui.tint(0xE6062A66));
         private final TextPaint titleP = Ui.paint(32, true, Ui.WHITE), endP = Ui.paint(28, false, Ui.WHITE);
         private final TextPaint goneP = Ui.paint(28, true, Ui.CYAN), dayP = Ui.paint(28, false, Ui.DIM), msgP = Ui.paint(34, false, Ui.WHITE);
         private final TextPaint nextP = Ui.paint(30, false, Ui.WHITE), nextSmall = Ui.paint(24, false, Ui.DIM);

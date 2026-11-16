@@ -26,11 +26,12 @@ import java.util.Locale;
  */
 final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Host {
     private static final List<String> MENU = Arrays.asList("Your playlists", "Add an M3U playlist", "Add an Xtream Codes login",
-            "Refresh now", "Remove everything", "Channel logos", "About");
-    private static final int PLAYLISTS = 0, ADD_M3U = 1, ADD_XTREAM = 2, REFRESH = 3, CLEAR = 4, LOGOS = 5, ABOUT = 6;
+            "Refresh now", "Remove everything", "Channel logos", "Theme", "Posters", "About");
+    static final int PLAYLISTS = 0, ADD_M3U = 1, ADD_XTREAM = 2, REFRESH = 3, CLEAR = 4, LOGOS = 5, THEME = 6, POSTERS = 7, ABOUT = 8;
 
     private Strip strip;
     private ListPanel menu, content;
+    private ThemePreview look;
     private Keyboard keys;
     private Shade shade;
     private boolean inContent, editing, confirm;
@@ -55,6 +56,8 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
         content.y = 170f;
         content.w = 1040f;
         content.setHost(this);
+        look = new ThemePreview(tv);
+        look.setVisibility(View.GONE);
         shade = new Shade(tv);
         keys = new Keyboard(tv, Keyboard.FULL);
         keys.x = 494f;
@@ -65,6 +68,7 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
         f.addView(new Heading(tv), new FrameLayout.LayoutParams(-1, -1));
         f.addView(menu, new FrameLayout.LayoutParams(-1, -1));
         f.addView(content, new FrameLayout.LayoutParams(-1, -1));
+        f.addView(look, new FrameLayout.LayoutParams(-1, -1));
         f.addView(strip, new FrameLayout.LayoutParams(-1, -1));
         f.addView(shade, new FrameLayout.LayoutParams(-1, -1));
         f.addView(keys, new FrameLayout.LayoutParams(-1, -1));
@@ -107,6 +111,17 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
         user = u;
         pass = "password";
         fillContent();
+    }
+
+    /**
+     * Opened on a section with the remote in its list on what is chosen there: as the screens come back after a new
+     * theme or poster shape (TvActivity.restartLook), and for previews.
+     */
+    void openAt(int section) {
+        if (menu == null) return;
+        menu.setFocus(section);
+        fillContent();
+        toContent();
     }
 
     private void fillContent() {
@@ -181,6 +196,22 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
                 out.add(new ListPanel.Item("plain", ListPanel.TEXT, "As the playlist gives them", Pics.tiles ? "The logos as they come" : "Chosen"));
                 out.add(new ListPanel.Item(null, ListPanel.NOTE, "In the guide, the channel banner, search and on Home.", ""));
                 break;
+            case THEME:
+                for (int i = 0; i < Theme.ALL.length; i++) {
+                    Theme th = Theme.ALL[i];
+                    out.add(new ListPanel.Item("theme:" + i, ListPanel.TEXT, th.name, (i == Theme.current() ? "Chosen  ·  " : "") + th.about));
+                }
+                break;
+            case POSTERS: {
+                boolean wide = PosterArt.landscape;
+                out.add(new ListPanel.Item(null, ListPanel.HEADING, "Posters: Portrait / Landscape", ""));
+                out.add(new ListPanel.Item("tall", ListPanel.TEXT, "Portrait",
+                        (wide ? "" : "Chosen  ·  ") + "Tall posters with the title over their foot"));
+                out.add(new ListPanel.Item("wide", ListPanel.TEXT, "Landscape",
+                        (wide ? "Chosen  ·  " : "") + "Wide pictures from each film and show, the title at the foot's left"));
+                out.add(new ListPanel.Item(null, ListPanel.NOTE, "On the film and TV show rows, the grids and More like this.", ""));
+                break;
+            }
             default:
                 out.add(new ListPanel.Item(null, ListPanel.NOTE, "Homefield TV " + version(), ""));
                 out.add(new ListPanel.Item(null, ListPanel.NOTE, "Live TV, the guide, films and TV shows come only from your own playlists.", ""));
@@ -196,6 +227,20 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
                 break;
         }
         content.setItems(out);
+        // The theme's picture under its list: the theme the remote is on there, else the one in use.
+        boolean themes = section() == THEME;
+        look.setVisibility(themes ? View.VISIBLE : View.GONE);
+        if (themes) look.show(inContent ? themeAt(content.item()) : Theme.current());
+    }
+
+    /** The theme a line of the Theme section is for (the one in use for any other line). */
+    private static int themeAt(ListPanel.Item it) {
+        if (it == null || !(it.tag instanceof String) || !((String) it.tag).startsWith("theme:")) return Theme.current();
+        try {
+            return Integer.parseInt(((String) it.tag).substring(6));
+        } catch (NumberFormatException e) {
+            return Theme.current();
+        }
     }
 
     private String version() {
@@ -272,12 +317,20 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
         inContent = true;
         menu.setActive(false);
         content.setActive(true);
+        // Into Theme or Posters on what is chosen there.
+        if (section() == THEME) {
+            content.setFocus(Theme.current());
+            look.show(themeAt(content.item()));
+        } else if (section() == POSTERS) {
+            content.setFocus(PosterArt.landscape ? 2 : 1);
+        }
     }
 
     private void toMenu() {
         inContent = false;
         menu.setActive(true);
         content.setActive(false);
+        if (section() == THEME) look.show(Theme.current());
     }
 
     @Override public void chosen(ListPanel list, ListPanel.Item item) {
@@ -323,6 +376,21 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
                 fillContent();
                 content.setFocus(t.equals("tiles") ? 0 : 1);
                 return;
+            case THEME: {
+                // Kept, then every screen made again in its colours, back here on it.
+                int i = themeAt(item);
+                if (i == Theme.current()) return;
+                Theme.save(tv, i);
+                tv.restartLook(THEME);
+                return;
+            }
+            case POSTERS: {
+                boolean wide = t.equals("wide");
+                if (wide == PosterArt.landscape) return;
+                PosterArt.setLandscape(tv, wide);
+                tv.restartLook(POSTERS);
+                return;
+            }
             case REFRESH:
                 status = "Reading your playlist…";
                 fillContent();
@@ -373,7 +441,10 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
         });
     }
 
-    @Override public void focused(ListPanel list, ListPanel.Item item) {}
+    /** Moving through the themes: the picture under them takes each one's colours (Theme is only kept on OK). */
+    @Override public void focused(ListPanel list, ListPanel.Item item) {
+        if (list == content && section() == THEME) look.show(themeAt(item));
+    }
 
     @Override public boolean edge(ListPanel list, int dir) {
         if (list == menu && dir == Ui.RIGHT) {
@@ -462,7 +533,7 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
 
     /** The darkened screen behind the keyboard. */
     private static final class Shade extends View {
-        private final Paint p = Ui.fill(0xFF0A3B86), edge = Ui.fill(0x804F92DA);
+        private final Paint p = Ui.fill(Ui.tint(0xFF0A3B86)), edge = Ui.fill(Ui.tint(0x804F92DA));
 
         Shade(Context c) {
             super(c);

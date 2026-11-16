@@ -29,13 +29,37 @@ final class Ui {
     static float s = 1f;
     static Typeface regular = Typeface.DEFAULT, bold = Typeface.DEFAULT_BOLD;
 
-    // The blues, from the guide's own screens.
-    static final int BG_TOP = 0xFF1163C8, BG_BOTTOM = 0xFF0A50AE;
-    static final int PANEL_TOP = 0xFF2A6CB8, PANEL_BOTTOM = 0xFF0B4C9E, STRIP = 0xFF0A4594, EDGE = 0xFF4F92DA;
-    static final int NAVY = 0xFF0A2B68, CARD = 0xFF154E9C, CARD_LIGHT = 0xFF2563B4;
+    // The blues, from the guide's own screens: tinted to the theme (Theme) as the app starts.
+    static int BG_TOP = 0xFF1163C8, BG_BOTTOM = 0xFF0A50AE;
+    static int PANEL_TOP = 0xFF2A6CB8, PANEL_BOTTOM = 0xFF0B4C9E, STRIP = 0xFF0A4594, EDGE = 0xFF4F92DA;
+    static int NAVY = 0xFF0A2B68, CARD = 0xFF154E9C, CARD_LIGHT = 0xFF2563B4;
     static final int WHITE = 0xFFFFFFFF, DIM = 0xD9FFFFFF, FAINT = 0x9EFFFFFF;
-    static final int CYAN = 0xFF2BB5F5, AMBER = 0xFFFFC233;
+    static int CYAN = 0xFF2BB5F5;
+    static final int AMBER = 0xFFFFC233;
     static final int CELL = 0x24FFFFFF, CELL_NOW = 0x3AFFFFFF;
+    private static float tintHue = -1f, tintSat = 1f, tintVal = 1f;
+
+    /** The blue screens tinted to a theme (hue below 0 and shares of 1: Sky Q's own blues). */
+    static void tint(float hue, float sat, float val) {
+        tintHue = hue;
+        tintSat = sat;
+        tintVal = val;
+        BG_TOP = tint(0xFF1163C8);
+        BG_BOTTOM = tint(0xFF0A50AE);
+        PANEL_TOP = tint(0xFF2A6CB8);
+        PANEL_BOTTOM = tint(0xFF0B4C9E);
+        STRIP = tint(0xFF0A4594);
+        EDGE = tint(0xFF4F92DA);
+        NAVY = tint(0xFF0A2B68);
+        CARD = tint(0xFF154E9C);
+        CARD_LIGHT = tint(0xFF2563B4);
+        CYAN = tint(0xFF2BB5F5);
+    }
+
+    /** One of the blue screens' own colours, tinted to the theme. */
+    static int tint(int colour) {
+        return Theme.shift(colour, tintHue, tintSat, tintVal);
+    }
 
     static void init(Context c) {
         DisplayMetrics dm = c.getResources().getDisplayMetrics();

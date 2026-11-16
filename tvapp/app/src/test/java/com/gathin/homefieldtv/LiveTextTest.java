@@ -83,6 +83,6 @@ public class LiveTextTest {
         assertEquals(1f, Fade.ease(2f), 0.0001f);
         assertTrue(Fade.ease(0.5f) > 0.5f);
         assertTrue(Fade.ease(0.25f) < Fade.ease(0.5f));
-        assertNotEquals(GuideGrid.LIT_AIRED, Dark.ACCENT);
+        assertNotEquals(Dark.ACCENT_SOFT, Dark.ACCENT);
     }
 }

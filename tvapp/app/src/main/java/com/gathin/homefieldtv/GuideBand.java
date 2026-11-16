@@ -31,7 +31,7 @@ final class GuideBand extends View {
 
     private final Paint track = Dark.fill(0x40FFFFFF), accent = Dark.fill(Dark.ACCENT);
     private final Paint chip = Dark.line(0x99FFFFFF, 1.5f), heart = Dark.fill(Dark.ACCENT), heartLine = Dark.line(Dark.ACCENT, 2.2f);
-    private final Paint typedBack = Dark.fill(0xF0141417);
+    private final Paint typedBack = Dark.fill(Dark.alpha(Dark.RAIL, 0xF0));
     private final TextPaint titleP = Dark.text(48, 600, Dark.TEXT), chanP = Dark.text(24, 500, Dark.MUTED);
     private final TextPaint timeP = Dark.text(24, 600, Dark.SOFT), descP = Dark.text(26, 400, Dark.SOFT);
     private final TextPaint chipP = Dark.text(18, 700, Dark.SOFT), typedP = Dark.text(44, 600, Dark.TEXT);

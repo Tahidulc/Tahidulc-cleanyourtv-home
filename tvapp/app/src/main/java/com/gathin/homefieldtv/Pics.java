@@ -60,6 +60,11 @@ final class Pics {
      * darker at the top (for the channel's logo) and much darker towards its foot (for the words), done once as it loads.
      */
     static final int CARD = 9;
+    /**
+     * POSTER_WIDE is a landscape poster card (Settings, Posters: Landscape): POSTER's rounding and fade on a 16:9 card,
+     * its corners a share of its height and its fade rising from 24% of the way down (PosterArt.fadeShader).
+     */
+    static final int POSTER_WIDE = 10;
 
     /** Each poster's fade colour as worked out when it loaded, by its address (0 until then). */
     private static final java.util.Map<String, Integer> FADES = java.util.Collections.synchronizedMap(new java.util.LinkedHashMap<String, Integer>(64, 0.75f, true) {
@@ -267,7 +272,7 @@ final class Pics {
             m.postTranslate(dx, dy);
             new Canvas(out).drawBitmap(src, m, p);
             if (src != out) src.recycle();
-            if (mode == POSTER) return poster(url, out);
+            if (mode == POSTER || mode == POSTER_WIDE) return poster(url, out, mode == POSTER_WIDE);
             if (mode == CARD) return card(out);
             if (mode == DARK || mode == DARK_FULL) return darkFade(out, mode == DARK_FULL);
             return mode == CROP ? out : fadeOut(out, mode == FADE_TALL);
@@ -285,7 +290,7 @@ final class Pics {
      * A poster card: its corners rounded (PosterArt.RADIUS of its width) and its foot faded into its own colour (the
      * average of its lowest third, made deep: PosterArt.fadeColour), clear at 42% of the way down, solid at the foot.
      */
-    private static Bitmap poster(String url, Bitmap src) {
+    private static Bitmap poster(String url, Bitmap src, boolean wide) {
         int w = src.getWidth(), h = src.getHeight();
         int third = Math.max(1, h / 3);
         int[] px = new int[w * third];
@@ -296,11 +301,11 @@ final class Pics {
         Canvas c = new Canvas(out);
         Paint shape = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         shape.setShader(new android.graphics.BitmapShader(src, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP));
-        float r = w * PosterArt.RADIUS;
+        float r = (wide ? h : w) * PosterArt.RADIUS;
         c.drawRoundRect(0, 0, w, h, r, r, shape);
         Paint fade = new Paint(Paint.ANTI_ALIAS_FLAG);
         fade.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_ATOP));
-        fade.setShader(PosterArt.fadeShader(colour, h));
+        fade.setShader(PosterArt.fadeShader(colour, h, wide));
         c.drawRect(0, 0, w, h, fade);
         src.recycle();
         return out;
@@ -365,7 +370,7 @@ final class Pics {
         // A touch darker overall, as the guide's own pictures sit back behind their writing.
         Paint dim = new Paint();
         dim.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_ATOP));
-        dim.setColor(0x26062A66);
+        dim.setColor(Ui.tint(0x26062A66));
         c.drawRect(0, 0, w, h, dim);
         return out;
     }

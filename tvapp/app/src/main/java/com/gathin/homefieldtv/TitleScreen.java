@@ -118,6 +118,8 @@ final class TitleScreen extends Screen implements DetailPage.Host {
                 if (t == title || more.size() >= 30) continue;
                 PosterArt.Item it = new PosterArt.Item(t);
                 it.genre = PosterArt.genreOf(t.category);
+                Catalog.Details read = Catalog.get(tv).cachedDetails(t);
+                if (read != null) it.backdrop = read.backdrop;
                 more.add(it);
             }
         }

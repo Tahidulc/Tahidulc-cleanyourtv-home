@@ -46,9 +46,14 @@ public final class TvActivity extends Activity {
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         Ui.init(this);
+        // The theme's colours before any screen is made; the blue screens' ground tinted to match.
+        Theme.apply(this);
+        getWindow().setBackgroundDrawable(new android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR, new int[]{Ui.tint(0xFF0C4FAE), Ui.tint(0xFF06347C)}));
         Dark.init(this);
         PosterArt.init(this);
         Pics.init(this);
+        Cast.hello(this);
         FrameLayout root = new FrameLayout(this);
         screens = new FrameLayout(this);
         video = new FrameLayout(this);
@@ -65,6 +70,42 @@ public final class TvActivity extends Activity {
         cat.addListener(catalog);
         cat.ensure();
         push(new HomeScreen(this));
+        // Started again for a new theme: back on Settings where it was chosen.
+        if (reopenSettings >= 0) {
+            SettingsScreen s = new SettingsScreen(this);
+            push(s);
+            s.openAt(reopenSettings);
+            reopenSettings = -1;
+        }
+        handleCast(getIntent());
+    }
+
+    /** Settings' section to open again after the screens start again for a theme (-1: none). */
+    private static int reopenSettings = -1;
+
+    /** A new theme: every screen made again in its colours, Settings open where it was. */
+    void restartLook(int section) {
+        reopenSettings = section;
+        recreate();
+    }
+
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        handleCast(intent);
+    }
+
+    /** A channel sent from the family's phone (Cast): watched at once, a note of where it came from. */
+    private void handleCast(Intent i) {
+        if (i == null || !i.hasExtra(Cast.EXTRA_KEY)) return;
+        String key = i.getStringExtra(Cast.EXTRA_KEY), from = i.getStringExtra(Cast.EXTRA_FROM);
+        long at = i.getLongExtra(Cast.EXTRA_AT, 0L);
+        i.removeExtra(Cast.EXTRA_KEY);
+        if (Math.abs(System.currentTimeMillis() - at) > Cast.FRESH_MS) return;
+        Channel c = Library.get(this).byKey(key);
+        if (c == null) return;
+        watch(c);
+        android.widget.Toast.makeText(this, "Playing " + c.name + (from == null || from.isEmpty() ? "" : " from " + from),
+                android.widget.Toast.LENGTH_LONG).show();
     }
 
     private static FrameLayout.LayoutParams full() {
@@ -74,6 +115,7 @@ public final class TvActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         resumed = true;
+        Cast.hold(this);
         nextMinute();
         Library.get(this).ensure();
         Catalog.get(this).ensure();
@@ -84,6 +126,7 @@ public final class TvActivity extends Activity {
     @Override protected void onPause() {
         super.onPause();
         resumed = false;
+        Cast.release();
         h.removeCallbacks(minute);
         Screen t = top();
         if (t != null) t.hidden();

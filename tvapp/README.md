@@ -50,7 +50,10 @@ wordmark are Homefield; it carries no Sky logo or name.
   under it, "New" on the top left for a title the playlist added in the last fortnight, the best picture the family's
   playlists have of it on the top right (4K, 1080p or 720p in a white chip, read from the names, with the Dolby Vision
   or Atmos mark where a name says so), and the title and year under the card. The poster the remote is on grows a little
-  inside a white ring.
+  inside a white ring. Settings, Posters: Landscape makes every card 16:9, as the phone's landscape posters: the title's
+  wide backdrop (TMDB's at w780, the poster where there is none), the title at the foot's left in at most half the
+  card's width (where the phone puts the title's logo; the TV has no logos), the genre and rating left-aligned under it,
+  the fade rising from a quarter of the way down, the same badges and chips, and the title and year under the card.
 - **A title (dark):** its backdrop filling the screen and its title large; Play (or Resume where it was left) with round
   buttons beside it (My list's heart, from the start, the trailer in the TV's YouTube app); the playlist it is from, its
   story and facts in the middle, who is in it on the right. Down from there: a series' seasons as pills over one row of
@@ -62,7 +65,16 @@ wordmark are Homefield; it carries no Sky logo or name.
 - **Search:** channels, films and TV shows, typed on the on-screen keyboard.
 - **Settings:** the playlists (all of them together or one, their expiry dates), adding an M3U playlist or an Xtream
   Codes login, reading them again, removing everything, and the channel logos: on black tiles (each logo trimmed and set
-  in the middle of a black tile, a dark one turned light) or as the playlist gives them.
+  in the middle of a black tile, a dark one turned light) or as the playlist gives them. Theme: Homefield (as it came),
+  Midnight blue, Emerald, Crimson or Graphite, each with its own ground, panels, cards, accent, focus rings, guide
+  colours and badges, and a tint for the blue screens; a picture of the app under the list takes each theme's colours
+  as the remote moves through them, and OK keeps one (the screens start again in it, back on Settings). Posters:
+  Portrait / Landscape.
+- **From the phone:** while Homefield TV is open (or playing), the family's phone can send it the channel it is
+  watching (its Live TV's cast button). The TV makes itself known on the home network (`_homefieldtv._tcp`, with its
+  name) and answers only addresses on that network: the channel is played only when this TV's own playlists have it
+  (by its stream id, else its guide id, else its tidied name), with "Playing … from …" for a moment. The phone's stream
+  address and login are never used.
 
 ## Getting a playlist on to a TV
 
@@ -99,3 +111,4 @@ The APK is `app/build/outputs/apk/release/app-release.apk`, signed with the debu
 | 1.1 | Channel logos on black tiles, drawn as the TV launcher and the phone draw them: in the guide (the channel column and the large logo at the top), the channel banner's cards, Home's channel cards and its large picture, and Search. Each logo from the playlist is trimmed and set in the middle of a black tile; a white JPEG box round it is taken away and a mostly dark logo is turned light. Settings, Channel logos: on black tiles, or as the playlist gives them. |
 | 1.2 | Films and TV shows in a new dark look: the rail; every category at a glance under a big picture of the title the remote is on; the side panel of lists (All categories, all of them, Continue watching, My list, the categories with their counts) and a grid for each; posters drawn as the phone's (a fade into the poster's own colour, New, 4K / 1080p / 720p and Dolby marks from the playlists' names, genre and rating, title and year); a title's page with the backdrop full screen, Play and round buttons, the story, facts and cast, a series' season pills over one row of every episode, the trailer, the cast and more like it. My list (the heart). Names lose the picture and sound tags after them. Outfit (SIL Open Font License 1.1) for the dark screens. |
 | 1.3 | The TV guide and live TV in the dark look. The guide in the phone's guide's colours, with the categories (and their counts) down the side, the channel's band at the top over the programme's picture, and a strip under the channel's row with the programme's picture from Sky's public UK guide, its times, what it is and two lines about it. OK while watching brings up the banner with the picture's size and frame rate as the player has them and a row of the last ten channels watched on this TV; Up and Down bring up the live screen, the programme's picture behind and each category's channels as tiles with a picture of what's on, its title and a line about it. Pictures cross-fade, words fade and rise, pages cross-fade, and posters and tiles grow inside a ring as the remote moves. |
+| 1.4 | Colour themes in Settings, Theme: Homefield (as it came), Midnight blue, Emerald, Crimson and Graphite, each with its own ground, panels, cards, accent, focus rings, guide colours and New badge, and the blue screens tinted to match; a picture of the app under the list changes as the remote moves through them, and the one chosen is kept. Settings, Posters: Portrait / Landscape: landscape cards are 16:9 with the title's backdrop, as the phone's. The family's phone can send the channel it is watching to the TV while Homefield TV is open: played only when the TV's own playlists have it, from the home network only. |

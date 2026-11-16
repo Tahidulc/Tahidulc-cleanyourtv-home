@@ -99,4 +99,29 @@ public class DarkLookTest {
         assertEquals(0f, Billboard.rating("0"), 0.001f);
         assertEquals(0f, Billboard.rating("n/a"), 0.001f);
     }
+
+    @Test public void landscapePostersUseTheBackdropAtW780() {
+        assertEquals("https://image.tmdb.org/t/p/w780/abc.jpg", PosterArt.w780("https://image.tmdb.org/t/p/w1280/abc.jpg"));
+        assertEquals("https://image.tmdb.org/t/p/w780/abc.jpg", PosterArt.w780("https://image.tmdb.org/t/p/original/abc.jpg"));
+        assertEquals("https://image.tmdb.org/t/p/w780/abc.jpg", PosterArt.w780("https://image.tmdb.org/t/p/w780/abc.jpg"));
+        assertEquals("http://provider.example/images/abc.jpg", PosterArt.w780("http://provider.example/images/abc.jpg"));
+        assertEquals("", PosterArt.w780(null));
+    }
+
+    @Test public void landscapeFadeRisesHigherAsThePhones() {
+        assertTrue(Arrays.equals(new float[]{0f, 0.24f, 0.52f, 0.8f, 1f}, PosterArt.fadeStops(true)));
+        assertTrue(Arrays.equals(new float[]{0f, 0.42f, 0.64f, 0.82f, 1f}, PosterArt.fadeStops(false)));
+    }
+
+    @Test public void aLandscapeCardIsAsHighAsAPortraitOneIsWide() {
+        boolean was = PosterArt.landscape;
+        try {
+            PosterArt.landscape = false;
+            assertEquals(214f, PosterArt.cardWidth(214f), 0.001f);
+            PosterArt.landscape = true;
+            assertEquals(214f * 16f / 9f, PosterArt.cardWidth(214f), 0.001f);
+        } finally {
+            PosterArt.landscape = was;
+        }
+    }
 }

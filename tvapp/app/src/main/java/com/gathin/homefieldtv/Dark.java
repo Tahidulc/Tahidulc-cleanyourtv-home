@@ -19,10 +19,20 @@ import java.util.Locale;
 final class Dark {
     private Dark() {}
 
-    static final int GROUND = 0xFF0E0E11, RAIL = 0xFF141417, PANEL = 0xFF131316, CARD = 0xFF1E1E23, CARD_HI = 0xFF2A2A31;
+    // The theme's colours (Theme sets them as the app starts; Homefield's own until then).
+    static int GROUND = 0xFF0E0E11, RAIL = 0xFF141417, PANEL = 0xFF131316, CARD = 0xFF1E1E23, CARD_HI = 0xFF2A2A31;
     static final int TEXT = 0xFFFFFFFF, SOFT = 0xFFD1D1D6, MUTED = 0xFF8E8E93, FAINT = 0xFF5E5E66, LINE = 0x1FFFFFFF;
-    /** Homefield's amber: the page the rail is on, the button the remote is on, the stars. */
-    static final int ACCENT = 0xFFFFB547, ACCENT_INK = 0xFF1E1606;
+    /** The accent (Homefield's amber): the page the rail is on, the button the remote is on, the stars; its ink on it. */
+    static int ACCENT = 0xFFFFB547, ACCENT_INK = 0xFF1E1606;
+    /** The accent's lighter shade (the part of a programme already shown), the New badge, the focus rings. */
+    static int ACCENT_SOFT = 0xFFFFD48A, BADGE = 0xFFFFD25A, RING = 0xFFFFFFFF;
+    /** The guide's programme colours, picked by title. */
+    static final int[] DEEP = Theme.DEEP.clone();
+
+    /** Pure: a colour at an opacity (0 to 255). */
+    static int alpha(int colour, int a) {
+        return (colour & 0x00FFFFFF) | (Math.max(0, Math.min(255, a)) << 24);
+    }
 
     static Typeface outfit = Typeface.DEFAULT;
 

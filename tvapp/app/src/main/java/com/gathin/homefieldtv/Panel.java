@@ -45,12 +45,12 @@ final class Panel extends View {
     Panel(Context c) {
         super(c);
         strip.setColor(Ui.STRIP);
-        edge.setColor(0x804F92DA);
-        tvBack.setColor(0xFF07306E);
+        edge.setColor(Ui.tint(0x804F92DA));
+        tvBack.setColor(Ui.tint(0xFF07306E));
         tvLine.setStyle(Paint.Style.STROKE);
         tvLine.setStrokeWidth(Math.max(1f, Ui.f(1.5f)));
         tvLine.setColor(0x55FFFFFF);
-        word.setShader(new LinearGradient(0, Ui.f(62), 0, Ui.f(116), 0xFFFFFFFF, 0xFF9CD4FF, Shader.TileMode.CLAMP));
+        word.setShader(new LinearGradient(0, Ui.f(62), 0, Ui.f(116), 0xFFFFFFFF, Ui.tint(0xFF9CD4FF), Shader.TileMode.CLAMP));
         word.setLetterSpacing(-0.02f);
     }
 

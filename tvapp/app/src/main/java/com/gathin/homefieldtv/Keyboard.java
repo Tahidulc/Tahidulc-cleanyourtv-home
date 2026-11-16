@@ -57,7 +57,7 @@ final class Keyboard extends View {
     private final Glow glow = new Glow();
     private final TextPaint keyP = Ui.paint(32, false, Ui.WHITE), keyOn = Ui.paint(32, true, Ui.WHITE), smallKey = Ui.paint(26, false, Ui.WHITE);
     private final TextPaint labelP = Ui.paint(26, false, Ui.DIM), fieldP = Ui.paint(36, false, Ui.WHITE), hintP = Ui.paint(32, false, Ui.FAINT);
-    private final Paint keyBack = Ui.fill(0x21FFFFFF), fieldBack = Ui.fill(0x40062A66), fieldLine = Ui.stroke(0x80FFFFFF, 1.5f);
+    private final Paint keyBack = Ui.fill(0x21FFFFFF), fieldBack = Ui.fill(Ui.tint(0x40062A66)), fieldLine = Ui.stroke(0x80FFFFFF, 1.5f);
     private final Paint caret = Ui.fill(Ui.CYAN);
     private final RectF r = new RectF();
 
