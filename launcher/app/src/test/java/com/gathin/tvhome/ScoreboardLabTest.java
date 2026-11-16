@@ -11,7 +11,6 @@ import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -27,8 +26,8 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
- * The Scoreboard Lab on the TV's board (5.27): its five looks and logos, a goal's crest burst every game (5.28; the other
- * sets kept), the net after every goal, the quiet sounds, the red card, VAR and the sub swap, the weather touch and the momentum wave, and the Lab's stats
+ * The Scoreboard Lab on the TV's board (5.27): its five looks and logos, the goal's three sets by game, the net after every
+ * goal, the quiet sounds, the red card, VAR and the sub swap, the weather touch and the momentum wave, and the Lab's stats
  * with their switches. Made-up clubs only (Whitebrook WHI, Riverside RIV) and made-up game ids.
  */
 public class ScoreboardLabTest {
@@ -98,13 +97,15 @@ public class ScoreboardLabTest {
         assertEquals(40f, LogoMark.labHeight(0f, 160f, 40f), 0f);
     }
 
-    // ---- a goal: the crest burst, then the net, every game ------------------------------------------------------------
+    // ---- a goal: three sets, by game -------------------------------------------------------------------------------
 
     @Test
-    public void everyGameScoresInTheCrestBurstAndTheKitsKeepTheirOwn() {
+    public void eachGameHasOneOfTheThreeGoalSetsAndKeepsIt() {
         Set<Integer> seen = new HashSet<>();
         for (String g : GAMES) {
             int set = BoardFx.goalSet(g);
+            assertTrue(set >= BoardFx.GOAL_BAND && set <= BoardFx.GOAL_BURST);
+            assertEquals(set, BoardFx.goalSet(g));
             seen.add(set);
             // Every look draws the game's set; the 3D kits keep their own gold GOAL (today's band).
             assertEquals(set, BoardBug.setFor(BoardBug.Style.CLASSIC, set));
@@ -112,11 +113,7 @@ public class ScoreboardLabTest {
             assertEquals(set, BoardBug.setFor(BoardBug.Style.PL_WORLD, set));
             assertEquals(BoardFx.GOAL_BAND, BoardBug.setFor(BoardBug.Style.KITS, set));
         }
-        // the crest burst (the score rolling up in it) and the net after it, game after game, a game known or not
-        assertEquals(Collections.singleton(BoardFx.GOAL_BURST), seen);
-        assertEquals(BoardFx.GOAL_BURST, BoardFx.goalSet(""));
-        assertEquals(CompBug.MOVE_ROLL, (int) BoardBug.moveAt(BoardFx.GOAL_BURST, false, BoardFx.ROLL_FROM + 1)[0]);
-        assertTrue(BoardBug.meshAt(BoardFx.GOAL_BURST) >= BoardFx.ROLL_TO + BoardFx.RING_GAP);
+        assertEquals(3, seen.size());
     }
 
     @Test

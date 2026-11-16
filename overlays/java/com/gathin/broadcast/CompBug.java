@@ -1678,26 +1678,17 @@ public final class CompBug {
     /** A look's own half-time face (the LED board's amber blocks), 0 for the plain one. */
     private int faceGround, faceInk;
 
-    /**
-     * A figure on its way in: rolling up as the one before it rolls away, as an odometer's wheel does, seen only in the
-     * figure's own cell (never over the clock under it or above the board, however big the look's figures are); or
-     * turning down into place from above.
-     */
+    /** A figure on its way in: rolling up as the one before it rolls away, or turning down into place from above. */
     private void moving(Canvas cv, Data d, String was, String now, float cx, float cy, float size, int ink, Typeface tf) {
         float at = Math.max(0f, d.moveAt);
         float w = Math.max(tw(was, size, tf), tw(now, size, tf)) + size * 0.4f;
         cv.save();
+        cv.clipRect(cx - w / 2f, cy - size * 0.66f, cx + w / 2f, cy + size * 0.66f);
         if (d.move == MOVE_ROLL) {
-            float[] cell = rollCell(capHeight(size, tf), size);
-            cv.clipRect(cx - w / 2f, cy - cell[0], cx + w / 2f, cy + cell[0]);
-            float e = rollEase(at), travel = cell[1];
+            float e = rollEase(at), travel = size * 1.15f;
             words(cv, was, cx, cy - e * travel, size, 0, faded(ink, 1f - Math.min(1f, e)), tf, 0);
             words(cv, now, cx, cy + (1f - e) * travel, size, 0, ink, tf, 0);
-            cv.restore();
-            return;
-        }
-        cv.clipRect(cx - w / 2f, cy - size * 0.66f, cx + w / 2f, cy + size * 0.66f);
-        if (at <= 0f) {
+        } else if (at <= 0f) {
             words(cv, was, cx, cy, size, 0, ink, tf, 0);
         } else {
             cv.translate(0, -flipLift(at) * size);
@@ -1707,35 +1698,14 @@ public final class CompBug {
         cv.restore();
     }
 
-    /**
-     * Pure: a rolling figure's cell, {half its height about the figure's middle, how far one figure rolls to the next},
-     * from the figures' height (their capitals') at size: the figure and a little room above and below it, the next
-     * figure a small gap below, so the old one is gone out of the top as the new one comes up into place.
-     */
-    public static float[] rollCell(float cap, float size) {
-        float half = cap / 2f + size * 0.07f;
-        return new float[]{half, cap + size * 0.22f};
-    }
-
-    /** The height of the figures' capitals in this face at size. */
-    private float capHeight(float size, Typeface tf) {
-        text.setTypeface(tf);
-        text.setTextSize(size);
-        text.getTextBounds("H8", 0, 2, bounds);
-        return -bounds.top;
-    }
-
     /** A colour at a share of its own see-through. */
     private static int faded(int c, float a) {
         return (Math.round((c >>> 24) * Math.max(0f, Math.min(1f, a))) << 24) | (c & 0xFFFFFF);
     }
 
-    /** The world feed's large score: white with a soft shadow under it (the shadow moving with it as a goal's figure comes in). */
+    /** The world feed's large score: white with a soft shadow under it. */
     private void bigDigit(Canvas cv, Data d, String s, int side, float cx, float cy, float size) {
-        String was = d.move != 0 && d.moveAt < 1f && d.before != null && d.before.length >= side ? d.before[side - 1] : null;
-        float sx = cx + size * 0.02f, sy = cy + size * 0.025f;
-        if (was != null && s != null && !was.equals(s) && !d.htFace) moving(cv, d, was, s, sx, sy, size, 0x66000000, mont8);
-        else words(cv, s, sx, sy, size, 0, 0x66000000, mont8, 0);
+        words(cv, s, cx + size * 0.02f, cy + size * 0.025f, size, 0, 0x66000000, mont8, 0);
         scoreOne(cv, d, s, side, cx, cy, size, INK, mont8);
     }
 

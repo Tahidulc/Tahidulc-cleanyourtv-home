@@ -19,11 +19,10 @@ import java.util.Set;
  * for the tests), and how it is drawn over the board (an instance per board, its paints kept, nothing made per frame).
  *
  * <ul>
- *   <li>A goal, every game (goalSet): the Lab's burst (the scorers' crest pops with rings in their colour while the
- *   score rolls up like an odometer, their side glowing), then, once it has settled, the net shivering across the board
- *   (netMesh). The 3D kits look keeps its own gold GOAL (today's broadcast band, the net after it); the Lab's flip (the
- *   scorers' side washing in their colour, a shine, the new figure turning down into place) is kept, unused, should a
- *   rotation come back.</li>
+ *   <li>A goal, in one of three sets a game keeps all through (pick): today's broadcast band; the Lab's flip (the
+ *   scorers' side washes in their colour, a shine sweeps the board, the new figure turns down into place); or the Lab's
+ *   burst (the scorers' crest pops with rings in their colour, the score rolls up, their side glows). Every goal ends
+ *   with the net shivering across the board (netMesh).</li>
  *   <li>A red card swinging up under the board and tucking away; VAR's dot pulsing on its check; the substitution
  *   card's players crossing over with their green and red arrows; half time's face; a shootout's dots in the clock's
  *   place; the momentum wave once or twice a half; the ground's weather two or three times a game.</li>
@@ -50,12 +49,9 @@ public final class BoardFx {
     /** A goal's sets: today's band, the Lab's flip, the Lab's burst. */
     public static final int GOAL_BAND = 0, GOAL_FLIP = 1, GOAL_BURST = 2;
 
-    /**
-     * Pure: the goal set a game's goals come in: the crest burst and then the net, every game (the family's choice, 16
-     * Nov 2026, over the three sets taking turns game by game).
-     */
+    /** Pure: the goal set a game keeps for all its goals. */
     public static int goalSet(String gameId) {
-        return GOAL_BURST;
+        return pick(gameId, "goal", 3);
     }
 
     /** Pure: whether a game's half time shows the score turned over (each figure in its own small block) after the board turns. */
@@ -72,17 +68,11 @@ public final class BoardFx {
 
     /** The flip set, in ms from the goal: the side's wash, the shine, the new figure turning in; FLIP_MS in all. */
     public static final long FLIP_MS = 2600, WASH_MS = 1800, SHINE_MS = 1100, FLIP_FROM = 150, FLIP_TO = 850;
-    /**
-     * The burst set, in ms from the goal: the rings, the crest's pop, the score's roll, the side's glow, then its net;
-     * BURST_MS in all (MESH_AFTER_BURST + MESH_MS: the net's end).
-     */
-    public static final long BURST_MS = 2700, RINGS_MS = 2000, RING_GAP = 300, RING_MS = 1400, POP_MS = 600, ROLL_FROM = 500,
+    /** The burst set, in ms from the goal: the rings, the crest's pop, the score's roll, the side's glow; BURST_MS in all. */
+    public static final long BURST_MS = 2400, RINGS_MS = 2000, RING_GAP = 300, RING_MS = 1400, POP_MS = 600, ROLL_FROM = 500,
             ROLL_TO = 1300, GLOW_FROM = 300, GLOW_TO = 1800;
-    /**
-     * When the net shivers in each set, from the goal (the band's after its band, as the boards have it): the burst's
-     * once it has settled (the crest back in the board, the new score landed, the rings gone), not over it.
-     */
-    public static final long MESH_AFTER_FLIP = 1200, MESH_AFTER_BURST = 1600;
+    /** When the net shivers in each set, from the goal (the band's sets after their band, as the boards have it). */
+    public static final long MESH_AFTER_FLIP = 1200, MESH_AFTER_BURST = 1300;
     /** The net's shiver itself: rising to its height, swelling, fading; MESH_MS long. */
     public static final long MESH_MS = 1100, MESH_PEAK = 260, MESH_SETTLE = 660;
 

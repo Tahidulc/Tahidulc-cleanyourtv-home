@@ -254,7 +254,7 @@ final class BoardBug extends View {
     private final com.gathin.broadcast.BoardFx fx = new com.gathin.broadcast.BoardFx();
     /** The game shown (its moments are picked by it), its goals' set, whether its half time and shootout have the Lab's. */
     private String gameId = "";
-    private int goalSet = com.gathin.broadcast.BoardFx.goalSet(gameId);
+    private int goalSet = com.gathin.broadcast.BoardFx.GOAL_BAND;
     private boolean htFaceGame, pensClockGame;
     /** The score before the goal on now: its new figure rolls or flips in from it. */
     private String scoreWas = "";
@@ -451,9 +451,9 @@ final class BoardBug extends View {
     private final Matrix shineAt = new Matrix();
 
     /**
-     * A goal for side 1 (home) or 2 (away), in the game's set (BoardFx.goalSet, the crest burst every game): the scorers'
-     * crest popping with rings in their colour as the score rolls up, then the net shivering across the board, each with
-     * its own quiet sound (the 3D kits their own gold GOAL, today's band, with the family's swish on its new score).
+     * A goal for side 1 (home) or 2 (away), in the game's set (BoardFx.goalSet): as broadcasters show one with the family's
+     * swish on its new score (today's band), the Lab's flip or its crest burst; the net shivering across the board after
+     * every one, each with its own quiet sound.
      */
     void goal(int side) {
         flashSide = side;
@@ -468,7 +468,7 @@ final class BoardBug extends View {
         postInvalidateOnAnimation();
     }
 
-    /** The game shown: its goals' set (the burst), half time's face and the shootout's place, the same all game (BoardFx.pick). */
+    /** The game shown: its goals' set, half time's face and the shootout's place, the same all game (BoardFx.pick). */
     void game(String id) {
         String g = id == null ? "" : id;
         if (g.equals(gameId)) return;

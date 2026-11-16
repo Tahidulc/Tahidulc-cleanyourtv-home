@@ -442,11 +442,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         BurnGuard.dimLayer(this, on);
     }
 
-    /**
-     * A goal for side 1 (home) or 2 (away) in its set (setFor): the scorers' crest popping with rings in their colour as
-     * the score rolls up, then the net shivering across the board, each with its own quiet sound; the 3D kits' own gold
-     * GOAL band (GOAL_MS in all) with the family's swish on its new score.
-     */
+    /** A goal for side 1 (home) or 2 (away), as broadcasters show one (GOAL_MS in all), the family's swish on its new score. */
     void goal(int side) {
         flashSide = side;
         goalAt = System.currentTimeMillis();
@@ -511,12 +507,9 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         return gameId;
     }
 
-    /**
-     * Pure: the set a look shows a game's goals in: the 3D kits keep their own (the band's); every other look the game's,
-     * the crest burst and then the net (BoardFx.goalSet), with or without a game known.
-     */
+    /** Pure: the set a look shows a game's goals in: the 3D kits keep their own (the band's), no game the band; else the game's. */
     static int setFor(Style s, String gameId) {
-        if (s == Style.KITS) return com.gathin.broadcast.BoardFx.GOAL_BAND;
+        if (s == Style.KITS || gameId == null || gameId.isEmpty()) return com.gathin.broadcast.BoardFx.GOAL_BAND;
         return com.gathin.broadcast.BoardFx.goalSet(gameId);
     }
 
