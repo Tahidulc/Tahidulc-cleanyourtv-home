@@ -26,8 +26,9 @@ import java.util.Locale;
  */
 final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Host {
     private static final List<String> MENU = Arrays.asList("Your playlists", "Add an M3U playlist", "Add an Xtream Codes login",
-            "Refresh now", "Remove everything", "Channel logos", "Theme", "Posters", "About");
-    static final int PLAYLISTS = 0, ADD_M3U = 1, ADD_XTREAM = 2, REFRESH = 3, CLEAR = 4, LOGOS = 5, THEME = 6, POSTERS = 7, ABOUT = 8;
+            "Refresh now", "Remove everything", "Channel logos", "Theme", "Posters", "Scoreboard", "About");
+    static final int PLAYLISTS = 0, ADD_M3U = 1, ADD_XTREAM = 2, REFRESH = 3, CLEAR = 4, LOGOS = 5, THEME = 6, POSTERS = 7, SCOREBOARD = 8,
+            ABOUT = 9;
 
     private Strip strip;
     private ListPanel menu, content;
@@ -212,6 +213,9 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
                 out.add(new ListPanel.Item(null, ListPanel.NOTE, "On the film and TV show rows, the grids and More like this.", ""));
                 break;
             }
+            case SCOREBOARD:
+                BoardSettings.fill(tv, out);
+                break;
             default:
                 out.add(new ListPanel.Item(null, ListPanel.NOTE, "Homefield TV " + version(), ""));
                 out.add(new ListPanel.Item(null, ListPanel.NOTE, "Live TV, the guide, films and TV shows come only from your own playlists.", ""));
@@ -415,6 +419,14 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
                 fillContent();
                 content.setFocus(confirm ? 1 : 0);
                 return;
+            case SCOREBOARD: {
+                int at = content.focusIndex();
+                if (BoardSettings.chosen(tv, t)) {
+                    fillContent();
+                    content.setFocus(at);
+                }
+                return;
+            }
             default:
         }
     }

@@ -60,6 +60,8 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
     private Backdrop browseBack;
     private BrowseInfo info;
     private BrowseRows rows;
+    /** The scoreboard over a match (BoardLayer): it takes the remote first while its menu or its card is up. */
+    private BoardLayer board;
     /** The live screen's rows (the playlist's groups) and where the remote is in them. */
     private final List<Row> groups = new ArrayList<>();
     private int row, col;
@@ -108,6 +110,8 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
         browse.addView(rows, new FrameLayout.LayoutParams(-1, -1));
         browse.setVisibility(View.GONE);
         banner = new Banner(tv);
+        board = new BoardLayer(tv);
+        root.addView(board, new FrameLayout.LayoutParams(-1, -1));
         root.addView(browse, new FrameLayout.LayoutParams(-1, -1));
         root.addView(banner, new FrameLayout.LayoutParams(-1, -1));
         return root;
@@ -123,9 +127,11 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
             tv.live.play(tv.live.channel());
         }
         setMode(BANNER);
+        board.start();
     }
 
     @Override void hidden() {
+        board.stop();
         tv.live.removeListener(this);
         h.removeCallbacks(hide);
         h.removeCallbacks(digitsDone);
@@ -321,6 +327,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
     // ---- the remote ---------------------------------------------------------------------------------------------
 
     @Override boolean key(int code, KeyEvent e) {
+        if (board.key(code)) return true;
         if (code >= KeyEvent.KEYCODE_0 && code <= KeyEvent.KEYCODE_9) {
             digits += (char) ('0' + code - KeyEvent.KEYCODE_0);
             h.removeCallbacks(digitsDone);
@@ -373,6 +380,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
     }
 
     @Override void ok() {
+        if (board.ok()) return;
         switch (mode) {
             case BROWSE:
                 tune(browseChannel());
@@ -395,6 +403,8 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
     }
 
     @Override void okLong() {
+        // Over a match with nothing else up: the scoreboard's menu, as OK held over TiviMate on the launcher.
+        if (mode == NONE && board.okLong()) return;
         Channel c = mode == BROWSE ? browseChannel() : mode == BANNER && pick >= 0 && pick < recent.size() ? recent.get(pick) : tv.live.channel();
         if (c == null) return;
         boolean now = Library.get(tv).toggleFavourite(c);
@@ -404,6 +414,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
     }
 
     @Override boolean back() {
+        if (board.back()) return true;
         if (mode != NONE) {
             setMode(NONE);
             return true;
