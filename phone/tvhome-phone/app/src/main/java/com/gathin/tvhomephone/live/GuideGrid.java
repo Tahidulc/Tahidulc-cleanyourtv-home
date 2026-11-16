@@ -209,9 +209,12 @@ final class GuideGrid extends FrameLayout {
         adapter.notifyItemRangeChanged(0, adapter.getItemCount(), SELECTION);
     }
 
-    /** The width the time runs across: the whole row (the logo's tile lies over its start). */
+    /**
+     * The width the time runs across: the whole row from its start to the screen's edge (the logo's tile lies over its
+     * start; the programmes run on past the right edge, as the screen is filled).
+     */
     private float viewport() {
-        return getWidth() - 2f * margin;
+        return getWidth() - (float) margin;
     }
 
     private void setOffset(float o) {
@@ -675,7 +678,8 @@ final class GuideGrid extends FrameLayout {
             super(new FrameLayout(c));
             FrameLayout item = (FrameLayout) itemView;
             item.setLayoutParams(new RecyclerView.LayoutParams(-1, rowH));
-            item.setPadding(margin, 0, margin, Ui.dp(c, 8));
+            // No inset at the right: the programmes run to the screen's edge (5.15), not into a black strip.
+            item.setPadding(margin, 0, 0, Ui.dp(c, 8));
             blocks = new Blocks(c, st);
             blocks.noGuide = c.getString(R.string.live_no_guide_info);
             item.addView(blocks, new FrameLayout.LayoutParams(-1, -1));

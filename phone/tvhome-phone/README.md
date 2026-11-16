@@ -586,3 +586,12 @@ its name, two lines of what happens and "1h 7m, 9 Oct 2022". Scrolling the row s
 a season's tab slides the row to its first episode. The page opens on the episode up next, marked Up next with how far in
 it was left. Episodes the playlists don't have are dimmed, and holding a card shows all of what happens. The season up next
 is read first, and the others as the row comes near them.
+
+**The guide to the screen's edge (5.15).** Live TV's guide no longer stops short of the right edge. The programmes used to
+be cut off a little before it, leaving a black strip down the side. Now they run on to the edge of the screen, as the times
+along the top already did. The channels' logo tiles keep their place at the left.
+
+**A channel for every game (5.15).** A game no British channel is listed for no longer shows only "Also Showing On". Its page
+now names the channel from the family's own playlists likeliest to show it, with its logo, and a tap plays it. English
+channels come first: a "UK:", "US:" or "IE -" tag, or a British, Irish or American network. Next come channels that don't
+say, then those in another language. "Also Showing On" and the Watch buttons on alerts list English channels first too.

@@ -45,6 +45,8 @@ public class GameActivity extends AppCompatActivity {
     private Game game;
     private Espn.Summary summary = new Espn.Summary();
     private String channel;
+    /** No British channel listed for the game: the playlist channel likeliest to show it (an English one first). */
+    private com.gathin.tvhomephone.live.AlsoShowing.Shown shown;
     private boolean channelKnown;
     private int tab = -1;
     private LinearLayout hero, tabs, body;
@@ -90,10 +92,21 @@ public class GameActivity extends AppCompatActivity {
         col.addView(body, Ui.matchWrap());
         setContentView(scroll);
         paint();
+        android.content.Context app = getApplicationContext();
         App.io.execute(() -> {
             String ch = Channels.best(this, game);
+            com.gathin.tvhomephone.live.AlsoShowing.Shown alt = null;
+            if (ch == null && game.state != Game.POST) {
+                try {
+                    alt = com.gathin.tvhomephone.live.AlsoShowing.shown(app, game);
+                } catch (RuntimeException ignored) {
+                    // the playlists not readable now: Also Showing On alone, as before
+                }
+            }
+            com.gathin.tvhomephone.live.AlsoShowing.Shown pick = alt;
             App.main.post(() -> {
                 channel = ch;
+                shown = pick;
                 channelKnown = true;
                 if (!isFinishing()) paintHero();
             });
@@ -177,8 +190,10 @@ public class GameActivity extends AppCompatActivity {
         card.addView(venue, Ui.margins(this, 0, 14, 0, 0));
         LinearLayout actions = Ui.column(this);
         actions.setGravity(Gravity.CENTER_HORIZONTAL);
-        if (channel != null) {
-            View on = Ui.liveOn(this, channel);
+        if (channel != null || shown != null) {
+            com.gathin.tvhomephone.live.AlsoShowing.Shown s = shown;
+            View on = channel != null ? Ui.liveOn(this, channel) : Ui.liveOnPlaylist(this, s.name, s.logo,
+                    () -> com.gathin.tvhomephone.live.PlayerActivity.start(this, s.ch.key, com.gathin.tvhomephone.live.Library.ALL));
             on.setBackground(Ui.fill(this, 0x24FFFFFF, 18));
             on.setPadding(Ui.dp(this, 14), Ui.dp(this, 6), Ui.dp(this, 14), Ui.dp(this, 6));
             actions.addView(on, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));

@@ -24,8 +24,9 @@ import java.util.List;
 /**
  * "Also Showing On": the family's own playlists' channels for the same game, each with its logo, the likeliest first
  * and the one to watch marked: an event channel named for the game ("EPL 03: Arsenal v Chelsea"), those whose guide
- * has the game, and the playlists' channels of the broadcasters it is on (its 4K/UHD channel too, marked 4K).
- * Broadcasters the playlists have none of are named only when they have nothing.
+ * has the game, and the playlists' channels of the broadcasters it is on (its 4K/UHD channel too, marked 4K). English
+ * channels come before the others (a "UK:" or "US:" tag, a British or American network), then those that don't say,
+ * then those in another language. Broadcasters the playlists have none of are named only when they have nothing.
  */
 public final class AlsoShowing {
     private AlsoShowing() {}
@@ -42,6 +43,8 @@ public final class AlsoShowing {
         boolean now, uhd, best;
         /** How sure it is to show the game: by the guide, by a broadcaster, a favourite, the better picture. */
         int score;
+        /** In English: 2 sure, 1 not known, 0 another language (english()). */
+        int english = 1;
     }
 
     /** Opens the list for a game, read off the main thread; a note when nothing else shows it. */
@@ -163,6 +166,7 @@ public final class AlsoShowing {
         r.logo = Ui.logo(ch);
         r.uhd = Names.uhd(ch.name);
         r.now = current != null && current.key.equals(ch.key);
+        r.english = english(ch.name + " " + (ch.group == null ? "" : ch.group));
         if (fav.contains(ch.key)) r.score += 2;
         if (r.uhd) r.score += 1;
         return r;
@@ -175,8 +179,111 @@ public final class AlsoShowing {
         return null;
     }
 
+    /** What plays now, then a playlist channel, then English before not known before another language, then how sure. */
     private static int rank(Row r) {
-        return (r.now ? 1000 : 0) + (r.ch != null ? 100 : 0) + r.score;
+        return (r.now ? 1000 : 0) + (r.ch != null ? 100 + r.english * 30 : 0) + r.score;
+    }
+
+    /** For the match page when no British channel is listed for the game: the playlist channel to watch it on. */
+    public static final class Shown {
+        public final Channel ch;
+        /** Its name made plain ("Premier Sports 1" for "UK: PREMIER SPORTS 1 FHD") and its logo (null for none). */
+        public final String name, logo;
+
+        Shown(Channel ch, String name, String logo) {
+            this.ch = ch;
+            this.name = name;
+            this.logo = logo;
+        }
+    }
+
+    /** The playlist channel likeliest to show the game, an English one first, with its logo; null for none. Off the main thread. */
+    public static Shown shown(Context c, Game g) {
+        if (g == null) return null;
+        for (Row r : rows(c, g, null)) {
+            if (r.ch == null) continue;
+            String logo = r.logo != null && !r.logo.isEmpty() ? r.logo : Ui.logo(r.ch);
+            if (logo == null || logo.isEmpty()) logo = ChannelLogos.find(c, tidy(r.ch.name));
+            return new Shown(r.ch, tidy(r.ch.name), logo);
+        }
+        return null;
+    }
+
+    private static final java.util.Set<String> ENGLISH_TAGS = new java.util.HashSet<>(java.util.Arrays.asList(
+            "uk", "gb", "en", "eng", "english", "england", "ie", "irl", "ireland", "us", "usa", "ca", "can", "au", "aus", "nz",
+            "sco", "scotland", "wales", "nir"));
+    private static final java.util.Set<String> OTHER_TAGS = new java.util.HashSet<>(java.util.Arrays.asList(
+            "de", "ger", "at", "ch", "fr", "fra", "es", "esp", "spa", "nl", "pt", "por", "be", "it", "ita", "pl", "pol", "tr",
+            "tur", "ar", "arab", "arabic", "br", "bra", "mx", "lat", "latam", "latino", "gr", "ro", "hu", "cz", "sk", "se",
+            "swe", "no", "nor", "dk", "den", "fi", "fin", "ru", "rus", "ua", "il", "ir", "kr", "jp", "cn", "al", "alb", "exyu",
+            "yu", "hr", "rs", "srb", "ba", "si", "bg", "mk", "ma", "dz", "tn", "eg", "sa", "ae", "qa", "kw", "af", "pk", "bd",
+            "ku", "vf", "vost"));
+    /** Words that say a channel speaks another language, wherever they are. */
+    private static final String[] OTHER_WORDS = {" arabic ", " french ", " german ", " spanish ", " italian ", " portuguese ",
+            " turkish ", " polish ", " dutch ", " greek ", " russian ", " hindi ", " urdu ", " bangla ", " deutsch ",
+            " espanol ", " francais ", " deportes ", " latino ", " latam "};
+    /** British, Irish, American and Australian networks, in English whatever their tag says. */
+    private static final String[] ENGLISH_NETWORKS = {" sky sports ", " tnt sport ", " tnt sports ", " bt sport ", " bbc ",
+            " itv ", " itv1 ", " itv4 ", " channel 4 ", " channel 5 ", " premier sports ", " viaplay sports ", " eurosport 1 ",
+            " espn ", " fox sports ", " nbc ", " cbs ", " tsn ", " sportsnet ", " optus ", " stan sport ", " peacock ",
+            " sky sport news ", " racing tv ", " free sports ", " s4c "};
+
+    /**
+     * Pure: how sure a channel (its name and group) is to be in English: 2 for an English tag ("UK:", "|US|", "IE -",
+     * "[EN]") or a British, Irish, American or Australian network; 0 for another country's or language's tag or a word
+     * that says so ("AR:", "|DE|", "Arabic", "Deportes"); 1 when it doesn't say.
+     */
+    static int english(String nameAndGroup) {
+        String n = words(nameAndGroup);
+        // Said outright ("Al Jazeera English", "beIN Sports English") whatever the first word looks like.
+        if (n.contains(" english ")) return 2;
+        String[] toks = n.trim().split(" ");
+        if (toks.length > 0 && !toks[0].isEmpty()) {
+            if (ENGLISH_TAGS.contains(toks[0])) return 2;
+            if (OTHER_TAGS.contains(toks[0])) return 0;
+        }
+        for (String w : OTHER_WORDS) if (n.contains(w)) return 0;
+        if (n.contains(" eng ")) return 2;
+        for (String net : ENGLISH_NETWORKS) if (n.contains(net)) return 2;
+        if (toks.length > 1) {
+            String last = toks[toks.length - 1];
+            if (ENGLISH_TAGS.contains(last)) return 2;
+            if (OTHER_TAGS.contains(last)) return 0;
+        }
+        return 1;
+    }
+
+    private static final java.util.regex.Pattern LEAD = java.util.regex.Pattern.compile("^\\s*[\\[(|]?\\s*([A-Za-z]{2,7})\\s*[\\])|:\\-]+\\s*");
+    private static final java.util.regex.Pattern TAIL = java.util.regex.Pattern.compile(
+            "(?i)(\\s+(?:hd|fhd|uhd|4k|sd|hevc|raw|h265|1080p|720p|50fps|60fps|backup|bk|alt|vip|\\u1D34\\u1D30))+\\s*$");
+
+    /** Names kept in capitals when a channel's name is all capitals (the rest become words: "BBC One", "TNT Sports"). */
+    private static final java.util.Set<String> ACRONYMS = new java.util.HashSet<>(java.util.Arrays.asList(
+            "BBC", "ITV", "TNT", "ESPN", "NBC", "CBS", "TSN", "BT", "UK", "US", "USA", "MTV", "CNN", "RTE", "LFC", "MUTV", "NFL",
+            "NBA", "NHL", "MLB", "UFC", "WWE", "PGA", "ATP", "WTA", "DAZN", "HD", "UHD", "EPL", "SPL", "SRF", "ORF", "ZDF", "ARD",
+            "RAI", "TV", "EFL", "PDC", "NOW"));
+
+    /** Pure: a playlist channel's name made plain: its country tag and picture tags gone, capitals made words ("TNT Sports 1"). */
+    static String tidy(String name) {
+        String n = name == null ? "" : name.trim();
+        java.util.regex.Matcher m = LEAD.matcher(n);
+        if (m.lookingAt() && m.end() < n.length()) {
+            String tag = m.group(1).toLowerCase(java.util.Locale.ROOT);
+            if (ENGLISH_TAGS.contains(tag) || OTHER_TAGS.contains(tag)) n = n.substring(m.end());
+        }
+        n = TAIL.matcher(n).replaceAll("").trim();
+        n = n.replaceAll("\\s+", " ");
+        if (!n.isEmpty() && n.equals(n.toUpperCase(java.util.Locale.ROOT))) {
+            StringBuilder b = new StringBuilder();
+            for (String w : n.split(" ")) {
+                if (b.length() > 0) b.append(' ');
+                boolean letters = w.chars().allMatch(Character::isLetter);
+                if (!letters || ACRONYMS.contains(w)) b.append(w);
+                else b.append(w.charAt(0)).append(w.substring(1).toLowerCase(java.util.Locale.ROOT));
+            }
+            n = b.toString();
+        }
+        return n.isEmpty() ? (name == null ? "" : name.trim()) : n;
     }
 
     /** Whether words name both clubs (a guide that says "Dortmund v Betis" without the word "Live"). */
