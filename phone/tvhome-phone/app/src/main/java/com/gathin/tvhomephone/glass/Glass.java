@@ -118,20 +118,33 @@ public final class Glass {
         void fit(int top, int bottom);
     }
 
+    /** The insets a page filling the window fits itself to on every side (fitSides). */
+    public interface FitSides {
+        void fit(int left, int top, int right, int bottom);
+    }
+
     /**
      * Calls fit with the status bar's height and the room a page leaves at its foot (the navigation bar, the floating
      * tab bar and a gap), now and whenever they change. A glass page draws under the status bar and the tab bar.
      */
     public static void fit(View v, Fit f) {
+        fitSides(v, (left, top, right, bottom) -> f.fit(top, bottom));
+    }
+
+    /**
+     * As fit, with the system bars' widths at the sides too (the navigation bar sits at a side on a phone turned round
+     * with its three buttons), for a page that fills the window edge to edge.
+     */
+    public static void fitSides(View v, FitSides f) {
         Context c = v.getContext();
         int bar = dp(c, BAR_DP + BAR_GAP_DP + 16);
         ViewCompat.setOnApplyWindowInsetsListener(v, (view, ins) -> {
             Insets s = ins.getInsets(WindowInsetsCompat.Type.systemBars());
             int ime = ins.getInsets(WindowInsetsCompat.Type.ime()).bottom;
-            f.fit(s.top, Math.max(s.bottom + bar, ime));
+            f.fit(s.left, s.top, s.right, Math.max(s.bottom + bar, ime));
             return ins;
         });
-        f.fit(0, bar);
+        f.fit(0, 0, 0, bar);
         // The insets come round again once it is on the screen (a page made before it was attached gets them then).
         if (v.isAttachedToWindow()) ViewCompat.requestApplyInsets(v);
         else v.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {

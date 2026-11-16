@@ -10,8 +10,8 @@ android {
         applicationId 'com.gathin.tvhomephone'
         minSdk 26
         targetSdk 34
-        versionCode 141
-        versionName '5.10'
+        versionCode 142
+        versionName '5.11'
         // Phones: the ARM builds of the native parts (the sound decoder, the text reader) only.
         ndk {
             abiFilters 'arm64-v8a', 'armeabi-v7a'

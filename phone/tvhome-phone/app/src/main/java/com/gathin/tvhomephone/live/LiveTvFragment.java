@@ -39,6 +39,7 @@ import com.bumptech.glide.Glide;
 import com.gathin.tvhomephone.App;
 import com.gathin.tvhomephone.MainActivity;
 import com.gathin.tvhomephone.R;
+import com.gathin.tvhomephone.glass.Glass;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.snackbar.Snackbar;
 
@@ -65,7 +66,8 @@ import java.util.TimeZone;
  * category chosen last, and the channel played last plays again in the guide's picture as it opens (LastWatch: only
  * waiting, paused until tapped, when its picture was closed with ✕). A later programme shows its details and Remind me; the star makes
  * the channel a favourite; a long press opens the channel's menu (favourite, hide, similar channels, its info). The day
- * button at the grid's corner picks the day. The list view is the Now and Next list.
+ * button at the grid's corner picks the day. The list view is the Now and Next list. The page fills the whole screen:
+ * its black runs up under the status bar and down under the floating tab bar, the guide's rows scrolling on under it.
  */
 public class LiveTvFragment extends Fragment {
     private static final String S_GROUP = "group", S_KEY = "key", S_START = "start", S_LEFT = "left", S_UPRIGHT = "upright",
@@ -123,6 +125,10 @@ public class LiveTvFragment extends Fragment {
     private View state, favHint;
     /** The Sport choice: today's games on the family's channels, in place of the guide while it is chosen. */
     private SportGuide sport;
+    /** On its side: the scrolling details beside the grid. */
+    private ScrollView sideScroll;
+    /** The room at the page's foot that the tab bar and the navigation bar cover (the keyboard's height while it is up). */
+    private int foot;
     private OnBackPressedCallback back;
 
     private final Runnable changed = this::refreshAll;
@@ -230,6 +236,7 @@ public class LiveTvFragment extends Fragment {
             side.setPadding(pad, pad, pad, 0);
             side.addView(inline, new LinearLayout.LayoutParams(-1, (sw - 2 * pad) * 9 / 16));
             ScrollView ds = new ScrollView(c);
+            sideScroll = ds;
             details = new Details(c, lib, false, tablet ? 8 : 5);
             details.setPadding(0, Ui.dp(c, 12), 0, Ui.dp(c, 16));
             ds.addView(details, new FrameLayout.LayoutParams(-1, -2));
@@ -266,15 +273,40 @@ public class LiveTvFragment extends Fragment {
         sport.setNestedScrollingEnabled(fold != null);
         body.addView(sport, new FrameLayout.LayoutParams(-1, -1));
         sport.setVisibility(View.GONE);
+        // The whole screen (MainActivity leaves Live TV the window): the black up under the status bar, the top bar just
+        // under it, clear of a navigation bar at a side; at the foot everything scrolls on under the tab bar.
+        Glass.fitSides(root, (left, top, right, bottom) -> {
+            root.setPadding(left, top, right, 0);
+            foot = bottom;
+            feet();
+        });
         return root;
     }
 
     /**
+     * Each part that scrolls (the guide's rows, the lists, Sport, the details on its side) runs on under the tab bar and
+     * stops with its last row clear of it; anything centred in the body is centred in what the bars leave of it.
+     */
+    private void feet() {
+        if (grid != null) grid.rows.setPadding(grid.rows.getPaddingLeft(), grid.rows.getPaddingTop(), grid.rows.getPaddingRight(), foot);
+        for (RecyclerView r : new RecyclerView[]{list, results}) {
+            if (r != null) r.setPadding(r.getPaddingLeft(), r.getPaddingTop(), r.getPaddingRight(), foot);
+        }
+        for (ScrollView v : new ScrollView[]{sport, sideScroll}) {
+            if (v == null) continue;
+            v.setClipToPadding(false);
+            v.setPadding(v.getPaddingLeft(), v.getPaddingTop(), v.getPaddingRight(), foot);
+        }
+        centre(favHint);
+        centre(state);
+    }
+
+    /**
      * Something centred in the body (a hint, loading, an error): centred in what shows of it, as the body runs on under
-     * the screen's foot by as much of the header as shows.
+     * the screen's foot by as much of the header as shows, and its foot is under the tab bar.
      */
     private void centre(View v) {
-        if (v != null) v.setTranslationY(fold == null ? 0 : -fold.shown() / 2f);
+        if (v != null) v.setTranslationY(-((fold == null ? 0 : fold.shown()) + foot) / 2f);
     }
 
     /** The header folded away (so the programme's details aren't in sight). */

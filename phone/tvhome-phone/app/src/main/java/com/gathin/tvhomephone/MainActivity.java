@@ -22,7 +22,8 @@ import com.gathin.tvhomephone.glass.LensBar;
  * The app's one window: five tabs (Home, Sports, Live TV, Watch, Settings), each a fragment of its own part, under a
  * floating bar of liquid glass at the foot. Slide a finger along the bar and its lens follows to the tab let go on;
  * the page slides in from that side. Home and Watch are glass pages, drawn up under the status bar and down under the
- * bar, which blurs them as they scroll; the others sit between the bars as before. A tablet the same, wider inside.
+ * bar, which blurs them as they scroll; Live TV fills the window too (its guide's black up under the status bar and its
+ * rows on under the bar); Sports and Settings sit between the bars as before. A tablet the same, wider inside.
  */
 public class MainActivity extends AppCompatActivity {
     private static final String TAB = "tab", SAVED_AT = "savedAt";
@@ -60,7 +61,7 @@ public class MainActivity extends AppCompatActivity {
         barPlace.setMargins(side, 0, side, Glass.dp(this, Glass.BAR_GAP_DP));
         root.addView(tabs, barPlace);
         setContentView(root);
-        // Edge to edge: the glass pages draw under the status bar; the others are kept between the bars (fitPage).
+        // Edge to edge: the glass pages and Live TV draw under the status bar; the others are kept between the bars (fitPage).
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         getWindow().setStatusBarColor(Color.TRANSPARENT);
         getWindow().setNavigationBarColor(Color.TRANSPARENT);
@@ -78,8 +79,8 @@ public class MainActivity extends AppCompatActivity {
             fitPage(false);
             return ins;
         });
-        // A glass page gets the insets to fit itself; the others are padded here and see none.
-        ViewCompat.setOnApplyWindowInsetsListener(content, (v, ins) -> glassPage(shownId) ? ins : WindowInsetsCompat.CONSUMED);
+        // A page that fills the window gets the insets to fit itself; the others are padded here and see none.
+        ViewCompat.setOnApplyWindowInsetsListener(content, (v, ins) -> fillsWindow(shownId) ? ins : WindowInsetsCompat.CONSUMED);
         // Closed unexpectedly last time: said once, the details to copy.
         CrashNote.offer(this);
         tabs.setOnPick(this::show);
@@ -224,17 +225,23 @@ public class MainActivity extends AppCompatActivity {
         return id == R.id.tab_home || id == R.id.tab_watch;
     }
 
+    /** Pure: the pages that fill the whole window, fitting themselves to the bars: the glass ones and Live TV. */
+    static boolean fillsWindow(int id) {
+        return glassPage(id) || id == R.id.tab_live;
+    }
+
     /**
-     * A glass page fills the window (it fits itself); any other sits between the status bar and the tab bar. Asked
-     * (a new page), the insets are sent round again for it; never from the insets' own listener, which would loop.
+     * A glass page or Live TV fills the window (it fits itself); any other sits between the status bar and the tab bar.
+     * Asked (a new page), the insets are sent round again for it; never from the insets' own listener, which would loop.
      */
     private void fitPage(boolean ask) {
         if (content == null) return;
-        boolean glass = glassPage(shownId);
+        boolean fills = fillsWindow(shownId);
         int room = Glass.dp(this, Glass.BAR_DP + Glass.BAR_GAP_DP + 6);
         // The keyboard, when up, lifts the page's foot above it (Settings' playlist fields).
-        content.setPadding(0, glass ? 0 : insetTop, 0, glass ? 0 : Math.max(insetBottom + room, insetIme));
-        root.setBackgroundColor(glass ? Glass.GROUND : getColor(R.color.ground));
+        content.setPadding(0, fills ? 0 : insetTop, 0, fills ? 0 : Math.max(insetBottom + room, insetIme));
+        // Under the page as it slides in or out: the glass's ground, the guide's black (GuideLook) or the navy.
+        root.setBackgroundColor(glassPage(shownId) ? Glass.GROUND : shownId == R.id.tab_live ? Color.BLACK : getColor(R.color.ground));
         if (ask) ViewCompat.requestApplyInsets(content);
     }
 
