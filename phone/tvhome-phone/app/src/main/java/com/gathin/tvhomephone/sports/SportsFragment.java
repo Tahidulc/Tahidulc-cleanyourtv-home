@@ -395,6 +395,16 @@ public class SportsFragment extends Fragment implements SportsScreen.Host {
         if (getActivity() instanceof MainActivity) ((MainActivity) getActivity()).open(R.id.tab_settings);
     }
 
+    @Override public void event(SportEvent e) {
+        if (e == null || !isAdded()) return;
+        startActivity(EventActivity.intent(requireContext(), e));
+    }
+
+    @Override public void team(String slug, String[] row) {
+        if (row == null || row.length < 4 || row[1] == null || row[1].isEmpty() || !isAdded()) return;
+        startActivity(TeamActivity.intent(requireContext(), slug, row[1], row[2], row[3]));
+    }
+
     // ---- shared with the rest of the app ----------------------------------------------------------------------------
 
     /** The key of the starred clubs' games, ahead of the competitions' slugs in today(). */

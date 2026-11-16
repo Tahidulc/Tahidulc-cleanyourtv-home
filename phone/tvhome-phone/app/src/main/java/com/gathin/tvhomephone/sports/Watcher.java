@@ -139,7 +139,7 @@ public final class Watcher {
             alerts.clear();
         }
         if (g.state == Game.PRE && g.kickoff - now <= 65 * 60_000L && g.kickoff - now > -5 * 60_000L
-                && Kinds.on(c, "kickoff") && !AlertLog.sent(c, "L|" + g.id)) {
+                && Kinds.on(c, "lineups") && !AlertLog.sent(c, "L|" + g.id)) {
             Events.Alert l = Events.lineups(g, Espn.summary(g.slug, g.id, 60_000L));
             if (l != null) alerts.add(0, l);
         }

@@ -24,9 +24,10 @@ import java.util.function.BooleanSupplier;
 
 /**
  * A game's tab pages, drawn into a column: the timeline (the game on a pitch, each shot, goal and card where it happened,
- * then its moments newest first, the home side's on the left and the away side's on the right), both line-ups on a pitch
- * with the substitutes under it (the players' photos and live ratings), and the stats in each side's colours. The
- * game's page (GameActivity) and the player's match centre (MatchPanel) both draw theirs with it.
+ * then its moments newest first, the home side's on the left and the away side's on the right), the line-ups in the TV's
+ * line-ups-over-apps look (each side on its pitch with the live ratings on top of the players' pictures, then its
+ * substitutes and manager), and the stats in each side's colours. The game's page (GameActivity) and the player's match
+ * centre (MatchPanel) both draw theirs with it.
  */
 public final class GameTabs {
     public static final int TIMELINE = 0, LINEUPS = 1, STATS = 2;
@@ -42,11 +43,28 @@ public final class GameTabs {
     private int columns = 1;
     /** In a low, wide panel: the moments first, the shot map after them and narrower. */
     private boolean compact;
-    /** The players' photos found so far, by name (PlayerPhotos), and those asked for. */
-    private final java.util.Map<String, android.graphics.Bitmap> photos = new java.util.concurrent.ConcurrentHashMap<>();
+    /** The players' photos asked for by name (PlayerPhotos, when FotMob has no line-ups for the game). */
     private final java.util.Set<String> asked = java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
-    /** The pitch on the page now (a new one each time the line-ups are drawn again). */
-    private Pitch shownPitch;
+    /**
+     * Both sides' sheets as FotMob gives them (live ratings, places, flags, pictures), the game they were read for,
+     * when, and when FotMob was last asked; the side shown (0 home, 1 away, -1 not chosen: your club's, else home's);
+     * the line-ups' box on the page now.
+     */
+    private TeamSheet[] sheets;
+    private String sheetsFor = "";
+    private long sheetsAt, sheetsTried;
+    private boolean sheetsBusy;
+    private int sheetSide = -1;
+    private LinearLayout shownSheets;
+    /** The line-ups as the TV's card shows them, above the pitch (the game's own page; not the player's panel). */
+    private boolean tvCard;
+    /** The card's elevens with their photos (read once for these line-ups), what they were read for, the card shown. */
+    private com.gathin.tvhomephone.live.BoardLineups.Data cardData;
+    private String cardFor = "";
+    private com.gathin.tvhomephone.live.BoardLineups shownCard;
+    /** The card's shape on a phone: the TV's, made taller for the narrower page. */
+    static final float CARD_SHAPE = 2.3f;
+    static final long CARD_PAGE_MS = 3_400L;
 
     public GameTabs(Context c, BooleanSupplier alive) {
         this.c = c;
@@ -67,6 +85,11 @@ public final class GameTabs {
     /** A low, wide panel: the timeline's moments before its shot map. */
     public void compact(boolean on) {
         compact = on;
+    }
+
+    /** The line-ups led by the TV's line-up card (the game's own page). */
+    public void tvCard(boolean on) {
+        tvCard = on;
     }
 
     /** The tabs there is something to show in, in order. */
@@ -360,40 +383,162 @@ public final class GameTabs {
 
     // ---- the line-ups -------------------------------------------------------------------------------------------
 
+    /**
+     * The line-ups in the TV's line-ups-over-apps look (the TV's animated card above on the game's own page): the side
+     * chosen on its pitch, each man with his live rating on top of his picture, his number, position and flag, then
+     * the substitutes and the manager (SheetViews). FotMob's sheets (its live ratings) are read again each minute while
+     * the game is on; ESPN's line-ups stand in until they come, or when FotMob doesn't have the game.
+     */
     private void lineups() {
-        int[] k = kits();
-        body.addView(teamBar(true), Ui.margins(c, 0, 10, 0, 8));
-        Pitch pitch = new Pitch(c);
-        pitch.show(summary.homeLineup, summary.homeFormation, k[0], summary.awayLineup, summary.awayFormation, k[1]);
-        pitch.setContentDescription(describe(game.homeName, summary.homeFormation, summary.homeLineup) + " "
-                + describe(game.awayName, summary.awayFormation, summary.awayLineup));
-        body.addView(pitch, Ui.matchWrap());
-        photos(pitch);
-        body.addView(teamBar(false), Ui.margins(c, 0, 8, 0, 0));
-        TextView subs = Ui.heading(c, "Substitutes", c.getColor(R.color.text_soft));
-        subs.setPadding(0, Ui.dp(c, 22), 0, Ui.dp(c, 10));
-        body.addView(subs);
-        LinearLayout two = Ui.row(c);
-        two.setGravity(Gravity.TOP);
-        two.addView(bench(summary.homeLineup, k[0]), Ui.weight(1));
-        View gap = new View(c);
-        two.addView(gap, new LinearLayout.LayoutParams(Ui.dp(c, 12), 1));
-        two.addView(bench(summary.awayLineup, k[1]), Ui.weight(1));
-        body.addView(two);
+        if (tvCard) body.addView(tvCardView(), Ui.margins(c, 0, 10, 0, 4));
+        LinearLayout box = Ui.column(c);
+        shownSheets = box;
+        drawSheets(box);
+        body.addView(box, Ui.margins(c, 0, 10, 0, 0));
+        readSheets();
     }
 
-    /** The starters' photos on the pitch: those found already at once, the rest as they come (one at a time). */
-    private void photos(Pitch pitch) {
-        shownPitch = pitch;
+    /** The sides' pills and the chosen side's sheet into the box. */
+    private void drawSheets(LinearLayout box) {
+        box.removeAllViews();
+        TeamSheet[] s = sheetsNow();
+        if (sheetSide < 0) sheetSide = favouriteSide();
+        int[] k = kits();
+        box.addView(SheetViews.sides(c, game.homeName, game.homeLogo, game.awayName, game.awayLogo, sheetSide, side -> {
+            sheetSide = side;
+            drawSheets(box);
+        }), Ui.matchWrap());
+        boolean home = sheetSide == 0;
+        box.addView(SheetViews.sheet(c, s[sheetSide], home ? game.homeName : game.awayName, home ? game.homeLogo : game.awayLogo,
+                k[sheetSide], TeamSheet.best(s)), Ui.margins(c, 0, 10, 0, 0));
+        if (!"FotMob".equals(s[0].from)) espnPhotos();
+    }
+
+    /** FotMob's sheets for this game when read, else ESPN's (its exact substitutions named from the timeline). */
+    private TeamSheet[] sheetsNow() {
+        if (sheets != null && game.id.equals(sheetsFor)) return sheets;
+        TeamSheet[] out = {TeamSheet.espn(summary.homeLineup, summary.homeFormation), TeamSheet.espn(summary.awayLineup, summary.awayFormation)};
+        for (TeamSheet s : out) {
+            for (List<TeamSheet.Man> list : java.util.Arrays.asList(s.starters, s.subs)) {
+                for (TeamSheet.Man m : list) {
+                    m.photo = "name:" + m.name;
+                    String off = m.on.isEmpty() ? "" : replaced(m.name);
+                    if (!off.isEmpty()) m.replaced = surname(off);
+                }
+            }
+        }
+        return out;
+    }
+
+    /** The side shown first: the away side when it is one of your clubs (and the home side isn't), else the home side. */
+    private int favouriteSide() {
+        java.util.Set<String> mine = Clubs.starred(c);
+        return mine.contains(game.awayId) && !mine.contains(game.homeId) ? 1 : 0;
+    }
+
+    /**
+     * FotMob's sheets read (off the main thread): once, then again each minute while the game is on (its live ratings);
+     * when it hasn't the game, asked again a minute later. The box on the page is drawn again when they come.
+     */
+    private void readSheets() {
+        if (sheetsBusy || game == null) return;
+        long now = System.currentTimeMillis();
+        boolean same = game.id.equals(sheetsFor);
+        if (same && sheets != null && (game.state != Game.LIVE || now - sheetsAt < 50_000L)) return;
+        if (same && sheets == null && now - sheetsTried < 60_000L) return;
+        sheetsBusy = true;
+        Game g = game;
+        List<String[]> home = new ArrayList<>(summary.homeLineup), away = new ArrayList<>(summary.awayLineup);
+        App.io.execute(() -> {
+            TeamSheet[] got = null;
+            try {
+                got = TeamSheet.fotmob(com.gathin.tvhomephone.live.FotMob.matchJson(g.id, g.homeName, g.awayName, g.kickoff));
+                if (got != null) {
+                    TeamSheet.roles(got[0], home);
+                    TeamSheet.roles(got[1], away);
+                }
+            } catch (RuntimeException ignored) {
+                // ESPN's stand in
+            }
+            TeamSheet[] read = got;
+            App.main.post(() -> {
+                sheetsBusy = false;
+                if (game == null || !g.id.equals(game.id)) return;
+                sheetsFor = g.id;
+                sheetsTried = System.currentTimeMillis();
+                if (read == null) return;
+                sheets = read;
+                sheetsAt = sheetsTried;
+                if (shownSheets != null && shownSheets.isAttachedToWindow() && alive.getAsBoolean()) drawSheets(shownSheets);
+            });
+        });
+    }
+
+    /** Pure: what a game's line-ups are, to know when they changed: its id and each starter's number and name. */
+    static String lineupsKey(String gameId, Espn.Summary s) {
+        StringBuilder b = new StringBuilder(gameId == null ? "" : gameId);
+        for (List<String[]> side : java.util.Arrays.asList(s.homeLineup, s.awayLineup)) {
+            b.append('|');
+            for (String[] p : side) if ("1".equals(p[Espn.P_STARTER])) b.append(p[Espn.P_NUMBER]).append(':').append(p[Espn.P_NAME]).append(',');
+        }
+        return b.toString();
+    }
+
+    /**
+     * The TV's line-up card as wide as the page: each side's players head and shoulders a page at a time, then both on
+     * the pitch, round and round, a tap turning to the next page. Its elevens' photos are read once (off the main
+     * thread); the card comes in when they have.
+     */
+    private View tvCardView() {
+        int screen = c.getResources().getDisplayMetrics().widthPixels;
+        int side = Math.max(Ui.dp(c, 14), (screen - Ui.dp(c, 620)) / 2);
+        int w = screen - 2 * side, h = Math.round(w / CARD_SHAPE);
+        com.gathin.tvhomephone.live.BoardLineups board = new com.gathin.tvhomephone.live.BoardLineups(c);
+        board.phone(com.gathin.tvhomephone.live.BoardLineups.perPageFor(w, h), CARD_PAGE_MS, true);
+        board.setContentDescription("Line-ups: " + describe(game.homeName, summary.homeFormation, summary.homeLineup) + " "
+                + describe(game.awayName, summary.awayFormation, summary.awayLineup) + " Tap for the next page.");
+        board.setLayoutParams(new LinearLayout.LayoutParams(-1, h));
+        shownCard = board;
+        String key = lineupsKey(game.id, summary);
+        if (cardData != null && key.equals(cardFor)) {
+            board.show(cardData, null);
+            return board;
+        }
+        Game g = game;
+        Espn.Summary s = summary;
+        android.content.Context app = c.getApplicationContext();
+        int px = Ui.dp(c, 56);
+        App.io.execute(() -> {
+            com.gathin.tvhomephone.live.BoardLineups.Data d;
+            try {
+                d = com.gathin.tvhomephone.live.ScoreBoard.lineupsData(app, g, s, px, true);
+            } catch (RuntimeException e) {
+                return;
+            }
+            App.main.post(() -> {
+                if (!alive.getAsBoolean()) return;
+                cardData = d;
+                cardFor = key;
+                if (shownCard == board && d.full()) board.show(d, null);
+            });
+        });
+        return board;
+    }
+
+    /**
+     * The players' photos for ESPN's sheets (FotMob not having the game): the starters' and then the substitutes', each
+     * looked up once by name (PlayerPhotos), kept by name for the sheets as they come (one at a time).
+     */
+    private void espnPhotos() {
         List<String[]> want = new ArrayList<>();
         for (int side = 0; side < 2; side++) {
             List<String[]> lineup = side == 0 ? summary.homeLineup : summary.awayLineup;
             String club = side == 0 ? (game.homeFull.isEmpty() ? game.homeName : game.homeFull) : (game.awayFull.isEmpty() ? game.awayName : game.awayFull);
-            for (String[] p : lineup) {
-                if (!"1".equals(p[Espn.P_STARTER])) continue;
-                android.graphics.Bitmap b = photos.get(p[Espn.P_NAME]);
-                if (b != null) pitch.photo(p[Espn.P_NAME], b);
-                else if (asked.add(p[Espn.P_NAME])) want.add(new String[]{p[Espn.P_NAME], club, p.length > Espn.P_ID ? p[Espn.P_ID] : ""});
+            for (String starter : new String[]{"1", "0"}) {
+                for (String[] p : lineup) {
+                    if (!starter.equals(p[Espn.P_STARTER]) || SheetArt.picture("name:" + p[Espn.P_NAME]) != null) continue;
+                    if (asked.add(p[Espn.P_NAME])) want.add(new String[]{p[Espn.P_NAME], club, p.length > Espn.P_ID ? p[Espn.P_ID] : ""});
+                }
             }
         }
         if (want.isEmpty()) return;
@@ -402,11 +547,7 @@ public final class GameTabs {
             for (String[] w : want) {
                 if (!alive.getAsBoolean()) return;
                 android.graphics.Bitmap b = PlayerPhotos.get(app, w[0], w[1], w[2]);
-                if (b == null) continue;
-                photos.put(w[0], b);
-                App.main.post(() -> {
-                    if (shownPitch != null) shownPitch.photo(w[0], b);
-                });
+                if (b != null) App.main.post(() -> SheetArt.put("name:" + w[0], b));
             }
         });
     }
@@ -417,100 +558,6 @@ public final class GameTabs {
             for (int i : row) b.append(' ').append(lineup.get(i)[Espn.P_SHORT]).append(',');
         }
         return b.toString();
-    }
-
-    /** A side's crest, name and formation, above or under the pitch. */
-    private View teamBar(boolean home) {
-        LinearLayout r = Ui.row(c);
-        r.setPadding(Ui.dp(c, 4), 0, Ui.dp(c, 4), 0);
-        ImageView crest = Ui.image(c, home ? game.homeLogo : game.awayLogo, 24);
-        crest.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        r.addView(crest);
-        TextView name = Ui.text(c, home ? game.homeName : game.awayName, 15, c.getColor(R.color.text), true);
-        name.setPadding(Ui.dp(c, 10), 0, Ui.dp(c, 10), 0);
-        name.setMaxLines(1);
-        name.setEllipsize(TextUtils.TruncateAt.END);
-        r.addView(name, Ui.weight(1));
-        String f = home ? summary.homeFormation : summary.awayFormation;
-        if (!f.isEmpty()) {
-            TextView t = Ui.text(c, f, 12.5f, c.getColor(R.color.text), true);
-            t.setBackground(Ui.fill(c, 0x24FFFFFF, 11));
-            t.setPadding(Ui.dp(c, 10), Ui.dp(c, 3), Ui.dp(c, 10), Ui.dp(c, 3));
-            r.addView(t);
-        }
-        return r;
-    }
-
-    /** A side's substitutes: those who came on first (when, and for whom), then the rest, each with his number. */
-    private View bench(List<String[]> lineup, int kit) {
-        LinearLayout col = Ui.column(c);
-        List<String[]> on = new ArrayList<>(), rest = new ArrayList<>();
-        for (String[] p : lineup) {
-            if ("1".equals(p[Espn.P_STARTER])) continue;
-            (p[Espn.P_ON].isEmpty() ? rest : on).add(p);
-        }
-        on.sort((x, y) -> Integer.compare(Game.minute(x[Espn.P_ON]), Game.minute(y[Espn.P_ON])));
-        for (String[] p : on) col.addView(benchRow(p, kit, true));
-        for (String[] p : rest) col.addView(benchRow(p, kit, false));
-        return col;
-    }
-
-    private View benchRow(String[] p, int kit, boolean cameOn) {
-        LinearLayout r = Ui.row(c);
-        r.setGravity(Gravity.TOP);
-        r.setPadding(0, Ui.dp(c, 5), 0, Ui.dp(c, 5));
-        TextView num = Ui.text(c, p[Espn.P_NUMBER], 11, Glyphs.ink(kit), true);
-        num.setGravity(Gravity.CENTER);
-        num.setMaxLines(1);
-        num.setBackground(Ui.fill(c, kit, 12));
-        if (!cameOn) num.setAlpha(0.75f);
-        r.addView(num, new LinearLayout.LayoutParams(Ui.dp(c, 24), Ui.dp(c, 24)));
-        LinearLayout words = Ui.column(c);
-        words.setPadding(Ui.dp(c, 9), 0, 0, 0);
-        LinearLayout first = Ui.row(c);
-        TextView name = Ui.text(c, p[Espn.P_SHORT], 13.5f, cameOn ? c.getColor(R.color.text) : c.getColor(R.color.text_soft), cameOn);
-        name.setMaxLines(1);
-        name.setEllipsize(TextUtils.TruncateAt.END);
-        first.addView(name, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        int goals = Espn.parseInt(p[Espn.P_GOALS]);
-        for (int g = 0; g < Math.min(goals, 3); g++) first.addView(glyph(Glyphs.GOAL));
-        String cards = p[Espn.P_CARDS];
-        if (!cards.isEmpty()) first.addView(glyph(cards.equals("YR") ? Glyphs.SECOND_YELLOW : cards.contains("R") ? Glyphs.RED : Glyphs.YELLOW));
-        // His live rating (Ratings), once he has been on.
-        String rating = p.length > Espn.P_RATING ? p[Espn.P_RATING] : "";
-        if (!rating.isEmpty()) {
-            TextView rt = Ui.text(c, rating, 11, 0xFFFFFFFF, true);
-            rt.setBackground(Ui.fill(c, Ratings.colour(rating), 4));
-            rt.setPadding(Ui.dp(c, 5), Ui.dp(c, 1), Ui.dp(c, 5), Ui.dp(c, 1));
-            LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            rl.leftMargin = Ui.dp(c, 5);
-            first.addView(rt, rl);
-        }
-        words.addView(first);
-        if (cameOn) {
-            String forWho = replaced(p[Espn.P_NAME]);
-            String minute = "?".equals(p[Espn.P_ON]) ? "" : p[Espn.P_ON];
-            TextView when = Ui.text(c, "▲ " + minute + (forWho.isEmpty() ? "" : "  for " + surname(forWho))
-                    + (p[Espn.P_OFF].isEmpty() ? "" : "  ▼ " + p[Espn.P_OFF]), 11.5f, 0xFF8EF0B8, false);
-            when.setMaxLines(1);
-            when.setEllipsize(TextUtils.TruncateAt.END);
-            words.addView(when);
-        }
-        r.addView(words, Ui.weight(1));
-        r.setContentDescription(p[Espn.P_NUMBER] + " " + p[Espn.P_NAME] + (cameOn ? ", came on " + p[Espn.P_ON] : ", unused"));
-        r.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
-        return r;
-    }
-
-    private ImageView glyph(int kind) {
-        ImageView v = new ImageView(c);
-        v.setImageDrawable(Glyphs.drawable(c, kind, 13));
-        v.setScaleType(ImageView.ScaleType.CENTER);
-        v.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Ui.dp(c, 16), Ui.dp(c, 18));
-        lp.leftMargin = Ui.dp(c, 2);
-        v.setLayoutParams(lp);
-        return v;
     }
 
     /** Whom a substitute replaced, from the timeline's substitution ("" when not told). */

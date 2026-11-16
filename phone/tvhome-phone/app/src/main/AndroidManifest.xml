@@ -105,6 +105,16 @@
         <receiver android:name=".sports.AlarmReceiver" android:exported="false" />
         <receiver android:name=".sports.MuteReceiver" android:exported="false" />
         <activity android:name=".sports.GameActivity" android:exported="false" />
+        <!-- Another sport's event (an NFL or NBA game, a tennis match, a UFC card, a Grand Prix, golf, a listing):
+             every channel showing it and its highlights. -->
+        <activity android:name=".sports.EventActivity" android:exported="false" />
+        <!-- A club's own page (from a table's row or a game's crest): form, season figures, leading players, squad. -->
+        <activity android:name=".sports.TeamActivity" android:exported="false" />
+        <!-- A highlight clip (ESPN's own), full screen. -->
+        <activity
+            android:name=".sports.ClipPlayerActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden" />
 
         <!-- Kick-off in 2 minutes: its alarm, and its "Not now". -->
         <receiver android:name=".sports.KickOffReceiver" android:exported="false" />

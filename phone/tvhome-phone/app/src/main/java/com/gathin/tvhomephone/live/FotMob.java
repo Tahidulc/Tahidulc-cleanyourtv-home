@@ -78,6 +78,26 @@ public final class FotMob {
         JSONArray homeForm, awayForm;
         /** The shot map's shots as FotMob gives them (content.shotmap.shots), for a big save or a great finish; null without. */
         JSONArray shotsRaw;
+        /** The match's highlights as FotMob links them (matchFacts.highlights): {address, picture, source}; null without. */
+        String[] highlights;
+    }
+
+    /**
+     * The game's highlights as FotMob links them, {address (YouTube's or the league's page), picture, source}, read with
+     * its figures (off the main thread, at most once a minute); null when FotMob has none.
+     */
+    public static String[] highlights(String espnId, String home, String away, long kickoff) {
+        Match m = forGame(espnId, home, away, kickoff);
+        return m == null ? null : m.highlights;
+    }
+
+    /** Pure: matchFacts.highlights as {address, picture, source}; null when it has no web address. */
+    static String[] highlightsOf(JSONObject matchFacts) {
+        JSONObject h = matchFacts == null ? null : matchFacts.optJSONObject("highlights");
+        if (h == null) return null;
+        String url = h.optString("url", "").trim();
+        if (!url.startsWith("https://") && !url.startsWith("http://")) return null;
+        return new String[]{url, h.optString("image", "").trim(), h.optString("source", "").trim()};
     }
 
     /** Pure: the sky over the ground from a read's weather (BoardFx.sky), or null when FotMob gave none. */
@@ -187,7 +207,7 @@ public final class FotMob {
     }
 
     /** A player's picture at FotMob, by its id. */
-    static String photoUrl(int playerId) {
+    public static String photoUrl(int playerId) {
         return "https://images.fotmob.com/image_resources/playerimages/" + playerId + ".png";
     }
 
@@ -235,6 +255,18 @@ public final class FotMob {
 
     /** Pure: the id of the match between these two clubs among FotMob's leagues of matches; 0 when none. */
     static int matchIn(JSONArray leagues, String home, String away) {
+        JSONObject m = matchOf(leagues, home, away);
+        return m == null ? 0 : m.optInt("id");
+    }
+
+    /** Pure: FotMob's id for the home club (or the away one) of the match between these two clubs; 0 when none. */
+    static int sideIn(JSONArray leagues, String home, String away, boolean atHome) {
+        JSONObject m = matchOf(leagues, home, away);
+        JSONObject side = m == null ? null : m.optJSONObject(atHome ? "home" : "away");
+        return side == null ? 0 : side.optInt("id");
+    }
+
+    private static JSONObject matchOf(JSONArray leagues, String home, String away) {
         for (int i = 0; leagues != null && i < leagues.length(); i++) {
             JSONObject lg = leagues.optJSONObject(i);
             JSONArray ms = lg == null ? null : lg.optJSONArray("matches");
@@ -245,11 +277,51 @@ public final class FotMob {
                 if (h == null || a == null) continue;
                 if (sameClub(h.optString("name"), home) && sameClub(a.optString("name"), away)
                         || sameClub(h.optString("longName", h.optString("name")), home) && sameClub(a.optString("longName", a.optString("name")), away)) {
-                    return m.optInt("id");
+                    return m;
                 }
             }
         }
+        return null;
+    }
+
+    /**
+     * FotMob's id for a club, read off FotMob's day of one of its games (both clubs' names, the kick-off, and whether the
+     * club was at home); 0 when the game is not found. Off the main thread.
+     */
+    public static int teamId(String home, String away, long kickoff, boolean atHome) {
+        if (home == null || away == null || kickoff <= 0) return 0;
+        SimpleDateFormat f = new SimpleDateFormat("yyyyMMdd", Locale.ROOT);
+        f.setTimeZone(TimeZone.getTimeZone("UTC"));
+        // The game's own day, then the day before by FotMob's reckoning (a late kick-off listed on the evening's date).
+        String day = f.format(new Date(kickoff)), before = f.format(new Date(kickoff - 6 * 3_600_000L));
+        for (String date : before.equals(day) ? new String[]{day} : new String[]{day, before}) {
+            try {
+                int id = sideIn(new JSONObject(get(BASE + "matches?date=" + date)).optJSONArray("leagues"), home, away, atHome);
+                if (id > 0) return id;
+            } catch (Exception ignored) {
+                // not this day
+            }
+        }
         return 0;
+    }
+
+    /**
+     * A game's match details as FotMob gives them (its line-ups with every player's live rating, place, country and
+     * events), found by both clubs' names on its day of matches; null when it doesn't have the game. Off the main thread.
+     */
+    public static JSONObject matchJson(String espnId, String home, String away, long kickoff) {
+        int id = find(espnId, home, away, kickoff);
+        return id > 0 ? raw(id) : null;
+    }
+
+    /** FotMob's page of a club (its squad, its season's figures, its games) as it gives it; null when not read. Off the main thread. */
+    public static JSONObject team(int id) {
+        if (id <= 0) return null;
+        try {
+            return new JSONObject(get(BASE + "teams?id=" + id));
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** The game's figures (off the main thread); null when FotMob cannot be read. */
@@ -307,6 +379,7 @@ public final class FotMob {
             m.homeForm = tf.optJSONArray(0);
             m.awayForm = tf.optJSONArray(1);
         }
+        m.highlights = highlightsOf(mf);
         m.shots.addAll(com.gathin.broadcast.ShotMap.parse(c, m.homeTeamId));
         JSONObject info = c.optJSONObject("matchFacts") == null ? null : c.optJSONObject("matchFacts").optJSONObject("infoBox");
         JSONObject ref = info == null ? null : info.optJSONObject("Referee");

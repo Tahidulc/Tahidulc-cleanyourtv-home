@@ -103,6 +103,16 @@ public final class TestAlerts {
                 return new Events.Alert("goal", "TEST|goal", "GOAL · " + line, "C. Player 67' for " + g.homeName, g);
             case "red":
                 return new Events.Alert("red", "TEST|red", "RED CARD · " + g.awayName, "D. Player 70' for " + g.awayName, g);
+            case "lineups": {
+                // Both elevens made up (no game needs its line-ups out): the TV's card, as a line-ups alert ("L|").
+                Game k = Game.from(g.json());
+                k.state = Game.PRE;
+                Events.Alert l = Events.lineups(k, madeUpLineups());
+                if (l == null) return null;
+                Events.Alert t = new Events.Alert("lineups", "L|TEST|lineups", l.title, l.text, k);
+                t.summary = l.summary;
+                return t;
+            }
             case "kickoff": {
                 Game k = Game.from(g.json());
                 k.state = Game.LIVE;
@@ -167,6 +177,22 @@ public final class TestAlerts {
             if (a == null) App.main.post(() -> note.accept(R.string.live7_no_lineups));
             else Notifier.test(app, a);
         });
+    }
+
+    /** Pure: two made-up elevens (4-3-3 and 4-4-2), invented names, for the line-ups' test alert. */
+    static Espn.Summary madeUpLineups() {
+        Espn.Summary s = new Espn.Summary();
+        s.homeFormation = "4-3-3";
+        s.awayFormation = "4-4-2";
+        String[] home = {"Ashby", "Brindle", "Colter", "Dunmore", "Eccles", "Farrow", "Garside", "Hollin", "Ingram", "Jessop", "Kirkby"};
+        String[] away = {"Lumley", "Marsden", "Nuttall", "Ormerod", "Pickles", "Quayle", "Rushton", "Sowerby", "Tatham", "Upton", "Varley"};
+        String[] homePos = {"G", "D", "D", "D", "D", "M", "M", "M", "F", "F", "F"};
+        String[] awayPos = {"G", "D", "D", "D", "D", "M", "M", "M", "M", "F", "F"};
+        for (int i = 0; i < 11; i++) {
+            s.homeLineup.add(new String[]{String.valueOf(i + 1), "Sam " + home[i], homePos[i], "1", String.valueOf(i + 1), home[i], "", "", "0", "", "0", ""});
+            s.awayLineup.add(new String[]{String.valueOf(i + 1), "Alex " + away[i], awayPos[i], "1", String.valueOf(i + 1), away[i], "", "", "0", "", "0", ""});
+        }
+        return s;
     }
 
     /**

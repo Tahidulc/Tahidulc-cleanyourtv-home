@@ -45,6 +45,54 @@ public final class AlsoShowing {
         int score;
         /** In English: 2 sure, 1 not known, 0 another language (english()). */
         int english = 1;
+        /** When the programme with it runs on this channel, by its guide (0 when not known). */
+        long start, end;
+    }
+
+    /**
+     * One of the family's channels to watch a game or an event on, as the match page lists them: the channel, its name
+     * made plain, its logo, the 4K mark, what says it shows it ("Event channel", the guide's title), whether it is on
+     * there now, and when it starts (its guide's time, else the game's).
+     */
+    public static final class Listed {
+        public final Channel ch;
+        public final String name, logo, under;
+        public final boolean uhd, best, live;
+        public final long start;
+
+        Listed(Channel ch, String name, String logo, String under, boolean uhd, boolean best, boolean live, long start) {
+            this.ch = ch;
+            this.name = name;
+            this.logo = logo;
+            this.under = under;
+            this.uhd = uhd;
+            this.best = best;
+            this.live = live;
+            this.start = start;
+        }
+    }
+
+    /**
+     * Every channel in the family's playlists that shows the game, the likeliest first and English ones before the
+     * rest (rows()), only those that play. Off the main thread.
+     */
+    public static List<Listed> listed(Context c, Game g) {
+        if (g == null) return new ArrayList<>();
+        return listed(c, rows(c, g, null), g.kickoff, g.state == Game.LIVE, System.currentTimeMillis());
+    }
+
+    /** The playable rows as Listed: on now by its guide (or, without one, while the event is), else from its start. */
+    static List<Listed> listed(Context c, List<Row> rows, long eventStart, boolean eventLive, long now) {
+        List<Listed> out = new ArrayList<>();
+        for (Row r : rows) {
+            if (r.ch == null) continue;
+            String logo = r.logo != null && !r.logo.isEmpty() ? r.logo : Ui.logo(r.ch);
+            if (logo == null || logo.isEmpty()) logo = ChannelLogos.find(c, tidy(r.ch.name));
+            boolean live = r.start > 0 ? r.start <= now && now < r.end : eventLive;
+            long start = r.start > 0 ? r.start : eventStart;
+            out.add(new Listed(r.ch, tidy(r.ch.name), logo, r.under == null ? "" : r.under, r.uhd, r.best, live, start));
+        }
+        return out;
     }
 
     /** Opens the list for a game, read off the main thread; a note when nothing else shows it. */
@@ -114,6 +162,10 @@ public final class AlsoShowing {
                 r.under = title;
                 byKey.put(ch.key, r);
             }
+            if (r.start == 0) {
+                r.start = s.start[at];
+                r.end = s.stop[at];
+            }
             r.score += 4;
             if (byKey.size() >= 24) break;
         }
@@ -159,7 +211,7 @@ public final class AlsoShowing {
     }
 
     /** A playlist channel's row, before what says it shows the game is added. */
-    private static Row row(Channel ch, Channel current, java.util.Set<String> fav) {
+    static Row row(Channel ch, Channel current, java.util.Set<String> fav) {
         Row r = new Row();
         r.ch = ch;
         r.name = ch.name;
@@ -180,7 +232,7 @@ public final class AlsoShowing {
     }
 
     /** What plays now, then a playlist channel, then English before not known before another language, then how sure. */
-    private static int rank(Row r) {
+    static int rank(Row r) {
         return (r.now ? 1000 : 0) + (r.ch != null ? 100 + r.english * 30 : 0) + r.score;
     }
 
@@ -294,7 +346,7 @@ public final class AlsoShowing {
     /** Channels' names as words() makes them, kept: the Sport guide asks for every game of the day in turn. */
     private static final java.util.Map<String, String> CHANNEL_WORDS = new java.util.concurrent.ConcurrentHashMap<>();
 
-    private static String channelWords(String name) {
+    static String channelWords(String name) {
         String n = name == null ? "" : name;
         String w = CHANNEL_WORDS.get(n);
         if (w == null) {

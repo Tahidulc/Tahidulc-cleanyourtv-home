@@ -73,12 +73,29 @@ public final class Popups {
         return drawn ? 11_000L : 8_000L;
     }
 
+    /** The line-ups' card in a pop-up: each page this long, and the card this tall for its width (the TV's, made taller). */
+    static final long LINEUP_PAGE_MS = 2_800L;
+    static final float LINEUP_SHAPE = 2.4f;
+
+    /** How long the line-ups' pop-up stays: every page of the TV's card once, a moment more; 16 s at least. Pure. */
+    static long lineupsMs(com.gathin.tvhomephone.live.BoardLineups.Data d, int perPage) {
+        return Math.max(16_000L, com.gathin.tvhomephone.live.BoardLineups.showFor(d, perPage, LINEUP_PAGE_MS) + 1_200L);
+    }
+
+    /** The pop-up card's inner width on this phone (as next() lays it out). */
+    static int innerWidth(Context c) {
+        int w = Math.min(c.getResources().getDisplayMetrics().widthPixels - Ui.dp(c, 20), Ui.dp(c, 440));
+        return w - Ui.dp(c, 28);
+    }
+
     // ---- building (off the main thread) ------------------------------------------------------------------------
 
     /** What one pop-up shows, read off the main thread. */
     static final class Pop {
         Events.Alert alert;
         Bitmap card, comp;
+        /** The line-ups as the TV's card shows them (both elevens with their photos), for a line-ups alert. */
+        com.gathin.tvhomephone.live.BoardLineups.Data lineups;
         String head = "", title = "", line = "", watchKey;
     }
 
@@ -89,7 +106,11 @@ public final class Popups {
         p.alert = a;
         try {
             if (a.key != null && a.key.startsWith("L|") && a.game != null && a.summary != null) {
-                p.card = NotifCard.lineups(app, a.game, a.summary);
+                // The TV's line-up card: the players' photos fetched first (eight seconds at most).
+                com.gathin.tvhomephone.live.BoardLineups.Data d =
+                        com.gathin.tvhomephone.live.ScoreBoard.lineupsData(app, a.game, a.summary, Ui.dp(app, 56), true);
+                if (d.full()) p.lineups = d;
+                else p.card = NotifCard.lineups(app, a.game, a.summary);
             } else if (a.kind.startsWith("f1") && "f1result".equals(a.kind)) {
                 p.card = NotifCard.podium(app, a);
             } else if (a.game != null && NotifCard.drawn(a)) {
@@ -190,7 +211,7 @@ public final class Popups {
         card.setAlpha(0f);
         card.animate().translationY(0).alpha(1f).setDuration(320)
                 .setInterpolator(new android.view.animation.OvershootInterpolator(0.8f)).start();
-        long ms = showMs(p.alert, p.card != null);
+        long ms = p.lineups != null ? lineupsMs(p.lineups, card.lineupsPerPage) : showMs(p.alert, p.card != null);
         card.goAfter(ms);
     }
 
@@ -251,7 +272,18 @@ public final class Popups {
         head.addView(Ui.text(c, "now", 11, 0xFF80849A, false));
         card.addView(head);
 
-        if (p.card != null) {
+        if (p.lineups != null) {
+            // The TV's line-up card, page after page: each side's players head and shoulders, then both on the pitch.
+            int w = innerWidth(c), h = Math.round(w / LINEUP_SHAPE);
+            card.lineupsPerPage = com.gathin.tvhomephone.live.BoardLineups.perPageFor(w, h);
+            com.gathin.tvhomephone.live.BoardLineups board = new com.gathin.tvhomephone.live.BoardLineups(c);
+            board.phone(card.lineupsPerPage, LINEUP_PAGE_MS, true);
+            board.setContentDescription(p.title + ". " + p.line);
+            LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(-1, h);
+            bl.topMargin = Ui.dp(c, 10);
+            card.addView(board, bl);
+            board.show(p.lineups, null);
+        } else if (p.card != null) {
             ImageView pic = new ImageView(c);
             pic.setImageBitmap(p.card);
             pic.setAdjustViewBounds(true);
@@ -375,6 +407,8 @@ public final class Popups {
 
         Runnable onTap;
         Gone onGone;
+        /** The line-ups' card's players a page, when it carries one. */
+        int lineupsPerPage;
         private final int slop;
         private final float fling;
         private float downX, downY;

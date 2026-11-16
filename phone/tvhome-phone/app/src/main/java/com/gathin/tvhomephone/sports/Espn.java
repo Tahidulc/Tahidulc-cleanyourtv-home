@@ -905,6 +905,28 @@ public final class Espn {
         }
     }
 
+    /** A game's summary as ESPN gives it (for its videos), kept as fresh as asked; null when it can't be read. */
+    public static JSONObject summaryRoot(String slug, String id, long freshMs) {
+        if (slug == null || id == null || slug.isEmpty() || id.isEmpty()) return null;
+        try {
+            return new JSONObject(cached(SITE + slug + "/summary?event=" + id, freshMs));
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    /**
+     * ESPN's soccer pages at this path (after ".../sports/soccer/": a club, its schedule, its roster), kept as fresh as
+     * asked; null when it can't be read. Off the main thread.
+     */
+    static JSONObject site(String path, long freshMs) {
+        try {
+            return new JSONObject(cached(SITE + path, freshMs));
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
     /** Pure: the first video in a summary that has an mp4 to play. */
     static String[] video(JSONObject root) {
         JSONArray vs = root.optJSONArray("videos");
