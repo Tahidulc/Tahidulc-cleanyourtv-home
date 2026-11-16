@@ -16,14 +16,12 @@ import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.appcompat.app.AlertDialog;
 
 import com.gathin.tvhomephone.App;
 import com.gathin.tvhomephone.R;
 import com.gathin.tvhomephone.sports.Events;
 import com.gathin.tvhomephone.sports.Game;
 import com.gathin.tvhomephone.sports.LiveClock;
-import com.gathin.tvhomephone.sync.Tvs;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -62,7 +60,7 @@ final class PlayerExtras implements LiveAlerts.Listener {
     private TextView replayBadge, heldLine, bannerText, pipText, ripple;
     private SeekBar seek;
     private TextView playPause;
-    private FrameLayout cover, lockCover;
+    private FrameLayout lockCover;
     private boolean locked, dragging, inPip;
     private Events.Alert bannerAlert;
     private final Runnable everySecond = new Runnable() {
@@ -509,68 +507,10 @@ final class PlayerExtras implements LiveAlerts.Listener {
 
     // ---- on a TV -----------------------------------------------------------------------------------------------
 
+    /** Cast: the TVs and devices on the Wi-Fi (the paired TVs among them), the channel sent to the one picked. */
     private void watchOnTv() {
-        List<String> tvs = Tvs.names(a);
-        if (tvs.isEmpty()) return;
-        if (tvs.size() == 1) {
-            sendTo(tvs.get(0));
-            return;
-        }
-        new AlertDialog.Builder(a).setTitle(R.string.live3_on_tv_which)
-                .setItems(tvs.toArray(new String[0]), (d, w) -> sendTo(tvs.get(w))).show();
-    }
-
-    private void sendTo(String tv) {
         Channel ch = host.current();
-        if (ch == null) return;
-        List<String> names = new ArrayList<>();
-        names.add(ch.name);
-        String plain = Names.plain(ch.name);
-        if (!plain.equals(ch.name)) names.add(plain);
-        Tvs.tuneOnTv(a, tv, names, (ok, err) -> {
-            if (a.isFinishing()) return;
-            if (!ok) {
-                Toast.makeText(a, err, Toast.LENGTH_LONG).show();
-                return;
-            }
-            // One stream at a time on most accounts: the phone's stops now the TV has it.
-            pb.stop();
-            showCover(tv, ch);
-        });
-    }
-
-    private void showCover(String tv, Channel ch) {
-        if (cover != null) root.removeView(cover);
-        Context c = a;
-        cover = new FrameLayout(c);
-        cover.setBackgroundColor(0xF20B0C21);
-        cover.setClickable(true);
-        LinearLayout box = new LinearLayout(c);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setGravity(Gravity.CENTER_HORIZONTAL);
-        ImageView icon = new ImageView(c);
-        icon.setImageResource(R.drawable.live_ic_tv);
-        box.addView(icon, new LinearLayout.LayoutParams(Ui.dp(c, 44), Ui.dp(c, 44)));
-        TextView t = Ui.text(c, "Playing on " + tv, 18, Ui.TEXT, true);
-        t.setPadding(0, Ui.dp(c, 12), 0, Ui.dp(c, 4));
-        box.addView(t);
-        box.addView(Ui.text(c, ch.name, 14, Ui.SOFT, false));
-        TextView back = button(c, a.getString(R.string.live3_continue_phone), true);
-        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(-2, Ui.dp(c, 48));
-        bp.topMargin = Ui.dp(c, 20);
-        box.addView(back, bp);
-        back.setOnClickListener(v -> {
-            root.removeView(cover);
-            cover = null;
-            host.play(ch);
-        });
-        cover.addView(box, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
-        root.addView(cover, new FrameLayout.LayoutParams(-1, -1));
-    }
-
-    /** Whether the channel is on a TV now (the phone's cover up). */
-    boolean onTv() {
-        return cover != null;
+        if (ch != null) CastSheet.show(a, ch);
     }
 
     // ---- the options -----------------------------------------------------------------------------------------
@@ -797,12 +737,10 @@ final class PlayerExtras implements LiveAlerts.Listener {
             host.closeSheet();
             setLocked(true);
         });
-        if (Tvs.paired(c)) {
-            action(c, box, R.drawable.live_ic_tv, a.getString(R.string.live3_on_tv), () -> {
-                host.closeSheet();
-                watchOnTv();
-            });
-        }
+        action(c, box, R.drawable.live_ic_cast, a.getString(R.string.cast_on_tv), () -> {
+            host.closeSheet();
+            watchOnTv();
+        });
     }
 
     private interface Flip {

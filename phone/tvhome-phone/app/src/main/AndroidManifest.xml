@@ -35,6 +35,10 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
         </intent>
+        <!-- The phone's own speech recognition, for automatic subtitles on live TV (made on the phone). -->
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
     </queries>
 
     <application
@@ -114,6 +118,11 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/club_widget_info" />
         </receiver>
+
+        <!-- Cast from Live TV: Cast reads how it is set up (Google's own player on the device) from this class. -->
+        <meta-data
+            android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
+            android:value="com.gathin.tvhomephone.cast.CastSetup" />
 
         <!-- Homefield's own updates: Android's installer's word on one, and the new version saying it is in. -->
         <receiver android:name=".update.InstallStatus" android:exported="false" />
