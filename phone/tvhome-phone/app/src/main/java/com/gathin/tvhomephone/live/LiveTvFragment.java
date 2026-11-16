@@ -177,6 +177,8 @@ public class LiveTvFragment extends Fragment {
         root.setBackgroundColor(GuideLook.GROUND);
 
         buildToolbar(c, root);
+        // While casting: "Casting to …" with Stop, under the top bar (it shows and hides itself).
+        root.addView(new CastViews.Bar(c), new LinearLayout.LayoutParams(-1, -2));
         // Held upright (phone or tablet), everything between the top bar and the guide folds away (Fold); on its side,
         // the categories over the grid and the pane beside it stay.
         LinearLayout head = null;
@@ -428,6 +430,10 @@ public class LiveTvFragment extends Fragment {
             refreshRows();
         });
         toolbar.addView(round(c, viewButton), roundParams(c));
+        // Cast: the TVs and devices on the Wi-Fi; the channel playing (or chosen) goes to the one picked.
+        ImageButton cast = Ui.icon(c, R.drawable.live_ic_cast, R.string.cast_button);
+        cast.setOnClickListener(v -> CastSheet.show(requireActivity(), castChannel()));
+        toolbar.addView(round(c, cast), roundParams(c));
         ImageButton more = Ui.icon(c, R.drawable.live_ic_more, R.string.live_more);
         more.setOnClickListener(this::moreMenu);
         toolbar.addView(round(c, more), roundParams(c));
@@ -1111,6 +1117,11 @@ public class LiveTvFragment extends Fragment {
      */
     private void play(Channel ch) {
         if (ch == null) return;
+        if (com.gathin.tvhomephone.cast.Casting.active()) {
+            // Casting: the channel goes to the TV or device instead.
+            com.gathin.tvhomephone.cast.Casting.change(requireContext(), CastSheet.what(requireContext(), ch));
+            return;
+        }
         if (mode == SIDE && !tablet) {
             fullScreen(ch, false);
             return;
@@ -1120,6 +1131,12 @@ public class LiveTvFragment extends Fragment {
             return;
         }
         watchHere(ch);
+    }
+
+    /** What Cast sends first: the channel playing in the guide's picture, else the one chosen (null: none yet). */
+    private Channel castChannel() {
+        if (pb.live() && pb.channel() != null) return pb.channel();
+        return selKey == null ? null : lib.byKey(selKey);
     }
 
     private void watchHere(Channel ch) {

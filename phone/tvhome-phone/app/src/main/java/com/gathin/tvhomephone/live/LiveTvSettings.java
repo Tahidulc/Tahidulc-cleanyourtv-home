@@ -423,6 +423,11 @@ public final class LiveTvSettings {
         col.addView(rRow);
         col.addView(toggle(c, c.getString(R.string.live3_hold), LiveAlerts.holding(c), on -> LiveAlerts.setHolding(c, on)));
         if (NightSound.available()) col.addView(toggle(c, c.getString(R.string.live3_night), NightSound.on(c), on -> NightSound.set(c, on)));
+        // Automatic subtitles: made on the phone from what is said on the channel, as it plays.
+        col.addView(toggle(c, c.getString(R.string.captions_setting), LiveCaptions.on(c), on -> LiveCaptions.setOn(c, on)));
+        TextView capLine = Ui.text(c, c.getString(R.string.captions_setting_line), 13, Ui.DIM, false);
+        capLine.setPadding(0, 0, 0, Ui.dp(c, 6));
+        col.addView(capLine);
     }
 
     interface Flip {

@@ -136,6 +136,12 @@ public class PlayerActivity extends AppCompatActivity {
     /** The programme last shown, so a new one starting brings its tile up. */
     private String seen;
     private BottomSheetDialog sheet;
+    /** The automatic subtitles over the picture, and what makes them (LiveCaptions). */
+    private com.gathin.tvhomephone.captions.CaptionView captionView;
+    private LiveCaptions captions;
+    /** Over the picture while the channel is cast to a TV or a device. */
+    private CastViews.Cover castCover;
+    private final com.gathin.tvhomephone.cast.Casting.Listener castWatch = this::castChanged;
     private List<Channel> order = new ArrayList<>();
     private int pos;
     private Channel cur;
@@ -242,6 +248,16 @@ public class PlayerActivity extends AppCompatActivity {
         getWindow().setStatusBarColor(Color.TRANSPARENT);
         getWindow().setNavigationBarColor(Color.TRANSPARENT);
         setContentView(build());
+        captions = new LiveCaptions(this, captionView, new LiveCaptions.Host() {
+            @Override public boolean channelHasOwn() { return ownSubtitles() != null; }
+
+            @Override public void showOwn() {
+                Track t = ownSubtitles();
+                if (t != null && !t.group.isTrackSelected(t.index)) choose(t);
+            }
+
+            @Override public boolean casting() { return com.gathin.tvhomephone.cast.Casting.active(); }
+        });
         WindowInsetsControllerCompat bars = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
         bars.hide(WindowInsetsCompat.Type.systemBars());
         bars.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
@@ -330,6 +346,8 @@ public class PlayerActivity extends AppCompatActivity {
         // Takes the picture over (the same stream carries on when the guide was already playing this channel).
         pb.take(host);
         watch(cur);
+        com.gathin.tvhomephone.cast.Casting.listen(castWatch);
+        if (!isInPictureInPictureMode()) captions.resume();
         // Its shape for the small window now (a stream taken over has told its size already).
         if (pipSupported()) setPictureInPictureParams(pipParams());
         h.postDelayed(tick, TICK_MS);
@@ -365,6 +383,8 @@ public class PlayerActivity extends AppCompatActivity {
 
     @Override protected void onStop() {
         super.onStop();
+        com.gathin.tvhomephone.cast.Casting.unlisten(castWatch);
+        captions.pause();
         h.removeCallbacks(tick);
         if (!isInPictureInPictureMode()) extras.stop();
         // Still playing in the small window.
@@ -509,13 +529,74 @@ public class PlayerActivity extends AppCompatActivity {
         @Override public void onReplay(boolean replaying) {
             extras.onReplay(replaying);
         }
+
+        @Override public void onFirstFrame() {
+            // The channel's tracks are known now: its own subtitles, or the automatic ones.
+            if (captions != null && !isInPictureInPictureMode()) captions.check();
+        }
     };
+
+    // ---- casting ----------------------------------------------------------------------------------------------
+
+    /** Casting started or stopped elsewhere (the sheet, Live TV's bar), or how it is going changed. */
+    private void castChanged() {
+        if (com.gathin.tvhomephone.cast.Casting.active()) {
+            if (pb.player() != null) pb.stop();
+            captions.pause();
+            showCastCover();
+            return;
+        }
+        if (castCover == null) return;
+        root.removeView(castCover);
+        castCover = null;
+        // Stopped: the channel back on the phone.
+        if (!isFinishing() && cur != null) {
+            pb.take(host);
+            watch(cur);
+            captions.resume();
+        }
+    }
+
+    private void showCastCover() {
+        if (castCover != null) return;
+        castCover = new CastViews.Cover(this, () -> CastSheet.show(this, cur), this::close);
+        castCover.setPadding(cut.left, cut.top, cut.right, cut.bottom);
+        // Under the top bar's buttons (✕ stays to hand), over the picture and the panel.
+        root.addView(castCover, Math.max(0, root.indexOfChild(top)), new FrameLayout.LayoutParams(-1, -1));
+        hideOverlay();
+    }
+
+    /**
+     * The channel's own subtitles, when it plainly sends some: DVB subtitles, the stream's subtitle playlists, or
+     * captions it names (a language or a label). HLS gets a captions track assumed for every stream, with or without
+     * captions in it, so a bare one doesn't count. Null for none.
+     */
+    private Track ownSubtitles() {
+        for (Track t : tracks(C.TRACK_TYPE_TEXT)) {
+            Format f = t.group.getTrackFormat(t.index);
+            boolean cc = MimeTypes.APPLICATION_CEA608.equals(f.sampleMimeType) || MimeTypes.APPLICATION_CEA708.equals(f.sampleMimeType);
+            boolean named = f.language != null && !f.language.isEmpty() && !"und".equals(f.language)
+                    || f.label != null && !f.label.trim().isEmpty();
+            if (!cc || named) return t;
+        }
+        return null;
+    }
 
     /** Plays a channel here (the same one already open carries on): its shape, the panel. */
     private void watch(Channel ch) {
         if (ch == null) return;
+        if (com.gathin.tvhomephone.cast.Casting.active()) {
+            // Cast to a TV or a device: the channel goes there, and the phone shows where it is.
+            Channel there = com.gathin.tvhomephone.cast.Casting.channel();
+            cur = ch;
+            if (there == null || !there.key.equals(ch.key)) com.gathin.tvhomephone.cast.Casting.change(this, CastSheet.what(this, ch));
+            if (pb.player() != null) pb.stop();
+            showCastCover();
+            return;
+        }
         cur = ch;
         boolean same = pb.live(ch);
+        if (!same && captions != null) captions.channelChanged();
         pb.play(ch);
         if (!same) {
             extras.game(null);
@@ -795,6 +876,7 @@ public class PlayerActivity extends AppCompatActivity {
     @Override public void onPictureInPictureModeChanged(boolean inPip, @NonNull Configuration cfg) {
         super.onPictureInPictureModeChanged(inPip, cfg);
         extras.pip(inPip);
+        if (inPip) captions.pause();
         if (inPip) {
             hideOverlay();
             // Asked for with the button: off the app, so the picture is over the home screen and other apps.
@@ -813,6 +895,7 @@ public class PlayerActivity extends AppCompatActivity {
         } else {
             // Back to full screen, perhaps turned round meanwhile.
             turned(isLandscape(getResources().getConfiguration()));
+            captions.resume();
         }
     }
 
@@ -1338,29 +1421,46 @@ public class PlayerActivity extends AppCompatActivity {
             }
         }
 
+        // Subtitles: off, the channel's own (when it sends any), or automatic (made on the phone from what is said).
         List<Track> text = tracks(C.TRACK_TYPE_TEXT);
-        if (!text.isEmpty()) {
+        {
             LinearLayout row = chipRow(c, box, R.string.live_subtitles);
             List<TextView> chips = new ArrayList<>();
+            boolean autoOn = LiveCaptions.on(c);
             boolean off = params.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT);
             boolean anySelected = false;
             for (Track t : text) anySelected |= t.group.isTrackSelected(t.index);
-            TextView none = Ui.guideChip(c, getString(R.string.live_off), off || !anySelected);
+            TextView none = Ui.guideChip(c, getString(R.string.live_off), !autoOn && (off || !anySelected));
             none.setOnClickListener(v -> {
                 automatic(C.TRACK_TYPE_TEXT, true);
+                captions.set(false);
                 for (TextView x : chips) Ui.styleChip(c, x, x == v);
             });
             chips.add(none);
             addChip(row, none);
             for (Track t : text) {
-                TextView chip = Ui.guideChip(c, t.label, !off && t.group.isTrackSelected(t.index));
+                String label = text.size() == 1 ? getString(R.string.captions_from_channel)
+                        : getString(R.string.captions_from_channel_named, t.label);
+                TextView chip = Ui.guideChip(c, label, !autoOn && !off && t.group.isTrackSelected(t.index));
                 chip.setOnClickListener(v -> {
+                    captions.set(false);
                     choose(t);
                     for (TextView x : chips) Ui.styleChip(c, x, x == v);
                 });
                 chips.add(chip);
                 addChip(row, chip);
             }
+            TextView auto = Ui.guideChip(c, getString(R.string.captions_automatic), autoOn);
+            auto.setOnClickListener(v -> {
+                if (ownSubtitles() == null) automatic(C.TRACK_TYPE_TEXT, true);
+                captions.set(true);
+                for (TextView x : chips) Ui.styleChip(c, x, x == v);
+            });
+            chips.add(auto);
+            addChip(row, auto);
+            TextView capNote = Ui.text(c, getString(R.string.captions_note), 12, Ui.DIM, false);
+            capNote.setPadding(0, Ui.dp(c, 6), 0, 0);
+            box.addView(capNote);
         }
 
         List<Track> video = tracks(C.TRACK_TYPE_VIDEO);
@@ -1775,6 +1875,10 @@ public class PlayerActivity extends AppCompatActivity {
         video = new Video(this);
         root.addView(video, new FrameLayout.LayoutParams(-1, -1));
         root.addView(gestures(), new FrameLayout.LayoutParams(-1, -1));
+        // The automatic subtitles: over the picture, under everything else (they take no touch).
+        captionView = new com.gathin.tvhomephone.captions.CaptionView(this);
+        captionView.setPadding(0, 0, 0, Ui.dp(this, 30));
+        root.addView(captionView, new FrameLayout.LayoutParams(-1, -1));
 
         spinner = new ProgressBar(this);
         spinner.setIndeterminateTintList(ColorStateList.valueOf(Ui.TEXT));
@@ -1833,6 +1937,10 @@ public class PlayerActivity extends AppCompatActivity {
         matchButton = button(R.drawable.live_ic_stats, R.string.live3_match_centre, v -> extras.openMatch());
         matchButton.setVisibility(View.GONE);
         top.addView(matchButton);
+        top.addView(button(R.drawable.live_ic_cast, R.string.cast_button, v -> {
+            hideOverlay();
+            CastSheet.show(this, cur);
+        }));
         top.addView(button(R.drawable.live_ic_more, R.string.live_options, v -> options()));
         if (pipSupported()) top.addView(button(R.drawable.live_ic_pip, R.string.live_pip, v -> pipAndLeave()));
         top.addView(button(R.drawable.live_ic_close, R.string.live_close, v -> close()));

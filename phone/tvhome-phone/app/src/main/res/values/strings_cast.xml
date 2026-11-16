@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Live TV: Cast to the TVs and devices on the Wi-Fi, and the automatic subtitles. -->
+<resources>
+    <string name="cast_button">Cast</string>
+    <string name="cast_on_tv">Cast to a TV or device</string>
+    <string name="cast_title">Cast</string>
+    <string name="cast_sub">%1$s to a TV or device on this Wi-Fi</string>
+    <string name="cast_sub_none">Pick a TV or device on this Wi-Fi, then a channel</string>
+    <string name="cast_casting_to">Casting to %1$s</string>
+    <string name="cast_stop">Stop</string>
+    <string name="cast_stop_casting">Stop casting</string>
+    <string name="cast_change">Another device</string>
+    <string name="cast_choose_channel">Choose another channel</string>
+    <string name="cast_group_tvs">Your TVs</string>
+    <string name="cast_group_cast">Chromecast &amp; Google TV</string>
+    <string name="cast_group_other">Other devices</string>
+    <string name="cast_looking">Looking on your Wi-Fi…</string>
+    <string name="cast_none">Nothing found on this Wi-Fi. The phone and the TV need to be on the same Wi-Fi.</string>
+    <string name="cast_more">That\'s everything on this Wi-Fi.</string>
+    <string name="cast_detail_homefield">Homefield TV</string>
+    <string name="cast_detail_tvhome">TiviMate, through TV Home</string>
+    <string name="cast_detail_chromecast">Chromecast</string>
+    <string name="cast_detail_dlna">Plays streams (DLNA)</string>
+    <string name="cast_pick_channel">Choose a channel to send</string>
+    <string name="cast_state_starting">%1$s · starting…</string>
+    <string name="cast_state_failed">%1$s didn\'t start</string>
+
+    <string name="captions_title">Automatic subtitles</string>
+    <string name="captions_model_ask">This phone has no speech recognition of its own, so Homefield needs its English speech model: a one-time download of about %1$d MB. It stays on this phone, and what\'s said on the channels never leaves it.</string>
+    <string name="captions_model_get">Download</string>
+    <string name="captions_not_now">Not now</string>
+    <string name="captions_model_getting">Getting the speech model… %1$d%%</string>
+    <string name="captions_model_ready">Automatic subtitles are ready</string>
+    <string name="captions_model_failed">Couldn\'t get the speech model. Try again later.</string>
+    <string name="captions_from_channel">From the channel</string>
+    <string name="captions_from_channel_named">From the channel · %1$s</string>
+    <string name="captions_automatic">Automatic</string>
+    <string name="captions_note">Automatic subtitles are made on this phone from what\'s said, as it\'s said. When a channel sends its own, those show instead.</string>
+    <string name="captions_setting">Automatic subtitles on live TV</string>
+    <string name="captions_setting_line">Made on this phone from what\'s said on the channel. Nothing you watch or hear leaves the phone. When a channel sends its own subtitles, those show instead.</string>
+</resources>
