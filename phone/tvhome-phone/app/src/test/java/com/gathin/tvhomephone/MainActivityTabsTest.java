@@ -24,10 +24,10 @@ public class MainActivityTabsTest {
     }
 
     @Test
-    public void homeAndWatchAreTheGlassPages() {
+    public void homeSportsAndWatchAreTheGlassPages() {
         assertTrue(MainActivity.glassPage(R.id.tab_home));
         assertTrue(MainActivity.glassPage(R.id.tab_watch));
-        assertFalse(MainActivity.glassPage(R.id.tab_sports));
+        assertTrue(MainActivity.glassPage(R.id.tab_sports));
         assertFalse(MainActivity.glassPage(R.id.tab_live));
         assertFalse(MainActivity.glassPage(R.id.tab_settings));
     }
@@ -38,7 +38,7 @@ public class MainActivityTabsTest {
         assertTrue(MainActivity.fillsWindow(R.id.tab_home));
         assertTrue(MainActivity.fillsWindow(R.id.tab_watch));
         assertTrue(MainActivity.fillsWindow(R.id.tab_live));
-        assertFalse(MainActivity.fillsWindow(R.id.tab_sports));
+        assertTrue(MainActivity.fillsWindow(R.id.tab_sports));
         assertFalse(MainActivity.fillsWindow(R.id.tab_settings));
     }
 }

@@ -6,10 +6,6 @@
     <string name="sports_channel_weather">Weather</string>
     <string name="sports_channel_reminders">Reminders</string>
     <string name="sports_following">Following live</string>
-    <string name="sports_tab_centre">Match Centre</string>
-    <string name="sports_tab_tables">Tables</string>
-    <string name="sports_tab_f1">F1</string>
-    <string name="sports_tab_weekend">This Weekend</string>
     <string name="sports_remind_me">Remind me</string>
     <string name="sports_reminded">Reminder set</string>
     <!-- An alert's buttons: watch the game on its channel in Live TV, open the match page, no more alerts from it. -->

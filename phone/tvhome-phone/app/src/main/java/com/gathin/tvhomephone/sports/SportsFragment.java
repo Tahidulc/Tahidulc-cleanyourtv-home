@@ -1,121 +1,401 @@
 package com.gathin.tvhomephone.sports;
 
 import android.content.Context;
-import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.Button;
-import android.widget.FrameLayout;
-import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.fragment.app.Fragment;
-import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
+import com.gathin.broadcast.SportBoard;
 import com.gathin.tvhomephone.App;
+import com.gathin.tvhomephone.MainActivity;
 import com.gathin.tvhomephone.R;
-import com.gathin.tvhomephone.SyncStore;
-import com.google.android.material.tabs.TabLayout;
+import com.gathin.tvhomephone.live.LiveLinks;
 
 import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Callable;
 
 /**
- * Sports, as the TV's Sports page: Match Centre (today's games under each competition's logo, your clubs and live ones
- * first, each opening its own page), the tables (# · club · P · W · D · L · GD · Pts, for the Premier League and the
- * competitions the TV shows), F1 (the next Grand Prix's sessions and both standings, with the drivers' photos, the teams'
- * logos and colours) and This Weekend (the fixtures by competition with where they are on as the channel's logo, a
- * link into Live TV when the playlist has the channel, and Remind me). Pull down to read again.
+ * Sports, in Home's glass (SportsScreen lays it out, the family's mock-up A): the featured game (live, your club's first,
+ * else your club's next) with Watch on its channel; your clubs' next games; today's football under each competition's
+ * logo; live sport on British TV (Sky's guide: tennis, cricket, darts, the NFL…) by channel logo; the tables; then
+ * Formula 1, tennis, UFC, the NFL, the NBA and golf from ESPN, each with the channel the guide shows it on; and the
+ * football coming up. Every part is read at the same time, off the main thread, shown as it comes, and kept to show at
+ * once when the tab is opened again; read again every minute while it shows, and on a pull.
  */
-public class SportsFragment extends Fragment {
-    private LinearLayout page;
-    private SwipeRefreshLayout swipe;
-    private int tab;
+public class SportsFragment extends Fragment implements SportsScreen.Host {
+    private SportsScreen screen;
+    private boolean visible;
+    private int gen, pending;
     private String table = "eng.1";
-    private boolean f1Teams;
-    private int gen;
+    /** What each part showed last (by its key), shown again at once when the page is made again. */
+    private static final Map<String, Object> KEPT = new HashMap<>();
+    /** The featured game from today's football, and your club's next (the featured one when today has none). */
+    private Object[] featuredToday, featuredClub, featuredLast;
+
+    private final Runnable tick = new Runnable() {
+        @Override public void run() {
+            if (!visible || screen == null) return;
+            screen.stamp();
+            App.main.postDelayed(this, 15_000L);
+        }
+    };
+    private final Runnable reread = new Runnable() {
+        @Override public void run() {
+            if (!visible) return;
+            load(false);
+            App.main.postDelayed(this, 60_000L);
+        }
+    };
 
     @Override public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup parent, Bundle state) {
         Context c = requireContext();
-        LinearLayout root = Ui.column(c);
-        root.setBackgroundColor(c.getColor(R.color.ground));
-        TextView title = Ui.heading(c, "Sports", c.getColor(R.color.sports));
-        title.setPadding(Ui.dp(c, 18), Ui.dp(c, 18), Ui.dp(c, 18), 0);
-        root.addView(title);
-        TabLayout tabs = new TabLayout(c);
-        tabs.setTabMode(TabLayout.MODE_SCROLLABLE);
-        tabs.setBackgroundColor(c.getColor(R.color.ground));
-        tabs.setSelectedTabIndicatorColor(c.getColor(R.color.sports));
-        tabs.setTabTextColors(c.getColor(R.color.text_dim), c.getColor(R.color.text));
-        for (int id : new int[]{R.string.sports_tab_centre, R.string.sports_tab_tables, R.string.sports_tab_f1, R.string.sports_tab_weekend}) {
-            tabs.addTab(tabs.newTab().setText(id));
-        }
-        root.addView(tabs, Ui.matchWrap());
-        swipe = new SwipeRefreshLayout(c);
-        ScrollView scroll = new ScrollView(c);
-        page = Ui.column(c);
-        int pad = Ui.dp(c, 16);
-        page.setPadding(pad, Ui.dp(c, 4), pad, pad);
-        scroll.addView(page);
-        swipe.addView(scroll);
-        swipe.setOnRefreshListener(this::load);
-        root.addView(swipe, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
-        tabs.addOnTabSelectedListener(new TabLayout.OnTabSelectedListener() {
-            @Override public void onTabSelected(TabLayout.Tab t) { tab = t.getPosition(); load(); }
-            @Override public void onTabUnselected(TabLayout.Tab t) {}
-            @Override public void onTabReselected(TabLayout.Tab t) { load(); }
-        });
-        load();
-        return root;
+        screen = new SportsScreen(c, this);
+        screen.swipe.setOnRefreshListener(() -> load(true));
+        for (Map.Entry<String, Object> e : new ArrayList<>(KEPT.entrySet())) apply(e.getKey(), e.getValue());
+        return screen.view();
     }
 
-    private void load() {
-        if (page == null) return;
-        int my = ++gen;
-        swipe.setRefreshing(true);
-        int which = tab;
+    @Override public void onResume() {
+        super.onResume();
+        visible = true;
+        App.main.post(tick);
+        App.main.post(reread);
+    }
+
+    @Override public void onPause() {
+        visible = false;
+        App.main.removeCallbacks(tick);
+        App.main.removeCallbacks(reread);
+        super.onPause();
+    }
+
+    // ---- reading ----------------------------------------------------------------------------------------------------
+
+    /** Every part read again at the same time (the spinner up while a pull's reads are out). */
+    private void load(boolean pulled) {
+        if (!isAdded()) return;
         Context app = requireContext().getApplicationContext();
+        int my = ++gen;
+        pending = 0;
+        if (pulled) screen.swipe.setRefreshing(true);
+        read(my, "weather", Weather::now);
+        read(my, "football", () -> football(app));
+        read(my, "clubs", () -> clubs(app));
+        read(my, "ontv", () -> onTv(guide(0, 1)));
+        read(my, "table", () -> new Object[]{table, Espn.table(table), Clubs.starred(app)});
+        read(my, "f1", () -> f1());
+        read(my, "tennis", () -> tennis());
+        read(my, "ufc", () -> ufc());
+        read(my, "nfl", () -> teamSport(MoreSports.nfl(), OnTv.NFL));
+        read(my, "nba", () -> teamSport(MoreSports.nba(), OnTv.NBA));
+        read(my, "golf", () -> golf());
+        read(my, "coming", () -> new Object[]{britishOnly(app, weekend(app)), Clubs.starred(app)});
+    }
+
+    private void read(int my, String key, Callable<Object> job) {
+        pending++;
         App.io.execute(() -> {
-            Object data;
-            switch (which) {
-                case 1: data = Espn.table(table); break;
-                case 2: data = new Object[]{F1.next(), f1Teams ? F1.teams() : F1.drivers()}; break;
-                case 3: data = weekend(app); break;
-                default: data = today(app);
+            Object r;
+            try {
+                r = job.call();
+            } catch (Exception e) {
+                r = null;
             }
+            Object got = r;
             App.main.post(() -> {
-                if (my != gen || !isAdded()) return;
-                swipe.setRefreshing(false);
-                page.removeAllViews();
-                switch (which) {
-                    case 1: showTable(cast(data)); break;
-                    case 2: showF1((Object[]) data); break;
-                    case 3: showWeekend(cast(data)); break;
-                    default: showToday(cast(data));
-                }
+                if (my != gen || !isAdded() || screen == null) return;
+                if (--pending <= 0) screen.swipe.setRefreshing(false);
+                if (got == null) return;
+                KEPT.put(key, got);
+                apply(key, got);
             });
         });
     }
 
+    /** A part's reading on the page. */
     @SuppressWarnings("unchecked")
-    private static <T> T cast(Object o) { return (T) o; }
+    private void apply(String key, Object r) {
+        if (screen == null || r == null) return;
+        Object[] x = r instanceof Object[] ? (Object[]) r : null;
+        switch (key) {
+            case "weather":
+                if (x != null && x.length > 0 && x[0] != null) screen.weather(x[0] + "\u00B0 \u00B7 Manchester");
+                break;
+            case "football":
+                screen.matchday((Boolean) x[3]);
+                screen.today((Map<String, List<Game>>) x[0], (Map<String, String>) x[1], (Set<String>) x[2]);
+                featuredToday = (Object[]) x[4];
+                featuredLast = x.length > 5 ? (Object[]) x[5] : null;
+                featured();
+                break;
+            case "clubs":
+                screen.clubs((List<Object[]>) x[0]);
+                featuredClub = (Object[]) x[1];
+                featured();
+                break;
+            case "ontv":
+                screen.onTv((List<OnTv.Listing>) r);
+                break;
+            case "table":
+                screen.table((String) x[0], (List<String[]>) x[1], (Set<String>) x[2]);
+                break;
+            case "f1":
+                screen.f1((F1.Weekend) x[0], (List<F1.Standing>) x[1], (String) x[2]);
+                break;
+            case "tennis":
+                screen.tennis((List<Object[]>) r);
+                break;
+            case "ufc":
+                screen.fights((List<SportBoard>) x[0], (String) x[1]);
+                break;
+            case "nfl":
+                screen.nfl((List<MoreSports.Match>) r);
+                break;
+            case "nba":
+                screen.nba((List<MoreSports.Match>) r);
+                break;
+            case "golf":
+                screen.golf((List<MoreSports.Leaderboard>) r);
+                break;
+            case "coming":
+                screen.comingUp((Map<LocalDate, List<Object[]>>) x[0], (Set<String>) x[1]);
+                break;
+            default:
+                break;
+        }
+    }
 
-    // ---- Match Centre -------------------------------------------------------------------------------------------
+    /** The game at the top: today's (live first, your clubs' first), else your club's next. */
+    private void featured() {
+        Object[] f = featuredToday != null ? featuredToday : featuredClub != null ? featuredClub : featuredLast;
+        if (f == null) screen.featured(null, null, null);
+        else screen.featured((Game) f[0], (String) f[1], (String) f[2]);
+    }
+
+    /**
+     * Off the main thread: {today's games by competition (your clubs' first), each game's channel by its id, your
+     * clubs, whether there is football today, the featured game {game, channel, label} or null}.
+     */
+    static Object[] football(Context c) {
+        Map<String, List<Game>> days = today(c);
+        Set<String> mine = Clubs.starred(c);
+        Map<String, String> channels = new HashMap<>();
+        Game live = null, livePl = null, liveMine = null, nextMine = null, next = null;
+        long now = System.currentTimeMillis();
+        for (Map.Entry<String, List<Game>> e : days.entrySet()) {
+            for (Game g : e.getValue()) {
+                if (g.state != Game.POST && !channels.containsKey(g.id)) {
+                    String ch = british(c, g);
+                    if (ch != null) channels.put(g.id, ch);
+                }
+                boolean yours = g.involves(mine);
+                if (g.state == Game.LIVE) {
+                    if (yours && liveMine == null) liveMine = g;
+                    if (livePl == null && "eng.1".equals(g.slug)) livePl = g;
+                    if (live == null && big(g)) live = g;
+                } else if (g.state == Game.PRE && g.kickoff > now - 60_000L) {
+                    if (yours && (nextMine == null || g.kickoff < nextMine.kickoff)) nextMine = g;
+                    if ("eng.1".equals(g.slug) && (next == null || g.kickoff < next.kickoff)) next = g;
+                }
+            }
+        }
+        // Your club live, then a Premier League game live, then your club later today, then a big game live (a British
+        // side's, a European night's); else your club's next (from the clubs' part), and only then the next PL game.
+        Game pick = liveMine != null ? liveMine : livePl != null ? livePl : nextMine != null ? nextMine : live;
+        Object[] featured = pick == null ? null : new Object[]{pick, channels.get(pick.id), pick.state == Game.PRE ? "Today" : null};
+        Object[] fallback = next == null ? null : new Object[]{next, channels.get(next.id), "Today"};
+        return new Object[]{days, channels, mine, !days.isEmpty(), featured, fallback};
+    }
+
+    /** The British channel a game is on (one the family's TV knows, or the playlist has), never ESPN's American ones. */
+    static String british(Context c, Game g) {
+        String ch = Channels.best(c, g);
+        return ch != null && (ChannelLogos.sky(ch) != null || LiveLinks.has(c, ch)) ? ch : null;
+    }
+
+    private static final Set<String> BIG = new java.util.HashSet<>(java.util.Arrays.asList("uefa.champions", "uefa.europa",
+            "uefa.europa.conf", "eng.fa", "eng.league_cup", "fifa.world", "uefa.euro"));
+    private static final java.util.regex.Pattern HOME_NATIONS = java.util.regex.Pattern.compile(
+            "(?i)^(england|scotland|wales|northern ireland|republic of ireland|ireland)$");
+
+    /** Pure-ish: a game worth the top of the page when nobody's club plays: a European night, a cup, a home nation's. */
+    static boolean big(Game g) {
+        if (g.slug != null && BIG.contains(g.slug)) return true;
+        for (String n : new String[]{g.homeFull, g.awayFull, g.homeName, g.awayName}) if (n != null && HOME_NATIONS.matcher(n.trim()).matches()) return true;
+        return false;
+    }
+
+    /** Off the main thread: {each starred club {club, its next game, its channel}, your club's next as featured}. */
+    static Object[] clubs(Context c) {
+        List<Object[]> cards = new ArrayList<>();
+        Object[] featured = null;
+        for (String[] club : Clubs.describe(c)) {
+            List<Game> next = MoreSports.nextGames(club[0], 1);
+            Game g = next.isEmpty() ? null : next.get(0);
+            String channel = g == null ? null : british(c, g);
+            cards.add(new Object[]{club, g, channel});
+            if (featured == null && g != null) featured = new Object[]{g, channel, "Your next game"};
+        }
+        return new Object[]{cards, featured};
+    }
+
+    /** The coming days' games with ESPN's American channels taken off (the British ones and the playlist's kept). */
+    static Map<LocalDate, List<Object[]>> britishOnly(Context c, Map<LocalDate, List<Object[]>> days) {
+        for (List<Object[]> games : days.values()) {
+            for (Object[] x : games) {
+                String ch = (String) x[1];
+                if (ch != null && ChannelLogos.sky(ch) == null && !LiveLinks.has(c, ch)) x[1] = null;
+            }
+        }
+        return days;
+    }
+
+    /** Off the main thread: the live sport in Sky's guide from today to that many days on. */
+    static List<OnTv.Listing> guide(int from, int to) {
+        LocalDate today = LocalDate.now();
+        List<LocalDate> days = new ArrayList<>();
+        for (int d = from; d <= to; d++) days.add(today.plusDays(d));
+        return OnTv.days(days.toArray(new LocalDate[0]));
+    }
+
+    /** Pure-ish: the guide's live sport still to come or on (football has its own parts), the next thirty hours. */
+    static List<OnTv.Listing> onTv(List<OnTv.Listing> all) {
+        List<OnTv.Listing> out = new ArrayList<>();
+        long now = System.currentTimeMillis();
+        for (OnTv.Listing l : all) {
+            if (OnTv.FOOTBALL.equals(l.sport) || l.end <= now || l.start > now + 30 * 3_600_000L) continue;
+            out.add(l);
+        }
+        return out;
+    }
+
+    /** Off the main thread: {the next Grand Prix, the drivers' standings, its channel (the guide's, else Sky Sports F1)}. */
+    static Object[] f1() {
+        F1.Weekend w = F1.next();
+        List<F1.Standing> drivers = F1.drivers();
+        String channel = "Sky Sports F1";
+        if (w != null && w.race > 0) {
+            OnTv.Listing l = OnTv.find(guide(0, 1), OnTv.F1, 0, 0, "F1");
+            if (l != null && l.channel() != null) channel = l.channel();
+        }
+        return new Object[]{w, drivers, channel};
+    }
+
+    /** Off the main thread: each tour {name, its matches, the channel the guide shows it on}. */
+    static List<Object[]> tennis() {
+        List<OnTv.Listing> tv = guide(0, 1);
+        List<Object[]> out = new ArrayList<>();
+        for (String tour : new String[]{"ATP", "WTA"}) {
+            List<SportBoard> m = MoreSports.tennis(tour);
+            if (m.isEmpty()) continue;
+            out.add(new Object[]{tour, m, tennisChannel(tv, m)});
+        }
+        return out;
+    }
+
+    /** Pure: the channel the guide shows a tour's matches on: a listing naming a player of a match on now or soon. */
+    static String tennisChannel(List<OnTv.Listing> tv, List<SportBoard> matches) {
+        for (SportBoard s : matches) {
+            if (s.over()) continue;
+            for (SportBoard.Side p : new SportBoard.Side[]{s.a, s.b}) {
+                String surname = p.shortName == null || p.shortName.isEmpty() ? p.name : p.shortName;
+                if (surname == null || surname.length() < 3) continue;
+                OnTv.Listing l = OnTv.find(tv, OnTv.TENNIS, s.start, 4 * 3_600_000L, surname);
+                if (l != null) return l.channel();
+            }
+        }
+        return null;
+    }
+
+    /** Off the main thread: {UFC's next card, the channel the guide shows it on that day}. */
+    static Object[] ufc() {
+        List<SportBoard> card = MoreSports.ufc();
+        String channel = null;
+        if (!card.isEmpty() && card.get(0).start > 0) {
+            LocalDate day = Instant.ofEpochMilli(card.get(0).start).atZone(ZoneId.systemDefault()).toLocalDate();
+            OnTv.Listing l = OnTv.find(OnTv.days(day, day.plusDays(1)), OnTv.UFC, 0, 0, "UFC");
+            if (l != null) channel = l.channel();
+        }
+        return new Object[]{card, channel};
+    }
+
+    /** Off the main thread: a team sport's games, each to come in the next day and a half with its guide channel. */
+    static List<MoreSports.Match> teamSport(List<MoreSports.Match> games, String sport) {
+        List<OnTv.Listing> tv = guide(0, 1);
+        for (MoreSports.Match m : games) {
+            if (m.over()) continue;
+            OnTv.Listing l = OnTv.find(tv, sport, m.start, 3 * 3_600_000L, m.awayShort, m.homeShort);
+            if (l != null) m.channel = l.channel();
+        }
+        return games;
+    }
+
+    /** Off the main thread: the PGA Tour's and the DP World Tour's leaderboards, each with its guide channel. */
+    static List<MoreSports.Leaderboard> golf() {
+        List<OnTv.Listing> tv = guide(0, 1);
+        List<MoreSports.Leaderboard> out = new ArrayList<>();
+        MoreSports.Leaderboard pga = MoreSports.pga(5), dpw = MoreSports.dpWorld(5);
+        if (dpw != null) {
+            OnTv.Listing l = OnTv.find(tv, OnTv.GOLF, 0, 0, "DP World");
+            if (l != null) dpw.channel = l.channel();
+            out.add(dpw);
+        }
+        if (pga != null) {
+            for (OnTv.Listing l : tv) {
+                String t = l.title.toLowerCase(java.util.Locale.ROOT);
+                if (OnTv.GOLF.equals(l.sport) && t.contains("pga tour") && !t.contains("champions") && !t.contains("lpga")) {
+                    pga.channel = l.channel();
+                    break;
+                }
+            }
+            out.add(pga);
+        }
+        return out;
+    }
+
+    // ---- the page's taps --------------------------------------------------------------------------------------------
+
+    @Override public void game(Game g) {
+        if (g == null || !isAdded()) return;
+        startActivity(GameActivity.intent(requireContext(), g));
+    }
+
+    @Override public void watch(String channel) {
+        if (channel == null || !isAdded()) return;
+        Context c = requireContext();
+        if (!LiveLinks.open(c, channel)) Toast.makeText(c, channel + " isn't in your playlist", Toast.LENGTH_SHORT).show();
+    }
+
+    @Override public void table(String slug) {
+        table = slug;
+        if (!isAdded()) return;
+        Context app = requireContext().getApplicationContext();
+        read(gen, "table", () -> new Object[]{slug, Espn.table(slug), Clubs.starred(app)});
+    }
+
+    @Override public void settings() {
+        if (getActivity() instanceof MainActivity) ((MainActivity) getActivity()).open(R.id.tab_settings);
+    }
+
+    // ---- shared with the rest of the app ----------------------------------------------------------------------------
 
     /** The key of the starred clubs' games, ahead of the competitions' slugs in today(). */
     static final String MINE = "";
@@ -141,70 +421,41 @@ public class SportsFragment extends Fragment {
         return out;
     }
 
-    private void showToday(Map<String, List<Game>> days) {
-        Context c = requireContext();
-        Set<String> teams = Clubs.starred(c);
-        if (days.isEmpty()) { Ui.empty(page, "No games today in the competitions the TV follows."); return; }
-        for (Map.Entry<String, List<Game>> e : days.entrySet()) {
-            boolean mine = MINE.equals(e.getKey());
-            if (mine) page.addView(Ui.heading(c, "Your clubs", c.getColor(R.color.sports)));
-            else page.addView(Ui.compHeading(c, Espn.name(e.getKey()), Competitions.logo(e.getValue().get(0)), c.getColor(R.color.sports)));
-            List<View> cards = new ArrayList<>();
-            // The starred clubs' games come from several competitions: each card says which.
-            for (Game g : e.getValue()) cards.add(GameRow.build(c, g, g.involves(teams), mine));
-            GameRow.addAll(page, cards);
+
+    /** The days of the coming weekend (Friday to Monday; from today when it is already Friday, Saturday or Sunday). */
+    static List<LocalDate> weekendDays(LocalDate today) {
+        List<LocalDate> out = new ArrayList<>();
+        LocalDate d = today;
+        DayOfWeek w = d.getDayOfWeek();
+        if (w != DayOfWeek.FRIDAY && w != DayOfWeek.SATURDAY && w != DayOfWeek.SUNDAY) {
+            while (d.getDayOfWeek() != DayOfWeek.FRIDAY) d = d.plusDays(1);
         }
+        while (out.size() < 4 && (out.isEmpty() || d.getDayOfWeek() != DayOfWeek.TUESDAY)) {
+            out.add(d);
+            d = d.plusDays(1);
+        }
+        return out;
     }
 
-    // ---- Tables -------------------------------------------------------------------------------------------------
-
-    private void showTable(List<String[]> rows) {
-        Context c = requireContext();
-        HorizontalScrollView chipsScroll = new HorizontalScrollView(c);
-        chipsScroll.setHorizontalScrollBarEnabled(false);
-        LinearLayout chips = Ui.row(c);
-        String name = "";
-        for (String[] t : Espn.TABLES) {
-            boolean on = t[0].equals(table);
-            if (on) name = t[1];
-            LinearLayout chip = Ui.row(c);
-            chip.setBackground(on ? Ui.fill(c, 0x553DDC84, 18) : Ui.glass(c, 18));
-            chip.setPadding(Ui.dp(c, 10), Ui.dp(c, 6), Ui.dp(c, 14), Ui.dp(c, 6));
-            String logo = Competitions.logo(t[0]);
-            if (logo != null) {
-                ImageView v = new ImageView(c);
-                v.setScaleType(ImageView.ScaleType.FIT_CENTER);
-                v.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-                LinearLayout.LayoutParams vp = new LinearLayout.LayoutParams(Ui.dp(c, 20), Ui.dp(c, 20));
-                vp.rightMargin = Ui.dp(c, 7);
-                chip.addView(v, vp);
-                Ui.load(v, logo, null, () -> v.setVisibility(View.GONE));
-            }
-            chip.addView(Ui.text(c, t[1], 14, c.getColor(R.color.text), on));
-            chip.setContentDescription(t[1] + (on ? ", shown" : ""));
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
-            lp.rightMargin = Ui.dp(c, 8);
-            chip.setOnClickListener(v -> { table = t[0]; load(); });
-            chips.addView(chip, lp);
-        }
-        chipsScroll.addView(chips);
-        page.addView(chipsScroll, Ui.margins(c, 0, 10, 0, 2));
-        page.addView(Ui.compHeading(c, name, Competitions.logo(table), c.getColor(R.color.sports)));
-        if (rows.isEmpty()) { Ui.empty(page, "The table isn't available just now."); return; }
+    /** day → its games: the starred clubs' anywhere, and every Premier League game. Each with where it is on. */
+    static Map<LocalDate, List<Object[]>> weekend(Context c) {
+        Map<LocalDate, List<Object[]>> out = new LinkedHashMap<>();
         Set<String> teams = Clubs.starred(c);
-        LinearLayout head = tableRow(c, new String[]{"#", null, "Club", "P", "W", "D", "L", "GD", "Pts"}, false, true);
-        head.setAlpha(0.7f);
-        page.addView(head);
-        String group = null;
-        for (String[] r : rows) {
-            if (!r[7].isEmpty() && !r[7].equals(group)) {
-                group = r[7];
-                page.addView(Ui.heading(c, group, c.getColor(R.color.text_soft)));
+        for (LocalDate day : weekendDays(LocalDate.now())) {
+            List<Object[]> games = new ArrayList<>();
+            for (String[] l : Espn.LEAGUES) {
+                for (Game g : Espn.scoreboard(l[0], day, 30 * 60_000L)) {
+                    if (!g.involves(teams) && !"eng.1".equals(g.slug)) continue;
+                    if (g.state == Game.POST) continue;
+                    games.add(new Object[]{g, Channels.best(c, g)});
+                }
             }
-            String w = r.length > 10 ? r[8] : "", d = r.length > 10 ? r[9] : "", l = r.length > 10 ? r[10] : "";
-            page.addView(tableRow(c, new String[]{r[0], r[3], r[2], r[4], w, d, l, r[5], r[6]}, teams.contains(r[1]), false));
+            games.sort((a, b) -> Long.compare(((Game) a[0]).kickoff, ((Game) b[0]).kickoff));
+            if (!games.isEmpty()) out.put(day, games);
         }
+        return out;
     }
+
 
     /**
      * One line of a table: {rank, crest, club, P, W, D, L, GD, Pts}. Narrow number columns and the club's name cut short
@@ -249,256 +500,4 @@ public class SportsFragment extends Fragment {
         return r;
     }
 
-    // ---- F1 -----------------------------------------------------------------------------------------------------
-
-    private void showF1(Object[] data) {
-        Context c = requireContext();
-        F1.Weekend w = (F1.Weekend) data[0];
-        if (w != null) {
-            LinearLayout card = Ui.card(c, null);
-            card.setBackground(Ui.vertical(0xFFB3121B, 0xFF5A0A10));
-            LinearLayout top = Ui.row(c);
-            // F1's red logo on a small white tile, as it would vanish on the card's red.
-            FrameLayout tile = new FrameLayout(c);
-            tile.setBackground(Ui.fill(c, 0xFFFFFFFF, 5));
-            tile.setPadding(Ui.dp(c, 5), Ui.dp(c, 3), Ui.dp(c, 5), Ui.dp(c, 3));
-            ImageView f1 = new ImageView(c);
-            f1.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            f1.setContentDescription("Formula 1");
-            tile.addView(f1, new FrameLayout.LayoutParams(Ui.dp(c, 30), Ui.dp(c, 16)));
-            LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(-2, -2);
-            tp.rightMargin = Ui.dp(c, 10);
-            top.addView(tile, tp);
-            Ui.load(f1, Competitions.F1_LOGO, null, () -> tile.setVisibility(View.GONE));
-            top.addView(Ui.text(c, "NEXT GRAND PRIX", 12, 0xCCFFFFFF, true));
-            card.addView(top);
-            TextView gp = Ui.text(c, w.name, 22, c.getColor(R.color.text), true);
-            gp.setPadding(0, Ui.dp(c, 6), 0, 0);
-            card.addView(gp);
-            if (!w.circuit.isEmpty()) card.addView(Ui.text(c, w.circuit, 14, 0xCCFFFFFF, false));
-            DateTimeFormatter f = DateTimeFormatter.ofPattern("EEE d MMM · HH:mm");
-            for (Object[] s : w.sessions) {
-                long at = (Long) s[1];
-                if (at == 0) continue;
-                LinearLayout r = Ui.row(c);
-                r.setPadding(0, Ui.dp(c, 6), 0, 0);
-                r.addView(Ui.text(c, (String) s[0], 15, c.getColor(R.color.text), "Race".equals(s[0])), Ui.weight(1));
-                r.addView(Ui.text(c, Instant.ofEpochMilli(at).atZone(ZoneId.systemDefault()).format(f), 14, 0xE6FFFFFF, false));
-                card.addView(r);
-            }
-            page.addView(card, Ui.margins(c, 0, 12, 0, 6));
-            page.addView(Ui.liveOn(c, "Sky Sports F1"));
-        }
-        LinearLayout chips = Ui.row(c);
-        for (int i = 0; i < 2; i++) {
-            boolean teams = i == 1;
-            TextView chip = Ui.text(c, teams ? "Teams" : "Drivers", 14, c.getColor(R.color.text), teams == f1Teams);
-            chip.setBackground(teams == f1Teams ? Ui.fill(c, 0x66E10600, 18) : Ui.glass(c, 18));
-            chip.setPadding(Ui.dp(c, 16), Ui.dp(c, 8), Ui.dp(c, 16), Ui.dp(c, 8));
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
-            lp.rightMargin = Ui.dp(c, 8);
-            chip.setOnClickListener(v -> { f1Teams = teams; load(); });
-            chips.addView(chip, lp);
-        }
-        page.addView(chips, Ui.margins(c, 0, 14, 0, 8));
-        List<F1.Standing> rows = cast(data[1]);
-        if (rows.isEmpty()) { Ui.empty(page, "The standings aren't available just now."); return; }
-        for (F1.Standing r : rows) page.addView(f1Row(c, r, f1Teams));
-    }
-
-    /**
-     * One line of F1's standings: the place, the team's colour bar, the driver's photo (his initials on the team's
-     * colour when ESPN has none) or the team's logo, the name with the team under it, and the points.
-     */
-    private static View f1Row(Context c, F1.Standing r, boolean teams) {
-        int colour = F1.colour(r.teamId);
-        LinearLayout row = Ui.row(c);
-        row.setPadding(Ui.dp(c, 8), Ui.dp(c, 6), Ui.dp(c, 8), Ui.dp(c, 6));
-        row.addView(Ui.text(c, r.position, 14, c.getColor(R.color.text_soft), true), new LinearLayout.LayoutParams(Ui.dp(c, 28), -2));
-        View bar = new View(c);
-        bar.setBackground(Ui.fill(c, colour, 2));
-        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(Ui.dp(c, 4), Ui.dp(c, 40));
-        bp.rightMargin = Ui.dp(c, 10);
-        row.addView(bar, bp);
-        LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(Ui.dp(c, 40), Ui.dp(c, 40));
-        pp.rightMargin = Ui.dp(c, 12);
-        row.addView(teams ? teamTile(c, r, 40) : photo(c, r, colour, 40), pp);
-        LinearLayout who = Ui.column(c);
-        TextView name = Ui.text(c, r.name, 15, c.getColor(R.color.text), true);
-        name.setMaxLines(1);
-        name.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        who.addView(name);
-        if (teams) {
-            who.addView(Ui.text(c, ("1".equals(r.wins) ? "1 win" : r.wins + " wins"), 12, c.getColor(R.color.text_dim), false));
-        } else if (!r.team.isEmpty()) {
-            LinearLayout team = Ui.row(c);
-            team.setPadding(0, Ui.dp(c, 2), 0, 0);
-            LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(Ui.dp(c, 18), Ui.dp(c, 18));
-            sp.rightMargin = Ui.dp(c, 6);
-            team.addView(teamTile(c, r, 18), sp);
-            TextView t = Ui.text(c, r.team, 12, c.getColor(R.color.text_dim), false);
-            t.setMaxLines(1);
-            t.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            team.addView(t, Ui.weight(1));
-            who.addView(team);
-        }
-        row.addView(who, Ui.weight(1));
-        row.addView(Ui.text(c, r.points + " pts", 15, c.getColor(R.color.text), true));
-        row.setContentDescription(r.position + ", " + r.name + (teams ? ", " + r.wins + " wins" : r.team.isEmpty() ? "" : ", " + r.team)
-                + ", " + r.points + " points");
-        return row;
-    }
-
-    /** The driver's photo from ESPN in a circle of his team's colour; his initials on it until (or unless) it loads. */
-    private static View photo(Context c, F1.Standing r, int colour, int sizeDp) {
-        FrameLayout f = new FrameLayout(c);
-        GradientDrawable round = new GradientDrawable();
-        round.setShape(GradientDrawable.OVAL);
-        round.setColors(new int[]{colour, darker(colour)});
-        f.setBackground(round);
-        f.setClipToOutline(true);
-        TextView initials = Ui.text(c, F1.initials(r.name), sizeDp * 0.36f, readableOn(colour), true);
-        initials.setGravity(Gravity.CENTER);
-        f.addView(initials, new FrameLayout.LayoutParams(-1, -1));
-        if (r.headshot != null) {
-            ImageView v = new ImageView(c);
-            v.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            v.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-            f.addView(v, new FrameLayout.LayoutParams(-1, -1));
-            Ui.load(v, r.headshot, () -> initials.setVisibility(View.GONE), () -> {
-                v.setVisibility(View.GONE);
-                initials.setVisibility(View.VISIBLE);
-            });
-        }
-        f.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        return f;
-    }
-
-    /**
-     * The team's logo from formula1.com on a small white tile (several are black: they would vanish on the navy); this
-     * season's, else last season's; the team's initials on its colour when neither loads.
-     */
-    private static View teamTile(Context c, F1.Standing r, int sizeDp) {
-        FrameLayout f = new FrameLayout(c);
-        f.setBackground(Ui.fill(c, 0xFFFFFFFF, sizeDp / 5f));
-        int pad = Ui.dp(c, sizeDp * 0.1f);
-        f.setPadding(pad, pad, pad, pad);
-        TextView initials = Ui.text(c, F1.initials(r.team.isEmpty() ? r.name : r.team), sizeDp * 0.32f, readableOn(F1.colour(r.teamId)), true);
-        initials.setGravity(Gravity.CENTER);
-        initials.setVisibility(View.GONE);
-        f.addView(initials, new FrameLayout.LayoutParams(-1, -1));
-        ImageView v = new ImageView(c);
-        v.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        v.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        f.addView(v, new FrameLayout.LayoutParams(-1, -1));
-        Runnable none = () -> {
-            v.setVisibility(View.GONE);
-            f.setBackground(Ui.fill(c, F1.colour(r.teamId), sizeDp / 5f));
-            if (sizeDp >= 30) initials.setVisibility(View.VISIBLE);
-        };
-        String[] logos = F1.logos(r.teamId, r.season);
-        if (logos.length == 0) none.run(); else Ui.load(v, logos, null, none);
-        f.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        return f;
-    }
-
-    private static int darker(int colour) {
-        return 0xFF000000 | (Math.round(((colour >> 16) & 0xFF) * 0.6f) << 16) | (Math.round(((colour >> 8) & 0xFF) * 0.6f) << 8)
-                | Math.round((colour & 0xFF) * 0.6f);
-    }
-
-    /** White on a dark colour, navy on a pale one (Haas's grey, Mercedes's teal). */
-    private static int readableOn(int colour) {
-        double lum = (0.299 * ((colour >> 16) & 0xFF) + 0.587 * ((colour >> 8) & 0xFF) + 0.114 * (colour & 0xFF)) / 255.0;
-        return lum > 0.62 ? 0xFF0A0D33 : 0xFFFFFFFF;
-    }
-
-    // ---- This Weekend -------------------------------------------------------------------------------------------
-
-    /** The days of the coming weekend (Friday to Monday; from today when it is already Friday, Saturday or Sunday). */
-    static List<LocalDate> weekendDays(LocalDate today) {
-        List<LocalDate> out = new ArrayList<>();
-        LocalDate d = today;
-        DayOfWeek w = d.getDayOfWeek();
-        if (w != DayOfWeek.FRIDAY && w != DayOfWeek.SATURDAY && w != DayOfWeek.SUNDAY) {
-            while (d.getDayOfWeek() != DayOfWeek.FRIDAY) d = d.plusDays(1);
-        }
-        while (out.size() < 4 && (out.isEmpty() || d.getDayOfWeek() != DayOfWeek.TUESDAY)) {
-            out.add(d);
-            d = d.plusDays(1);
-        }
-        return out;
-    }
-
-    /** day → its games: the starred clubs' anywhere, and every Premier League game. Each with where it is on. */
-    static Map<LocalDate, List<Object[]>> weekend(Context c) {
-        Map<LocalDate, List<Object[]>> out = new LinkedHashMap<>();
-        Set<String> teams = Clubs.starred(c);
-        for (LocalDate day : weekendDays(LocalDate.now())) {
-            List<Object[]> games = new ArrayList<>();
-            for (String[] l : Espn.LEAGUES) {
-                for (Game g : Espn.scoreboard(l[0], day, 30 * 60_000L)) {
-                    if (!g.involves(teams) && !"eng.1".equals(g.slug)) continue;
-                    if (g.state == Game.POST) continue;
-                    games.add(new Object[]{g, Channels.best(c, g)});
-                }
-            }
-            games.sort((a, b) -> Long.compare(((Game) a[0]).kickoff, ((Game) b[0]).kickoff));
-            if (!games.isEmpty()) out.put(day, games);
-        }
-        return out;
-    }
-
-    private void showWeekend(Map<LocalDate, List<Object[]>> days) {
-        Context c = requireContext();
-        Set<String> teams = Clubs.starred(c);
-        if (days.isEmpty()) { Ui.empty(page, "No fixtures found for the weekend yet."); return; }
-        DateTimeFormatter f = DateTimeFormatter.ofPattern("EEEE d MMMM");
-        for (Map.Entry<LocalDate, List<Object[]>> e : days.entrySet()) {
-            page.addView(Ui.heading(c, e.getKey().format(f), c.getColor(R.color.sports)));
-            // The day's games under each competition's logo and name, in the order their first games start.
-            Map<String, List<Object[]>> byCompetition = new LinkedHashMap<>();
-            for (Object[] x : e.getValue()) {
-                Game g = (Game) x[0];
-                byCompetition.computeIfAbsent(g.slug == null ? "" : g.slug, k -> new ArrayList<>()).add(x);
-            }
-            for (List<Object[]> games : byCompetition.values()) {
-                Game first = (Game) games.get(0)[0];
-                LinearLayout h = Ui.compHeading(c, first.leagueName == null || first.leagueName.isEmpty() ? first.league : first.leagueName,
-                        Competitions.logo(first), c.getColor(R.color.text_soft));
-                h.setPadding(0, Ui.dp(c, 4), 0, Ui.dp(c, 8));
-                page.addView(h);
-                weekendCards(c, games, teams);
-            }
-        }
-    }
-
-    private void weekendCards(Context c, List<Object[]> games, Set<String> teams) {
-        List<View> cards = new ArrayList<>();
-        for (Object[] x : games) {
-            Game g = (Game) x[0];
-            String channel = (String) x[1];
-            LinearLayout card = GameRow.build(c, g, g.involves(teams));
-            LinearLayout foot = Ui.row(c);
-            foot.setPadding(0, Ui.dp(c, 6), 0, 0);
-            View where = channel == null ? new View(c) : Ui.liveOn(c, channel);
-            foot.addView(where, Ui.weight(1));
-            Button remind = new Button(c);
-            String key = "game:" + g.id;
-            remind.setText(SyncStore.get(c, "reminder", key) != null ? R.string.sports_reminded : R.string.sports_remind_me);
-            remind.setOnClickListener(v -> {
-                if (SyncStore.get(c, "reminder", key) != null) {
-                    SyncStore.delete(c, "reminder", key);
-                    remind.setText(R.string.sports_remind_me);
-                } else {
-                    SyncStore.put(c, "reminder", key, GameActivity.reminder(g, channel));
-                    remind.setText(R.string.sports_reminded);
-                }
-            });
-            foot.addView(remind, new LinearLayout.LayoutParams(-2, -2));
-            card.addView(foot);
-            cards.add(card);
-        }
-        GameRow.addAll(page, cards);
-    }
 }

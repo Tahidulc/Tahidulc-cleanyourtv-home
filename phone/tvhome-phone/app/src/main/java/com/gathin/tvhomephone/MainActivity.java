@@ -21,9 +21,9 @@ import com.gathin.tvhomephone.glass.LensBar;
 /**
  * The app's one window: five tabs (Home, Sports, Live TV, Watch, Settings), each a fragment of its own part, under a
  * floating bar of liquid glass at the foot. Slide a finger along the bar and its lens follows to the tab let go on;
- * the page slides in from that side. Home and Watch are glass pages, drawn up under the status bar and down under the
- * bar, which blurs them as they scroll; Live TV fills the window too (its guide's black up under the status bar and its
- * rows on under the bar); Sports and Settings sit between the bars as before. A tablet the same, wider inside.
+ * the page slides in from that side. Home, Sports and Watch are glass pages, drawn up under the status bar and down
+ * under the bar, which blurs them as they scroll; Live TV fills the window too (its guide's black up under the status
+ * bar and its rows on under the bar); Settings sits between the bars as before. A tablet the same, wider inside.
  */
 public class MainActivity extends AppCompatActivity {
     private static final String TAB = "tab", SAVED_AT = "savedAt";
@@ -220,9 +220,9 @@ public class MainActivity extends AppCompatActivity {
         return -1;
     }
 
-    /** Pure: the pages drawn in glass, under the status bar and the tab bar (Home and Watch). */
+    /** Pure: the pages drawn in glass, under the status bar and the tab bar (Home, Sports and Watch). */
     static boolean glassPage(int id) {
-        return id == R.id.tab_home || id == R.id.tab_watch;
+        return id == R.id.tab_home || id == R.id.tab_sports || id == R.id.tab_watch;
     }
 
     /** Pure: the pages that fill the whole window, fitting themselves to the bars: the glass ones and Live TV. */
