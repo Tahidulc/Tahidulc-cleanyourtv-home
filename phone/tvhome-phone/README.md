@@ -578,3 +578,11 @@ or Top 10's place this week. A list's own words come first ("THU 5 · TOMORROW",
 family's own sources have of it, from the playlists' names and the account's own TorBox files: a white 4K, 1080p or 720p
 chip, and Dolby's mark for Dolby Vision or Atmos. Nothing is guessed. The title and its year sit under the card. Home's
 rows are larger, two and a bit across a phone, and its headings have a round chevron button that leads on.
+
+**Seasons and episodes in one row (5.14).** A series' page shows its seasons and episodes as the family's recording has
+them. The show's logo sits in the middle, with the seasons as tabs under it and the one in view in a white pill. Under
+them runs one row of every episode of every season, side by side. Each card has its still with rounded corners, "S1 E8",
+its name, two lines of what happens and "1h 7m, 9 Oct 2022". Scrolling the row slides the pill to the season in view, and
+a season's tab slides the row to its first episode. The page opens on the episode up next, marked Up next with how far in
+it was left. Episodes the playlists don't have are dimmed, and holding a card shows all of what happens. The season up next
+is read first, and the others as the row comes near them.

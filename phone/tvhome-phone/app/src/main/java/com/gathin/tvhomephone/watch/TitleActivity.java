@@ -113,10 +113,6 @@ public class TitleActivity extends AppCompatActivity {
             if (found == null) playFound(null);
             else Toast.makeText(TitleActivity.this, "Not in " + TorBox.where(TitleActivity.this), Toast.LENGTH_SHORT).show();
         }
-
-        @Override public void choose(View anchor, List<CoverMenu.Entry> entries) {
-            showMenu(anchor, false, entries);
-        }
     };
 
     public static void open(Context c, Title t) {
@@ -500,7 +496,8 @@ public class TitleActivity extends AppCompatActivity {
         if (t.tv) {
             int[] up = upNext();
             boolean across = getResources().getConfiguration().screenWidthDp >= 600;
-            episodes = CoverEpisodes.make(this, t, got, host, across, side, up[0], up[1], upProgress());
+            episodes = CoverEpisodes.make(this, t, got, host, across, side, up[0], up[1], upProgress(),
+                    logoPath == null ? null : Tmdb.image(logoPath, "w500"));
             if (episodes != null) {
                 sections.addView(episodes.view, fill());
                 fresh.add(episodes.view);

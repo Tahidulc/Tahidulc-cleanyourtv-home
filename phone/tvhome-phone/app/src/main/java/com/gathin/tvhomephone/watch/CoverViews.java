@@ -174,24 +174,6 @@ final class CoverViews {
         }
     }
 
-    /** A chip of frosted glass with its words and a chevron down ("Season 9 ⌄"). */
-    static TextView chip(Context c, String words) {
-        TextView t = Glass.text(c, words, 15, Glass.TEXT, Glass.heading(c, 500));
-        t.setSingleLine(true);
-        t.setBackground(Glass.card(c, 18));
-        t.setPadding(dp(c, 16), dp(c, 10), dp(c, 12), dp(c, 10));
-        Icons down = new Icons(c, Icons.DOWN, Glass.SOFT);
-        int s = dp(c, 16);
-        down.setBounds(0, 0, s, s);
-        t.setCompoundDrawablesRelative(null, null, down, null);
-        t.setCompoundDrawablePadding(dp(c, 6));
-        t.setGravity(Gravity.CENTER_VERTICAL);
-        t.setClickable(true);
-        t.setFocusable(true);
-        press(t, 0.96f);
-        return t;
-    }
-
     /** The thin line of how far in: a faint track, the part watched in white. */
     static final class Line extends View {
         private final Paint track = new Paint(Paint.ANTI_ALIAS_FLAG), done = new Paint(Paint.ANTI_ALIAS_FLAG);
