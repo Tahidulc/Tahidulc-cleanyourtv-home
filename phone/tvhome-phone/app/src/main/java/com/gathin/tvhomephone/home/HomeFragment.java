@@ -22,6 +22,8 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.gathin.tvhomephone.App;
 import com.gathin.tvhomephone.MainActivity;
 import com.gathin.tvhomephone.R;
+import com.gathin.tvhomephone.SyncStore;
+import com.gathin.tvhomephone.glass.Glass;
 import com.gathin.tvhomephone.live.BreakingNews.Story;
 import com.gathin.tvhomephone.live.Watched;
 import com.gathin.tvhomephone.sports.AlertLog;
@@ -36,41 +38,54 @@ import com.gathin.tvhomephone.sports.ScoreBug;
 import com.gathin.tvhomephone.sports.Ui;
 import com.gathin.tvhomephone.sports.Weather;
 import com.gathin.tvhomephone.sync.Tvs;
+import com.gathin.tvhomephone.watch.HomeWatch;
 import com.gathin.tvhomephone.watch.Lists;
+import com.gathin.tvhomephone.watch.Title;
 import com.gathin.tvhomephone.watch.TitleActivity;
+import com.gathin.tvhomephone.watch.WatchFragment;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.time.LocalDate;
-import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
- * Home, in the TV launcher's style (HomeScreen lays it out): the hero to swipe through (what you're part-way through,
- * then films and TV picked for you from your own playlists), with the date, the time and Manchester's weather over
- * it; Continue watching; the scores box (today's games, your clubs and live ones first, moving on by itself every 8
- * seconds as the TV's does) and your clubs' games today; the films and TV picked for you; BBC News's and BBC Sport's
- * headlines; the latest alerts; Recently watched; then the TVs' cards. Every row reads at the same time, off the main
- * thread, and shows what it had last time until then.
+ * Home, in glass (HomeScreen lays it out): the family's greeting with the date and Manchester's weather; the pill to
+ * Watch's films and TV, its search, and Live TV; a frosted card for each section below; Continue watching (what you're
+ * part-way through, each over its own backdrop with its logo); Favourites from My list; the scores box (today's games,
+ * your clubs and live ones first, moving on by itself every 8 seconds as the TV's does) and your clubs' games today;
+ * the films and TV picked for you from your own playlists; BBC News's and BBC Sport's headlines; the latest alerts;
+ * Recently watched; then the TVs' cards. Every row reads at the same time, off the main thread, and shows what it had
+ * last time until then.
  */
 public class HomeFragment extends Fragment implements HomeScreen.Host {
     private HomeScreen screen;
-    private TextView count;
+    private TextView count, clubs;
     private RecyclerView bugs;
     /** The games of the clubs the family follows, marked Your club on the scores box. */
-    private final java.util.Set<String> mineIds = new java.util.HashSet<>();
+    private final Set<String> mineIds = new HashSet<>();
     private final List<Game> shown = new ArrayList<>();
-    private LinearLayout scores, today, todayBox, latest, latestBox;
+    private LinearLayout today, todayBox;
     /** Recently watched, under the alerts. */
     private RecentRow recent;
     private boolean visible, touching;
-    private int gen, picksGen, newsGen;
+    private int gen, picksGen, newsGen, listGen;
     private Pager pager;
-    private String resumeFor = "";
+    /**
+     * Each Continue watching title's backdrop and logo (by its card's key), kept while it is in Continue watching, so
+     * Home shows them at once when it comes back; and the ones being read now.
+     */
+    private static final Map<String, Pick> ARTS = new HashMap<>();
+    private final Set<String> reading = new HashSet<>();
+    /** My list as it was last read, shown at once when Home comes back. */
+    private static List<Pick> listKept;
     /** The scores box moves on to its next game every AUTO_MS, as the TV's does. */
     private static final long AUTO_MS = 8_000L;
     private static final int LOOPS = 1000;
@@ -90,6 +105,8 @@ public class HomeFragment extends Fragment implements HomeScreen.Host {
             App.main.postDelayed(this, 30_000L);
         }
     };
+    /** Something kept changed (My list here, or synced from a TV): Favourites read again. */
+    private final Runnable listChanged = () -> App.main.post(this::favourites);
 
     @Override public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup parent, Bundle state) {
         Context c = requireContext();
@@ -98,16 +115,15 @@ public class HomeFragment extends Fragment implements HomeScreen.Host {
             load();
             picks(true);
             headlines(true);
+            favourites();
         });
 
-        // The scores: a heading, the box to swipe through, its count, then the clubs' games today.
-        scores = screen.sports;
-        scores.addView(HomeScreen.heading(c, "Live & today"));
-        View gap = new View(c);
-        scores.addView(gap, new LinearLayout.LayoutParams(1, Art.dp(c, 12)));
+        // The scores, in their frosted box: the box to swipe through, its count, then the clubs' games today.
+        LinearLayout box = screen.sportsBox;
         bugs = new RecyclerView(c);
         bugs.setLayoutManager(new LinearLayoutManager(c, LinearLayoutManager.HORIZONTAL, false));
         bugs.setNestedScrollingEnabled(false);
+        bugs.setOverScrollMode(View.OVER_SCROLL_NEVER);
         pager = new Pager();
         pager.attachToRecyclerView(bugs);
         bugs.setAdapter(new Bugs());
@@ -135,36 +151,32 @@ public class HomeFragment extends Fragment implements HomeScreen.Host {
                 return false;
             }
         });
-        scores.addView(bugs, Ui.margins(c, 16, 0, 16, 4));
-        count = Rows.text(c, 12, Art.DIM, Type.inter(c), 1);
+        box.addView(bugs, Ui.matchWrap());
+        count = Glass.text(c, "", 12, Glass.MUTED, Glass.body(c));
         count.setGravity(Gravity.CENTER);
-        scores.addView(count, Ui.matchWrap());
+        count.setPadding(0, Glass.dp(c, 10), 0, Glass.dp(c, 2));
+        count.setVisibility(View.GONE);
+        box.addView(count, Ui.matchWrap());
         todayBox = Ui.column(c);
-        TextView clubs = Rows.text(c, 13, Art.SPORT, Type.interSemi(c), 1);
-        clubs.setText("YOUR CLUBS TODAY");
+        clubs = Glass.text(c, "YOUR CLUBS TODAY", 12, Glass.MUTED, Glass.bodySemi(c));
         clubs.setLetterSpacing(0.12f);
-        clubs.setPadding(0, Art.dp(c, 14), 0, Art.dp(c, 8));
+        clubs.setPadding(Glass.dp(c, 2), Glass.dp(c, 16), 0, Glass.dp(c, 10));
         todayBox.addView(clubs);
         today = Ui.column(c);
         todayBox.addView(today, Ui.matchWrap());
         todayBox.setVisibility(View.GONE);
-        scores.addView(todayBox, Ui.margins(c, 16, 0, 16, 0));
-        scores.setVisibility(View.GONE);
-
-        // The latest alerts.
-        latestBox = screen.alerts;
-        latestBox.addView(HomeScreen.heading(c, "Latest alerts"));
-        latest = Ui.column(c);
-        latestBox.addView(latest, Ui.margins(c, 16, 12, 16, 0));
+        box.addView(todayBox, Ui.matchWrap());
 
         recent = new RecentRow(this);
         screen.recent.addView(recent.view(), Ui.matchWrap());
         recent.refresh();
-        screen.watch.addView(com.gathin.tvhomephone.watch.HomeWatch.build(this, screen.watch, false));
+        // The TVs' cards are Watch's own; Home only places them, at its foot.
+        screen.tvs.addView(HomeWatch.build(this, screen.tvs, false), Ui.matchWrap());
 
         // What it had last time, at once; then everything read again at the same time.
         screen.feed(Feed.kept(c));
         screen.news(Headlines.kept(c));
+        if (listKept != null) screen.favourites(listKept);
         resume();
         if (Tvs.paired(c)) Tvs.watching(c, (w, e) -> {
             if (isAdded()) resume();
@@ -183,6 +195,8 @@ public class HomeFragment extends Fragment implements HomeScreen.Host {
         alerts(requireContext());
         if (recent != null) recent.refresh();
         resume();
+        favourites();
+        SyncStore.addListener(listChanged);
         screen.visible(true);
         App.main.post(tick);
         App.main.post(reread);
@@ -192,6 +206,7 @@ public class HomeFragment extends Fragment implements HomeScreen.Host {
     @Override public void onPause() {
         visible = false;
         screen.visible(false);
+        SyncStore.removeListener(listChanged);
         App.main.removeCallbacks(tick);
         App.main.removeCallbacks(reread);
         App.main.removeCallbacks(auto);
@@ -200,29 +215,58 @@ public class HomeFragment extends Fragment implements HomeScreen.Host {
 
     // ---- films, TV and the headlines ----------------------------------------------------------------------------
 
-    /** Continue watching from this phone (and the TVs), at once; the first one's backdrop and logo read after. */
+    /**
+     * Continue watching from this phone (and the TVs), at once; each title's backdrop and logo read after, one read
+     * each, and kept while it stays in Continue watching (a read that failed is tried again next time).
+     */
     private void resume() {
         if (screen == null || !isAdded()) return;
         Context app = requireContext().getApplicationContext();
         List<Resume.Card> cards = Resume.pick(Watched.list(app), Lists.resume(app), 12);
-        Resume.Card first = cards.isEmpty() ? null : cards.get(0);
-        String key = first == null ? "" : first.key();
-        Pick had = key.equals(resumeFor) ? artFor : null;
-        screen.resume(cards, had);
-        if (first == null || first.tmdb <= 0 || had != null) return;
+        Set<String> keys = new HashSet<>();
+        for (Resume.Card k : cards) keys.add(k.key());
+        ARTS.keySet().retainAll(keys);
+        screen.resume(cards, ARTS);
+        for (Resume.Card k : cards) {
+            String key = k.key();
+            if (k.tmdb <= 0 || ARTS.containsKey(key) || !reading.add(key)) continue;
+            int tmdb = k.tmdb;
+            boolean tv = k.tv;
+            App.io.execute(() -> {
+                Pick art = Feed.art(app, tmdb, tv);
+                App.main.post(() -> {
+                    reading.remove(key);
+                    if (art == null) return;
+                    ARTS.put(key, art);
+                    if (isAdded() && screen != null) screen.art(key, art);
+                });
+            });
+        }
+    }
+
+    /** Favourites: My list, read off the main thread (what it was last time shows until then). */
+    private void favourites() {
+        if (screen == null || !isAdded()) return;
+        Context app = requireContext().getApplicationContext();
+        int my = ++listGen;
         App.io.execute(() -> {
-            Pick art = Feed.art(app, first.tmdb, first.tv);
-            if (art == null) return;
+            List<Pick> list = new ArrayList<>();
+            try {
+                for (Title t : Lists.myList(app)) {
+                    Pick p = Pick.of(t);
+                    if (p != null) list.add(p);
+                }
+            } catch (RuntimeException e) {
+                // as it was
+                return;
+            }
             App.main.post(() -> {
-                if (!isAdded()) return;
-                resumeFor = key;
-                artFor = art;
-                screen.resume(cards, art);
+                listKept = list;
+                if (my != listGen || !isAdded() || screen == null) return;
+                screen.favourites(list);
             });
         });
     }
-
-    private Pick artFor;
 
     /** The films and TV picked from the playlists (made again when stale, or forced). */
     private void picks(boolean force) {
@@ -254,10 +298,6 @@ public class HomeFragment extends Fragment implements HomeScreen.Host {
     }
 
     // ---- the page's taps ------------------------------------------------------------------------------------------
-
-    @Override public void play(Pick p) {
-        TitleActivity.play(requireContext(), p.title());
-    }
 
     @Override public void open(Pick p) {
         TitleActivity.open(requireContext(), p.title());
@@ -293,6 +333,16 @@ public class HomeFragment extends Fragment implements HomeScreen.Host {
 
     @Override public void settings() {
         if (getActivity() instanceof MainActivity) ((MainActivity) getActivity()).open(R.id.tab_settings);
+    }
+
+    /** Watch, asked to open on a section (and its search), then shown. */
+    @Override public void watch(int section, boolean search) {
+        WatchFragment.ask(section, search);
+        if (getActivity() instanceof MainActivity) ((MainActivity) getActivity()).open(R.id.tab_watch);
+    }
+
+    @Override public void live() {
+        if (getActivity() instanceof MainActivity) ((MainActivity) getActivity()).open(R.id.tab_live);
     }
 
     // ---- the scores box moving on by itself -----------------------------------------------------------------------
@@ -349,10 +399,9 @@ public class HomeFragment extends Fragment implements HomeScreen.Host {
         }
     }
 
+    /** The greeting and the date as they are now, on the clock's tick. */
     private void stamp() {
-        if (screen == null) return;
-        screen.clock.setText(LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm")));
-        screen.date.setText(LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE d MMMM")).toUpperCase(java.util.Locale.ROOT));
+        if (screen != null) screen.stamp();
     }
 
     private void load() {
@@ -394,7 +443,7 @@ public class HomeFragment extends Fragment implements HomeScreen.Host {
 
     private void show(List<Game> bugList, List<Game> mine, List<String> channels, Object[] w) {
         Context c = requireContext();
-        if (w != null) screen.weather.setText(w[0] + "°  " + w[1] + " · Manchester");
+        if (w != null) screen.weather(w[0] + "° · Manchester");
         int was = shown.size();
         LinearLayoutManager lm = (LinearLayoutManager) bugs.getLayoutManager();
         int on = was == 0 || lm == null ? 0 : at(lm) % was;
@@ -406,12 +455,14 @@ public class HomeFragment extends Fragment implements HomeScreen.Host {
         if (a != null) a.notifyDataSetChanged();
         // A new number of games: the same place in the list (or the first), in the loop's middle round.
         if (shown.size() != was) bugs.scrollToPosition(middle(Math.min(on, Math.max(0, shown.size() - 1))));
-        scores.setVisibility(shown.isEmpty() && mine.isEmpty() ? View.GONE : View.VISIBLE);
+        screen.sports.setVisibility(shown.isEmpty() && mine.isEmpty() ? View.GONE : View.VISIBLE);
         bugs.setVisibility(shown.isEmpty() ? View.GONE : View.VISIBLE);
         counter();
         autoLater();
         today.removeAllViews();
         todayBox.setVisibility(mine.isEmpty() ? View.GONE : View.VISIBLE);
+        // With no scores box above them, the clubs' games start at the top of the box.
+        clubs.setPadding(clubs.getPaddingLeft(), Glass.dp(c, shown.isEmpty() ? 2 : 16), 0, clubs.getPaddingBottom());
         List<View> cards = new ArrayList<>();
         for (int i = 0; i < mine.size(); i++) {
             Game g = mine.get(i);
@@ -427,18 +478,19 @@ public class HomeFragment extends Fragment implements HomeScreen.Host {
 
     /**
      * The latest alerts: from this phone's own log, so straight away (before the scores are read) and again with every
-     * read. Each on its competition's silver band, as the TV pops them up.
+     * read. Each on its competition's silver band, as the TV pops them up, over frosted glass.
      */
     private void alerts(Context c) {
-        if (latest == null) return;
+        if (screen == null) return;
+        LinearLayout latest = screen.alertList;
         latest.removeAllViews();
         JSONArray log = AlertLog.list(c);
-        latestBox.setVisibility(log.length() == 0 ? View.GONE : View.VISIBLE);
+        screen.alerts.setVisibility(log.length() == 0 ? View.GONE : View.VISIBLE);
         for (int i = 0; i < log.length() && i < 5; i++) {
             JSONObject a = log.optJSONObject(i);
             if (a == null) continue;
             LinearLayout card = Ui.column(c);
-            card.setBackground(Art.glass(c, 16));
+            card.setBackground(Glass.card(c, 16));
             LinearLayout band = Ui.row(c);
             band.setGravity(Gravity.CENTER_VERTICAL);
             // The competition's logo (its version for light grounds, on the silver band), F1's for an F1 alert.
@@ -463,21 +515,26 @@ public class HomeFragment extends Fragment implements HomeScreen.Host {
             band.setBackground(Ui.vertical(c.getColor(R.color.band_silver_top), c.getColor(R.color.band_silver_bottom)));
             band.setPadding(Ui.dp(c, 14), Ui.dp(c, 10), Ui.dp(c, 14), Ui.dp(c, 10));
             card.addView(band, Ui.matchWrap());
-            TextView t = Rows.text(c, 14, Art.SOFT, Type.inter(c), 3);
+            TextView t = Rows.text(c, 14, Glass.SOFT, Type.inter(c), 3);
             t.setText(a.optString("text"));
             t.setLineSpacing(Ui.dp(c, 2), 1f);
             t.setPadding(Ui.dp(c, 14), Ui.dp(c, 10), Ui.dp(c, 14), Ui.dp(c, 12));
             card.addView(t);
-            Art.clip(card, Ui.dp(c, 16));
+            Glass.round(card, Glass.dp(c, 16));
             latest.addView(card, Ui.margins(c, 0, 0, 0, 10));
         }
     }
 
     private void counter() {
-        if (shown.size() < 2) { count.setText(""); return; }
+        if (shown.size() < 2) {
+            count.setText("");
+            count.setVisibility(View.GONE);
+            return;
+        }
         LinearLayoutManager lm = (LinearLayoutManager) bugs.getLayoutManager();
         int at = lm == null ? 0 : at(lm) % shown.size();
         count.setText((at + 1) + " of " + shown.size() + "  ·  swipe for more");
+        count.setVisibility(View.VISIBLE);
     }
 
     /**

@@ -15,16 +15,15 @@ import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.bumptech.glide.Glide;
-import com.bumptech.glide.load.resource.bitmap.CenterCrop;
-import com.bumptech.glide.load.resource.bitmap.RoundedCorners;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Posters in a grid (or a row): the picture with its rounded corners, the badge on its top corner, the foot line over
- * a dark fade, a progress bar when part-watched, Top 10's place, and the title under it. Tap opens the title's page;
- * hold does what the list asks (Coming up: the release pop-up off or on; elsewhere: My list).
+ * Posters in a grid (or a row), in glass: the picture in a rounded tile under a fine bright rim (its own quiet colours
+ * until it comes), the badge on its top corner, the foot line over a dark fade, a progress line when part-watched, Top
+ * 10's place, and the title under it. Tap opens the title's page; hold does what the list asks (Coming up: the release
+ * pop-up off or on; elsewhere: My list).
  */
 public final class PosterAdapter extends RecyclerView.Adapter<PosterAdapter.Holder> {
     public interface OnTitle {
@@ -81,13 +80,15 @@ public final class PosterAdapter extends RecyclerView.Adapter<PosterAdapter.Hold
         int pad = Ui.dp(c, 6);
         cell.setPadding(pad, pad, pad, pad);
         FrameLayout frame = new AspectFrame(c);
-        frame.setBackground(Ui.round(0xFF1A1F57, 12, c));
+        float radius = com.gathin.tvhomephone.glass.Glass.dp(c, 14);
+        frame.setBackground(com.gathin.tvhomephone.glass.Glass.placeholder("poster", radius));
+        com.gathin.tvhomephone.glass.Glass.round(frame, radius);
+        frame.setForeground(com.gathin.tvhomephone.glass.Glass.rim(c, 14));
         ImageView image = new ImageView(c);
         image.setScaleType(ImageView.ScaleType.CENTER_CROP);
         frame.addView(image, new FrameLayout.LayoutParams(-1, -1));
         View fade = new View(c);
         GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x00000000, 0x00000000, 0xD9000000});
-        g.setCornerRadius(Ui.dp(c, 12));
         fade.setBackground(g);
         frame.addView(fade, new FrameLayout.LayoutParams(-1, -1));
         TextView badge = Ui.text(c, "", 11, 0xFFFFFFFF, true);
@@ -112,10 +113,11 @@ public final class PosterAdapter extends RecyclerView.Adapter<PosterAdapter.Hold
         barBack.setBackgroundColor(0x40FFFFFF);
         frame.addView(barBack, new FrameLayout.LayoutParams(-1, Ui.dp(c, 3), Gravity.BOTTOM));
         View bar = new View(c);
-        bar.setBackgroundColor(0xFFFFC93C);
+        bar.setBackgroundColor(0xFFFFFFFF);
         frame.addView(bar, new FrameLayout.LayoutParams(0, Ui.dp(c, 3), Gravity.BOTTOM | Gravity.START));
         cell.addView(frame, new LinearLayout.LayoutParams(widthPx > 0 ? widthPx : -1, -2));
-        TextView name = Ui.text(c, "", 13, Ui.SOFT, false);
+        TextView name = com.gathin.tvhomephone.glass.Glass.text(c, "", 12.5f, com.gathin.tvhomephone.glass.Glass.MUTED,
+                com.gathin.tvhomephone.glass.Glass.body(c));
         name.setMaxLines(1);
         name.setEllipsize(TextUtils.TruncateAt.END);
         name.setPadding(Ui.dp(c, 2), Ui.dp(c, 6), Ui.dp(c, 2), 0);
@@ -127,7 +129,8 @@ public final class PosterAdapter extends RecyclerView.Adapter<PosterAdapter.Hold
     @Override public void onBindViewHolder(@NonNull Holder h, int position) {
         Title t = items.get(position);
         Context c = h.itemView.getContext();
-        Glide.with(h.image).load(t.poster).transform(new CenterCrop(), new RoundedCorners(Ui.dp(c, 12))).into(h.image);
+        h.frame.setBackground(com.gathin.tvhomephone.glass.Glass.placeholder(t.title, com.gathin.tvhomephone.glass.Glass.dp(c, 14)));
+        Glide.with(h.image).load(t.poster).centerCrop().into(h.image);
         h.badge.setVisibility(t.badge == null ? View.GONE : View.VISIBLE);
         if (t.badge != null) {
             h.badge.setText(t.badge);

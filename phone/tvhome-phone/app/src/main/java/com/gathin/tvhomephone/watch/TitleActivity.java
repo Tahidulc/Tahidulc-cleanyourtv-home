@@ -1,30 +1,44 @@
 package com.gathin.tvhomephone.watch;
 
-import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
+import android.text.Layout;
+import android.text.TextUtils;
+import android.transition.ChangeBounds;
+import android.transition.TransitionManager;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
+import android.view.Window;
 import android.widget.FrameLayout;
-import android.widget.HorizontalScrollView;
-import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 
-import com.bumptech.glide.Glide;
-import com.bumptech.glide.load.resource.bitmap.CircleCrop;
 import com.gathin.tvhomephone.App;
 import com.gathin.tvhomephone.SyncStore;
-import com.gathin.tvhomephone.sync.Tvs;
-import com.google.android.material.button.MaterialButton;
+import com.gathin.tvhomephone.glass.AmbientView;
+import com.gathin.tvhomephone.glass.Glass;
+import com.gathin.tvhomephone.glass.Icons;
+import com.gathin.tvhomephone.live.Vod;
+import com.gathin.tvhomephone.live.VodHistory;
+import com.gathin.tvhomephone.live.VodPlayerActivity;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -32,24 +46,73 @@ import org.json.JSONObject;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
+import java.util.Set;
+import java.util.TreeSet;
 
 /**
- * A film's or series' page, as the TVs' title panel: its picture and logo, the line under it, which of the family's
- * playlists has it, what it's about, then Play (from those playlists only: nothing else is looked for and no other app
- * is opened), My list, How was it?, the trailer, Film night (films) or the Episode map (series), and the cast.
+ * A film's or series' cover page, in the glass look the family chose after their reference picture: its backdrop across
+ * the top of the screen, fading into the page's glow, with its logo and the line under it; Play (or Continue, when some
+ * of it was left part-way) from the family's own playlists only (nothing else is looked for and no other app is opened),
+ * which of them has it, frosted circles for My list, How was it?, the trailer and Film night (films), and what it's
+ * about; for a series its seasons and episodes, and the Episode map; then the trailers, More like this and the cast.
+ * Back and "…" float over the picture.
  */
 public class TitleActivity extends AppCompatActivity {
     private Title t;
     private JSONObject details;
     /** The line saying which playlists have it; what was found there (null: not looked yet, or none). */
     private TextView where;
-    private com.gathin.tvhomephone.live.Vod.Item found;
-    private List<com.gathin.tvhomephone.live.Vod.Episode> foundEps;
+    private Vod.Item found;
+    private List<Vod.Episode> foundEps;
+    /** The episodes found there, as "season:number". */
+    private final Set<String> have = new HashSet<>();
     private boolean looked, looking;
-    private LinearLayout col, buttons;
-    private MaterialButton listButton, rateButton, nightButton;
+    /** A tablet: the words over the picture's foot at its left, as the reference's tablet has them. */
+    private boolean wide;
+    /** The page's side margin, and the width of the centred column the top's pieces sit in on a phone. */
+    private int side, column;
+    private FrameLayout root, page;
+    private AmbientView ambient;
+    private LinearLayout col, body, sections;
+    private CoverHero hero;
+    private CoverHero.Bar bar;
+    private View topFade;
+    private CoverViews.MainButton mainButton;
+    private LinearLayout progressRow;
+    private CoverViews.Line progressLine;
+    private TextView progressWords, about, aboutMore;
+    private boolean aboutOpen;
+    private CoverViews.Circle listCircle, rateCircle, nightCircle;
+    private CoverEpisodes episodes;
+    /** The newest of it left part-way from the family's playlists (VodHistory), or null. */
+    private VodHistory.Entry resume;
+    private Insets bars = Insets.NONE;
+    private CoverMenu menu;
+
+    /** What the seasons and episodes ask of the page. */
+    private final CoverEpisodes.Host host = new CoverEpisodes.Host() {
+        @Override public Boolean has(int season, int number) {
+            if (!looked) return null;
+            return found != null && have.contains(season + ":" + number);
+        }
+
+        @Override public void play(int season, int number) {
+            playEpisode(season, number);
+        }
+
+        @Override public void missing(int season, int number) {
+            // The series in none of them: the full word on adding a playlist; one episode missing: a short one.
+            if (found == null) playFound(null);
+            else Toast.makeText(TitleActivity.this, "Not in your playlists", Toast.LENGTH_SHORT).show();
+        }
+
+        @Override public void choose(View anchor, List<CoverMenu.Entry> entries) {
+            showMenu(anchor, false, entries);
+        }
+    };
 
     public static void open(Context c, Title t) {
         c.startActivity(intent(c, t));
@@ -77,73 +140,314 @@ public class TitleActivity extends AppCompatActivity {
         t.poster = in.getStringExtra("poster");
         t.backdrop = in.getStringExtra("backdrop");
         t.year = in.getStringExtra("year") == null ? "" : in.getStringExtra("year");
+        wide = getResources().getConfiguration().smallestScreenWidthDp >= 600;
+        side = Glass.dp(this, wide ? 40 : 20);
+        column = Math.min(getResources().getDisplayMetrics().widthPixels - 2 * side, Glass.dp(this, 560));
+        getWindow().setBackgroundDrawable(new ColorDrawable(Glass.GROUND));
 
+        // Back to front: the glow; the page, in a frame of its own so the glass over it can draw it as it is scrolled; a
+        // fade under the status bar once the picture has gone up; the floating buttons.
+        root = new FrameLayout(this);
+        root.setBackgroundColor(Glass.GROUND);
+        ambient = new AmbientView(this);
+        root.addView(ambient, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        page = new FrameLayout(this);
         ScrollView scroll = new ScrollView(this);
-        scroll.setBackgroundColor(Ui.ground(this));
-        col = Ui.column(this);
-        scroll.addView(col);
-        setContentView(scroll);
+        scroll.setVerticalScrollBarEnabled(false);
+        page.addView(scroll, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        root.addView(page, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        scroll.addView(col, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT));
+        hero = new CoverHero(this, t.title, wide, side);
+        col.addView(hero, fill());
+        body = new LinearLayout(this);
+        body.setOrientation(LinearLayout.VERTICAL);
+        col.addView(body, fill());
+        topFade = new View(this);
+        topFade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xF20E0F14, 0xB80E0F14, 0x000E0F14}));
+        topFade.setAlpha(0f);
+        topFade.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        root.addView(topFade, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, Glass.dp(this, 88), Gravity.TOP));
+        bar = new CoverHero.Bar(this, t.tv ? "Shows" : "Films", this::finish, this::openMenu);
+        bar.setSources(ambient, page);
+        root.addView(bar, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP));
+        // TalkBack reaches Back and "…" first, then the page under them.
+        bar.setId(View.generateViewId());
+        page.setAccessibilityTraversalAfter(bar.getId());
+        setContentView(root);
+        edgeToEdge();
 
-        FrameLayout head = new FrameLayout(this) {
-            @Override protected void onMeasure(int w, int h) {
-                int width = MeasureSpec.getSize(w);
-                super.onMeasure(w, MeasureSpec.makeMeasureSpec(Math.min(width * 9 / 16, getResources().getDisplayMetrics().heightPixels / 2),
-                        MeasureSpec.EXACTLY));
-            }
-        };
-        ImageView back = new ImageView(this);
-        back.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        head.addView(back, new FrameLayout.LayoutParams(-1, -1));
-        View fade = new View(this);
-        fade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x330D0F2C, 0x000D0F2C, 0xFF0D0F2C}));
-        head.addView(fade, new FrameLayout.LayoutParams(-1, -1));
-        ImageView logo = new ImageView(this);
-        logo.setScaleType(ImageView.ScaleType.FIT_START);
-        logo.setAdjustViewBounds(true);
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(Ui.dp(this, 240), Ui.dp(this, 72), Gravity.BOTTOM | Gravity.START);
-        lp.setMargins(Ui.dp(this, 20), 0, 0, Ui.dp(this, 4));
-        head.addView(logo, lp);
-        TextView name = Ui.text(this, t.title, 26, 0xFFFFFFFF, true);
-        FrameLayout.LayoutParams np = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM | Gravity.START);
-        np.setMargins(Ui.dp(this, 20), 0, Ui.dp(this, 20), Ui.dp(this, 4));
-        head.addView(name, np);
-        col.addView(head, Ui.fill());
-        Glide.with(this).load(t.backdrop != null ? t.backdrop : t.poster).centerCrop().into(back);
+        buildTop();
+        sections = new LinearLayout(this);
+        sections.setOrientation(LinearLayout.VERTICAL);
+        body.addView(sections, fill());
 
-        LinearLayout info = Ui.column(this);
-        int pad = Ui.dp(this, 20);
-        info.setPadding(pad, Ui.dp(this, 8), pad, 0);
-        info.addView(Ui.label(this, t.tv ? "TV SHOWS" : "MOVIES", t.tv ? Ui.SHOWS : Ui.MOVIES));
-        TextView meta = Ui.text(this, "", 14, Ui.SOFT, false);
-        meta.setPadding(0, Ui.dp(this, 6), 0, 0);
-        info.addView(meta);
-        where = Ui.text(this, "Looking in your playlists…", 14, 0xFFFFFFFF, true);
-        where.setPadding(0, Ui.dp(this, 6), 0, 0);
-        info.addView(where);
+        String picture = bigger(t.backdrop != null ? t.backdrop : t.poster);
+        hero.picture(picture);
+        ambient.setImage(picture);
+        hero.meta(t.year);
         lookInPlaylists(null);
-        TextView overview = Ui.text(this, "", 15, 0xEEFFFFFF, false);
-        overview.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 4));
-        overview.setLineSpacing(0, 1.15f);
-        info.addView(overview);
-        col.addView(info, Ui.fill());
-
-        HorizontalScrollView bs = new HorizontalScrollView(this);
-        bs.setHorizontalScrollBarEnabled(false);
-        buttons = Ui.row(this);
-        buttons.setPadding(pad, Ui.dp(this, 12), pad, Ui.dp(this, 8));
-        bs.addView(buttons);
-        col.addView(bs, Ui.fill());
-        addButtons();
         // Opened with Play (Home's hero): Play pressed once, as the page comes up.
-        if (state == null && in.getBooleanExtra("autoplay", false)) col.post(this::play);
+        if (state == null && in.getBooleanExtra("autoplay", false)) root.post(this::play);
+        scroll.setOnScrollChangeListener((v, x, y, ox, oy) -> scrolled(y));
+        loadDetails();
+    }
 
-        LinearLayout more = Ui.column(this);
-        col.addView(more, Ui.fill());
+    /**
+     * Edge to edge: the picture under the status bar, the floating buttons just below it, the foot clear of the
+     * navigation bar; light icons on both bars.
+     */
+    private void edgeToEdge() {
+        Window w = getWindow();
+        WindowCompat.setDecorFitsSystemWindows(w, false);
+        w.setStatusBarColor(Color.TRANSPARENT);
+        w.setNavigationBarColor(Color.TRANSPARENT);
+        WindowInsetsControllerCompat ic = WindowCompat.getInsetsController(w, root);
+        ic.setAppearanceLightStatusBars(false);
+        ic.setAppearanceLightNavigationBars(false);
+        ViewCompat.setOnApplyWindowInsetsListener(root, (v, ins) -> {
+            Insets s = ins.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+            bars = s;
+            bar.fit(s.top, s.left, s.right);
+            hero.fit(s.top, s.left, s.right);
+            body.setPadding(s.left, 0, s.right, s.bottom + Glass.dp(this, 40));
+            ViewGroup.LayoutParams lp = topFade.getLayoutParams();
+            lp.height = s.top + Glass.dp(this, 60);
+            topFade.setLayoutParams(lp);
+            return WindowInsetsCompat.CONSUMED;
+        });
+    }
 
+    /** The page scrolled: the picture's parallax, the glow drifting, the fade under the status bar, the back word. */
+    private void scrolled(int y) {
+        hero.scrolled(y);
+        ambient.setShift(y);
+        int h = hero.getHeight();
+        if (h <= 0) return;
+        topFade.setAlpha(Math.max(0f, Math.min(1f, (y - h * 0.5f) / (h * 0.3f))));
+        bar.scrolled(y, h);
+    }
+
+    private static LinearLayout.LayoutParams fill() {
+        return new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+    }
+
+    /** Where a piece of the top goes: on a phone, in the centred column; on a tablet, at the left over the picture's foot. */
+    private LinearLayout.LayoutParams place(int width, int height, int topDp) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(width, height);
+        lp.topMargin = Glass.dp(this, topDp);
+        if (!wide) lp.gravity = Gravity.CENTER_HORIZONTAL;
+        return lp;
+    }
+
+    /** Play (or Continue) and how far in, which playlists have it, the frosted circles, and what it's about. */
+    private void buildTop() {
+        int wrap = LinearLayout.LayoutParams.WRAP_CONTENT, match = LinearLayout.LayoutParams.MATCH_PARENT;
+        int button = wide ? Glass.dp(this, 360) : column;
+        LinearLayout to = wide ? hero.head : body;
+        mainButton = new CoverViews.MainButton(this);
+        mainButton.setOnClickListener(v -> mainPressed());
+        to.addView(mainButton, place(button, Glass.dp(this, 52), wide ? 20 : 4));
+
+        progressRow = new LinearLayout(this);
+        progressRow.setOrientation(LinearLayout.HORIZONTAL);
+        progressRow.setGravity(Gravity.CENTER_VERTICAL);
+        progressLine = new CoverViews.Line(this);
+        progressRow.addView(progressLine, new LinearLayout.LayoutParams(0, Glass.dp(this, 3), 1f));
+        progressWords = Glass.text(this, "", 12, Glass.MUTED, Glass.body(this));
+        progressWords.setSingleLine(true);
+        LinearLayout.LayoutParams pw = new LinearLayout.LayoutParams(wrap, wrap);
+        pw.leftMargin = Glass.dp(this, 12);
+        progressRow.addView(progressWords, pw);
+        progressRow.setVisibility(View.GONE);
+        to.addView(progressRow, place(button, wrap, 12));
+
+        where = Glass.text(this, "Looking in your playlists…", 12, Glass.FAINT, Glass.body(this));
+        where.setGravity(wide ? Gravity.START : Gravity.CENTER_HORIZONTAL);
+        where.setMaxLines(2);
+        where.setEllipsize(TextUtils.TruncateAt.END);
+        where.setLineSpacing(0, 1.15f);
+        to.addView(where, place(wide ? match : column, wrap, 10));
+
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        actions.setGravity(wide ? Gravity.START : Gravity.CENTER_HORIZONTAL);
+        listCircle = circle(actions, v -> toggleList());
+        rateCircle = circle(actions, v -> rate());
+        circle(actions, v -> trailer()).set(new Icons(this, Icons.FILM, Glass.TEXT), "Trailer", false);
+        if (!t.tv) nightCircle = circle(actions, v -> FilmNightSheet.show(this, t, details, this::paintButtons));
+        LinearLayout.LayoutParams ap = place(wide ? wrap : column, wrap, wide ? 12 : 26);
+        // A tablet's circles start in line with the words over the picture.
+        if (wide) ap.leftMargin = side - Glass.dp(this, 21);
+        body.addView(actions, ap);
+
+        about = Glass.text(this, "", 15, Glass.SOFT, Glass.body(this));
+        about.setMaxLines(4);
+        about.setEllipsize(TextUtils.TruncateAt.END);
+        about.setLineSpacing(0, 1.25f);
+        about.setVisibility(View.GONE);
+        about.setOnClickListener(v -> toggleAbout());
+        about.addOnLayoutChangeListener((v, l, tp, r, b, ol, ot, or, ob) -> about.post(this::checkMore));
+        aboutMore = Glass.text(this, "More", 14, Glass.TEXT, Glass.heading(this, 600));
+        aboutMore.setPadding(0, Glass.dp(this, 8), Glass.dp(this, 16), Glass.dp(this, 8));
+        aboutMore.setVisibility(View.GONE);
+        aboutMore.setOnClickListener(v -> toggleAbout());
+        LinearLayout aboutTo = wide ? hero.head : body;
+        aboutTo.addView(about, place(wide ? match : column, wrap, wide ? 18 : 26));
+        aboutTo.addView(aboutMore, place(wide ? wrap : column, wrap, 0));
+    }
+
+    private CoverViews.Circle circle(LinearLayout row, View.OnClickListener click) {
+        CoverViews.Circle c = new CoverViews.Circle(this);
+        c.setOnClickListener(click);
+        row.addView(c, wide ? new LinearLayout.LayoutParams(Glass.dp(this, 96), LinearLayout.LayoutParams.WRAP_CONTENT)
+                : new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        return c;
+    }
+
+    /** What it's about (none for ""), up to four lines until More. */
+    private void setAbout(String s) {
+        String text = s == null ? "" : s.trim();
+        about.setText(text);
+        about.setVisibility(text.isEmpty() ? View.GONE : View.VISIBLE);
+        if (text.isEmpty()) aboutMore.setVisibility(View.GONE);
+    }
+
+    /** More shows while what it's about is cut short (and Less once it's open). */
+    private void checkMore() {
+        Layout l = about.getLayout();
+        boolean cut = l != null && l.getLineCount() > 0 && l.getEllipsisCount(l.getLineCount() - 1) > 0;
+        int show = about.getVisibility() == View.VISIBLE && (cut || aboutOpen) ? View.VISIBLE : View.GONE;
+        if (aboutMore.getVisibility() != show) aboutMore.setVisibility(show);
+    }
+
+    private void toggleAbout() {
+        if (aboutMore.getVisibility() != View.VISIBLE) return;
+        aboutOpen = !aboutOpen;
+        TransitionManager.beginDelayedTransition(col, new ChangeBounds().setDuration(260));
+        about.setMaxLines(aboutOpen ? Integer.MAX_VALUE : 4);
+        aboutMore.setText(aboutOpen ? "Less" : "More");
+    }
+
+    private void paintButtons() {
+        boolean in = SyncStore.get(this, "mylist", t.key()) != null;
+        listCircle.set(new Icons(this, in ? Icons.CHECK : Icons.PLUS, Glass.TEXT), "My list", in);
+        listCircle.setContentDescription(in ? "On My list" : "Add to My list");
+        int v = rating();
+        rateCircle.set(new Icons(this, Icons.HEART, Glass.TEXT), rateWords(v), v != 0);
+        if (nightCircle != null) nightCircle.set(new CoverViews.Moon(this, Glass.TEXT), nightWords(), nightOn());
+    }
+
+    private int rating() {
+        JSONObject r = SyncStore.get(this, "rating", t.key());
+        return r == null ? 0 : r.optInt("value");
+    }
+
+    private static String rateWords(int v) {
+        return v == 2 ? "Loved it" : v == 1 ? "Liked it" : v < 0 ? "Not for me" : "How was it?";
+    }
+
+    /** Film night's words as its sheet gives them, without the marks: "Film night", or "Film night 20:00" when set for this. */
+    private String nightWords() {
+        return FilmNightSheet.words(this, t).replace("☾", "").replace("✓", "").trim();
+    }
+
+    private boolean nightOn() {
+        JSONObject p = FilmNightSheet.plan(this);
+        return p != null && p.optInt("id") == t.id;
+    }
+
+    /**
+     * Whether some of it was left part-way (the newest such in VodHistory): the main button then says Continue (with the
+     * season and episode for a series) and the line under it how far in and the time left; the episode up next marked.
+     */
+    private void paintResume() {
+        resume = null;
+        if (t.id > 0) {
+            for (VodHistory.Entry e : VodHistory.list(this)) {
+                if (e.tmdb == t.id && e.tv == t.tv) {
+                    resume = e;
+                    break;
+                }
+            }
+        }
+        boolean part = resume != null;
+        String words = CoverText.button(part, t.tv, part ? resume.season : 0, part ? resume.episode : 0);
+        String left = part ? CoverText.remaining(resume.minutesLeft()) : "";
+        mainButton.set(words);
+        mainButton.setContentDescription(left.isEmpty() ? words : words + ", " + left);
+        progressRow.setVisibility(left.isEmpty() ? View.GONE : View.VISIBLE);
+        if (part) {
+            progressLine.set(resume.progress());
+            progressWords.setText(left);
+        }
+        if (episodes != null) {
+            int[] up = upNext();
+            episodes.setUpNext(up[0], up[1], upProgress());
+        }
+    }
+
+    /** The episode to watch next: the one left part-way, else the first. */
+    private int[] upNext() {
+        if (resume != null && t.tv && resume.episode > 0) return new int[]{resume.season, resume.episode};
+        return new int[]{1, 1};
+    }
+
+    private float upProgress() {
+        return resume != null && t.tv && resume.episode > 0 ? resume.progress() : 0f;
+    }
+
+    /** The main button: what was left part-way carried on, as Watch's Continue watching does; else Play. */
+    private void mainPressed() {
+        if (resume != null) {
+            startActivity(VodPlayerActivity.intent(this, resume));
+            return;
+        }
+        play();
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        if (listCircle != null) paintButtons();
+        if (mainButton != null) paintResume();
+    }
+
+    /** "…": the same as the circles (My list, How was it?, the trailer, Film night), in a frosted menu. */
+    private void openMenu(View anchor) {
+        boolean in = SyncStore.get(this, "mylist", t.key()) != null;
+        int v = rating();
+        List<CoverMenu.Entry> items = new ArrayList<>();
+        items.add(new CoverMenu.Entry(in ? "Remove from My list" : "Add to My list", null,
+                new Icons(this, in ? Icons.CHECK : Icons.PLUS, Glass.SOFT), in, this::toggleList));
+        items.add(new CoverMenu.Entry("How was it?", v == 0 ? null : rateWords(v), new Icons(this, Icons.HEART, Glass.SOFT), v != 0,
+                this::rate));
+        items.add(new CoverMenu.Entry("Trailer", null, new Icons(this, Icons.FILM, Glass.SOFT), false, this::trailer));
+        if (!t.tv) {
+            boolean night = nightOn();
+            items.add(new CoverMenu.Entry("Film night", night ? nightWords().replace("Film night", "").trim() : null,
+                    new CoverViews.Moon(this, Glass.SOFT), night, () -> FilmNightSheet.show(this, t, details, this::paintButtons)));
+        }
+        showMenu(anchor, true, items);
+    }
+
+    private void showMenu(View anchor, boolean fromEnd, List<CoverMenu.Entry> items) {
+        if (menu != null && menu.isOpen() || root.getWidth() == 0) return;
+        menu = CoverMenu.show(this, root, anchor, fromEnd, bars, items, ambient, page);
+    }
+
+    /** A TMDB backdrop at the size the top of the page wants (w1280); anything else as it is. */
+    static String bigger(String url) {
+        if (url == null || !url.contains("image.tmdb.org")) return url;
+        return url.replace("/w780/", "/w1280/").replace("/w300/", "/w1280/");
+    }
+
+    private void loadDetails() {
+        Context app = getApplicationContext();
         App.io.execute(() -> {
             JSONObject d = null;
             try {
-                d = Tmdb.details(this, t.id, t.tv);
+                d = Tmdb.details(app, t.id, t.tv);
             } catch (IOException ignored) {
                 // the page as it came
             }
@@ -151,64 +455,120 @@ public class TitleActivity extends AppCompatActivity {
             App.main.post(() -> {
                 if (isFinishing() || isDestroyed()) return;
                 if (got == null) {
-                    meta.setText(Tmdb.ready(this) ? "Couldn't load the details right now." : "Pair with a TV in Settings to see the details.");
+                    hero.meta(Tmdb.ready(this) ? "Couldn't load the details right now." : "Pair with a TV in Settings to see the details.");
                     return;
                 }
-                details = got;
-                Title full = Title.from(got, t.tv);
-                if (full != null) {
-                    if (t.poster == null) t.poster = full.poster;
-                    if (t.backdrop == null && full.backdrop != null) {
-                        t.backdrop = full.backdrop;
-                        Glide.with(this).load(t.backdrop).centerCrop().into(back);
-                    }
-                    if (t.title.isEmpty()) t.title = full.title;
-                }
-                meta.setText(metaLine(got));
-                // Its original title too (a foreign film's own name), when the first look found nothing.
-                String original = got.optString(t.tv ? "original_name" : "original_title", "");
-                if (looked && found == null && !original.isEmpty() && !original.equalsIgnoreCase(t.title)) lookInPlaylists(null);
-                overview.setText(got.optString("overview"));
-                String logoPath = logo(got);
-                if (logoPath != null) {
-                    name.setVisibility(View.GONE);
-                    Glide.with(this).load(Tmdb.image(logoPath, "w500")).fitCenter().into(logo);
-                }
-                if (t.tv) more.addView(new EpisodeMap(this, t, got).view, Ui.fill());
-                more.addView(cast(got), Ui.fill());
-                View gap = new View(this);
-                more.addView(gap, new LinearLayout.LayoutParams(-1, Ui.dp(this, 40)));
+                showDetails(got);
             });
         });
     }
 
-    private void addButtons() {
-        buttons.removeAllViews();
-        buttons.addView(Ui.pill(this, "▶  Play", true, v -> play()), Ui.margins(Ui.wrap(), this, 0, 0, 8, 0));
-        listButton = Ui.pill(this, "", false, v -> toggleList());
-        buttons.addView(listButton, Ui.margins(Ui.wrap(), this, 0, 0, 8, 0));
-        rateButton = Ui.pill(this, "", false, v -> rate());
-        buttons.addView(rateButton, Ui.margins(Ui.wrap(), this, 0, 0, 8, 0));
-        buttons.addView(Ui.pill(this, "Trailer", false, v -> trailer()), Ui.margins(Ui.wrap(), this, 0, 0, 8, 0));
-        if (!t.tv) {
-            nightButton = Ui.pill(this, "", false, v -> FilmNightSheet.show(this, t, details, this::paintButtons));
-            buttons.addView(nightButton, Ui.margins(Ui.wrap(), this, 0, 0, 8, 0));
+    /** The details in: the line under the title, the logo, what it's about, then the sections rising softly into place. */
+    private void showDetails(JSONObject got) {
+        details = got;
+        Title full = Title.from(got, t.tv);
+        if (full != null) {
+            if (t.poster == null) t.poster = full.poster;
+            if (t.backdrop == null && full.backdrop != null) {
+                t.backdrop = full.backdrop;
+                String big = Tmdb.image(got.optString("backdrop_path", null), "w1280");
+                hero.picture(big != null ? big : full.backdrop);
+                ambient.setImage(big != null ? big : full.backdrop);
+            }
+            if (t.title.isEmpty()) {
+                t.title = full.title;
+                hero.name(t.title);
+            }
         }
-        paintButtons();
+        hero.meta(CoverText.meta(got, t.tv));
+        // Its original title too (a foreign film's own name), when the first look found nothing.
+        String original = got.optString(t.tv ? "original_name" : "original_title", "");
+        if (looked && found == null && !original.isEmpty() && !original.equalsIgnoreCase(t.title)) lookInPlaylists(null);
+        setAbout(got.optString("overview"));
+        String logoPath = logo(got);
+        if (logoPath != null) hero.logo(Tmdb.image(logoPath, "w500"));
+
+        List<View> fresh = new ArrayList<>();
+        if (about.getVisibility() == View.VISIBLE) fresh.add(about);
+        if (t.tv) {
+            int[] up = upNext();
+            boolean across = getResources().getConfiguration().screenWidthDp >= 600;
+            episodes = CoverEpisodes.make(this, t, got, host, across, side, up[0], up[1], upProgress());
+            if (episodes != null) {
+                sections.addView(episodes.view, fill());
+                fresh.add(episodes.view);
+            }
+            EpisodeMap map = new EpisodeMap(this, t, got);
+            styleMap(map.view);
+            sections.addView(map.view, fill());
+            fresh.add(map.view);
+        }
+        List<String[]> videos = CoverText.trailers(got, 12);
+        if (!videos.isEmpty()) {
+            View s = section("Trailers", CoverRows.trailers(this, videos, side, this::openVideo));
+            sections.addView(s, fill());
+            fresh.add(s);
+        }
+        // More like this comes in its own read; its place is kept here, between the trailers and the cast.
+        LinearLayout similar = new LinearLayout(this);
+        similar.setOrientation(LinearLayout.VERTICAL);
+        sections.addView(similar, fill());
+        View cast = CoverRows.cast(this, got, side);
+        if (cast != null) {
+            View s = section("Cast", cast);
+            sections.addView(s, fill());
+            fresh.add(s);
+        }
+        CoverViews.rise(fresh);
+        loadSimilar(similar);
     }
 
-    private void paintButtons() {
-        boolean in = SyncStore.get(this, "mylist", t.key()) != null;
-        listButton.setText(in ? "✓  My list" : "+  My list");
-        JSONObject r = SyncStore.get(this, "rating", t.key());
-        int v = r == null ? 0 : r.optInt("value");
-        rateButton.setText(v == 2 ? "♥  Loved it" : v == 1 ? "👍  Liked it" : v < 0 ? "Not for me" : "How was it?");
-        if (nightButton != null) nightButton.setText(FilmNightSheet.words(this, t));
+    /** More like this: TMDB's recommendations for it, as posters; none, no row. */
+    private void loadSimilar(LinearLayout box) {
+        Context app = getApplicationContext();
+        String path = (t.tv ? "tv/" : "movie/") + t.id + "/recommendations";
+        App.io.execute(() -> {
+            List<Title> got = null;
+            try {
+                got = Tmdb.list(app, path, t.tv, 1);
+            } catch (IOException ignored) {
+                // no row
+            }
+            List<Title> list = got;
+            App.main.post(() -> {
+                if (isFinishing() || isDestroyed() || list == null) return;
+                List<Title> keep = new ArrayList<>();
+                for (Title x : list) if (x.id != t.id && keep.size() < 20) keep.add(x);
+                if (keep.isEmpty()) return;
+                View s = section("More like this", CoverRows.similar(this, keep, side, x -> open(this, x)));
+                box.addView(s, fill());
+                CoverViews.rise(Collections.singletonList(s));
+            });
+        });
     }
 
-    @Override protected void onResume() {
-        super.onResume();
-        if (listButton != null) paintButtons();
+    /** A section: its heading as the glass pages have them, then what it holds. */
+    private LinearLayout section(String title, View content) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        TextView head = Glass.section(this, title, null);
+        head.setPadding(side, head.getPaddingTop(), side, head.getPaddingBottom());
+        box.addView(head);
+        box.addView(content, fill());
+        return box;
+    }
+
+    /** The Episode map as it is, under its own heading in the page's type. */
+    private void styleMap(LinearLayout map) {
+        map.setPadding(side, Glass.dp(this, 10), side, 0);
+        View head = map.getChildCount() > 0 ? map.getChildAt(0) : null;
+        if (head instanceof LinearLayout && ((LinearLayout) head).getChildCount() > 0 && ((LinearLayout) head).getChildAt(0) instanceof TextView) {
+            TextView h = (TextView) ((LinearLayout) head).getChildAt(0);
+            h.setTypeface(Glass.heading(this, 500));
+            h.setTextSize(TypedValue.COMPLEX_UNIT_SP, 19);
+            h.setTextColor(Glass.SOFT);
+            h.setPadding(0, Glass.dp(this, 14), 0, Glass.dp(this, 4));
+        }
     }
 
     /** Play: from the family's own playlists only (a film at once, a series by season and episode); nothing else. */
@@ -223,24 +583,26 @@ public class TitleActivity extends AppCompatActivity {
 
     /**
      * Looks for it in the family's own playlists (Vod: every playlist in use, every version), off the main thread; the
-     * line under the title says which have it; then (when given) runs.
+     * line under Play says which have it, and the episodes they lack are dimmed; then (when given) runs.
      */
     private void lookInPlaylists(Runnable then) {
         looking = true;
         String original = details == null ? "" : details.optString(t.tv ? "original_name" : "original_title", "");
-        android.content.Context app = getApplicationContext();
-        com.gathin.tvhomephone.App.io.execute(() -> {
-            com.gathin.tvhomephone.live.Vod.Item it = com.gathin.tvhomephone.live.Vod.find(app, t.title, original, t.year, t.id, t.tv);
-            List<com.gathin.tvhomephone.live.Vod.Episode> eps = it != null && "series".equals(it.kind)
-                    ? com.gathin.tvhomephone.live.Vod.episodes(app, it) : null;
+        Context app = getApplicationContext();
+        App.io.execute(() -> {
+            Vod.Item it = Vod.find(app, t.title, original, t.year, t.id, t.tv);
+            List<Vod.Episode> eps = it != null && "series".equals(it.kind) ? Vod.episodes(app, it) : null;
             runOnUiThread(() -> {
                 if (isFinishing()) return;
                 boolean has = it != null && (!"series".equals(it.kind) || (eps != null && !eps.isEmpty()));
                 found = has ? it : null;
                 foundEps = has ? eps : null;
+                have.clear();
+                if (foundEps != null) for (Vod.Episode e : foundEps) have.add(e.season + ":" + e.number);
                 looked = true;
                 looking = false;
                 if (where != null) where.setText(whereWords());
+                if (episodes != null) episodes.mark();
                 if (then != null) then.run();
             });
         });
@@ -256,8 +618,8 @@ public class TitleActivity extends AppCompatActivity {
         }
         String line = names.isEmpty() ? "In your playlist" : "In your playlists: " + String.join(", ", names);
         if (foundEps != null && !foundEps.isEmpty()) {
-            java.util.Set<Integer> seasons = new java.util.TreeSet<>();
-            for (com.gathin.tvhomephone.live.Vod.Episode e : foundEps) seasons.add(e.season);
+            Set<Integer> seasons = new TreeSet<>();
+            for (Vod.Episode e : foundEps) seasons.add(e.season);
             line += " · " + foundEps.size() + (foundEps.size() == 1 ? " episode" : " episodes")
                     + (seasons.size() > 1 ? " in " + seasons.size() + " seasons" : "");
         }
@@ -274,12 +636,12 @@ public class TitleActivity extends AppCompatActivity {
             return;
         }
         if (!"series".equals(found.kind)) {
-            chooseSource(found.plays(), plays -> startActivity(com.gathin.tvhomephone.live.VodPlayerActivity.intent(this, plays, t.title,
-                    com.gathin.tvhomephone.live.VodPlayerActivity.meta(t.title, t.id, false, t.poster, 0, 0, ""), "")));
+            chooseSource(found.plays(), plays -> startActivity(VodPlayerActivity.intent(this, plays, t.title,
+                    VodPlayerActivity.meta(t.title, t.id, false, t.poster, 0, 0, ""), "")));
             return;
         }
         if (episode != null) {
-            for (com.gathin.tvhomephone.live.Vod.Episode e : foundEps) {
+            for (Vod.Episode e : foundEps) {
                 if (e.season == episode[0] && e.number == episode[1]) {
                     playEpisode(e, foundEps);
                     return;
@@ -291,26 +653,26 @@ public class TitleActivity extends AppCompatActivity {
         pickEpisode(foundEps);
     }
 
-    /** One episode (from the Episode map), from the playlists only. */
+    /** One episode (from the episode cards or the Episode map), from the playlists only. */
     void playEpisode(int season, int number) {
         int[] ep = {season, number};
         if (looked && !looking) playFound(ep);
         else lookInPlaylists(() -> playFound(ep));
     }
 
-    private void playEpisode(com.gathin.tvhomephone.live.Vod.Episode e, List<com.gathin.tvhomephone.live.Vod.Episode> eps) {
+    private void playEpisode(Vod.Episode e, List<Vod.Episode> eps) {
         int season = e.season;
         // With the whole series' episodes, for the next one to follow on.
-        chooseSource(e.plays(), plays -> startActivity(com.gathin.tvhomephone.live.VodPlayerActivity.intent(this, plays,
+        chooseSource(e.plays(), plays -> startActivity(VodPlayerActivity.intent(this, plays,
                 t.title + (season > 0 ? " · S" + season : "") + " E" + e.number,
-                com.gathin.tvhomephone.live.VodPlayerActivity.meta(t.title, t.id, true, t.poster, e.season, e.number, e.title),
-                com.gathin.tvhomephone.live.Vod.episodesJson(eps))));
+                VodPlayerActivity.meta(t.title, t.id, true, t.poster, e.season, e.number, e.title),
+                Vod.episodesJson(eps))));
     }
 
     /** A series from the playlist: its season, then its episode. */
-    private void pickEpisode(List<com.gathin.tvhomephone.live.Vod.Episode> eps) {
+    private void pickEpisode(List<Vod.Episode> eps) {
         List<Integer> seasons = new ArrayList<>();
-        for (com.gathin.tvhomephone.live.Vod.Episode e : eps) if (!seasons.contains(e.season)) seasons.add(e.season);
+        for (Vod.Episode e : eps) if (!seasons.contains(e.season)) seasons.add(e.season);
         if (seasons.size() == 1) {
             pickIn(eps, seasons.get(0));
             return;
@@ -321,12 +683,12 @@ public class TitleActivity extends AppCompatActivity {
                 .setItems(names, (d, w) -> pickIn(eps, seasons.get(w))).show();
     }
 
-    private void pickIn(List<com.gathin.tvhomephone.live.Vod.Episode> eps, int season) {
-        List<com.gathin.tvhomephone.live.Vod.Episode> in = new ArrayList<>();
-        for (com.gathin.tvhomephone.live.Vod.Episode e : eps) if (e.season == season) in.add(e);
+    private void pickIn(List<Vod.Episode> eps, int season) {
+        List<Vod.Episode> in = new ArrayList<>();
+        for (Vod.Episode e : eps) if (e.season == season) in.add(e);
         String[] names = new String[in.size()];
         for (int i = 0; i < names.length; i++) {
-            com.gathin.tvhomephone.live.Vod.Episode e = in.get(i);
+            Vod.Episode e = in.get(i);
             String own = e.title == null ? "" : e.title.trim();
             names[i] = "Episode " + e.number + (own.isEmpty() || own.equalsIgnoreCase(t.title) ? "" : " · " + own);
         }
@@ -354,7 +716,7 @@ public class TitleActivity extends AppCompatActivity {
             names[i] = i == 0 ? l + "  ·  best match" : l;
         }
         new MaterialAlertDialogBuilder(this).setTitle("Choose a source")
-                .setItems(names, (d, w) -> chosen.play(com.gathin.tvhomephone.live.VodPlayerActivity.chosenFirst(plays, w)))
+                .setItems(names, (d, w) -> chosen.play(VodPlayerActivity.chosenFirst(plays, w)))
                 .show();
     }
 
@@ -398,28 +760,20 @@ public class TitleActivity extends AppCompatActivity {
         }
         Uri u = key != null ? Uri.parse("https://www.youtube.com/watch?v=" + key)
                 : Uri.parse("https://www.youtube.com/results?search_query=" + Uri.encode(t.title + " official trailer"));
+        openLink(u);
+    }
+
+    /** One of the trailers row's videos, opened as the trailer is. */
+    private void openVideo(String key) {
+        openLink(Uri.parse("https://www.youtube.com/watch?v=" + key));
+    }
+
+    private void openLink(Uri u) {
         try {
             startActivity(new Intent(Intent.ACTION_VIEW, u));
         } catch (ActivityNotFoundException e) {
             Toast.makeText(this, "No app here plays YouTube", Toast.LENGTH_SHORT).show();
         }
-    }
-
-    private String metaLine(JSONObject d) {
-        StringBuilder b = new StringBuilder();
-        String date = d.optString(t.tv ? "first_air_date" : "release_date", "");
-        if (date.length() >= 4) b.append(date, 0, 4);
-        if (t.tv) {
-            int s = d.optInt("number_of_seasons"), e = d.optInt("number_of_episodes");
-            if (s > 0) b.append(b.length() > 0 ? " · " : "").append(s).append(s == 1 ? " season" : " seasons");
-            if (e > 0) b.append(" · ").append(e).append(" episodes");
-        } else if (d.optInt("runtime") > 0) {
-            b.append(b.length() > 0 ? " · " : "").append(Plan.length(d.optInt("runtime")));
-        }
-        JSONArray g = d.optJSONArray("genres");
-        for (int i = 0; g != null && i < Math.min(3, g.length()); i++) b.append(" · ").append(g.optJSONObject(i).optString("name"));
-        if (d.optDouble("vote_average", 0) > 0) b.append(String.format(Locale.UK, " · ★ %.1f", d.optDouble("vote_average")));
-        return b.toString();
     }
 
     private static String logo(JSONObject d) {
@@ -430,43 +784,5 @@ public class TitleActivity extends AppCompatActivity {
             if (l != null && ("en".equals(l.optString("iso_639_1")) || l.isNull("iso_639_1"))) return l.optString("file_path");
         }
         return logos != null && logos.length() > 0 ? logos.optJSONObject(0).optString("file_path") : null;
-    }
-
-    /** The cast in rings, as the TVs' panel has them: picture, name and part. */
-    private View cast(JSONObject d) {
-        LinearLayout box = Ui.column(this);
-        JSONObject credits = d.optJSONObject("credits");
-        JSONArray cast = credits == null ? null : credits.optJSONArray("cast");
-        if (cast == null || cast.length() == 0) return box;
-        TextView head = Ui.text(this, "Cast", 18, 0xFFFFFFFF, true);
-        head.setPadding(Ui.dp(this, 20), Ui.dp(this, 20), 0, Ui.dp(this, 8));
-        box.addView(head);
-        HorizontalScrollView hs = new HorizontalScrollView(this);
-        hs.setHorizontalScrollBarEnabled(false);
-        LinearLayout row = Ui.row(this);
-        row.setPadding(Ui.dp(this, 14), 0, Ui.dp(this, 14), 0);
-        for (int i = 0; i < Math.min(15, cast.length()); i++) {
-            JSONObject p = cast.optJSONObject(i);
-            if (p == null) continue;
-            LinearLayout one = Ui.column(this);
-            one.setGravity(Gravity.CENTER_HORIZONTAL);
-            ImageView face = new ImageView(this);
-            face.setBackground(Ui.round(0x24FFFFFF, 40, this));
-            String path = Tmdb.image(p.optString("profile_path", null), "w185");
-            if (path != null) Glide.with(this).load(path).transform(new CircleCrop()).into(face);
-            one.addView(face, new LinearLayout.LayoutParams(Ui.dp(this, 76), Ui.dp(this, 76)));
-            TextView n = Ui.text(this, p.optString("name"), 12, 0xFFFFFFFF, true);
-            n.setGravity(Gravity.CENTER);
-            n.setMaxLines(2);
-            one.addView(n, new LinearLayout.LayoutParams(Ui.dp(this, 92), -2));
-            TextView part = Ui.text(this, p.optString("character"), 11, Ui.DIM, false);
-            part.setGravity(Gravity.CENTER);
-            part.setMaxLines(2);
-            one.addView(part, new LinearLayout.LayoutParams(Ui.dp(this, 92), -2));
-            row.addView(one, Ui.margins(Ui.wrap(), this, 4, 0, 4, 0));
-        }
-        hs.addView(row);
-        box.addView(hs, Ui.fill());
-        return box;
     }
 }

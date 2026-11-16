@@ -4,7 +4,7 @@ import android.content.Context;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.FrameLayout;
-import android.widget.ImageView;
+import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -12,182 +12,251 @@ import android.widget.TextView;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
-import com.bumptech.glide.Glide;
-import com.bumptech.glide.load.resource.drawable.DrawableTransitionOptions;
+import com.gathin.tvhomephone.glass.AmbientView;
+import com.gathin.tvhomephone.glass.FanCard;
+import com.gathin.tvhomephone.glass.Glass;
+import com.gathin.tvhomephone.glass.Icons;
+import com.gathin.tvhomephone.glass.LensBar;
 import com.gathin.tvhomephone.live.BreakingNews.Story;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
- * Home's page, in the TV launcher's style: a navy ground under a soft blurred copy of the hero's picture, the hero
- * (with the date, the weather and the clock over it), then rows with the launcher's headings: Continue watching, the
- * scores, films and TV from the playlists, BBC News's and BBC Sport's headlines, the alerts, Recently watched and the
+ * Home's page, in the glass of the family's reference picture: the page's picture glowing softly behind everything
+ * (the first title in Continue watching, else the first picked for you), the family's mark with the greeting, and the
+ * date with the weather under it; the pill (search, then Home, Films, Shows and Live); a row of frosted cards, one for
+ * each section below that has something, with three of its pictures fanned in it (a tap slides the page there); then
+ * Continue watching's landscape cards, Favourites (My list), the scores and the clubs' games, films and TV from the
+ * playlists, BBC News's and BBC Sport's headlines, what's new in the playlists, the alerts, Recently watched and the
  * TVs' cards. It only lays things out and shows what it is given; HomeFragment reads and gives (and a test can give
  * it made-up titles and draw it).
  */
 final class HomeScreen {
     /** What the page's taps do. */
     interface Host {
-        void play(Pick p);
-
+        /** A title's page. */
         void open(Pick p);
 
+        /** Continue watching's card: on from where it was left (a title on a TV: its page). */
         void resume(Resume.Card k);
 
+        /** Continue watching's card held: taken off. */
         void forget(Resume.Card k);
 
         void story(Story s);
 
         void settings();
+
+        /** Watch, on one of its sections (DISCOVER, MOVIES or TV_SHOWS), with its search open when asked. */
+        void watch(int section, boolean search);
+
+        /** The Live TV tab. */
+        void live();
     }
+
+    /** The pill's words; Home is chosen. */
+    static final int HOME = 1, FILMS = 2, SHOWS = 3, LIVE = 4;
+    /** Watch's sections, as it is asked to open on them. */
+    static final int DISCOVER = 0, MOVIES = 1, TV_SHOWS = 2;
+    /** How long after another tab opens the pill's lens goes back to Home: that page has slid in by then. */
+    private static final long BACK_HOME_MS = 450;
 
     final Context c;
     final Host host;
     final FrameLayout root;
+    final AmbientView ambient;
     final SwipeRefreshLayout swipe;
     final ScrollView scroll;
     final LinearLayout col;
-    final TextView date, clock, weather;
-    final Hero hero;
-    /** Home's own sports (the scores box, the clubs' games), the alerts, Recently watched, the TVs' cards. */
-    final LinearLayout sports, alerts, recent, watch;
-    private final ImageView backdrop;
-    private final int heroHeight;
-    private final Section resumeSection, films, shows, fresh, newsSection, sportSection, note;
-    private final Rows.Resumes resumes;
-    private final Rows.Posters filmRow, showRow, freshRow;
+    final Glass.Header header;
+    final LensBar pill;
+    /** The frosted cards along the top, in their row. */
+    final LinearLayout fans;
+    /** Continue watching's cards. */
+    final RecyclerView resumeRow;
+    /** Home's own sports: the section, and the frosted box HomeFragment fills (the scores box, the clubs' games). */
+    final LinearLayout sports, sportsBox;
+    /** The latest alerts: the section, and the list HomeFragment fills with them. */
+    final LinearLayout alerts, alertList;
+    /** Recently watched, then the TVs' cards. */
+    final LinearLayout recent, tvs;
+    private final HorizontalScrollView fanScroll;
+    private final Section resumeSection, favSection, films, shows, fresh, newsSection, sportSection, note;
+    private final Rows.Watching watching;
+    private final Rows.Posters favRow, filmRow, showRow, freshRow;
     private final Rows.Stories newsRow, sportRow;
-    private final TextView noteWords, noteButton;
+    private final Fan filmFan, showFan, freshFan, favFan, newsFan, sportFan;
+    private final List<Fan> fanList = new ArrayList<>();
+    private final Runnable backHome;
 
     private List<Resume.Card> resumeCards = new ArrayList<>();
-    private Pick resumeArt;
+    private List<Pick> mine = new ArrayList<>();
     private Feed.Result feed;
     private Headlines.Read news;
-    private boolean feedLoaded, newsLoaded;
-    private String heroSig = "", backdropFor = "";
+    /** The line under the date: the weather, once it has been read. */
+    private String under = "Manchester";
+    /** The status bar's height the refresh spinner was placed under. */
+    private int spinnerFor = -1;
 
     HomeScreen(Context c, Host host) {
         this.c = c;
         this.host = host;
-        root = new FrameLayout(c);
-        root.setBackgroundColor(Art.GROUND);
-        int screenW = c.getResources().getDisplayMetrics().widthPixels;
-        int screenH = c.getResources().getDisplayMetrics().heightPixels;
         boolean wide = c.getResources().getConfiguration().screenWidthDp >= 600;
-        // Upright: tall, about 1.2 times the width. Sideways: what shows above the tab bar, a row's top peeking under it.
-        heroHeight = wide ? Math.max(Art.dp(c, 250), Math.min(screenH - Art.dp(c, 110), Math.round(screenW * 0.56f)))
-                : Math.max(Art.dp(c, 420), Math.min(Art.dp(c, 580), Math.round(screenW * 1.22f)));
+        root = new FrameLayout(c);
+        root.setBackgroundColor(Glass.GROUND);
 
-        // The soft blurred backdrop: the hero's picture read tiny and stretched, faded into the navy.
-        backdrop = new ImageView(c);
-        backdrop.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        backdrop.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        backdrop.setAlpha(0.85f);
-        int glow = heroHeight + Art.dp(c, 460);
-        root.addView(backdrop, new FrameLayout.LayoutParams(-1, glow, Gravity.TOP));
-        View fade = new View(c);
-        fade.setBackground(Art.vertical(0x400D0F2C, 0xD90D0F2C, 0xFF0D0F2C));
-        root.addView(fade, new FrameLayout.LayoutParams(-1, glow, Gravity.TOP));
+        // The glow behind it all: the page's picture, soft and dim, fading into the warm dark ground.
+        ambient = new AmbientView(c);
+        root.addView(ambient, new FrameLayout.LayoutParams(-1, -1));
 
         swipe = new SwipeRefreshLayout(c);
-        swipe.setColorSchemeColors(Art.FILM, Art.SHOW, Art.SPORT);
-        swipe.setProgressBackgroundColorSchemeColor(0xFF1A1F57);
+        swipe.setColorSchemeColors(Glass.TEXT);
+        swipe.setProgressBackgroundColorSchemeColor(0xFF26272E);
         scroll = new ScrollView(c);
         scroll.setVerticalScrollBarEnabled(false);
         scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
-        col = new LinearLayout(c);
-        col.setOrientation(LinearLayout.VERTICAL);
-        col.setPadding(0, 0, 0, Art.dp(c, 28));
+        scroll.setClipToPadding(false);
+        col = column();
         scroll.addView(col, new FrameLayout.LayoutParams(-1, -2));
         swipe.addView(scroll);
         root.addView(swipe, new FrameLayout.LayoutParams(-1, -1));
-        scroll.setOnScrollChangeListener((v, x, y, ox, oy) -> scrolled(y));
+        scroll.setOnScrollChangeListener((v, x, y, ox, oy) -> ambient.setShift(y));
+        // Drawn under the status bar and the floating tab bar: room left for both, the spinner below the status bar
+        // (placed again only when the status bar's height changes: placing it stops a refresh that is showing).
+        Glass.fit(root, (top, bottom) -> {
+            scroll.setPadding(0, top + Glass.dp(c, 12), 0, bottom);
+            if (top == spinnerFor) return;
+            spinnerFor = top;
+            swipe.setProgressViewOffset(false, top - Glass.dp(c, 40), top + Glass.dp(c, 56));
+        });
 
-        // The hero, with the date, the weather and the clock over its top.
-        hero = new Hero(c, heroHeight);
-        hero.onPage(this::pageUp);
-        LinearLayout top = new LinearLayout(c);
-        top.setOrientation(LinearLayout.HORIZONTAL);
-        top.setGravity(Gravity.CENTER_VERTICAL);
-        int side = Art.dp(c, wide ? 28 : 20);
-        top.setPadding(side, Art.dp(c, 14), side, 0);
-        LinearLayout left = new LinearLayout(c);
-        left.setOrientation(LinearLayout.VERTICAL);
-        date = Rows.text(c, 12, Art.TEXT, Type.interSemi(c), 1);
-        date.setLetterSpacing(0.12f);
-        left.addView(date);
-        weather = Rows.text(c, 13, Art.SOFT, Type.inter(c), 1);
-        weather.setText("Manchester");
-        LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(-2, -2);
-        wl.topMargin = Art.dp(c, 4);
-        left.addView(weather, wl);
-        top.addView(left, new LinearLayout.LayoutParams(0, -2, 1f));
-        clock = Rows.text(c, 38, Art.TEXT, Type.interLight(c), 1);
-        top.addView(clock);
-        for (TextView t : new TextView[]{date, weather, clock}) t.setShadowLayer(Art.dp(c, 6), 0, 0, 0x80000000);
-        hero.box.addView(top, new FrameLayout.LayoutParams(-1, -2, Gravity.TOP));
-        col.addView(hero.box, new LinearLayout.LayoutParams(-1, heroHeight));
+        // The family's mark, the greeting and the name; the date, and the weather under it.
+        header = Glass.header(c);
+        int side = Glass.dp(c, 20);
+        header.view.setPadding(side, 0, side, 0);
+        col.addView(header.view, new LinearLayout.LayoutParams(-1, -2));
+        header.now(under);
 
-        resumes = new Rows.Resumes(c, k -> host.resume(k), k -> host.forget(k));
-        resumeSection = section("Continue watching", "Pick up where you left off", Rows.row(c, resumes));
+        // The pill: search, then Home (chosen here), Films, Shows and Live, each opening its own place.
+        pill = new LensBar(c, LensBar.PILL);
+        pill.action(Icons.SEARCH, "Search", () -> host.watch(DISCOVER, true))
+                .segment(HOME, "Home").segment(FILMS, "Films").segment(SHOWS, "Shows").segment(LIVE, "Live");
+        pill.select(HOME, false);
+        pill.setSources(ambient);
+        backHome = () -> pill.select(HOME, false);
+        pill.setOnPick(id -> {
+            if (id == FILMS) host.watch(MOVIES, false);
+            else if (id == SHOWS) host.watch(TV_SHOWS, false);
+            else if (id == LIVE) host.live();
+            else return;
+            // Its lens back on Home once the other tab is in, so it is right when the family comes back.
+            pill.removeCallbacks(backHome);
+            pill.postDelayed(backHome, BACK_HOME_MS);
+        });
+        // A tablet: the pill no wider than it needs, in the middle.
+        LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(wide ? Glass.dp(c, 520) : -1, -2);
+        pp.gravity = Gravity.CENTER_HORIZONTAL;
+        pp.setMargins(Glass.dp(c, 16), Glass.dp(c, 18), Glass.dp(c, 16), 0);
+        col.addView(pill, pp);
+
+        // The frosted cards, one for each section below that has something (filled in as the sections are).
+        fanScroll = new HorizontalScrollView(c);
+        fanScroll.setHorizontalScrollBarEnabled(false);
+        fanScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        fans = new LinearLayout(c);
+        fans.setOrientation(LinearLayout.HORIZONTAL);
+        fans.setPadding(Glass.dp(c, 16), 0, Glass.dp(c, 16 - Rows.GAP), 0);
+        fanScroll.addView(fans, new FrameLayout.LayoutParams(-2, -2));
+        LinearLayout.LayoutParams fp = new LinearLayout.LayoutParams(-1, -2);
+        fp.topMargin = Glass.dp(c, 18);
+        col.addView(fanScroll, fp);
+        fanScroll.setVisibility(View.GONE);
+
+        watching = new Rows.Watching(host::resume, host::forget);
+        resumeRow = Rows.row(c, watching);
+        resumeSection = section("Continue watching", v -> host.watch(DISCOVER, false), resumeRow);
         resumeSection.box.setVisibility(View.GONE);
         col.addView(resumeSection.box);
 
+        favRow = new Rows.Posters(c, host::open);
+        favSection = section("Favourites", v -> host.watch(DISCOVER, false), Rows.row(c, favRow));
+        favSection.box.setVisibility(View.GONE);
+        col.addView(favSection.box);
+
         sports = column();
+        sports.addView(Glass.section(c, "Live & today", null));
+        sportsBox = column();
+        sportsBox.setBackground(Glass.card(c, 20));
+        int inside = Glass.dp(c, 12);
+        sportsBox.setPadding(inside, inside, inside, inside);
+        sports.addView(sportsBox, sides());
+        sports.setVisibility(View.GONE);
         col.addView(sports);
 
-        note = section("Films and TV", "From your own playlists", null);
+        // No playlist yet: what Home needs, on a frosted card, with the way to Settings.
+        note = section("Films and TV", null, null);
         LinearLayout noteCard = column();
-        noteCard.setBackground(Art.glass(c, 18));
-        int pad = Art.dp(c, 18);
+        noteCard.setBackground(Glass.card(c, 20));
+        int pad = Glass.dp(c, 18);
         noteCard.setPadding(pad, pad, pad, pad);
-        noteWords = Rows.text(c, 14, Art.SOFT, Type.inter(c), 0);
-        noteWords.setLineSpacing(Art.dp(c, 3), 1f);
+        TextView noteWords = Glass.text(c, "Homefield plays films and TV only from your own playlists. Add yours in "
+                + "Settings, Live TV, and the films and shows picked for you come here, with what you're watching.",
+                14, Glass.SOFT, Glass.body(c));
+        noteWords.setLineSpacing(Glass.dp(c, 3), 1f);
         noteCard.addView(noteWords);
-        noteButton = Rows.text(c, 15, 0xFF10121F, Type.outfit(c, 600), 1);
+        TextView noteButton = Glass.text(c, "Open Settings", 15, 0xFF101114, Glass.heading(c, 600));
         noteButton.setGravity(Gravity.CENTER);
-        noteButton.setPadding(Art.dp(c, 20), 0, Art.dp(c, 20), 0);
-        noteButton.setBackground(Art.round(0xFFFFFFFF, Art.dp(c, 21)));
-        noteButton.setText("Open Settings");
+        noteButton.setPadding(Glass.dp(c, 20), 0, Glass.dp(c, 20), 0);
+        noteButton.setBackground(Art.round(0xFFFFFFFF, Glass.dp(c, 21)));
         noteButton.setOnClickListener(v -> host.settings());
-        LinearLayout.LayoutParams nb = new LinearLayout.LayoutParams(-2, Art.dp(c, 42));
-        nb.topMargin = Art.dp(c, 14);
+        LinearLayout.LayoutParams nb = new LinearLayout.LayoutParams(-2, Glass.dp(c, 42));
+        nb.topMargin = Glass.dp(c, 14);
         noteCard.addView(noteButton, nb);
-        LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(-1, -2);
-        nl.leftMargin = nl.rightMargin = Art.dp(c, 16);
-        note.box.addView(noteCard, nl);
+        note.box.addView(noteCard, sides());
         note.box.setVisibility(View.GONE);
         col.addView(note.box);
 
-        filmRow = new Rows.Posters(c, p -> host.open(p));
-        films = section("Recommended films", "Picked from what you watch", Rows.row(c, filmRow));
+        filmRow = new Rows.Posters(c, host::open);
+        films = section("Films for you", v -> host.watch(MOVIES, false), Rows.row(c, filmRow));
         col.addView(films.box);
 
-        newsRow = new Rows.Stories(c, "BBC News", Art.NEWS, s -> host.story(s));
-        newsSection = section("Top stories", "BBC News", Rows.row(c, newsRow));
+        newsRow = new Rows.Stories(c, "BBC News", Art.NEWS, host::story);
+        newsSection = section("Top stories", null, Rows.row(c, newsRow));
         col.addView(newsSection.box);
 
-        showRow = new Rows.Posters(c, p -> host.open(p));
-        shows = section("Recommended TV shows", "Picked from what you watch", Rows.row(c, showRow));
+        showRow = new Rows.Posters(c, host::open);
+        shows = section("TV for you", v -> host.watch(TV_SHOWS, false), Rows.row(c, showRow));
         col.addView(shows.box);
 
-        sportRow = new Rows.Stories(c, "BBC Sport", Art.SPORT, s -> host.story(s));
-        sportSection = section("Sport headlines", "BBC Sport", Rows.row(c, sportRow));
+        sportRow = new Rows.Stories(c, "BBC Sport", Art.SPORT, host::story);
+        sportSection = section("Sport headlines", null, Rows.row(c, sportRow));
         col.addView(sportSection.box);
 
-        freshRow = new Rows.Posters(c, p -> host.open(p));
-        fresh = section("New in your playlist", "", Rows.row(c, freshRow));
+        freshRow = new Rows.Posters(c, host::open);
+        fresh = section("New in your playlist", v -> host.watch(DISCOVER, false), Rows.row(c, freshRow));
         fresh.box.setVisibility(View.GONE);
         col.addView(fresh.box);
 
         alerts = column();
+        alerts.addView(Glass.section(c, "Latest alerts", null));
+        alertList = column();
+        alerts.addView(alertList, sides());
+        alerts.setVisibility(View.GONE);
         col.addView(alerts);
         recent = column();
         col.addView(recent);
-        watch = column();
-        col.addView(watch);
-        hero.set(null);
+        tvs = column();
+        col.addView(tvs);
+
+        // Each card's word is short, as the reference's genres are: a longer one would run under its fanned posters.
+        filmFan = fan("Films", "Films for you", films);
+        showFan = fan("TV", "TV for you", shows);
+        freshFan = fan("New in", "New in your playlist", fresh);
+        favFan = fan("My list", "Favourites", favSection);
+        newsFan = fan("News", "Top stories", newsSection);
+        sportFan = fan("Sport", "Sport headlines", sportSection);
     }
 
     View view() {
@@ -196,46 +265,23 @@ final class HomeScreen {
 
     // ---- sections -------------------------------------------------------------------------------------------------
 
-    /** A section: its heading in Outfit, a dim line under it, then what it holds. */
+    /** A section: its heading (with a chevron when it leads somewhere), then what it holds. */
     static final class Section {
         final LinearLayout box;
-        final TextView title, sub;
+        final TextView title;
 
-        Section(LinearLayout box, TextView title, TextView sub) {
+        Section(LinearLayout box, TextView title) {
             this.box = box;
             this.title = title;
-            this.sub = sub;
-        }
-
-        void set(String t, String s) {
-            title.setText(t);
-            sub.setText(s == null ? "" : s);
-            sub.setVisibility(s == null || s.isEmpty() ? View.GONE : View.VISIBLE);
         }
     }
 
-    Section section(String title, String sub, View content) {
+    private Section section(String title, View.OnClickListener more, View content) {
         LinearLayout box = column();
-        TextView head = heading(c, title);
+        TextView head = Glass.section(c, title, more);
         box.addView(head);
-        TextView line = Rows.text(c, 12, Art.DIM, Type.inter(c), 1);
-        line.setPadding(Art.dp(c, 16), Art.dp(c, 4), Art.dp(c, 16), 0);
-        box.addView(line);
-        View gap = new View(c);
-        box.addView(gap, new LinearLayout.LayoutParams(1, Art.dp(c, 12)));
         if (content != null) box.addView(content, new LinearLayout.LayoutParams(-1, -2));
-        Section s = new Section(box, head, line);
-        s.set(title, sub);
-        return s;
-    }
-
-    /** A heading as the launcher's rows have them: Outfit, white, a little letter-spaced. */
-    static TextView heading(Context c, String title) {
-        TextView head = Rows.text(c, 19, Art.TEXT, Type.outfit(c, 600), 1);
-        head.setText(title);
-        head.setLetterSpacing(0.01f);
-        head.setPadding(Art.dp(c, 16), Art.dp(c, 26), Art.dp(c, 16), 0);
-        return head;
+        return new Section(box, head);
     }
 
     private LinearLayout column() {
@@ -244,173 +290,225 @@ final class HomeScreen {
         return l;
     }
 
+    /** Across the page, 16dp in from each side. */
+    private LinearLayout.LayoutParams sides() {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.leftMargin = lp.rightMargin = Glass.dp(c, 16);
+        return lp;
+    }
+
+    // ---- the cards along the top ----------------------------------------------------------------------------------
+
+    /** One card along the top, for one section: its word, the section's name (read out), and the pictures it shows. */
+    private static final class Fan {
+        final FanCard card;
+        final String word, section;
+        String shown;
+
+        Fan(FanCard card, String word, String section) {
+            this.card = card;
+            this.word = word;
+            this.section = section;
+        }
+    }
+
+    private Fan fan(String word, String section, Section to) {
+        FanCard f = new Pressed(c);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Glass.dp(c, 228), Glass.dp(c, 100));
+        lp.rightMargin = Glass.dp(c, Rows.GAP);
+        fans.addView(f, lp);
+        f.setVisibility(View.GONE);
+        f.setOnClickListener(v -> scrollTo(to.box));
+        Fan fan = new Fan(f, word, section);
+        fanList.add(fan);
+        return fan;
+    }
+
+    /** A card along the top whose glass brightens while it is pressed (not while a finger only scrolls past it). */
+    private static final class Pressed extends FanCard {
+        Pressed(Context c) {
+            super(c);
+        }
+
+        @Override public void setPressed(boolean pressed) {
+            super.setPressed(pressed);
+            setPicked(pressed);
+        }
+    }
+
+    /** Slides the page so the section's heading sits just under the status bar. */
+    private void scrollTo(View box) {
+        if (box.getVisibility() != View.VISIBLE) return;
+        scroll.smoothScrollTo(0, Math.max(0, box.getTop()));
+    }
+
+    /** The cards along the top: one for each section below that has something, with up to three of its pictures. */
+    private void fans() {
+        boolean playlists = feed != null && !Feed.NO_PLAYLIST.equals(feed.note);
+        Feed.Row f = playlists ? feed.films : null, s = playlists ? feed.shows : null, n = playlists ? feed.fresh : null;
+        fan(filmFan, has(f), posters(f == null ? null : f.picks));
+        fan(showFan, has(s), posters(s == null ? null : s.picks));
+        fan(freshFan, has(n), posters(n == null ? null : n.picks));
+        fan(favFan, !mine.isEmpty(), posters(mine));
+        List<Story> top = stories(0), sport = stories(1);
+        fan(newsFan, !top.isEmpty(), pictures(top));
+        fan(sportFan, !sport.isEmpty(), pictures(sport));
+        boolean any = false;
+        for (Fan x : fanList) any |= x.card.getVisibility() == View.VISIBLE;
+        fanScroll.setVisibility(any ? View.VISIBLE : View.GONE);
+    }
+
+    private void fan(Fan f, boolean has, List<String> urls) {
+        f.card.setVisibility(has ? View.VISIBLE : View.GONE);
+        if (!has) return;
+        // The same pictures again: left as they are.
+        String sig = String.valueOf(urls);
+        if (sig.equals(f.shown)) return;
+        f.shown = sig;
+        f.card.set(f.word, urls);
+        f.card.setContentDescription(f.section);
+    }
+
+    private static boolean has(Feed.Row r) {
+        return r != null && !r.picks.isEmpty();
+    }
+
+    private List<Story> stories(int feedAt) {
+        return news == null || news.feeds.size() <= feedAt ? new ArrayList<>() : news.feeds.get(feedAt);
+    }
+
+    /** Pure: the first three posters among a row's titles (those that have one). */
+    static List<String> posters(List<Pick> picks) {
+        List<String> out = new ArrayList<>();
+        for (int i = 0; picks != null && i < picks.size() && out.size() < 3; i++) {
+            String u = picks.get(i).poster;
+            if (u != null && !u.isEmpty()) out.add(u);
+        }
+        return out;
+    }
+
+    /** Pure: the first three pictures among a feed's stories (those that have one). */
+    static List<String> pictures(List<Story> stories) {
+        List<String> out = new ArrayList<>();
+        for (int i = 0; stories != null && i < stories.size() && out.size() < 3; i++) {
+            String u = stories.get(i).picture;
+            if (u != null && !u.isEmpty()) out.add(u);
+        }
+        return out;
+    }
+
     // ---- what it is given -----------------------------------------------------------------------------------------
 
-    /** Continue watching's cards (read from this phone at once), and the first one's backdrop and logo when read. */
-    void resume(List<Resume.Card> cards, Pick art) {
-        resumeCards = cards == null ? new ArrayList<>() : cards;
-        resumeArt = art;
-        resumes.set(resumeCards);
+    /** Continue watching's cards (read from this phone at once), with the backdrops and logos read so far (by key). */
+    void resume(List<Resume.Card> cards, Map<String, Pick> art) {
+        resumeCards = cards == null ? new ArrayList<>() : new ArrayList<>(cards);
+        watching.set(resumeCards, art);
         resumeSection.box.setVisibility(resumeCards.isEmpty() ? View.GONE : View.VISIBLE);
-        heroPages();
+        glow();
+    }
+
+    /** One Continue watching title's backdrop and logo, read after its card showed. */
+    void art(String key, Pick p) {
+        if (key == null || p == null) return;
+        watching.art(key, p);
+        if (!resumeCards.isEmpty() && key.equals(resumeCards.get(0).key())) glow();
     }
 
     /** The films and TV picks (null: still coming, shimmer). */
     void feed(Feed.Result r) {
         feed = r;
-        feedLoaded = r != null;
         if (r == null) {
             filmRow.set(null);
             showRow.set(null);
+            fans();
             return;
         }
         boolean noPlaylist = Feed.NO_PLAYLIST.equals(r.note);
         note.box.setVisibility(noPlaylist ? View.VISIBLE : View.GONE);
-        if (noPlaylist) noteWords.setText("Homefield plays films and TV only from your own playlists. Add yours in Settings, "
-                + "Live TV, and the films and shows picked for you come here, with what you're watching.");
         row(films, filmRow, noPlaylist ? null : r.films);
         row(shows, showRow, noPlaylist ? null : r.shows);
         row(fresh, freshRow, noPlaylist ? null : r.fresh);
-        heroPages();
+        fans();
+        glow();
     }
 
     private static void row(Section s, Rows.Posters adapter, Feed.Row row) {
         boolean has = row != null && !row.picks.isEmpty();
         s.box.setVisibility(has ? View.VISIBLE : View.GONE);
-        if (!has) return;
-        s.set(row.title, row.sub);
-        adapter.set(row.picks);
+        if (has) adapter.set(row.picks);
+    }
+
+    /** Favourites: My list's titles, newest first (none: the row hidden). */
+    void favourites(List<Pick> list) {
+        mine = list == null ? new ArrayList<>() : new ArrayList<>(list);
+        if (!mine.isEmpty()) favRow.set(mine);
+        favSection.box.setVisibility(mine.isEmpty() ? View.GONE : View.VISIBLE);
+        fans();
     }
 
     /** The headlines (null: still coming, shimmer). */
     void news(Headlines.Read r) {
         news = r;
-        newsLoaded = r != null;
         if (r == null) {
             newsRow.set(null);
             sportRow.set(null);
+            fans();
             return;
         }
-        List<Story> n = r.feeds.size() > 0 ? r.feeds.get(0) : new ArrayList<>();
-        List<Story> s = r.feeds.size() > 1 ? r.feeds.get(1) : new ArrayList<>();
+        List<Story> n = stories(0), s = stories(1);
         newsRow.set(n);
         sportRow.set(s);
         newsSection.box.setVisibility(n.isEmpty() ? View.GONE : View.VISIBLE);
         sportSection.box.setVisibility(s.isEmpty() ? View.GONE : View.VISIBLE);
-        heroPages();
+        fans();
     }
 
+    /** The line under the date: the weather ("12° · Manchester"). */
+    void weather(String line) {
+        under = line == null || line.isEmpty() ? "Manchester" : line;
+        header.now(under);
+    }
+
+    /** The greeting and the date as they are now (the clock's tick). */
+    void stamp() {
+        header.now(under);
+    }
+
+    /** Home on the screen again: the pill's lens on Home. */
     void visible(boolean on) {
-        hero.visible(on);
+        if (!on) return;
+        pill.removeCallbacks(backHome);
+        pill.select(HOME, false);
     }
 
-    private void scrolled(int y) {
-        hero.parallax(y);
-        backdrop.setTranslationY(-y * 0.5f);
-    }
+    // ---- the glow behind the page ---------------------------------------------------------------------------------
 
-    // ---- the hero's pages -----------------------------------------------------------------------------------------
+    /** The glow behind the page follows its picture: see glowFor. */
+    private void glow() {
+        Resume.Card first = resumeCards.isEmpty() ? null : resumeCards.get(0);
+        String url = glowFor(first, watching.art(first), feed);
+        if (url != null) ambient.setImage(url);
+    }
 
     /**
-     * What the hero shows: the first title in Continue watching, then the films and series picked (by turns); with
-     * fewer than two, BBC News's and BBC Sport's top stories; with nothing at all once everything has come, a welcome.
+     * Pure: the picture the page glows with: the first Continue watching title's backdrop, else the first pick's;
+     * failing those, that title's poster, else the first pick's; null for none (the glass's own warm glow).
      */
-    private void heroPages() {
-        List<Hero.Page> pages = new ArrayList<>();
-        if (!resumeCards.isEmpty()) pages.add(resumePage(resumeCards.get(0), resumeArt));
-        if (feed != null) for (Pick p : feed.hero) if (pages.size() < 5) pages.add(pickPage(p));
-        if (pages.size() < 2 && news != null) {
-            for (int i = 0; i < news.feeds.size() && i < 2; i++) {
-                List<Story> list = news.feeds.get(i);
-                for (Story s : list) {
-                    if (s.picture.isEmpty()) continue;
-                    pages.add(storyPage(s, i == 0 ? "BBC News" : "BBC Sport", i == 0 ? Art.NEWS : Art.SPORT));
-                    break;
-                }
-            }
-        }
-        if (pages.isEmpty() && feedLoaded && newsLoaded) pages.add(welcome());
-        StringBuilder sig = new StringBuilder();
-        for (Hero.Page p : pages) sig.append(p.title).append('|').append(p.image).append('|').append(p.logo).append('|')
-                .append(p.progress).append(';');
-        if (sig.toString().equals(heroSig)) return;
-        heroSig = sig.toString();
-        hero.set(pages);
+    static String glowFor(Resume.Card first, Pick firstArt, Feed.Result r) {
+        if (firstArt != null && firstArt.backdrop != null) return firstArt.backdrop;
+        List<Pick> picks = picks(r);
+        for (Pick p : picks) if (p.backdrop != null) return p.backdrop;
+        if (first != null && first.poster != null && !first.poster.isEmpty()) return first.poster;
+        for (Pick p : picks) if (p.poster != null) return p.poster;
+        return null;
     }
 
-    private Hero.Page resumePage(Resume.Card k, Pick art) {
-        Hero.Page p = new Hero.Page();
-        p.accent = k.tv ? Art.SHOW : Art.FILM;
-        p.kicker = "Continue watching" + (k.badge != null && !k.badge.isEmpty() && !"ON TV".equals(k.badge) ? " · " + k.badge : "");
-        p.title = k.title;
-        p.image = art != null && art.backdrop != null ? art.backdrop : k.poster;
-        p.logo = art == null ? null : art.logo;
-        p.facts = art == null ? "" : art.facts();
-        p.cert = art == null ? "" : art.cert;
-        p.progress = Math.max(0, k.progress);
-        p.left = k.line;
-        p.play = k.badge != null && k.badge.startsWith("NEXT") ? "Play next" : "Resume";
-        p.onPlay = () -> host.resume(k);
-        if (k.tmdb > 0) {
-            Pick open = art != null ? art : new Pick();
-            open.id = k.tmdb;
-            open.tv = k.tv;
-            if (open.title.isEmpty()) open.title = k.title;
-            if (open.poster == null) open.poster = k.poster;
-            p.more = "Details";
-            p.onMore = () -> host.open(open);
-        }
-        return p;
-    }
-
-    private Hero.Page pickPage(Pick k) {
-        Hero.Page p = new Hero.Page();
-        p.accent = k.tv ? Art.SHOW : Art.FILM;
-        p.kicker = (k.tv ? "TV show" : "Film") + (k.why.isEmpty() ? "" : " · " + k.why);
-        p.title = k.title;
-        p.image = k.backdrop != null ? k.backdrop : k.poster;
-        p.logo = k.logo;
-        p.facts = k.facts();
-        p.cert = k.cert;
-        p.overview = k.overview;
-        p.onPlay = () -> host.play(k);
-        p.onMore = () -> host.open(k);
-        return p;
-    }
-
-    private Hero.Page storyPage(Story s, String source, int accent) {
-        Hero.Page p = new Hero.Page();
-        p.accent = accent;
-        p.kicker = "Top story · " + source;
-        p.title = s.title;
-        p.image = s.picture;
-        p.facts = Headlines.ago(s.at, System.currentTimeMillis());
-        p.more = "Read the story";
-        p.onMore = () -> host.story(s);
-        return p;
-    }
-
-    private Hero.Page welcome() {
-        Hero.Page p = new Hero.Page();
-        p.accent = Art.RESUME;
-        p.kicker = "Homefield";
-        p.title = "Films, TV and sport, all in one place";
-        p.overview = "Add your playlist in Settings for films and TV picked for you, and pair a TV for its posters.";
-        p.play = "Open Settings";
-        p.onPlay = host::settings;
-        return p;
-    }
-
-    /** The page up in the hero: its picture, read tiny and stretched, becomes the soft backdrop behind Home. */
-    private void pageUp(Hero.Page p) {
-        String url = p.image;
-        if (url == null || url.equals(backdropFor)) return;
-        backdropFor = url;
-        try {
-            Glide.with(backdrop).load(url).override(48, 27).centerCrop().placeholder(backdrop.getDrawable())
-                    .transition(DrawableTransitionOptions.withCrossFade(600)).into(backdrop);
-        } catch (RuntimeException ignored) {
-            // the screen went away
-        }
+    /** The picks, best first: the few chosen to lead (each with a backdrop), then films, TV and what's new. */
+    private static List<Pick> picks(Feed.Result r) {
+        List<Pick> out = new ArrayList<>();
+        if (r == null || Feed.NO_PLAYLIST.equals(r.note)) return out;
+        out.addAll(r.hero);
+        for (Feed.Row row : new Feed.Row[]{r.films, r.shows, r.fresh}) if (row != null) out.addAll(row.picks);
+        return out;
     }
 }

@@ -10,8 +10,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * One title on Home (in the hero or a row): a film or series from the family's own playlists, what it shows (its
- * poster, backdrop, logo, facts) and why it is there. Kept as JSON so Home opens at once with the last picks.
+ * One title on Home (in a row, or behind Continue watching's card): a film or series from the family's own playlists
+ * or My list, what it shows (its poster, backdrop, logo, facts) and why it is there. Kept as JSON so Home opens at
+ * once with the last picks.
  */
 final class Pick {
     int id;
@@ -33,6 +34,19 @@ final class Pick {
         t.backdrop = backdrop;
         t.year = year;
         return t;
+    }
+
+    /** A title from My list, as Home shows it: what was kept of it. Null for one with no id or name. Pure. */
+    static Pick of(Title t) {
+        if (t == null || t.id <= 0 && (t.title == null || t.title.isEmpty())) return null;
+        Pick p = new Pick();
+        p.id = t.id;
+        p.tv = t.tv;
+        p.title = t.title == null ? "" : t.title;
+        p.year = t.year == null ? "" : t.year;
+        p.poster = t.poster == null || t.poster.isEmpty() ? null : t.poster;
+        p.backdrop = t.backdrop == null || t.backdrop.isEmpty() ? null : t.backdrop;
+        return p;
     }
 
     /** "2024 · Thriller · ★ 7.8 · 2h 10m": what there is of it, in that order. Pure. */

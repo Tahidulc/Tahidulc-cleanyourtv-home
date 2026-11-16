@@ -10,9 +10,8 @@ import android.graphics.Canvas;
 import android.graphics.Rect;
 import android.os.Looper;
 import android.view.View;
-import android.view.ViewGroup;
-import android.widget.TextView;
 
+import com.gathin.tvhomephone.glass.Glass;
 import com.gathin.tvhomephone.live.BreakingNews.Story;
 
 import org.junit.Test;
@@ -32,8 +31,9 @@ import java.util.List;
 
 /**
  * Home drawn without a phone, upright and sideways, with made-up titles and stories (no pictures: each shows its own
- * gradient), saved as PNGs in the folder PREVIEW_OUT names; and a check that the hero's words, buttons, dots and the
- * clock along its top don't overlap. Skipped unless PREVIEW_OUT is set; nothing here goes into the app.
+ * colours), saved as PNGs in the folder PREVIEW_OUT names; and a check that the header's greeting, name, date and
+ * weather keep clear of each other, with the pill under them and the frosted cards under the pill. Skipped unless
+ * PREVIEW_OUT is set; nothing here goes into the app.
  */
 @RunWith(RobolectricTestRunner.class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -41,8 +41,6 @@ import java.util.List;
 @Config(sdk = 34)
 public class HomePreviewTest {
     private static final HomeScreen.Host HOST = new HomeScreen.Host() {
-        @Override public void play(Pick p) { }
-
         @Override public void open(Pick p) { }
 
         @Override public void resume(Resume.Card k) { }
@@ -52,6 +50,10 @@ public class HomePreviewTest {
         @Override public void story(Story s) { }
 
         @Override public void settings() { }
+
+        @Override public void watch(int section, boolean search) { }
+
+        @Override public void live() { }
     };
 
     private static void idle() {
@@ -70,8 +72,7 @@ public class HomePreviewTest {
         p.length = tv ? Pick.seasons(2) : Pick.runtime(118);
         p.cert = tv ? "" : "12A";
         p.why = why;
-        p.overview = "A made-up title for the preview: two lines of what it's about, so the hero's words can be seen "
-                + "where they sit over the picture.";
+        p.overview = "A made-up title for the preview.";
         return p;
     }
 
@@ -108,6 +109,14 @@ public class HomePreviewTest {
         return out;
     }
 
+    /** My list, as Favourites shows it. */
+    private static List<Pick> favourites() {
+        List<Pick> out = new ArrayList<>();
+        String[] names = {"The Long Road", "Coldwater", "Mapmakers", "Quiet Engines"};
+        for (int i = 0; i < names.length; i++) out.add(pick(300 + i, i % 2 == 1, names[i], "2023", "", ""));
+        return out;
+    }
+
     private static Headlines.Read news() {
         Headlines.Read r = new Headlines.Read();
         long now = System.currentTimeMillis();
@@ -128,13 +137,12 @@ public class HomePreviewTest {
         Activity a = Robolectric.buildActivity(Activity.class).setup().get();
         a.setTheme(com.gathin.tvhomephone.R.style.Theme_TvHome);
         HomeScreen s = new HomeScreen(a, HOST);
-        s.date.setText("THURSDAY 12 NOVEMBER");
-        s.clock.setText("20:45");
-        s.weather.setText("9°  Cloudy · Manchester");
+        s.weather("9° · Manchester");
         a.setContentView(s.view());
         s.resume(withResume ? resume() : new ArrayList<>(), null);
         s.feed(feed());
         s.news(news());
+        s.favourites(favourites());
         idle();
         View root = a.getWindow().getDecorView();
         root.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY));
@@ -142,16 +150,16 @@ public class HomePreviewTest {
         idle();
         root.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY));
         root.layout(0, 0, w, h);
-        overlaps(s);
+        overlaps(s, w, withResume);
         // The whole page, as tall as it is.
         int tall = Math.max(h, s.col.getHeight());
         s.scroll.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY));
         Bitmap page = Bitmap.createBitmap(w, tall, Bitmap.Config.ARGB_8888);
         Canvas pc = new Canvas(page);
-        pc.drawColor(Art.GROUND);
+        pc.drawColor(Glass.GROUND);
         s.col.draw(pc);
         save(page, new File(out, name + "-page.png"));
-        // The first screen, with the backdrop behind it.
+        // The first screen, with the glow behind it.
         Bitmap screen = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
         root.draw(new Canvas(screen));
         save(screen, new File(out, name + ".png"));
@@ -163,24 +171,37 @@ public class HomePreviewTest {
         }
     }
 
-    /** The hero's top bar, words, buttons and dots each in their own space, all inside the hero. */
-    private static void overlaps(HomeScreen s) {
-        ViewGroup page = (ViewGroup) s.hero.pager.getChildAt(0);
-        assertTrue("a hero page laid out", page != null);
-        View words = page.getChildAt(page.getChildCount() - 1);
-        Rect top = box(s.clock), kicker = null, buttons = null, dots = box(s.hero.dots);
-        ViewGroup w = (ViewGroup) words;
-        for (int i = 0; i < w.getChildCount(); i++) {
-            View v = w.getChildAt(i);
-            if (v.getVisibility() != View.VISIBLE) continue;
-            if (kicker == null && v instanceof TextView) kicker = box(v);
-            buttons = box(v);
+    /**
+     * The header's greeting and name clear of the date and the weather, all inside the page; the pill under the
+     * header; the frosted cards under the pill, side by side; Continue watching's first card under them.
+     */
+    private static void overlaps(HomeScreen s, int w, boolean withResume) {
+        Rect mark = box(s.header.mark), hello = box(s.header.hello), name = box(s.header.name);
+        Rect date = box(s.header.date), line = box(s.header.line), pill = box(s.pill);
+        for (Rect words : new Rect[]{hello, name}) {
+            assertTrue("greeting clear of the date: " + words + " " + date, !Rect.intersects(words, date));
+            assertTrue("greeting clear of the weather: " + words + " " + line, !Rect.intersects(words, line));
+            assertTrue("greeting after the mark: " + words + " " + mark, words.left >= mark.right);
         }
-        Rect hero = box(s.hero.box);
-        assertTrue("kicker below the clock: " + top + " " + kicker, kicker != null && kicker.top >= top.bottom);
-        assertTrue("buttons above the dots: " + buttons + " " + dots, buttons.bottom <= dots.top);
-        assertTrue("buttons inside the hero", buttons.bottom <= hero.bottom && buttons.right <= hero.right);
-        assertTrue("date's line clear of the clock", box(s.weather).right <= top.left);
+        assertTrue("weather under the date: " + date + " " + line, line.top >= date.bottom);
+        assertTrue("date and weather inside the page", date.right <= w && line.right <= w);
+        int head = Math.max(mark.bottom, Math.max(name.bottom, line.bottom));
+        assertTrue("pill under the header: " + pill + " under " + head, pill.top >= head);
+        assertTrue("pill inside the page: " + pill, pill.left >= 0 && pill.right <= w);
+        Rect last = null;
+        for (int i = 0; i < s.fans.getChildCount(); i++) {
+            View f = s.fans.getChildAt(i);
+            if (f.getVisibility() != View.VISIBLE) continue;
+            Rect r = box(f);
+            assertTrue("card under the pill: " + r + " " + pill, r.top >= pill.bottom);
+            if (last != null) assertTrue("cards side by side: " + last + " " + r, r.left >= last.right && r.top == last.top);
+            last = r;
+        }
+        assertTrue("the frosted cards shown", last != null);
+        if (!withResume) return;
+        View first = s.resumeRow.getChildAt(0);
+        assertTrue("a Continue watching card laid out", first != null);
+        assertTrue("Continue watching under the cards: " + box(first) + " " + last, box(first).top >= last.bottom);
     }
 
     private static Rect box(View v) {

@@ -32,7 +32,8 @@ import java.util.List;
  * Home's hero, as the TV launcher's: a few titles to swipe between, each over its backdrop with its logo (or its name
  * in Outfit), a line of facts, a kicker saying why it's there, and Play (or Resume) and More. It moves on by itself
  * every AUTO_MS while Home shows and nobody holds it, round and round, and tells Home which page is up so the blurred
- * backdrop behind the page follows it.
+ * backdrop behind the page follows it. Home's glass page no longer shows it (the glow behind the page carries the
+ * picture); it stays for its certificate colours, which the tests check.
  */
 final class Hero {
     static final long AUTO_MS = 9_000L;

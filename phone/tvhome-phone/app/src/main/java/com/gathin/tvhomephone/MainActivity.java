@@ -1,18 +1,28 @@
 package com.gathin.tvhomephone;
 
+import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
+import android.view.Gravity;
 import android.widget.FrameLayout;
-import android.widget.LinearLayout;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.fragment.app.Fragment;
+import androidx.fragment.app.FragmentTransaction;
 
-import com.google.android.material.bottomnavigation.BottomNavigationView;
+import com.gathin.tvhomephone.glass.Glass;
+import com.gathin.tvhomephone.glass.Icons;
+import com.gathin.tvhomephone.glass.LensBar;
 
 /**
- * The app's one window: five tabs along the foot (Home, Sports, Live TV, Watch, Settings), each a fragment of its own
- * part. A phone gets the bar at the foot; a tablet the same, with wider content inside each tab.
+ * The app's one window: five tabs (Home, Sports, Live TV, Watch, Settings), each a fragment of its own part, under a
+ * floating bar of liquid glass at the foot. Slide a finger along the bar and its lens follows to the tab let go on;
+ * the page slides in from that side. Home and Watch are glass pages, drawn up under the status bar and down under the
+ * bar, which blurs them as they scroll; the others sit between the bars as before. A tablet the same, wider inside.
  */
 public class MainActivity extends AppCompatActivity {
     private static final String TAB = "tab", SAVED_AT = "savedAt";
@@ -22,28 +32,57 @@ public class MainActivity extends AppCompatActivity {
     private long awayAt;
     /** An intent's extra: what to open (a notification's tap): OPEN_PLAYLISTS, Settings at Live TV's playlists. */
     public static final String EXTRA_OPEN = "open", OPEN_PLAYLISTS = "playlists", OPEN_LIVE = "live", OPEN_UPDATE = "update";
-    private BottomNavigationView tabs;
+    /** The tabs in their order along the bar: a page slides in from the side its tab lies. */
+    static final int[] ORDER = {R.id.tab_home, R.id.tab_sports, R.id.tab_live, R.id.tab_watch, R.id.tab_settings};
+    private LensBar tabs;
+    private FrameLayout root, content;
+    private FrameLayout.LayoutParams barPlace;
+    /** The tab whose page shows (0 before the first); the status bar's, the navigation bar's and the keyboard's heights. */
+    private int shownId, insetTop, insetBottom, insetIme;
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(getColor(R.color.ground));
-        FrameLayout content = new FrameLayout(this);
+        root = new FrameLayout(this);
+        root.setBackgroundColor(Glass.GROUND);
+        content = new FrameLayout(this);
         content.setId(R.id.content_frame);
-        root.addView(content, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
-        tabs = new BottomNavigationView(this);
-        tabs.inflateMenu(R.menu.tabs);
-        tabs.setBackgroundColor(getColor(R.color.ground_deep));
-        tabs.setLabelVisibilityMode(BottomNavigationView.LABEL_VISIBILITY_LABELED);
-        root.addView(tabs, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        root.addView(content, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        tabs = new LensBar(this, LensBar.TABS);
+        tabs.tab(R.id.tab_home, Icons.HOME, getString(R.string.tab_home))
+                .tab(R.id.tab_sports, Icons.SPORTS, getString(R.string.tab_sports))
+                .tab(R.id.tab_live, Icons.LIVE, getString(R.string.tab_live))
+                .tab(R.id.tab_watch, Icons.WATCH, getString(R.string.tab_watch))
+                .tab(R.id.tab_settings, Icons.SETTINGS, getString(R.string.tab_settings));
+        tabs.setSources(content);
+        tabs.setElevation(Glass.dp(this, 10));
+        int side = Glass.dp(this, 14);
+        barPlace = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
+        barPlace.setMargins(side, 0, side, Glass.dp(this, Glass.BAR_GAP_DP));
+        root.addView(tabs, barPlace);
         setContentView(root);
+        // Edge to edge: the glass pages draw under the status bar; the others are kept between the bars (fitPage).
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        getWindow().setStatusBarColor(Color.TRANSPARENT);
+        getWindow().setNavigationBarColor(Color.TRANSPARENT);
+        WindowCompat.getInsetsController(getWindow(), root).setAppearanceLightStatusBars(false);
+        WindowCompat.getInsetsController(getWindow(), root).setAppearanceLightNavigationBars(false);
+        ViewCompat.setOnApplyWindowInsetsListener(root, (v, ins) -> {
+            Insets s = ins.getInsets(WindowInsetsCompat.Type.systemBars());
+            insetTop = s.top;
+            insetBottom = s.bottom;
+            insetIme = ins.getInsets(WindowInsetsCompat.Type.ime()).bottom;
+            barPlace.bottomMargin = s.bottom + Glass.dp(this, Glass.BAR_GAP_DP);
+            barPlace.leftMargin = side + s.left;
+            barPlace.rightMargin = side + s.right;
+            tabs.setLayoutParams(barPlace);
+            fitPage(false);
+            return ins;
+        });
+        // A glass page gets the insets to fit itself; the others are padded here and see none.
+        ViewCompat.setOnApplyWindowInsetsListener(content, (v, ins) -> glassPage(shownId) ? ins : WindowInsetsCompat.CONSUMED);
         // Closed unexpectedly last time: said once, the details to copy.
         CrashNote.offer(this);
-        tabs.setOnItemSelectedListener(item -> {
-            show(item.getItemId());
-            return true;
-        });
+        tabs.setOnPick(this::show);
         int start = state != null ? state.getInt(TAB, R.id.tab_home) : R.id.tab_home;
         // Opened afresh from its icon: Live TV (it goes on with the channel last watched), unless Settings says Home.
         if (state == null && opening(getIntent()) && com.gathin.tvhomephone.live.LiveTvSettings.openOnLive(this)) start = R.id.tab_live;
@@ -55,7 +94,8 @@ public class MainActivity extends AppCompatActivity {
             start = R.id.tab_settings;
         }
         if (OPEN_LIVE.equals(getIntent().getStringExtra(EXTRA_OPEN))) start = R.id.tab_live;
-        tabs.setSelectedItemId(start);
+        tabs.select(start, false);
+        show(start);
         // The "Homefield X is ready" note tapped: its question (Update or Later).
         if (state == null && OPEN_UPDATE.equals(getIntent().getStringExtra(EXTRA_OPEN))) com.gathin.tvhomephone.update.AppUpdate.ask(this, true);
         if (Build.VERSION.SDK_INT >= 33) requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 1);
@@ -86,8 +126,8 @@ public class MainActivity extends AppCompatActivity {
         long away = awayAt;
         awayAt = 0;
         if (away > 0 && backToLive(android.os.SystemClock.elapsedRealtime() - away) && tabs != null
-                && com.gathin.tvhomephone.live.LiveTvSettings.openOnLive(this) && tabs.getSelectedItemId() != R.id.tab_live) {
-            tabs.setSelectedItemId(R.id.tab_live);
+                && com.gathin.tvhomephone.live.LiveTvSettings.openOnLive(this) && tabs.selected() != R.id.tab_live) {
+            open(R.id.tab_live);
         }
     }
 
@@ -122,18 +162,18 @@ public class MainActivity extends AppCompatActivity {
         // Its icon tapped while it was open in the background: Live TV again, as when it opens afresh.
         if (intent != null && android.content.Intent.ACTION_MAIN.equals(intent.getAction()) && intent.hasCategory(android.content.Intent.CATEGORY_LAUNCHER)
                 && intent.getStringExtra(EXTRA_OPEN) == null && com.gathin.tvhomephone.live.LiveTvSettings.openOnLive(this)) {
-            if (tabs.getSelectedItemId() != R.id.tab_live) tabs.setSelectedItemId(R.id.tab_live);
+            if (tabs.selected() != R.id.tab_live) open(R.id.tab_live);
             return;
         }
         // The full screen's "TV guide": the Live TV tab, the channel going on in its picture.
         if (OPEN_LIVE.equals(intent.getStringExtra(EXTRA_OPEN))) {
-            if (tabs.getSelectedItemId() != R.id.tab_live) tabs.setSelectedItemId(R.id.tab_live);
+            if (tabs.selected() != R.id.tab_live) open(R.id.tab_live);
             return;
         }
         if (OPEN_PLAYLISTS.equals(intent.getStringExtra(EXTRA_OPEN))) {
             com.gathin.tvhomephone.settings.SettingsFragment.toPlaylists = true;
-            if (tabs.getSelectedItemId() == R.id.tab_settings) show(R.id.tab_settings);
-            else tabs.setSelectedItemId(R.id.tab_settings);
+            if (tabs.selected() == R.id.tab_settings) show(R.id.tab_settings);
+            else open(R.id.tab_settings);
         }
     }
 
@@ -145,21 +185,57 @@ public class MainActivity extends AppCompatActivity {
 
     @Override protected void onSaveInstanceState(Bundle out) {
         super.onSaveInstanceState(out);
-        out.putInt(TAB, tabs.getSelectedItemId());
+        out.putInt(TAB, tabs.selected());
         out.putLong(SAVED_AT, System.currentTimeMillis());
         out.putBoolean(UPRIGHT, com.gathin.tvhomephone.live.SideFull.upright(this));
     }
 
-    /** Opens a tab from anywhere in the app (a notification's "Open in Live TV", Home's cards). */
+    /** Opens a tab from anywhere in the app (a notification's "Open in Live TV", Home's cards): the lens slides there. */
     public void open(int tabId) {
-        tabs.setSelectedItemId(tabId);
+        tabs.select(tabId, true);
+        if (tabId != shownId) show(tabId);
     }
 
     private void show(int id) {
         String tag = "tab" + id;
         Fragment f = getSupportFragmentManager().findFragmentByTag(tag);
         if (f == null) f = make(id);
-        getSupportFragmentManager().beginTransaction().replace(R.id.content_frame, f, tag).commitAllowingStateLoss();
+        FragmentTransaction tx = getSupportFragmentManager().beginTransaction();
+        int from = place(shownId), to = place(id);
+        if (shownId != 0 && from >= 0 && to >= 0 && from != to) {
+            if (to > from) tx.setCustomAnimations(R.anim.page_in_right, R.anim.page_out_left);
+            else tx.setCustomAnimations(R.anim.page_in_left, R.anim.page_out_right);
+        }
+        tx.replace(R.id.content_frame, f, tag).commitAllowingStateLoss();
+        shownId = id;
+        // Live TV's picture can't be drawn twice: the bar's tint alone over it.
+        tabs.setBlurOn(id != R.id.tab_live);
+        fitPage(true);
+    }
+
+    /** Pure: where a tab sits along the bar (-1 for none). */
+    static int place(int id) {
+        for (int i = 0; i < ORDER.length; i++) if (ORDER[i] == id) return i;
+        return -1;
+    }
+
+    /** Pure: the pages drawn in glass, under the status bar and the tab bar (Home and Watch). */
+    static boolean glassPage(int id) {
+        return id == R.id.tab_home || id == R.id.tab_watch;
+    }
+
+    /**
+     * A glass page fills the window (it fits itself); any other sits between the status bar and the tab bar. Asked
+     * (a new page), the insets are sent round again for it; never from the insets' own listener, which would loop.
+     */
+    private void fitPage(boolean ask) {
+        if (content == null) return;
+        boolean glass = glassPage(shownId);
+        int room = Glass.dp(this, Glass.BAR_DP + Glass.BAR_GAP_DP + 6);
+        // The keyboard, when up, lifts the page's foot above it (Settings' playlist fields).
+        content.setPadding(0, glass ? 0 : insetTop, 0, glass ? 0 : Math.max(insetBottom + room, insetIme));
+        root.setBackgroundColor(glass ? Glass.GROUND : getColor(R.color.ground));
+        if (ask) ViewCompat.requestApplyInsets(content);
     }
 
     private static Fragment make(int id) {

@@ -12,13 +12,13 @@ import com.gathin.tvhomephone.R;
  * Home's type, as the TV launcher's: Outfit for headings and titles (the variable font in assets, at the weight asked,
  * built once each), Inter for words (res/font, SIL Open Font License 1.1). Android's own sans when one can't be read.
  */
-final class Type {
+public final class Type {
     private static final SparseArray<Typeface> OUTFIT = new SparseArray<>();
     private static Typeface inter, interSemi, interLight;
 
     private Type() {}
 
-    static synchronized Typeface outfit(Context c, int weight) {
+    public static synchronized Typeface outfit(Context c, int weight) {
         Typeface t = OUTFIT.get(weight);
         if (t != null) return t;
         try {
@@ -31,17 +31,17 @@ final class Type {
         return t;
     }
 
-    static synchronized Typeface inter(Context c) {
+    public static synchronized Typeface inter(Context c) {
         if (inter == null) inter = font(c, R.font.inter_regular, Typeface.create("sans-serif", Typeface.NORMAL));
         return inter;
     }
 
-    static synchronized Typeface interSemi(Context c) {
+    public static synchronized Typeface interSemi(Context c) {
         if (interSemi == null) interSemi = font(c, R.font.inter_semibold, Typeface.create("sans-serif-medium", Typeface.NORMAL));
         return interSemi;
     }
 
-    static synchronized Typeface interLight(Context c) {
+    public static synchronized Typeface interLight(Context c) {
         if (interLight == null) interLight = font(c, R.font.inter_display_light, Typeface.create("sans-serif-light", Typeface.NORMAL));
         return interLight;
     }

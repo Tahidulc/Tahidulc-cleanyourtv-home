@@ -19,10 +19,8 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.bumptech.glide.Glide;
-import com.bumptech.glide.load.resource.bitmap.CenterCrop;
-import com.bumptech.glide.load.resource.bitmap.RoundedCorners;
 import com.gathin.tvhomephone.App;
-import com.gathin.tvhomephone.R;
+import com.gathin.tvhomephone.glass.Glass;
 import com.gathin.tvhomephone.live.PlayerActivity;
 import com.gathin.tvhomephone.live.Watched;
 import com.gathin.tvhomephone.sports.Competitions;
@@ -37,17 +35,20 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Home's Recently watched, under the alerts: the films, episodes, games and programmes watched on this phone, all
- * together and newest first (Watched). Each card has its own kind's look. A film or episode shows its poster and how
- * far in. A game shows both crests and its score, as it is now or as it ended. A programme shows its channel's logo
- * and title. The time it was watched is underneath. Tap plays it again: a film or episode from where it was left, a
- * series watched to the end of an episode at the next one, a programme's channel, a game still on its channel, else
- * its match page. Hold takes it off. The row is hidden while there is nothing.
+ * Home's Recently watched, in glass, under the alerts: the films, episodes, games and programmes watched on this
+ * phone, all together and newest first (Watched). Each card is a rounded tile under the glass rim, with its own kind's
+ * look. A film or episode shows its poster and how far in. A game shows both crests and its score, as it is now or as
+ * it ended. A programme shows its channel's logo and title on frosted glass. The time it was watched is underneath.
+ * Tap plays it again: a film or episode from where it was left, a series watched to the end of an episode at the next
+ * one, a programme's channel, a game still on its channel, else its match page. Hold takes it off. The row is hidden
+ * while there is nothing.
  */
 final class RecentRow {
-    static final int CARD_DP = 108;
-    private static final int FILM = 0xFFFF4FA3, SHOW = 0xFF4F8BFF, SPORT = 0xFF3DDC84, NEWS = 0xFFFFB238, LIVE = 0xFFE5333B;
-    private static final int INK = 0xFF0A0D33;
+    /** A card as wide and tall as Home's poster tiles, its corners rounded the same. */
+    static final int CARD_DP = Rows.POSTER_W, RADIUS_DP = Rows.POSTER_R;
+    private static final int LIVE = 0xFFE5333B;
+    /** The warm dark a game's two clubs' colours are deepened towards. */
+    private static final int DUSK = 0xFF1C1A20;
     /** Home's sides. */
     private static final int SIDE_DP = 16;
 
@@ -60,16 +61,16 @@ final class RecentRow {
     RecentRow(Fragment host) {
         this.host = host;
         Context c = host.requireContext();
-        // Out to the screen's edges (layoutParams), the heading and the first card in line with Home's others.
+        // The heading as Home's other sections have it, its cards under it, the first in line with Home's others.
         box = Ui.column(c);
-        // The heading as Home's other rows have it (Outfit, white), its cards under it.
-        TextView head = HomeScreen.heading(c, "Recently watched");
-        head.setPadding(head.getPaddingLeft(), head.getPaddingTop(), head.getPaddingRight(), Ui.dp(c, 12));
-        box.addView(head);
+        box.addView(Glass.section(c, "Recently watched", null));
         RecyclerView row = new RecyclerView(c);
         row.setLayoutManager(new LinearLayoutManager(c, LinearLayoutManager.HORIZONTAL, false));
-        row.setPadding(Ui.dp(c, SIDE_DP - 6), 0, Ui.dp(c, SIDE_DP - 6), 0);
+        int half = Glass.dp(c, Rows.GAP / 2f);
+        row.setPadding(Glass.dp(c, SIDE_DP) - half, 0, Glass.dp(c, SIDE_DP) - half, 0);
         row.setClipToPadding(false);
+        row.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        row.setHorizontalScrollBarEnabled(false);
         row.setAdapter(cards);
         row.setNestedScrollingEnabled(false);
         box.addView(row, Ui.matchWrap());
@@ -78,14 +79,6 @@ final class RecentRow {
 
     View view() {
         return box;
-    }
-
-    /** How Home lays the row out: across the whole width, past its own sides. */
-    static LinearLayout.LayoutParams layoutParams(Context c) {
-        LinearLayout.LayoutParams lp = Ui.matchWrap();
-        lp.leftMargin = -Ui.dp(c, SIDE_DP);
-        lp.rightMargin = -Ui.dp(c, SIDE_DP);
-        return lp;
     }
 
     /** Read again (this phone's own list: quick), after watching something or a game's score moving on. */
@@ -164,9 +157,10 @@ final class RecentRow {
         @NonNull @Override public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int type) {
             Context c = parent.getContext();
             LinearLayout cell = Ui.column(c);
-            int pad = Ui.dp(c, 6);
-            cell.setPadding(pad, pad, pad, pad);
-            cell.setLayoutParams(new RecyclerView.LayoutParams(Ui.dp(c, CARD_DP) + 2 * pad, ViewGroup.LayoutParams.WRAP_CONTENT));
+            // Half the gap each side of a card: the cards Home's 12dp apart.
+            int half = Glass.dp(c, Rows.GAP / 2f);
+            cell.setPadding(half, 0, half, half);
+            cell.setLayoutParams(new RecyclerView.LayoutParams(Glass.dp(c, CARD_DP) + 2 * half, ViewGroup.LayoutParams.WRAP_CONTENT));
             return new RecyclerView.ViewHolder(cell) {};
         }
 
@@ -179,15 +173,15 @@ final class RecentRow {
             if (e.isVod()) vod(c, frame, e);
             else if (e.kind == Watched.SPORT && e.game != null) game(c, frame, e.game, e.channelName);
             else programme(c, frame, e);
-            cell.addView(frame, new LinearLayout.LayoutParams(Ui.dp(c, CARD_DP), ViewGroup.LayoutParams.WRAP_CONTENT));
-            TextView name = Ui.text(c, under(e), 13, c.getColor(R.color.text_soft), false);
+            cell.addView(frame, new LinearLayout.LayoutParams(Glass.dp(c, CARD_DP), ViewGroup.LayoutParams.WRAP_CONTENT));
+            TextView name = Glass.text(c, under(e), 13, Glass.SOFT, Glass.bodySemi(c));
             name.setSingleLine(true);
             name.setEllipsize(TextUtils.TruncateAt.END);
-            name.setPadding(Ui.dp(c, 2), Ui.dp(c, 6), Ui.dp(c, 2), 0);
-            cell.addView(name, new LinearLayout.LayoutParams(Ui.dp(c, CARD_DP), ViewGroup.LayoutParams.WRAP_CONTENT));
-            TextView when = Ui.text(c, Watched.when(e.at), 11, c.getColor(R.color.text_dim), false);
+            name.setPadding(Glass.dp(c, 2), Glass.dp(c, 8), Glass.dp(c, 2), 0);
+            cell.addView(name, new LinearLayout.LayoutParams(Glass.dp(c, CARD_DP), ViewGroup.LayoutParams.WRAP_CONTENT));
+            TextView when = Glass.text(c, Watched.when(e.at), 11, Glass.MUTED, Glass.body(c));
             when.setSingleLine(true);
-            when.setPadding(Ui.dp(c, 2), Ui.dp(c, 1), Ui.dp(c, 2), 0);
+            when.setPadding(Glass.dp(c, 2), Glass.dp(c, 4), Glass.dp(c, 2), 0);
             cell.addView(when);
             cell.setContentDescription(describe(e));
             cell.setOnClickListener(v -> open(v.getContext(), e));
@@ -212,9 +206,9 @@ final class RecentRow {
                 + ", watched " + Watched.when(e.at);
     }
 
-    // A film or an episode: its poster, how far in, and what's next.
+    // A film or an episode: its poster (its own colours without one), how far in, and what's next.
     private void vod(Context c, FrameLayout frame, Watched.Entry e) {
-        frame.setBackground(Ui.fill(c, c.getColor(R.color.surface), 12));
+        frame.setBackground(Glass.placeholder(e.name(), Glass.dp(c, RADIUS_DP)));
         String poster = e.vod == null ? "" : e.vod.poster;
         if (poster != null && !poster.isEmpty()) {
             ImageView image = new ImageView(c);
@@ -222,7 +216,7 @@ final class RecentRow {
             image.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
             frame.addView(image, new FrameLayout.LayoutParams(-1, -1));
             try {
-                Glide.with(image).load(poster).transform(new CenterCrop(), new RoundedCorners(Ui.dp(c, 12))).into(image);
+                Glide.with(image).load(poster).centerCrop().into(image);
             } catch (RuntimeException ignored) {
                 // Home went away
             }
@@ -230,13 +224,14 @@ final class RecentRow {
             frame.addView(middle(c, e.name()), new FrameLayout.LayoutParams(-1, -1));
         }
         fade(c, frame);
-        badge(c, frame, e.kind == Watched.FILM ? "FILM" : "TV SHOW", e.kind == Watched.FILM ? FILM : SHOW, Color.WHITE);
+        badge(c, frame, e.kind == Watched.FILM ? "FILM" : "TV SHOW", false);
         foot(c, frame, Watched.vodLine(e), e.finished || e.vod == null ? -1 : e.vod.progress(), 2);
+        frame.setForeground(Glass.rim(c, RADIUS_DP));
     }
 
     // A game: both crests side by side, the score and where it is (or how it ended), the competition in the corner.
     private void game(Context c, FrameLayout frame, Game g, String channel) {
-        frame.setBackground(clubs(c, g));
+        frame.setBackground(clubs(g));
         boolean live = Watched.onNow(g, System.currentTimeMillis());
         String comp = Competitions.logo(g);
         if (comp != null) {
@@ -257,30 +252,29 @@ final class RecentRow {
         crests.addView(crest(c, g.awayLogo), new LinearLayout.LayoutParams(Ui.dp(c, 38), Ui.dp(c, 38)));
         col.addView(crests, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         String score = g.state == Game.PRE ? "v" : g.homeScore + " – " + g.awayScore;
-        TextView s = Ui.text(c, score, 26, Color.WHITE, true);
+        TextView s = Glass.text(c, score, 26, Glass.TEXT, Glass.heading(c, 700));
         s.setGravity(Gravity.CENTER);
         s.setShadowLayer(6, 0, 1, 0x99000000);
-        col.addView(s, Ui.margins(c, 0, 2, 0, 0));
+        col.addView(s, Ui.margins(c, 0, 4, 0, 0));
         String state = state(g);
         if (!state.isEmpty()) {
-            TextView st = Ui.text(c, state, 12, live ? 0xFFFF8A8F : 0xFFE4E6F5, true);
+            TextView st = Glass.text(c, state, 12, live ? 0xFFFF8A8F : Glass.SOFT, Glass.bodySemi(c));
             st.setGravity(Gravity.CENTER);
             st.setLetterSpacing(0.04f);
-            col.addView(st, Ui.matchWrap());
+            col.addView(st, Ui.margins(c, 0, 4, 0, 0));
         }
         FrameLayout.LayoutParams cp = new FrameLayout.LayoutParams(-1, -2, Gravity.TOP);
         cp.topMargin = Ui.dp(c, 36);
         frame.addView(col, cp);
         fade(c, frame);
-        badge(c, frame, live ? "LIVE" : "SPORT", live ? LIVE : SPORT, live ? Color.WHITE : INK);
+        badge(c, frame, live ? "LIVE" : "SPORT", live);
         foot(c, frame, channel, -1, 1);
+        frame.setForeground(Glass.rim(c, RADIUS_DP));
     }
 
-    // A programme: its channel's logo and its title.
+    // A programme: its channel's logo and its title, on frosted glass.
     private void programme(Context c, FrameLayout frame, Watched.Entry e) {
-        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{0xFF26316F, 0xFF121A45});
-        bg.setCornerRadius(Ui.dp(c, 12));
-        frame.setBackground(bg);
+        frame.setBackground(Glass.card(c, RADIUS_DP));
         TextView name = middle(c, e.channelName);
         name.setVisibility(View.GONE);
         frame.addView(name, new FrameLayout.LayoutParams(-1, Ui.dp(c, 120), Gravity.TOP));
@@ -299,8 +293,7 @@ final class RecentRow {
             name.setVisibility(View.VISIBLE);
         }
         fade(c, frame);
-        int color = "Sport".equals(e.tag) ? SPORT : "Film".equals(e.tag) ? FILM : "News".equals(e.tag) ? NEWS : SHOW;
-        badge(c, frame, e.tag.isEmpty() ? "TV" : e.tag.toUpperCase(Locale.UK), color, color == SPORT || color == NEWS ? INK : Color.WHITE);
+        badge(c, frame, e.tag.isEmpty() ? "TV" : e.tag.toUpperCase(Locale.UK), false);
         foot(c, frame, e.title.isEmpty() ? e.channelName : e.title, -1, 2);
     }
 
@@ -333,26 +326,23 @@ final class RecentRow {
         return v;
     }
 
-    /** The two clubs' colours, deepened towards the navy, from one corner to the other. */
-    private static GradientDrawable clubs(Context c, Game g) {
-        int navy = 0xFF141A4A;
-        GradientDrawable d = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                new int[]{deep(g.homeColor, navy), navy, deep(g.awayColor, navy)});
-        d.setCornerRadius(Ui.dp(c, 12));
-        return d;
+    /** The two clubs' colours, deepened towards the warm dark, from one corner to the other. */
+    private static GradientDrawable clubs(Game g) {
+        return new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                new int[]{deep(g.homeColor, DUSK), DUSK, deep(g.awayColor, DUSK)});
     }
 
-    /** An ESPN colour ("c8102e") halfway to the navy; the navy itself when there is none. */
-    static int deep(String hex, int navy) {
-        if (hex == null || !hex.matches("[0-9a-fA-F]{6}")) return navy;
+    /** An ESPN colour ("c8102e") halfway to the ground given, a little darker; the ground itself when there is none. */
+    static int deep(String hex, int ground) {
+        if (hex == null || !hex.matches("[0-9a-fA-F]{6}")) return ground;
         int rgb = Integer.parseInt(hex, 16);
-        int r = ((rgb >> 16 & 0xFF) + Color.red(navy)) / 2, g = ((rgb >> 8 & 0xFF) + Color.green(navy)) / 2,
-                b = ((rgb & 0xFF) + Color.blue(navy)) / 2;
+        int r = ((rgb >> 16 & 0xFF) + Color.red(ground)) / 2, g = ((rgb >> 8 & 0xFF) + Color.green(ground)) / 2,
+                b = ((rgb & 0xFF) + Color.blue(ground)) / 2;
         return Color.rgb(r * 3 / 4, g * 3 / 4, b * 3 / 4);
     }
 
     private static TextView middle(Context c, String words) {
-        TextView t = Ui.text(c, words, 16, Color.WHITE, true);
+        TextView t = Glass.text(c, words, 16, Glass.TEXT, Glass.heading(c, 600));
         t.setGravity(Gravity.CENTER);
         t.setMaxLines(3);
         t.setEllipsize(TextUtils.TruncateAt.END);
@@ -360,51 +350,64 @@ final class RecentRow {
         return t;
     }
 
+    /** Darker towards the foot, so the words along it read over any picture. */
     private static void fade(Context c, FrameLayout frame) {
         View fade = new View(c);
-        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x00000000, 0x00000000, 0xD9000000});
-        g.setCornerRadius(Ui.dp(c, 12));
-        fade.setBackground(g);
+        fade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{0x00000000, 0x00000000, 0xD9000000}));
         frame.addView(fade, new FrameLayout.LayoutParams(-1, -1));
     }
 
-    private static void badge(Context c, FrameLayout frame, String words, int fill, int ink) {
-        TextView b = Ui.text(c, words, 10, ink, true);
+    /** The kind's small chip in the top corner: dark glass with white words, red while a game is on. */
+    private static void badge(Context c, FrameLayout frame, String words, boolean live) {
+        TextView b = Glass.text(c, words, 10, Glass.TEXT, Glass.bodySemi(c));
         b.setLetterSpacing(0.08f);
         b.setPadding(Ui.dp(c, 7), Ui.dp(c, 3), Ui.dp(c, 7), Ui.dp(c, 3));
-        b.setBackground(Ui.fill(c, fill, 6));
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(live ? LIVE : 0x8C0E0F14);
+        bg.setCornerRadius(Ui.dp(c, 7));
+        if (!live) bg.setStroke(Math.max(1, Glass.dp(c, 0.5f)), 0x33FFFFFF);
+        b.setBackground(bg);
         b.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START);
-        lp.setMargins(Ui.dp(c, 7), Ui.dp(c, 7), 0, 0);
+        lp.setMargins(Ui.dp(c, 8), Ui.dp(c, 8), 0, 0);
         frame.addView(b, lp);
     }
 
-    /** The line along the card's foot, over the fade, with a bar for how far in (progress below 0: none). */
+    /** The words along the card's foot, over the fade, with a fine line for how far in (progress below 0: none). */
     private static void foot(Context c, FrameLayout frame, String words, float progress, int lines) {
+        int side = Ui.dp(c, 8);
         if (words != null && !words.isEmpty()) {
-            TextView t = Ui.text(c, words, 12, 0xFFF0F1FA, true);
+            TextView t = Glass.text(c, words, 12, Glass.TEXT, Glass.bodySemi(c));
             t.setMaxLines(lines);
             t.setEllipsize(TextUtils.TruncateAt.END);
             t.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
             FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
-            lp.setMargins(Ui.dp(c, 8), 0, Ui.dp(c, 8), Ui.dp(c, progress >= 0 ? 10 : 8));
+            lp.setMargins(side, 0, side, Ui.dp(c, progress >= 0 ? 17 : 9));
             frame.addView(t, lp);
         }
         if (progress < 0) return;
+        // A faint track with the part watched in white, as Continue watching's cards draw it.
+        int h = Ui.dp(c, 3);
         View back = new View(c);
-        back.setBackgroundColor(0x40FFFFFF);
-        frame.addView(back, new FrameLayout.LayoutParams(-1, Ui.dp(c, 3), Gravity.BOTTOM));
+        back.setBackground(Art.round(0x4DFFFFFF, h / 2f));
+        FrameLayout.LayoutParams bp = new FrameLayout.LayoutParams(-1, h, Gravity.BOTTOM);
+        bp.setMargins(side, 0, side, side);
+        frame.addView(back, bp);
         View bar = new View(c);
-        bar.setBackgroundColor(0xFFFFC93C);
+        bar.setBackground(Art.round(0xFFFFFFFF, h / 2f));
         float p = Math.max(0.03f, Math.min(1f, progress));
-        frame.addView(bar, new FrameLayout.LayoutParams(Math.round(Ui.dp(c, CARD_DP) * p), Ui.dp(c, 3), Gravity.BOTTOM | Gravity.START));
+        int width = Math.max(h, Math.round((Ui.dp(c, CARD_DP) - 2 * side) * p));
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(width, h, Gravity.BOTTOM | Gravity.START);
+        lp.setMargins(side, 0, 0, side);
+        frame.addView(bar, lp);
     }
 
-    /** A card two parts wide to three tall, as posters are, its corners rounded. */
+    /** A card two parts wide to three tall, as posters are, its corners rounded as Home's tiles are. */
     private static final class Poster extends FrameLayout {
         Poster(Context c) {
             super(c);
-            setClipToOutline(true);
+            Glass.round(this, Glass.dp(c, RADIUS_DP));
         }
 
         @Override protected void onMeasure(int w, int h) {
