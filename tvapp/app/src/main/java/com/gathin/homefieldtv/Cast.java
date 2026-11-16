@@ -34,13 +34,20 @@ import java.util.concurrent.TimeUnit;
  * and only while the app is open or playing. It says it is here over NSD (_homefieldtv._tcp, with v=1 and the TV's
  * name) and answers on its own port: GET /hello with {"app":"homefieldtv","v":1,"name":"…"}; POST /play with the
  * channel ({"v":1,"kind":"live","name","tvgId","streamId",…,"from"}), played only when this TV's own playlists have it
- * (by its stream id, else its guide id, else its tidied name): {"ok":true,"playing":"…"}, else 404 {"ok":false}. The
- * phone's stream address and login are never used, and only private-network addresses are answered.
+ * (by its stream id, else its guide id, else its tidied name): {"ok":true,"playing":"…"}, else 404 {"ok":false}; POST
+ * /stop lets go of the channel the phone sent (404 when it sent none). It listens on port 47830 when that is free (the
+ * phone tries it straight away when the network's announcement doesn't reach it), else on any. The phone's stream
+ * address and login are never used, and only private-network addresses are answered.
  */
 final class Cast {
     private Cast() {}
 
-    static final String TYPE = "_homefieldtv._tcp", EXTRA_KEY = "cast_key", EXTRA_FROM = "cast_from", EXTRA_AT = "cast_at";
+    static final String TYPE = "_homefieldtv._tcp", EXTRA_KEY = "cast_key", EXTRA_FROM = "cast_from", EXTRA_AT = "cast_at",
+            EXTRA_STOP = "cast_stop";
+    /** The port the phone also tries straight away when the network's announcement doesn't reach it (any free one if taken). */
+    static final int PORT = 47830;
+    /** The channel the phone last sent (null: none yet): its Stop stops only that one. */
+    private static volatile String lastKey;
     /** A channel sent longer ago than this is not played (the app started again later from an old intent). */
     static final long FRESH_MS = 30_000;
     private static final int MAX_HEAD = 8192, MAX_BODY = 16384;
@@ -72,12 +79,18 @@ final class Cast {
 
     private static synchronized void start() {
         try {
-            ServerSocket s = new ServerSocket(0);
-            socket = s;
-            Thread t = new Thread(() -> serve(s), "cast");
+            ServerSocket s;
+            try {
+                s = new ServerSocket(PORT);
+            } catch (IOException taken) {
+                s = new ServerSocket(0);
+            }
+            ServerSocket bound = s;
+            socket = bound;
+            Thread t = new Thread(() -> serve(bound), "cast");
             t.setDaemon(true);
             t.start();
-            advertise(s.getLocalPort());
+            advertise(bound.getLocalPort());
         } catch (IOException | RuntimeException e) {
             socket = null;
         }
@@ -156,6 +169,12 @@ final class Cast {
             reply(out, 200, "{\"app\":\"homefieldtv\",\"v\":1,\"name\":" + quote(tvName(app)) + "}");
             return;
         }
+        if ("POST".equals(method) && "/stop".equals(path)) {
+            // The phone's Stop: the channel it sent let go, when that is what is playing (404 otherwise, which it expects).
+            boolean stopped = stop(lastKey);
+            reply(out, stopped ? 200 : 404, stopReply(stopped));
+            return;
+        }
         if (!"POST".equals(method) || !"/play".equals(path)) {
             reply(out, 404, "{\"ok\":false}");
             return;
@@ -192,6 +211,7 @@ final class Cast {
         }
         Channel c = match(Library.get(app).all(), streamId, tvgId, name);
         if (c == null) return null;
+        lastKey = c.key;
         // To the front and playing, on the main thread; answered once it is on its way.
         CountDownLatch done = new CountDownLatch(1);
         main.post(() -> {
@@ -211,6 +231,38 @@ final class Cast {
             Thread.currentThread().interrupt();
         }
         return c.name;
+    }
+
+    /**
+     * The channel the phone sent let go (TvActivity checks it is the one playing, then goes Home without the mini TV);
+     * false when the phone sent none.
+     */
+    private static boolean stop(String key) {
+        if (key == null) return false;
+        lastKey = null;
+        CountDownLatch done = new CountDownLatch(1);
+        main.post(() -> {
+            Intent i = new Intent(app, TvActivity.class)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    .putExtra(EXTRA_STOP, key).putExtra(EXTRA_AT, System.currentTimeMillis());
+            try {
+                app.startActivity(i);
+            } catch (RuntimeException ignored) {
+                // not allowed now
+            }
+            done.countDown();
+        });
+        try {
+            done.await(2, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        return true;
+    }
+
+    /** Pure: the answer to Stop. */
+    static String stopReply(boolean stopped) {
+        return stopped ? "{\"ok\":true}" : "{\"ok\":false}";
     }
 
     // ---- pure -------------------------------------------------------------------------------------------------------

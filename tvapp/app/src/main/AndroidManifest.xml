@@ -3,6 +3,8 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Settings, Updates: a newer Homefield TV put on this TV handed to Android's installer (it asks first). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- A TV app only: Android TV's launcher row, the remote, no touch screen. -->
     <uses-feature android:name="android.software.leanback" android:required="true" />
@@ -35,6 +37,11 @@
             android:exported="false"
             android:screenOrientation="landscape"
             android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|smallestScreenSize" />
+
+        <!-- Android's installer's word on an update (Updates): only its PendingIntent reaches it. -->
+        <receiver
+            android:name=".UpdateStatus"
+            android:exported="false" />
 
         <!-- A playlist added from a computer over adb, so a long login need not be typed on the remote:
              content insert - -uri content://com.gathin.homefieldtv.setup/xtream - -bind server:s:… (see Setup). Only the

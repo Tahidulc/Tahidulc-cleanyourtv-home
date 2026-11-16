@@ -42,6 +42,22 @@ public final class TvActivity extends Activity {
     private final Runnable catalog = () -> {
         for (Screen s : new ArrayList<>(stack)) s.catalogChanged();
     };
+    /** An update found, gone or under way: the dots on Settings drawn again, Settings told. */
+    private final Runnable updates = () -> {
+        for (Screen s : new ArrayList<>(stack)) {
+            if (!s.built()) continue;
+            redraw(s.view());
+            s.updatesChanged();
+        }
+    };
+
+    private static void redraw(View v) {
+        v.invalidate();
+        if (v instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) redraw(g.getChildAt(i));
+        }
+    }
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -70,6 +86,12 @@ public final class TvActivity extends Activity {
         cat.addListener(catalog);
         cat.ensure();
         push(new HomeScreen(this));
+        // Homefield TV's own updates: the folder made (for one to be put in), a quiet look, What's new once after one.
+        Updates.folder(this);
+        Updates.addListener(updates);
+        Updates.check(this, null);
+        String[] news = Updates.whatsNew(this);
+        if (news != null && reopenSettings < 0) push(new WhatsNewScreen(this, news[0], news[1]));
         // Started again for a new theme: back on Settings where it was chosen.
         if (reopenSettings >= 0) {
             SettingsScreen s = new SettingsScreen(this);
@@ -78,6 +100,16 @@ public final class TvActivity extends Activity {
             reopenSettings = -1;
         }
         handleCast(getIntent());
+    }
+
+    /** The phone stopped what it sent: Home comes back without its mini TV playing, once. */
+    private boolean miniTvHeld;
+
+    /** Whether Home should leave its mini TV off this time (the phone's Stop); asked once. */
+    boolean takeMiniTvHeld() {
+        boolean held = miniTvHeld;
+        miniTvHeld = false;
+        return held;
     }
 
     /** Settings' section to open again after the screens start again for a theme (-1: none). */
@@ -96,6 +128,20 @@ public final class TvActivity extends Activity {
 
     /** A channel sent from the family's phone (Cast): watched at once, a note of where it came from. */
     private void handleCast(Intent i) {
+        if (i != null && i.hasExtra(Cast.EXTRA_STOP)) {
+            // The phone's Stop: only the channel it sent, and only while that is what plays.
+            String key = i.getStringExtra(Cast.EXTRA_STOP);
+            long at = i.getLongExtra(Cast.EXTRA_AT, 0L);
+            i.removeExtra(Cast.EXTRA_STOP);
+            Channel playing = live.channel();
+            if (Math.abs(System.currentTimeMillis() - at) <= Cast.FRESH_MS && playing != null && playing.key.equals(key)
+                    && top() instanceof LiveScreen) {
+                miniTvHeld = true;
+                live.stop();
+                home();
+            }
+            return;
+        }
         if (i == null || !i.hasExtra(Cast.EXTRA_KEY)) return;
         String key = i.getStringExtra(Cast.EXTRA_KEY), from = i.getStringExtra(Cast.EXTRA_FROM);
         long at = i.getLongExtra(Cast.EXTRA_AT, 0L);
@@ -116,6 +162,7 @@ public final class TvActivity extends Activity {
         super.onResume();
         resumed = true;
         Cast.hold(this);
+        Updates.resumed(this);
         nextMinute();
         Library.get(this).ensure();
         Catalog.get(this).ensure();
@@ -137,6 +184,7 @@ public final class TvActivity extends Activity {
     @Override protected void onDestroy() {
         Library.get(this).removeListener(channels);
         Catalog.get(this).removeListener(catalog);
+        Updates.removeListener(updates);
         live.stop();
         super.onDestroy();
     }

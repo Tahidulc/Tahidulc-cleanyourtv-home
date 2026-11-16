@@ -36,7 +36,7 @@ final class Panel extends View {
     private final TextPaint word = Ui.paint(56, true, Ui.WHITE), time = Ui.paint(34, false, Ui.WHITE);
     private final TextPaint item = Ui.paint(34, false, Ui.DIM), itemOn = Ui.paint(34, true, Ui.WHITE);
     private final TextPaint noteP = Ui.paint(26, false, Ui.DIM);
-    private final Paint arrow = Ui.stroke(Ui.FAINT, 2.5f);
+    private final Paint arrow = Ui.stroke(Ui.FAINT, 2.5f), dot = Ui.fill(Dark.ACCENT);
     private final Glow glow = new Glow();
     private final RectF r = new RectF();
     private float scroll, scrollTo;
@@ -143,7 +143,12 @@ final class Panel extends View {
                 else glow.box(c, r);
             }
             TextPaint p = on ? itemOn : item;
-            c.drawText(Ui.fit(items.get(i), p, Ui.f(330)), Ui.f(112), Ui.f(cy + 12), p);
+            String name = Ui.fit(items.get(i), p, Ui.f(330));
+            c.drawText(name, Ui.f(112), Ui.f(cy + 12), p);
+            // A newer Homefield TV waiting (Settings, Updates): a dot after Settings.
+            if ("Settings".equals(items.get(i)) && Updates.waiting(getContext())) {
+                c.drawCircle(Ui.f(112) + p.measureText(name) + Ui.f(18), Ui.f(cy - 2), Ui.f(7), dot);
+            }
         }
         c.restore();
         if (scroll > 1f) Ui.chevron(c, Ui.f(281), Ui.f(first - ITEM / 2 - 22), Ui.f(12), Ui.UP, arrow);

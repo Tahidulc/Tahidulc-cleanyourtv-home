@@ -63,4 +63,7 @@ abstract class Screen {
 
     /** The films and series changed. */
     void catalogChanged() {}
+
+    /** Homefield TV's own update: found, gone, or under way (Updates). */
+    void updatesChanged() {}
 }

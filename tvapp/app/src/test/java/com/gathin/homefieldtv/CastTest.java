@@ -94,6 +94,12 @@ public class CastTest {
         assertFalse(Cast.isPrivate(mapped));
     }
 
+    @Test public void stopAnswers() {
+        assertEquals("{\"ok\":true}", Cast.stopReply(true));
+        assertEquals("{\"ok\":false}", Cast.stopReply(false));
+        assertEquals(47830, Cast.PORT);
+    }
+
     @Test public void jsonStrings() {
         assertEquals("\"Living Room TV\"", Cast.quote("Living Room TV"));
         assertEquals("\"Say \\\"hi\\\" \\\\ now\\u000a\"", Cast.quote("Say \"hi\" \\ now\n"));
