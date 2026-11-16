@@ -242,6 +242,35 @@ public final class Ui {
         return r;
     }
 
+    /**
+     * "▶ Live on" a channel from the family's own playlist (a game no British channel lists), as {@link #liveOn}: its logo
+     * in place of its name, the name when there is no logo or it doesn't load. Tapped, it plays.
+     */
+    public static View liveOnPlaylist(Context c, String name, String logoUrl, Runnable play) {
+        int ink = c.getColor(R.color.sports);
+        LinearLayout r = row(c);
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        r.setPadding(0, dp(c, 6), 0, dp(c, 6));
+        r.addView(text(c, "▶  Live on", 14, ink, true));
+        TextView n = text(c, " " + name, 14, ink, true);
+        n.setMaxLines(1);
+        n.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        r.addView(n, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        ImageView logo = new ImageView(c);
+        logo.setAdjustViewBounds(true);
+        logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        logo.setMaxWidth(dp(c, 150));
+        logo.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        logo.setVisibility(View.GONE);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(c, 20));
+        lp.leftMargin = dp(c, 8);
+        r.addView(logo, lp);
+        r.setContentDescription("Live on " + name + ", play it");
+        r.setOnClickListener(v -> play.run());
+        if (logoUrl != null && !logoUrl.isEmpty()) showLogo(logo, n, logoUrl);
+        return r;
+    }
+
     private static void showLogo(ImageView logo, TextView name, String url) {
         logo.setVisibility(View.VISIBLE);
         name.setVisibility(View.GONE);

@@ -10,8 +10,8 @@ android {
         applicationId 'com.gathin.tvhomephone'
         minSdk 26
         targetSdk 34
-        versionCode 143
-        versionName '5.12'
+        versionCode 147
+        versionName '5.16'
         // Phones: the ARM builds of the native parts (the sound decoder, the text reader) only.
         ndk {
             abiFilters 'arm64-v8a', 'armeabi-v7a'
@@ -80,6 +80,13 @@ dependencies {
     implementation 'com.github.bumptech.glide:glide:4.16.0'
     // Reading the channel's own scoreboard (its clock and score) off the picture, on the phone, offline.
     implementation 'com.google.mlkit:text-recognition:16.0.1'
+    // Cast from Live TV to Chromecasts and Google TVs (Google's own player on them), found through the phone's media routes.
+    implementation 'com.google.android.gms:play-services-cast-framework:22.1.0'
+    implementation 'androidx.mediarouter:mediarouter:1.7.0'
+    // Automatic subtitles where the phone has no speech recognition of its own: Vosk (Apache 2.0), offline, with JNA.
+    // Its English model is fetched once, when the family agrees, never shipped in the app.
+    implementation 'net.java.dev.jna:jna:5.18.1@aar'
+    implementation 'com.alphacephei:vosk-android:0.3.75@aar'
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.json:json:20240303'
     // Tests only: Home drawn off the phone (HomePreviewTest, skipped unless PREVIEW_OUT is set). Not in the app.

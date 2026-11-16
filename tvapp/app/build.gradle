@@ -37,6 +37,9 @@ android {
     sourceSets {
         main {
             java.srcDirs += ['../../overlays/java']
+            // The scoreboard in the player (BoardLayer): its lettering (CompBug's fonts), its sounds (Sfx) and the kick-off
+            // pop-up and line-ups pages (BroadcastView), as the launcher and the phone take them in. Not assets-tv (the intros).
+            assets.srcDirs += ['../../overlays/assets']
         }
     }
 

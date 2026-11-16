@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Settings: how the posters on Home and Watch look. -->
+    <string name="posters_title">Films and TV shows</string>
+    <string name="posters_body">How the posters on Home and Watch look. Landscape cards show each title\'s picture wide, with its logo.</string>
+    <string name="posters_shape">Posters</string>
+    <string name="posters_portrait">Portrait</string>
+    <string name="posters_landscape">Landscape</string>
+</resources>

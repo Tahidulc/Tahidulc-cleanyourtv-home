@@ -245,6 +245,41 @@ public final class Glass {
         return t;
     }
 
+    /**
+     * A section's heading row as the family's reference picture draws them: its words in white (first child), then a
+     * round dark button with a chevron at the right edge when it leads somewhere (the words lead there too).
+     */
+    public static LinearLayout sectionRow(Context c, String title, View.OnClickListener more) {
+        LinearLayout head = new LinearLayout(c);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        head.setPadding(dp(c, 20), dp(c, 26), dp(c, 16), dp(c, 14));
+        TextView words = text(c, title, 21, TEXT, heading(c, 600));
+        words.setSingleLine(true);
+        words.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        // As tall as the button, so headings with and without one sit the same.
+        words.setMinHeight(dp(c, 38));
+        words.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        head.addView(words, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        if (more != null) {
+            words.setOnClickListener(more);
+            android.widget.ImageView b = new android.widget.ImageView(c);
+            b.setImageDrawable(new Icons(c, Icons.CHEVRON, TEXT));
+            b.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+            int pad = dp(c, 10);
+            b.setPadding(pad, pad, pad, pad);
+            android.graphics.drawable.GradientDrawable round = new android.graphics.drawable.GradientDrawable();
+            round.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+            round.setColor(0xFF26272C);
+            b.setBackground(new android.graphics.drawable.RippleDrawable(
+                    android.content.res.ColorStateList.valueOf(0x33FFFFFF), round, null));
+            b.setContentDescription("All of " + title);
+            b.setOnClickListener(more);
+            head.addView(b, new LinearLayout.LayoutParams(dp(c, 38), dp(c, 38)));
+        }
+        return head;
+    }
+
     /** A poster's tile: the picture filling a rounded card under the glass rim, its own colours until it comes. */
     public static ImageView poster(Context c, String seed, float radiusDp) {
         ImageView v = new ImageView(c);

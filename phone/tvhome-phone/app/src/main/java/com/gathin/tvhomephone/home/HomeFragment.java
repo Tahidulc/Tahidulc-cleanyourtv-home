@@ -266,7 +266,10 @@ public class HomeFragment extends Fragment implements HomeScreen.Host {
         App.io.execute(() -> {
             List<Pick> list = new ArrayList<>();
             try {
-                for (Title t : Lists.myList(app)) {
+                List<Title> mine = Lists.myList(app);
+                // Their posters' corners: where each stands today, and what the sources have of it.
+                Lists.decorate(app, mine);
+                for (Title t : mine) {
                     Pick p = Pick.of(t);
                     if (p != null) list.add(p);
                 }

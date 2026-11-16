@@ -10,3 +10,12 @@
 -keepclassmembers class com.gathin.broadcast.** {
     @android.webkit.JavascriptInterface <methods>;
 }
+
+# Cast reads its options class by name (the manifest's meta-data).
+-keep class com.gathin.tvhomephone.cast.CastSetup { *; }
+
+# Vosk's speech recognition is reached through JNA, by name; JNA's desktop parts aren't on Android.
+-keep class com.sun.jna.** { *; }
+-keepclassmembers class * extends com.sun.jna.** { public *; }
+-keep class org.vosk.** { *; }
+-dontwarn java.awt.**

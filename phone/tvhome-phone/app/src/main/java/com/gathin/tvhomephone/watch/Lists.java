@@ -3,6 +3,8 @@ package com.gathin.tvhomephone.watch;
 import android.content.Context;
 
 import com.gathin.tvhomephone.SyncStore;
+import com.gathin.tvhomephone.live.Catalogue;
+import com.gathin.tvhomephone.live.SourceQuality;
 import com.gathin.tvhomephone.sync.Tvs;
 
 import org.json.JSONArray;
@@ -15,7 +17,6 @@ import java.util.Arrays;
 import java.util.Calendar;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.Future;
 
@@ -161,8 +162,30 @@ public final class Lists {
         return out;
     }
 
-    /** A list's titles, with their foot lines. Off the main thread. */
+    /** A list's titles, with their foot lines and their posters' corners (decorate). Off the main thread. */
     public static List<Title> load(Context c, Spec s) throws IOException {
+        List<Title> out = read(c, s);
+        decorate(c, out);
+        return out;
+    }
+
+    /**
+     * Each title's poster corners: where it stands (Top 10's place this week; else today's place, Trending or New, as
+     * Ranks says) unless its list gave it a word of its own, and what the family's own sources have of it (from the
+     * playlists' catalogue as last read, and TorBox's own files). Off the main thread.
+     */
+    public static void decorate(Context c, List<Title> list) {
+        if (list == null || list.isEmpty()) return;
+        Ranks.Places places = Ranks.read(c);
+        LocalDate today = LocalDate.now();
+        Catalogue cat = Catalogue.ifRead(c);
+        for (Title t : list) {
+            if (t.badge == null) t.badge = t.rank > 0 ? "#" + t.rank + " This week" : Ranks.label(places, t.tv, t.id, t.date, today);
+            if (t.quality == 0) t.quality = SourceQuality.of(c, cat, t.id, t.tv, t.title, t.year);
+        }
+    }
+
+    private static List<Title> read(Context c, Spec s) throws IOException {
         if (s.special == null) {
             List<Title> out;
             if (s.path2 != null) out = mix(Tmdb.list(c, s.path, true, 2), Tmdb.list(c, s.path2, false, 2));
@@ -171,7 +194,7 @@ public final class Lists {
                 out = new ArrayList<>(out.subList(0, Math.min(10, out.size())));
                 for (int i = 0; i < out.size(); i++) out.get(i).rank = i + 1;
             }
-            for (Title t : out) if (t.foot == null && t.vote > 0) t.foot = (t.year.isEmpty() ? "" : t.year + " · ") + String.format(Locale.UK, "★ %.1f", t.vote);
+            // The poster says the genre and the rating itself ("Drama • ★ 7.8"), its year under it.
             return out;
         }
         if (s.special.equals("@mylist")) return myList(c);

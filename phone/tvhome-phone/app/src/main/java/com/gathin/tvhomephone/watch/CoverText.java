@@ -111,13 +111,6 @@ final class CoverText {
         return n > 0 ? "Season " + n : "Specials";
     }
 
-    /** An episode's heading: "1. The One Where No One Proposes", or "Episode 1" when it has no name of its own. */
-    static String episode(int number, String name) {
-        String n = name == null ? "" : name.trim();
-        if (n.isEmpty() || n.equalsIgnoreCase("Episode " + number)) return "Episode " + number;
-        return number + ". " + n;
-    }
-
     /** The seasons to choose between, as {number, episodes}, in order; the specials (season 0) only when there is nothing else. */
     static List<int[]> seasons(JSONObject d) {
         JSONArray s = d == null ? null : d.optJSONArray("seasons");

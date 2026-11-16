@@ -5,7 +5,6 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.TextView;
 
 import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -55,7 +54,7 @@ public final class HomeWatch {
         box.addView(night, Ui.fill());
         filmNight(host, night);
 
-        PosterAdapter resume = new PosterAdapter((t, i) -> TitleActivity.open(c, t), null, Ui.dp(c, 112));
+        PosterAdapter resume = new PosterAdapter((t, i) -> TitleActivity.open(c, t), null, com.gathin.tvhomephone.glass.PosterCard.rowWidth(c, com.gathin.tvhomephone.glass.PosterCard.wide(c)));
         LinearLayout resumeBox = rowSection(c, "Continue watching", resume);
         box.addView(resumeBox, Ui.fill());
         List<Title> cached = withResume ? Lists.resume(c) : new ArrayList<>();
@@ -68,7 +67,7 @@ public final class HomeWatch {
             resumeBox.setVisibility(now.isEmpty() ? View.GONE : View.VISIBLE);
         });
 
-        PosterAdapter fresh = new PosterAdapter((t, i) -> TitleActivity.open(c, t), null, Ui.dp(c, 112));
+        PosterAdapter fresh = new PosterAdapter((t, i) -> TitleActivity.open(c, t), null, com.gathin.tvhomephone.glass.PosterCard.rowWidth(c, com.gathin.tvhomephone.glass.PosterCard.wide(c)));
         LinearLayout freshBox = rowSection(c, "New today", fresh);
         freshBox.setVisibility(View.GONE);
         box.addView(freshBox, Ui.fill());
@@ -91,9 +90,7 @@ public final class HomeWatch {
 
     private static LinearLayout rowSection(Context c, String name, PosterAdapter adapter) {
         LinearLayout box = Ui.column(c);
-        TextView head = Ui.text(c, name, 17, 0xFFFFFFFF, true);
-        head.setPadding(Ui.dp(c, 16), Ui.dp(c, 16), 0, Ui.dp(c, 4));
-        box.addView(head);
+        box.addView(com.gathin.tvhomephone.glass.Glass.sectionRow(c, name, null));
         RecyclerView row = new RecyclerView(c);
         row.setLayoutManager(new LinearLayoutManager(c, LinearLayoutManager.HORIZONTAL, false));
         row.setPadding(Ui.dp(c, 10), 0, Ui.dp(c, 10), 0);

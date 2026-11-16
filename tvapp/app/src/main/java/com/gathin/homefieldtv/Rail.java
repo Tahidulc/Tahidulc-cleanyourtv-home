@@ -15,9 +15,10 @@ import android.view.View;
  */
 final class Rail extends View {
     static final float W = 112f;
-    static final int HOME = 0, GUIDE = 1, FILMS = 2, SHOWS = 3, SEARCH = 4, SETTINGS = 5;
-    private static final int[] ICONS = {Dark.HOME, Dark.GUIDE, Dark.FILMS, Dark.SHOWS, Dark.SEARCH, Dark.SETTINGS};
-    private static final String[] NAMES = {"Home", "TV guide", "Films", "TV shows", "Search", "Settings"};
+    static final int HOME = 0, GUIDE = 1, FILMS = 2, SHOWS = 3, SPORTS = 4, SEARCH = 5, SETTINGS = 6;
+    /** The icons in order; Sports' (-1) is a ball drawn by SportsIcon. */
+    private static final int[] ICONS = {Dark.HOME, Dark.GUIDE, Dark.FILMS, Dark.SHOWS, -1, Dark.SEARCH, Dark.SETTINGS};
+    private static final String[] NAMES = {"Home", "TV guide", "Films", "TV shows", "Sports", "Search", "Settings"};
 
     /** The page it is on (one of HOME…SETTINGS, or -1). */
     final int page;
@@ -57,6 +58,12 @@ final class Rail extends View {
         return true;
     }
 
+    /** An icon: Dark's, or Sports' ball. */
+    private static void icon(Canvas c, int i, float cx, float cy, float s, Paint stroke, Paint solid) {
+        if (i == SPORTS) SportsIcon.draw(c, cx, cy, s, stroke, solid);
+        else Dark.icon(c, ICONS[i], cx, cy, s, stroke, solid);
+    }
+
     /** Where an icon's middle is (design pixels). */
     private static float y(int i) {
         return i == SETTINGS ? 1010f : 400f + i * 92f;
@@ -77,6 +84,9 @@ final class Rail extends View {
                 break;
             case SHOWS:
                 tv.fromHome(new BrowseScreen(tv, true));
+                break;
+            case SPORTS:
+                tv.fromHome(new SportsScreen(tv));
                 break;
             case SEARCH:
                 tv.openSearch();
@@ -104,12 +114,12 @@ final class Rail extends View {
                 float tw = label.measureText(NAMES[i]);
                 c.drawRoundRect(cx - Ui.f(30), cy - Ui.f(30), cx + Ui.f(46) + tw + Ui.f(24), cy + Ui.f(30), Ui.f(30), Ui.f(30), tag);
                 c.drawCircle(cx, cy, Ui.f(30), on);
-                Dark.icon(c, ICONS[i], cx, cy, Ui.f(30), strokeDark, solidDark);
+                icon(c, i, cx, cy, Ui.f(30), strokeDark, solidDark);
                 c.drawText(NAMES[i], cx + Ui.f(42), cy + Ui.f(9), label);
             } else if (i == page) {
-                Dark.icon(c, ICONS[i], cx, cy, Ui.f(30), strokeAmber, solidAmber);
+                icon(c, i, cx, cy, Ui.f(30), strokeAmber, solidAmber);
             } else {
-                Dark.icon(c, ICONS[i], cx, cy, Ui.f(30), stroke, solid);
+                icon(c, i, cx, cy, Ui.f(30), stroke, solid);
             }
         }
         // A newer Homefield TV waiting (Settings, Updates): a dot on Settings.

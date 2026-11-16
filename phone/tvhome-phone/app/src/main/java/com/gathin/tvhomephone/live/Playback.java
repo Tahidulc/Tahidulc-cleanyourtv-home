@@ -63,6 +63,8 @@ final class Playback {
 
     @SuppressLint("StaticFieldLeak") // the application's context only
     private static Playback instance;
+    /** The player's sound for the automatic subtitles (one player at a time, so one listener on its audio chain). */
+    static final com.gathin.tvhomephone.captions.AudioTap TAP = new com.gathin.tvhomephone.captions.AudioTap();
 
     private final Context app;
     private final Handler h = new Handler(Looper.getMainLooper());
@@ -319,7 +321,17 @@ final class Playback {
         if (player != null) return;
         // The phone's own decoders first; FFmpeg for the sound they can't play (AC-3, E-AC-3, MP2, DTS), which UK
         // channels often carry: without it those channels played with no sound at all.
-        DefaultRenderersFactory renderers = new DefaultRenderersFactory(app)
+        // The sound passes the automatic subtitles' listener on its way (untouched; heard only while they are on).
+        DefaultRenderersFactory renderers = new DefaultRenderersFactory(app) {
+            @Override protected androidx.media3.exoplayer.audio.AudioSink buildAudioSink(@NonNull Context c, boolean floatOut,
+                                                                                         boolean trackParams) {
+                return new androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(c)
+                        .setEnableFloatOutput(floatOut)
+                        .setEnableAudioTrackPlaybackParams(trackParams)
+                        .setAudioProcessors(new androidx.media3.common.audio.AudioProcessor[]{TAP})
+                        .build();
+            }
+        }
                 .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
                 .setEnableDecoderFallback(true);
         // A channel starts as soon as a second is in (two after a stall), not the usual two and a half (five).

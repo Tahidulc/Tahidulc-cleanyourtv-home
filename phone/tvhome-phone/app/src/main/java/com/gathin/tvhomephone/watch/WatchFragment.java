@@ -291,6 +291,8 @@ public class WatchFragment extends Fragment {
 
     private static int columns(Context c) {
         float widthDp = c.getResources().getDisplayMetrics().widthPixels / c.getResources().getDisplayMetrics().density;
+        // Landscape posters (Settings, "Posters"): two across a phone, more on a tablet.
+        if (com.gathin.tvhomephone.glass.PosterCard.wide(c)) return Math.max(2, Math.min(5, (int) (widthDp / 190)));
         return Math.max(3, Math.min(8, (int) (widthDp / 125)));
     }
 

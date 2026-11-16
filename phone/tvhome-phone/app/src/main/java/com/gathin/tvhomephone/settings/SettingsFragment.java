@@ -11,7 +11,7 @@ import androidx.fragment.app.Fragment;
 
 /**
  * Settings: one scrolling page of each part's own section (the TVs and sync, the alerts and clubs, Live TV's playlist,
- * the films' subtitles), then the app's own updates (its version, and the newer one the TVs have).
+ * the posters' shape, the films' subtitles), then the app's own updates (its version, and the newer one the TVs have).
  */
 public class SettingsFragment extends Fragment {
     /** Set before Settings opens from a playlist's notification: scrolled down to Live TV's playlists once. */
@@ -30,6 +30,8 @@ public class SettingsFragment extends Fragment {
         col.addView(com.gathin.tvhomephone.sports.SportsSettings.build(this, col));
         android.view.View live = com.gathin.tvhomephone.live.LiveTvSettings.build(this, col);
         col.addView(live);
+        // Films and TV shows: portrait or landscape posters on Home and Watch.
+        col.addView(com.gathin.tvhomephone.live.PosterSettings.build(this, col));
         // The family's own TorBox files, a source for films and series beside the playlists.
         col.addView(com.gathin.tvhomephone.live.TorBoxSettings.build(this, col));
         col.addView(com.gathin.tvhomephone.live.SubtitleSettings.build(this, col));

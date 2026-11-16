@@ -4,10 +4,13 @@ import android.content.Context;
 
 import com.gathin.tvhomephone.SyncStore;
 import com.gathin.tvhomephone.live.Catalogue;
+import com.gathin.tvhomephone.live.SourceQuality;
 import com.gathin.tvhomephone.live.Sources;
 import com.gathin.tvhomephone.live.VodHistory;
 import com.gathin.tvhomephone.live.Watched;
 import com.gathin.tvhomephone.watch.Lists;
+import com.gathin.tvhomephone.watch.Logos;
+import com.gathin.tvhomephone.watch.Ranks;
 import com.gathin.tvhomephone.watch.Title;
 import com.gathin.tvhomephone.watch.Tmdb;
 
@@ -21,6 +24,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -142,7 +146,8 @@ final class Feed {
 
     /** What the picks depend on: the playlists in use, TMDB, what was watched and rated. Changes make them again. */
     static String signature(Context c) {
-        StringBuilder b = new StringBuilder();
+        // "p2": the picks carry their posters' badges and the sources' picture (5.13); older ones are made again once.
+        StringBuilder b = new StringBuilder("p2|");
         for (Sources.Entry e : Sources.inUse(c)) b.append(e.id).append(',');
         b.append(Tmdb.ready(c) ? "T" : "-").append('|');
         for (Watched.Entry e : Watched.list(c)) {
@@ -195,6 +200,7 @@ final class Feed {
             out.note = NO_TMDB;
             out.films = byName(cat, false, "New films in your playlist");
             out.shows = byName(cat, true, "New TV in your playlist");
+            mark(c, cat, null, out.films, out.shows);
             return out;
         }
         long now = System.currentTimeMillis();
@@ -299,6 +305,7 @@ final class Feed {
         out.shows = row(shows, more, taste, thin ? "Popular TV in your playlist" : "Recommended TV shows",
                 thin ? "What everyone's watching, that your playlist has" : "Picked from what you watch", thin);
         if (thin) out.fresh = fresh(c, cat);
+        mark(c, cat, Ranks.read(c), out.films, out.shows, out.fresh);
 
         // The hero: the best two films and two series, by turns, each with a backdrop.
         List<Pick> f = withBackdrop(out.films), s = withBackdrop(out.shows);
@@ -309,6 +316,19 @@ final class Feed {
         List<Pick> n = withBackdrop(out.fresh);
         for (int i = 0; out.hero.size() < 3 && i < n.size(); i++) out.hero.add(n.get(i));
         return out;
+    }
+
+    /** Each pick's poster corners: where it stands today (none without places) and what the sources have of it. */
+    private static void mark(Context c, Catalogue cat, Ranks.Places places, Row... rows) {
+        LocalDate today = LocalDate.now();
+        for (Row r : rows) {
+            if (r == null) continue;
+            for (Pick p : r.picks) {
+                String badge = places == null ? null : Ranks.label(places, p.tv, p.id, p.date, today);
+                p.badge = badge == null ? "" : badge;
+                p.quality = SourceQuality.of(c, cat, p.id, p.tv, p.title, p.year);
+            }
+        }
     }
 
     private static void add(Map<String, Taste.Seen> seen, int id, boolean tv, String name, double weight) {
@@ -461,8 +481,10 @@ final class Feed {
         p.vote = t.vote;
         p.genre = t.genres.length > 0 && Taste.genreName(t.genres[0]) != null ? Taste.genreName(t.genres[0]) : "";
         p.why = why == null ? "" : why;
+        p.date = t.date == null ? "" : t.date;
         if (d != null) {
             p.logo = logo(d);
+            Logos.put(t.tv, t.id, p.logo);
             if (!t.tv) {
                 p.cert = cert(d);
                 p.length = Pick.runtime(d.optInt("runtime"));

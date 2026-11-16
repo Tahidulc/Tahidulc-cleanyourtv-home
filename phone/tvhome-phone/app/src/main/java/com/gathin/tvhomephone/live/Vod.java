@@ -580,8 +580,8 @@ public final class Vod {
             "film", "series", "tv"));
     /** The tags that may come anywhere in a name, as no title's own word does: the picture's and the copy's. */
     private static final java.util.Set<String> PICTURE = new java.util.HashSet<>(java.util.Arrays.asList(
-            "4k", "uhd", "fhd", "hd", "sd", "hdr", "hdr10", "hevc", "x264", "x265", "h264", "h265", "1080p", "720p", "2160p", "webdl",
-            "webrip", "bluray", "multi", "multisub"));
+            "4k", "uhd", "fhd", "hd", "sd", "hdr", "hdr10", "dv", "dovi", "hlg", "atmos", "10bit", "hevc", "x264", "x265", "h264",
+            "h265", "1080p", "720p", "2160p", "webdl", "webrip", "bluray", "multi", "multisub"));
 
     /**
      * A title made comparable (pure, for the tests): lower case, accents dropped, "&" as and, the year and the providers'

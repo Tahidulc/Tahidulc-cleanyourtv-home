@@ -44,8 +44,8 @@ import java.util.Locale;
  * while there is nothing.
  */
 final class RecentRow {
-    /** A card as wide and tall as Home's poster tiles, its corners rounded the same. */
-    static final int CARD_DP = Rows.POSTER_W, RADIUS_DP = Rows.POSTER_R;
+    /** A card 112dp wide (its height its own), its corners rounded 14: smaller than the poster rows above it. */
+    static final int CARD_DP = 112, RADIUS_DP = 14;
     private static final int LIVE = 0xFFE5333B;
     /** The warm dark a game's two clubs' colours are deepened towards. */
     private static final int DUSK = 0xFF1C1A20;
@@ -63,7 +63,7 @@ final class RecentRow {
         Context c = host.requireContext();
         // The heading as Home's other sections have it, its cards under it, the first in line with Home's others.
         box = Ui.column(c);
-        box.addView(Glass.section(c, "Recently watched", null));
+        box.addView(Glass.sectionRow(c, "Recently watched", null));
         RecyclerView row = new RecyclerView(c);
         row.setLayoutManager(new LinearLayoutManager(c, LinearLayoutManager.HORIZONTAL, false));
         int half = Glass.dp(c, Rows.GAP / 2f);

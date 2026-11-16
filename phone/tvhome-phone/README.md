@@ -569,3 +569,34 @@ BBC marks and fans' posts (5.10): BBC News's and BBC Sport's stories carry their
 Live TV full screen (5.11): Live TV fills the whole screen as Home and Watch do, with no navy bands above and below it. Its black runs up under the status bar (the top bar sits just under it) and down under the floating tab bar, and the guide's rows, the Now and Next list, search results, Sport and the details beside the guide scroll on under the tab bar, the last of them stopping clear of it (or of the keyboard while searching). Sports and Settings, whose pages are the same navy as the bars, are as they were.
 
 Sports in glass (5.12): the Sports tab is rebuilt in Home's glass, as the family's mock-up A, with every logo it can carry. At the top, "Matchday" with the date, the time and the weather; the glass pill (Sports settings, Live, Football, Tables, More) and a strip of chips for every sport on the page by its logo. Then the featured game (your club live, a Premier League game live, your club later today, a big game live, else your club's next) with its crests, score and scorers, Watch on its channel's logo and Match; your clubs' next games in every competition (ESPN's team schedules); today's football under each competition's logo, each game with its British channel's logo; live sport on British TV from Sky's public guide (tennis, cricket, darts, snooker, the NFL, the NBA, the NHL, golf, F1, rugby, boxing, UFC…), on now first, each with its sport's logo and every channel's logo; the table with the other competitions as logo chips, folded to the top four and your clubs' places; Formula 1's next Grand Prix (its sessions, Sky Sports F1) and the drivers with their photos and team logos; tennis (each tour's matches with the players' flags and sets, its channel by the players' names); UFC's next card (the main event's fighters' photos, records and flags, the other bouts, its channel); the NFL's week and the NBA's night (team logos, scores, the British channel for each game the guide lists); golf (the DP World Tour's and the PGA Tour's leaders with their flags); and the football coming up, day by day, with every channel's logo. ESPN's American channel names are left out. Each part is read at the same time and shown as it comes, again every minute while the tab shows and on a pull; a game opens its match page, a channel in the playlist plays in Live TV.
+
+**Posters in the reference style (5.13).** Every poster on Home and in Watch is drawn as the family's reference picture
+draws them. The picture sits in a rounded card whose foot fades into the poster's own colour, read from the picture and
+darkened. The title's logo sits over the fade, with "Genre • ★ 8.2" under it. The top left says where it stands: "#1 Today"
+in TMDB's trending of the day (films and series counted apart), "Trending" in the week's, "New" for the last thirty days,
+or Top 10's place this week. A list's own words come first ("THU 5 · TOMORROW", "3 LEFT"). The top right shows what the
+family's own sources have of it, from the playlists' names and the account's own TorBox files: a white 4K, 1080p or 720p
+chip, and Dolby's mark for Dolby Vision or Atmos. Nothing is guessed. The title and its year sit under the card. Home's
+rows are larger, two and a bit across a phone, and its headings have a round chevron button that leads on.
+
+**Seasons and episodes in one row (5.14).** A series' page shows its seasons and episodes as the family's recording has
+them. The show's logo sits in the middle, with the seasons as tabs under it and the one in view in a white pill. Under
+them runs one row of every episode of every season, side by side. Each card has its still with rounded corners, "S1 E8",
+its name, two lines of what happens and "1h 7m, 9 Oct 2022". Scrolling the row slides the pill to the season in view, and
+a season's tab slides the row to its first episode. The page opens on the episode up next, marked Up next with how far in
+it was left. Episodes the playlists don't have are dimmed, and holding a card shows all of what happens. The season up next
+is read first, and the others as the row comes near them.
+
+**The guide to the screen's edge (5.15).** Live TV's guide no longer stops short of the right edge. The programmes used to
+be cut off a little before it, leaving a black strip down the side. Now they run on to the edge of the screen, as the times
+along the top already did. The channels' logo tiles keep their place at the left.
+
+**A channel for every game (5.15).** A game no British channel is listed for no longer shows only "Also Showing On". Its page
+now names the channel from the family's own playlists likeliest to show it, with its logo, and a tap plays it. English
+channels come first: a "UK:", "US:" or "IE -" tag, or a British, Irish or American network. Next come channels that don't
+say, then those in another language. "Also Showing On" and the Watch buttons on alerts list English channels first too.
+
+**Posters your way, and the guide to both edges (5.16).** Settings has a Films and TV shows section with one choice,
+Posters: Portrait or Landscape. Landscape cards show each title's picture wide (16:9), with its logo, genre and rating
+at the foot's left, and the same "#1 Today", "Trending" and "New" badges and 4K and Dolby marks; Watch's grid goes to
+two across. The Live TV guide's logos now start at the screen's left edge, so neither side of the guide has a black strip.
