@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Settings → Live TV: what happens when the connection drops. -->
-    <string name="live_stay">Stay on the channel when the connection drops</string>
-    <string name="live_stay_note">Its picture adapts to the connection and it reconnects by itself. Off: moves to a lower-quality copy of the channel, or a backup from another playlist, as before.</string>
+    <!-- Settings → Live TV: how the picture follows the connection. -->
+    <string name="live_stay">Adapt quality to the connection</string>
+    <string name="live_stay_note">On: you stay on the channel you picked, and its picture steps down when the connection struggles and back up when it recovers, using the channel\'s own copies in other qualities, with no break on screen. Off: the exact stream you picked plays on, waiting and reconnecting when the connection drops.</string>
 </resources>

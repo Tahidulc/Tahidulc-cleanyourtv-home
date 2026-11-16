@@ -30,20 +30,32 @@ final class Quality {
         prefs(c).edit().putInt(CHOICE, choice).apply();
     }
 
-    private static final String STAY = "stay_on_channel";
+    private static final String ADAPT = "adapt_quality";
 
     /**
-     * When the connection drops: stay on the channel playing (on unless turned off): its own stream adapts its picture
-     * (an HLS stream's own versions) and is reconnected, never swapped for the channel's lower-quality copy or a backup
-     * from another playlist. Off, as before: down to a lower-quality copy when it can't keep up, on to a backup when it
-     * fails.
+     * Adapt quality to the connection (on unless turned off): the channel picked stays on screen (its name, number,
+     * guide) while its picture steps down when the connection can't keep up and back up when it can, through the
+     * channel's own copies in other qualities (an HLS stream's own versions too), each step with its last picture held
+     * and no break. Off: the exact stream picked plays on, waiting and reconnecting when the connection drops.
      */
-    static boolean stay(Context c) {
-        return prefs(c).getBoolean(STAY, true);
+    static boolean adapt(Context c) {
+        return prefs(c).getBoolean(ADAPT, true);
     }
 
-    static void setStay(Context c, boolean on) {
-        prefs(c).edit().putBoolean(STAY, on).apply();
+    static void setAdapt(Context c, boolean on) {
+        prefs(c).edit().putBoolean(ADAPT, on).apply();
+    }
+
+    /**
+     * Pure: the buffer (ms, a second apart, oldest first) draining as it plays, the connection falling behind: under
+     * 2.5 s now, not growing from one second to the next (a fifth of a second's wobble allowed), 1.5 s lost overall. A
+     * step down then, before the picture freezes.
+     */
+    static boolean draining(long[] bufferedMs) {
+        int n = bufferedMs.length;
+        if (n < 3 || bufferedMs[n - 1] >= 2500) return false;
+        for (int i = 1; i < n; i++) if (bufferedMs[i] > bufferedMs[i - 1] + 200) return false;
+        return bufferedMs[0] - bufferedMs[n - 1] >= 1500;
     }
 
     /** Data saver: 720p at most on mobile data (on unless turned off). */
@@ -106,7 +118,8 @@ final class Quality {
 
     /** How long a version must play steadily before adaptive tries the next one up: 4 minutes, doubled each time it failed. */
     static long upAfter(int failedUps) {
-        return Math.min(32, 1L << Math.min(5, failedUps)) * 4 * 60_000L;
+        // A step is seamless now (the picture held, no spinner): tried again sooner, 45 s, then 1.5, 3, 6, 12, 15 min.
+        return Math.min(20, 1L << Math.min(5, failedUps)) * 45_000L;
     }
 
     /** Whether the stalls (their start times, newest last) say the connection can't keep up: 3 in a minute, or one of 5 s. */

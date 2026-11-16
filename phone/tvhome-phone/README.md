@@ -628,3 +628,11 @@ stays: its own stream adapts its picture (an HLS stream's own versions) and is r
 four, eight, then ten seconds apart, for about four and a half minutes, rather than moving to the channel's
 lower-quality copy or a backup from another playlist. Settings → Live TV has the switch, "Stay on the channel when the
 connection drops"; off, it moves on as before.
+
+**The picture follows the connection on the channel picked (5.21, in place of 5.20's).** The channel stays on screen
+(its name, number and guide) while its picture steps down when the connection can't keep up and back up when it can,
+through the channel's own copies in other qualities (an HLS stream's own versions too), each step with its last picture
+held: no spinner, no message, no other channel. It steps down before the picture freezes (the buffer draining under
+2.5 s), and tries back up 45 s after it steadies (longer after a failed try). When a stream fails: it is tried again at
+once twice, then the same channel from another playlist, then its copy a step down, all as the same channel. Settings →
+Live TV, "Adapt quality to the connection", on by default; off, the exact stream picked plays on and reconnects.
