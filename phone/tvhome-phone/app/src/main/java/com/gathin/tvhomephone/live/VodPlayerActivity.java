@@ -38,7 +38,7 @@ import androidx.media3.ui.PlayerView;
 @OptIn(markerClass = UnstableApi.class)
 public final class VodPlayerActivity extends AppCompatActivity {
     private static final String EXTRA_URL = "url", EXTRA_UA = "ua", EXTRA_REF = "ref", EXTRA_TITLE = "title",
-            EXTRA_ALTS = "alts", EXTRA_META = "meta", EXTRA_EPS = "eps", EXTRA_LABEL = "label";
+            EXTRA_ALTS = "alts", EXTRA_META = "meta", EXTRA_EPS = "eps", EXTRA_LABEL = "label", EXTRA_ABOUT = "about";
     /** The picture's shapes (PlayerView's resize modes) and the ways round it may turn, as the options name them. */
     private static final int[] SHAPES = {androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT,
             androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM, androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH,
@@ -54,9 +54,11 @@ public final class VodPlayerActivity extends AppCompatActivity {
 
     private ExoPlayer player;
     private String url, resumeKey;
-    /** Where it plays ({address as the index has it, user agent, referrer}), its backups after; which is playing. */
+    /** Where it plays ({address as the index has it, user agent, referrer, label, about}), its backups after; which is playing. */
     private final java.util.List<String[]> plays = new java.util.ArrayList<>();
     private int playing;
+    /** Its other copies (TorBox's, the playlists') looked for once already, in the background. */
+    private boolean lookedForMore;
     /** What Continue watching keeps of it (name, TMDB id, poster, season and episode), and a series' episodes. */
     private org.json.JSONObject meta = new org.json.JSONObject();
     private String episodesJson = "";
@@ -67,7 +69,9 @@ public final class VodPlayerActivity extends AppCompatActivity {
     private ScoreBoard board;
     private BurnGuard guard;
     private PlayerView view;
-    private TextView sleepPill, sourcesPill, ccPill;
+    private TextView sleepPill, ccPill;
+    /** Top right: where it plays from (TorBox's or a playlist's mark) and how many sources; a tap picks another. */
+    private LinearLayout sourceButton;
     /** Its subtitles: the stream's own, or a file from OpenSubtitles. */
     private VodSubtitles subs;
     /** The information bar: the name, then where it plays from and the picture's and sound's marks. */
@@ -97,15 +101,16 @@ public final class VodPlayerActivity extends AppCompatActivity {
         return out;
     }
 
-    /** The same, with where else it plays: {address, user agent, referrer}, its own first (Vod.Item.plays()). */
+    /** The same, with where else it plays: {address, user agent, referrer, label, about}, its own first (Vod.Item.plays()). */
     public static Intent intent(Context c, java.util.List<String[]> plays, String title) {
         String[] first = plays.get(0);
-        Intent i = intent(c, first[0], first[1], first[2], title).putExtra(EXTRA_LABEL, first.length > 3 && first[3] != null ? first[3] : "");
+        Intent i = intent(c, first[0], first[1], first[2], title).putExtra(EXTRA_LABEL, first.length > 3 && first[3] != null ? first[3] : "")
+                .putExtra(EXTRA_ABOUT, first.length > 4 && first[4] != null ? first[4] : "");
         java.util.ArrayList<String> alts = new java.util.ArrayList<>();
         for (int k = 1; k < plays.size(); k++) {
             String[] p = plays.get(k);
             alts.add(p[0] + "\u001f" + (p[1] == null ? "" : p[1]) + "\u001f" + (p[2] == null ? "" : p[2])
-                    + "\u001f" + (p.length > 3 && p[3] != null ? p[3] : ""));
+                    + "\u001f" + (p.length > 3 && p[3] != null ? p[3] : "") + "\u001f" + (p.length > 4 && p[4] != null ? p[4] : ""));
         }
         return i.putStringArrayListExtra(EXTRA_ALTS, alts);
     }
@@ -121,10 +126,17 @@ public final class VodPlayerActivity extends AppCompatActivity {
 
     /** What Continue watching keeps of a film or episode (any of it may be empty or 0). */
     public static org.json.JSONObject meta(String name, int tmdb, boolean tv, String poster, int season, int episode, String episodeTitle) {
+        return meta(name, tmdb, tv, poster, season, episode, episodeTitle, "", "");
+    }
+
+    /** The same, with its year and original title, for the player to look for its other copies by. */
+    public static org.json.JSONObject meta(String name, int tmdb, boolean tv, String poster, int season, int episode, String episodeTitle,
+                                           String year, String alt) {
         org.json.JSONObject o = new org.json.JSONObject();
         try {
             o.put("name", name == null ? "" : name).put("tmdb", tmdb).put("tv", tv).put("poster", poster == null ? "" : poster)
-                    .put("s", season).put("e", episode).put("ept", episodeTitle == null ? "" : episodeTitle);
+                    .put("s", season).put("e", episode).put("ept", episodeTitle == null ? "" : episodeTitle)
+                    .put("year", year == null ? "" : year).put("alt", alt == null ? "" : alt);
         } catch (org.json.JSONException ignored) {
             // what there is
         }
@@ -133,14 +145,16 @@ public final class VodPlayerActivity extends AppCompatActivity {
 
     /** A film or episode from Continue watching, played again from where it was left. */
     public static Intent intent(Context c, VodHistory.Entry e) {
-        return intent(c, e.plays, e.title, meta(e.name, e.tmdb, e.tv, e.poster, e.season, e.episode, e.episodeTitle), e.episodes);
+        return intent(c, e.plays, e.title, meta(e.name, e.tmdb, e.tv, e.poster, e.season, e.episode, e.episodeTitle, e.year, e.alt), e.episodes);
     }
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         String stored = getIntent().getStringExtra(EXTRA_URL);
         String firstLabel = getIntent().getStringExtra(EXTRA_LABEL);
-        plays.add(new String[]{stored, getIntent().getStringExtra(EXTRA_UA), getIntent().getStringExtra(EXTRA_REF), firstLabel == null ? "" : firstLabel});
+        String firstAbout = getIntent().getStringExtra(EXTRA_ABOUT);
+        plays.add(new String[]{stored, getIntent().getStringExtra(EXTRA_UA), getIntent().getStringExtra(EXTRA_REF), firstLabel == null ? "" : firstLabel,
+                firstAbout == null ? "" : firstAbout});
         java.util.ArrayList<String> alts = getIntent().getStringArrayListExtra(EXTRA_ALTS);
         if (alts != null) for (String a : alts) plays.add(a.split("\u001f", -1));
         // The first that is still in a playlist.
@@ -196,9 +210,13 @@ public final class VodPlayerActivity extends AppCompatActivity {
             if (subs != null) subs.menu();
         });
         topRight.addView(ccPill, pillParams());
-        sourcesPill = pill("");
-        sourcesPill.setOnClickListener(v -> sourcesMenu());
-        topRight.addView(sourcesPill, pillParams());
+        sourceButton = new LinearLayout(this);
+        sourceButton.setGravity(Gravity.CENTER_VERTICAL);
+        sourceButton.setMinimumHeight(Ui.dp(this, 44));
+        sourceButton.setPadding(Ui.dp(this, 8), 0, Ui.dp(this, 14), 0);
+        sourceButton.setBackground(Ui.touch(this, false, 0x66000000, 22));
+        sourceButton.setOnClickListener(v -> sourcesMenu());
+        topRight.addView(sourceButton, pillParams());
         sleepPill = pill("");
         sleepPill.setOnClickListener(v -> sleepMenu());
         topRight.addView(sleepPill, pillParams());
@@ -310,62 +328,113 @@ public final class VodPlayerActivity extends AppCompatActivity {
         showSources();
         showTags();
         if (pipSupported()) setPictureInPictureParams(pipParams());
+        lookForMore();
     }
 
     // ---- the sources --------------------------------------------------------------------------------------------
 
-    private static String labelOf(String[] p, int i) {
-        String l = p.length > 3 && p[3] != null ? p[3] : "";
-        return l.isEmpty() ? "Source " + (i + 1) : l;
-    }
-
+    /** The source button: the mark of where it plays from (TorBox's, or which playlist's), and how many sources there are. */
     private void showSources() {
-        sourcesPill.setVisibility(plays.size() > 1 ? View.VISIBLE : View.GONE);
-        sourcesPill.setText("Sources · " + plays.size());
+        if (sourceButton == null || plays.isEmpty()) return;
+        sourceButton.removeAllViews();
+        SourceInfo s = SourceInfo.of(plays.get(playing));
+        sourceButton.addView(SourceSheet.mark(this, s, Ui.dp(this, 28)));
+        TextView t = Ui.text(this, plays.size() > 1 ? "Sources · " + plays.size() : "Source", 14, Ui.TEXT, true);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+        lp.leftMargin = Ui.dp(this, 9);
+        sourceButton.addView(t, lp);
+        sourceButton.setContentDescription("Playing from " + s.from() + (plays.size() > 1 ? ". " + plays.size() + " sources: choose another" : ""));
     }
 
-    /** Every source for it, the one playing ticked: another one picked carries on from the same moment. */
+    /**
+     * Every source for it in a sheet: TorBox's and the playlists' marked as such, each with its picture's and sound's
+     * logos and its file; the one playing ticked. Another one picked carries on from the same moment.
+     */
     private void sourcesMenu() {
-        String[] names = new String[plays.size()];
-        for (int i = 0; i < names.length; i++) names[i] = labelOf(plays.get(i), i);
-        new androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Play from")
-                .setSingleChoiceItems(names, playing, (d, w) -> {
-                    d.dismiss();
-                    if (w == playing || player == null) return;
-                    String u = Vod.address(this, plays.get(w)[0]);
-                    if (u == null || u.isEmpty()) {
-                        Toast.makeText(this, "That one isn't in " + TorBox.where(this) + " any more", Toast.LENGTH_SHORT).show();
-                        return;
-                    }
-                    long pos = Math.max(0, player.getCurrentPosition());
-                    playing = w;
-                    url = u;
-                    load(pos);
-                    player.prepare();
-                    player.setPlayWhenReady(true);
-                    showTags();
-                    Toast.makeText(this, "Playing from " + names[w], Toast.LENGTH_SHORT).show();
-                }).show();
+        if (plays.isEmpty() || isFinishing()) return;
+        long pos = player == null ? 0 : Math.max(0, player.getCurrentPosition());
+        String note = plays.size() > 1 ? "Pick another and it carries on from " + clock(pos) + "."
+                : lookedForMore ? "No other copy in " + TorBox.where(this) + "." : "Looking for other copies in " + TorBox.where(this) + "…";
+        SourceSheet.show(this, "Play from", note, plays, playing, this::switchTo);
+    }
+
+    /** That source from the same moment (or a word that it has gone). */
+    private void switchTo(int w) {
+        if (w == playing || player == null || w < 0 || w >= plays.size()) return;
+        String u = Vod.address(this, plays.get(w)[0]);
+        if (u == null || u.isEmpty()) {
+            Toast.makeText(this, "That one isn't in " + TorBox.where(this) + " any more", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        long pos = Math.max(0, player.getCurrentPosition());
+        playing = w;
+        url = u;
+        load(pos);
+        player.prepare();
+        player.setPlayWhenReady(true);
+        showSources();
+        showTags();
+        Toast.makeText(this, "Playing from " + SourceInfo.of(plays.get(w)).from(), Toast.LENGTH_SHORT).show();
+    }
+
+    /**
+     * Its other copies, looked for once in the background (TorBox's and every playlist's, as its page looks), added to
+     * the sources: so one started from Continue watching, or before TorBox was set up, can still change source.
+     */
+    private void lookForMore() {
+        String name = meta.optString("name", "");
+        if (lookedForMore || name.isEmpty()) {
+            lookedForMore = true;
+            return;
+        }
+        boolean tv = meta.optBoolean("tv");
+        int season = meta.optInt("s"), number = meta.optInt("e"), tmdb = meta.optInt("tmdb");
+        String year = meta.optString("year", ""), alt = meta.optString("alt", "");
+        Context app = getApplicationContext();
+        com.gathin.tvhomephone.App.io.execute(() -> {
+            java.util.List<String[]> found = new java.util.ArrayList<>();
+            try {
+                Vod.Item it = Vod.find(app, name, alt, year, tmdb, tv);
+                if (it != null && !tv) found.addAll(it.plays());
+                if (it != null && tv) {
+                    for (Vod.Episode ep : Vod.episodes(app, it)) if (ep.season == season && ep.number == number) found.addAll(ep.plays());
+                }
+            } catch (RuntimeException ignored) {
+                // none more this time
+            }
+            runOnUiThread(() -> {
+                lookedForMore = true;
+                if (isFinishing() || isDestroyed()) return;
+                if (Vod.mergePlays(plays, found) > 0) showSources();
+                showTags();
+            });
+        });
     }
 
     // ---- the information bar ------------------------------------------------------------------------------------
 
-    /** Where it plays from, and the picture's and sound's marks as the stream itself says them. */
+    /**
+     * Where it plays from (TorBox's mark, or the playlist's), then the picture's and sound's marks with their logos: as the
+     * stream itself says them once its tracks are known, as its name says them until then.
+     */
     private void showTags() {
-        if (tagRow == null) return;
+        if (tagRow == null || plays.isEmpty()) return;
         tagRow.removeAllViews();
-        if (plays.size() > 1 || !labelOf(plays.get(playing), playing).startsWith("Source ")) {
-            addTag(labelOf(plays.get(playing), playing));
-        }
-        java.util.List<Marks.Mark> marks = new java.util.ArrayList<>();
+        SourceInfo s = SourceInfo.of(plays.get(playing));
+        tagRow.addView(SourceSheet.mark(this, s, Ui.dp(this, 24)));
+        String video = "", hdr = "", audio = "";
         if (player != null) {
-            marks.addAll(Marks.of(MediaTags.video(player.getVideoFormat()), false, MediaTags.hdr(player.getVideoFormat()),
-                    MediaTags.audio(player.getAudioFormat()), false));
+            video = MediaTags.video(player.getVideoFormat());
+            hdr = MediaTags.hdr(player.getVideoFormat());
+            audio = MediaTags.audio(player.getAudioFormat());
         }
+        boolean picture = !video.isEmpty();
+        java.util.List<Marks.Mark> marks = new java.util.ArrayList<>(Marks.of(picture ? video : s.video, !picture && s.hd,
+                picture ? hdr : s.hdr, audio.isEmpty() ? s.audio : audio, false));
         if (subs != null && subs.hasOwn()) marks.add(new Marks.Mark(0, "CC", "Subtitles"));
         // The same marks as Live TV's, with the logos of the formats that have them (4K UHD, Dolby Vision, Dolby Atmos…).
         for (Marks.Mark m : marks) tagRow.addView(Marks.box(this, m, Ui.dp(this, 24), 12f));
-        tagRow.setContentDescription(Marks.spoken(marks));
+        tagRow.setContentDescription(s.from() + (marks.isEmpty() ? "" : ", " + Marks.spoken(marks)));
     }
 
     /** The CC button lit while subtitles are on, and the information bar's marks again. */
@@ -373,17 +442,6 @@ public final class VodPlayerActivity extends AppCompatActivity {
         if (ccPill == null || subs == null) return;
         ccPill.setBackground(Ui.touch(this, subs.isOn(), 0x66000000, 22));
         showTags();
-    }
-
-    /** Where it plays from ("Backup · HD"), on a dark tag before the marks. */
-    private void addTag(String words) {
-        TextView t = Ui.text(this, words, 12, Ui.TEXT, true);
-        t.setPadding(Ui.dp(this, 7), Ui.dp(this, 2), Ui.dp(this, 7), Ui.dp(this, 2));
-        t.setBackground(Ui.round(this, 0x99000000, 4));
-        t.setShadowLayer(Ui.dp(this, 2), 0, 0, 0xCC000000);
-        t.setMinHeight(Ui.dp(this, 24));
-        t.setGravity(Gravity.CENTER_VERTICAL);
-        tagRow.addView(t);
     }
 
     // ---- the picture's shape, which way round, the small window -------------------------------------------------
@@ -521,6 +579,8 @@ public final class VodPlayerActivity extends AppCompatActivity {
             load(pos);
             player.prepare();
             player.setPlayWhenReady(true);
+            showSources();
+            showTags();
             return true;
         }
         return false;
@@ -569,6 +629,8 @@ public final class VodPlayerActivity extends AppCompatActivity {
         v.season = meta.optInt("s");
         v.episode = meta.optInt("e");
         v.episodeTitle = meta.optString("ept");
+        v.year = meta.optString("year");
+        v.alt = meta.optString("alt");
         v.position = pos;
         v.duration = Math.max(0, dur);
         v.at = System.currentTimeMillis();
@@ -645,7 +707,8 @@ public final class VodPlayerActivity extends AppCompatActivity {
         nextCard = null;
         String name = meta.optString("name");
         String title = (name.isEmpty() ? "" : name + " · ") + (ep.season > 0 ? "S" + ep.season + " " : "") + "E" + ep.number;
-        org.json.JSONObject m = meta(name, meta.optInt("tmdb"), true, meta.optString("poster"), ep.season, ep.number, ep.title);
+        org.json.JSONObject m = meta(name, meta.optInt("tmdb"), true, meta.optString("poster"), ep.season, ep.number, ep.title,
+                meta.optString("year"), meta.optString("alt"));
         startActivity(intent(this, ep.plays(), title, m, episodesJson));
         finish();
     }

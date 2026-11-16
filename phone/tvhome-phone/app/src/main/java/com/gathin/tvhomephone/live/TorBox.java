@@ -547,6 +547,7 @@ public final class TorBox {
                 // The series under its own name, its original one kept beside it (in seriesId) for its episodes.
                 Vod.Item it = new Vod.Item("series", title, "", "", "", "", y, alt == null ? "" : alt, SOURCE);
                 it.label = NAME;
+                it.about = SourceInfo.aboutTorBox("", 0, "");
                 out.add(it);
             }
             return out;
@@ -554,6 +555,7 @@ public final class TorBox {
         for (File f : films(lib, title, alt, y)) {
             Vod.Item it = new Vod.Item("movie", f.name, f.stored(), "", "", "", y, "", SOURCE);
             it.label = label(f);
+            it.about = SourceInfo.aboutTorBox(f.name, f.size, f.item);
             out.add(it);
         }
         return out;
@@ -569,6 +571,7 @@ public final class TorBox {
                 if (r == null) continue;
                 Vod.Episode e = new Vod.Episode(r.season, r.episode, "", f.stored(), "", "");
                 e.label = label(f);
+                e.about = SourceInfo.aboutTorBox(f.name, f.size, f.item);
                 out.add(e);
             }
         } catch (IOException ignored) {

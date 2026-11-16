@@ -35,6 +35,7 @@ import com.gathin.tvhomephone.SyncStore;
 import com.gathin.tvhomephone.glass.AmbientView;
 import com.gathin.tvhomephone.glass.Glass;
 import com.gathin.tvhomephone.glass.Icons;
+import com.gathin.tvhomephone.live.SourceSheet;
 import com.gathin.tvhomephone.live.TorBox;
 import com.gathin.tvhomephone.live.Vod;
 import com.gathin.tvhomephone.live.VodHistory;
@@ -67,6 +68,8 @@ public class TitleActivity extends AppCompatActivity {
     private JSONObject details;
     /** The line saying which playlists have it; what was found there (null: not looked yet, or none). */
     private TextView where;
+    /** Under it, each source once: TorBox's mark or the playlist's, with its best copy's logos (SourceSheet). */
+    private FrameLayout whereSources;
     private Vod.Item found;
     private List<Vod.Episode> foundEps;
     /** The episodes found there, as "season:number". */
@@ -271,6 +274,8 @@ public class TitleActivity extends AppCompatActivity {
         where.setEllipsize(TextUtils.TruncateAt.END);
         where.setLineSpacing(0, 1.15f);
         to.addView(where, place(wide ? match : column, wrap, 10));
+        whereSources = new FrameLayout(this);
+        to.addView(whereSources, place(wide ? match : column, wrap, 8));
 
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
@@ -608,6 +613,7 @@ public class TitleActivity extends AppCompatActivity {
                 looked = true;
                 looking = false;
                 if (where != null) where.setText(whereWords());
+                showWhere();
                 if (episodes != null) episodes.mark();
                 if (then != null) then.run();
             });
@@ -615,26 +621,35 @@ public class TitleActivity extends AppCompatActivity {
     }
 
     /**
-     * "In your playlists: Main · 4K, Backup · HD" ("Ready from TorBox · 1080p · MKV, Main · 4K" with TorBox's among
-     * them), the seasons for a series, or that none has it.
+     * The line under Play: "Ready to play · 3 sources", a series' "24 episodes in 2 seasons ready to play", or that none
+     * has it; the sources themselves go under it (showWhere).
      */
     private String whereWords() {
         if (found == null) return "Not in " + TorBox.where(this);
-        List<String> names = new ArrayList<>();
-        for (String[] p : found.plays()) {
-            String l = p.length > 3 && p[3] != null ? p[3] : "";
-            if (!l.isEmpty() && !names.contains(l)) names.add(l);
-        }
-        boolean torbox = TorBox.from(found);
-        for (Vod.Item a : found.alternates) torbox |= TorBox.from(a);
-        String line = names.isEmpty() ? "In your playlist" : (torbox ? "Ready from " : "In your playlists: ") + String.join(", ", names);
         if (foundEps != null && !foundEps.isEmpty()) {
             Set<Integer> seasons = new TreeSet<>();
             for (Vod.Episode e : foundEps) seasons.add(e.season);
-            line += " · " + foundEps.size() + (foundEps.size() == 1 ? " episode" : " episodes")
-                    + (seasons.size() > 1 ? " in " + seasons.size() + " seasons" : "");
+            return foundEps.size() + (foundEps.size() == 1 ? " episode" : " episodes")
+                    + (seasons.size() > 1 ? " in " + seasons.size() + " seasons" : "") + " ready to play";
         }
-        return line;
+        int n = found.plays().size();
+        return n > 1 ? "Ready to play · " + n + " sources" : "Ready to play";
+    }
+
+    /** Each source once under the line: TorBox's (green, a cloud) or the playlist's (blue, a screen), with its logos. */
+    private void showWhere() {
+        if (whereSources == null) return;
+        View lines = null;
+        if (found != null) {
+            lines = foundEps != null && !foundEps.isEmpty() ? SourceSheet.stripEpisodes(this, foundEps, !wide)
+                    : SourceSheet.strip(this, found.plays(), !wide);
+        }
+        SourceSheet.fill(whereSources, lines);
+    }
+
+    /** Its original title (TMDB's), for the player to look for its other copies by too. */
+    private String original() {
+        return details == null ? "" : details.optString(t.tv ? "original_name" : "original_title", "");
     }
 
     /** What was found played: a film (its source chosen when there are several), a series' season and episode. */
@@ -654,7 +669,7 @@ public class TitleActivity extends AppCompatActivity {
         }
         if (!"series".equals(found.kind)) {
             chooseSource(found.plays(), plays -> startActivity(VodPlayerActivity.intent(this, plays, t.title,
-                    VodPlayerActivity.meta(t.title, t.id, false, t.poster, 0, 0, ""), "")));
+                    VodPlayerActivity.meta(t.title, t.id, false, t.poster, 0, 0, "", t.year, original()), "")));
             return;
         }
         if (episode != null) {
@@ -682,7 +697,7 @@ public class TitleActivity extends AppCompatActivity {
         // With the whole series' episodes, for the next one to follow on.
         chooseSource(e.plays(), plays -> startActivity(VodPlayerActivity.intent(this, plays,
                 t.title + (season > 0 ? " · S" + season : "") + " E" + e.number,
-                VodPlayerActivity.meta(t.title, t.id, true, t.poster, e.season, e.number, e.title),
+                VodPlayerActivity.meta(t.title, t.id, true, t.poster, e.season, e.number, e.title, t.year, original()),
                 Vod.episodesJson(eps))));
     }
 
@@ -718,23 +733,17 @@ public class TitleActivity extends AppCompatActivity {
     }
 
     /**
-     * More than one source (another playlist, another version, TorBox: "Main · 4K · MKV", "TorBox · 1080p"): which to play, the
-     * best match first; the others stay its backups. One source plays straight away.
+     * More than one source (TorBox's, the playlists', other versions): which to play, in a sheet that marks TorBox's and
+     * the playlists' apart and shows each one's picture and sound logos, the best match first; the others stay its
+     * backups (and can be changed to in the player). One source plays straight away.
      */
     private void chooseSource(List<String[]> plays, Chosen chosen) {
         if (plays.size() < 2) {
             chosen.play(plays);
             return;
         }
-        String[] names = new String[plays.size()];
-        for (int i = 0; i < names.length; i++) {
-            String[] p = plays.get(i);
-            String l = p.length > 3 && p[3] != null && !p[3].isEmpty() ? p[3] : "Source " + (i + 1);
-            names[i] = i == 0 ? l + "  ·  best match" : l;
-        }
-        new MaterialAlertDialogBuilder(this).setTitle("Choose a source")
-                .setItems(names, (d, w) -> chosen.play(VodPlayerActivity.chosenFirst(plays, w)))
-                .show();
+        SourceSheet.show(this, "Choose a source", "The others stay as backups: change between them while it plays.", plays, -1,
+                w -> chosen.play(VodPlayerActivity.chosenFirst(plays, w)));
     }
 
     private void toggleList() {

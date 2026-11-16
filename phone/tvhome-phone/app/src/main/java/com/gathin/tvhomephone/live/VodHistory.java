@@ -28,6 +28,8 @@ public final class VodHistory {
     public static final class Entry {
         /** Its resume key (VodPlayerActivity's), the title shown in the player, the film's or series' name. */
         public String key = "", title = "", name = "", poster = "", episodeTitle = "";
+        /** Its year and original title ("" when not known), for the player to look for its other copies. */
+        public String year = "", alt = "";
         public int tmdb, season, episode;
         public boolean tv;
         public long position, duration, at;
@@ -49,10 +51,11 @@ public final class VodHistory {
         JSONObject json() throws JSONException {
             JSONArray p = new JSONArray();
             for (String[] s : plays) p.put(new JSONArray().put(s[0]).put(s.length > 1 && s[1] != null ? s[1] : "").put(s.length > 2 && s[2] != null ? s[2] : "")
-                    .put(s.length > 3 && s[3] != null ? s[3] : ""));
+                    .put(s.length > 3 && s[3] != null ? s[3] : "").put(s.length > 4 && s[4] != null ? s[4] : ""));
             return new JSONObject().put("key", key).put("title", title).put("name", name).put("poster", poster)
                     .put("ept", episodeTitle).put("tmdb", tmdb).put("s", season).put("e", episode).put("tv", tv)
-                    .put("pos", position).put("dur", duration).put("at", at).put("plays", p).put("eps", episodes);
+                    .put("pos", position).put("dur", duration).put("at", at).put("plays", p).put("eps", episodes)
+                    .put("y", year).put("alt", alt);
         }
 
         static Entry from(JSONObject o) {
@@ -70,10 +73,14 @@ public final class VodHistory {
             e.duration = o.optLong("dur");
             e.at = o.optLong("at");
             e.episodes = o.optString("eps");
+            e.year = o.optString("y");
+            e.alt = o.optString("alt");
             JSONArray p = o.optJSONArray("plays");
             for (int i = 0; p != null && i < p.length(); i++) {
                 JSONArray s = p.optJSONArray(i);
-                if (s != null && !s.optString(0).isEmpty()) e.plays.add(new String[]{s.optString(0), s.optString(1), s.optString(2), s.optString(3)});
+                if (s != null && !s.optString(0).isEmpty()) {
+                    e.plays.add(new String[]{s.optString(0), s.optString(1), s.optString(2), s.optString(3), s.optString(4)});
+                }
             }
             return e;
         }

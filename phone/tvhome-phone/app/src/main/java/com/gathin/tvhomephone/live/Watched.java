@@ -410,7 +410,7 @@ public final class Watched {
         if (next != null) {
             String name = v.name.isEmpty() ? v.title : v.name;
             return VodPlayerActivity.intent(c, next.plays(), name + (next.season > 0 ? " · S" + next.season : "") + " E" + next.number,
-                    VodPlayerActivity.meta(name, v.tmdb, true, v.poster, next.season, next.number, next.title), v.episodes);
+                    VodPlayerActivity.meta(name, v.tmdb, true, v.poster, next.season, next.number, next.title, v.year, v.alt), v.episodes);
         }
         return VodPlayerActivity.intent(c, v);
     }

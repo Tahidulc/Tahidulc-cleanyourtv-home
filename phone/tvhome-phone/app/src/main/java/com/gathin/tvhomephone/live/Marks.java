@@ -227,6 +227,8 @@ final class Marks {
     /** Its children side by side, gapX apart, on to the next line (gapY below) when the next doesn't fit. */
     static final class Flow extends ViewGroup {
         private final int gapX, gapY;
+        /** Each line centred in the width (else from the start). */
+        private boolean centre;
 
         /** With the marks' own gaps: 6dp across, 4dp between lines. */
         Flow(Context c) {
@@ -237,6 +239,12 @@ final class Marks {
             super(c);
             this.gapX = gapX;
             this.gapY = gapY;
+        }
+
+        /** Each line centred in the width (the cover page's lines under Play on a phone). */
+        void setCentre(boolean on) {
+            centre = on;
+            requestLayout();
         }
 
         @Override protected void onMeasure(int widthSpec, int heightSpec) {
@@ -275,7 +283,7 @@ final class Marks {
                 if (v.getVisibility() == GONE) continue;
                 int w = v.getMeasuredWidth(), h = v.getMeasuredHeight();
                 if (x > 0 && x + w > room) {
-                    place(row, y, line);
+                    place(row, y, line, room);
                     row.clear();
                     y += line + gapY;
                     x = 0;
@@ -285,12 +293,14 @@ final class Marks {
                 x += w + gapX;
                 line = Math.max(line, h);
             }
-            place(row, y, line);
+            place(row, y, line, room);
         }
 
-        /** One line's boxes, each centred in the line's height. */
-        private void place(List<View> row, int y, int line) {
-            int x = getPaddingLeft();
+        /** One line's boxes, each centred in the line's height (and the line in the width when centred). */
+        private void place(List<View> row, int y, int line, int room) {
+            int width = 0;
+            for (View v : row) width += v.getMeasuredWidth() + (width > 0 ? gapX : 0);
+            int x = getPaddingLeft() + (centre ? Math.max(0, (room - width) / 2) : 0);
             for (View v : row) {
                 int w = v.getMeasuredWidth(), h = v.getMeasuredHeight();
                 int top = getPaddingTop() + y + (line - h) / 2;

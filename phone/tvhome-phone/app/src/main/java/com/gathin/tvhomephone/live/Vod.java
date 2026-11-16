@@ -45,6 +45,8 @@ public final class Vod {
         public final String kind, name, url, ua, ref, tmdb, year, seriesId, source;
         /** How the source picker names it: its playlist, its picture as its name says, its file ("Main · 4K · MKV"). */
         public String label = "";
+        /** What it is, for the source picker's marks and logos (SourceInfo: TorBox's or which playlist's, its name, size). */
+        public String about = "";
         /** The same title elsewhere (another version in the same playlist, or the other playlists in use). */
         public final List<Item> alternates = new ArrayList<>(0);
 
@@ -60,11 +62,11 @@ public final class Vod {
             this.source = source;
         }
 
-        /** Where it plays: {address, user agent, referrer, label}, its own first, then its backups'. */
+        /** Where it plays: {address, user agent, referrer, label, about}, its own first, then its backups'. */
         public List<String[]> plays() {
             List<String[]> out = new ArrayList<>();
-            out.add(new String[]{url, ua, ref, label});
-            for (Item a : alternates) out.add(new String[]{a.url, a.ua, a.ref, a.label});
+            out.add(new String[]{url, ua, ref, label, about});
+            for (Item a : alternates) out.add(new String[]{a.url, a.ua, a.ref, a.label, a.about});
             return out;
         }
     }
@@ -75,6 +77,8 @@ public final class Vod {
         public final String title, url, ua, ref;
         /** How the source picker names it ("Backup · HD"). */
         public String label = "";
+        /** What it is, for the source picker's marks and logos (SourceInfo). */
+        public String about = "";
         /** The same episode in the other playlists in use (or another version of the series). */
         public final List<Episode> alternates = new ArrayList<>(0);
 
@@ -87,11 +91,11 @@ public final class Vod {
             this.ref = ref;
         }
 
-        /** Where it plays: {address, user agent, referrer, label}, its own first, then its backups'. */
+        /** Where it plays: {address, user agent, referrer, label, about}, its own first, then its backups'. */
         public List<String[]> plays() {
             List<String[]> out = new ArrayList<>();
-            out.add(new String[]{url, ua, ref, label});
-            for (Episode a : alternates) out.add(new String[]{a.url, a.ua, a.ref, a.label});
+            out.add(new String[]{url, ua, ref, label, about});
+            for (Episode a : alternates) out.add(new String[]{a.url, a.ua, a.ref, a.label, a.about});
             return out;
         }
     }
@@ -260,6 +264,7 @@ public final class Vod {
         for (Sources.Entry e : Sources.inUse(c)) {
             for (Item it : findIn(c, e, title, altTitle, year, tmdbId, tv)) {
                 it.label = label(e.name, it.name, it.url);
+                it.about = SourceInfo.aboutPlaylist(e.name, it.name);
                 all.add(it);
             }
         }
@@ -381,6 +386,7 @@ public final class Vod {
                 if (e.label.isEmpty()) {
                     Sources.Entry src = Sources.get(c, copy.source);
                     e.label = label(src == null ? "" : src.name, copy.name, e.url);
+                    e.about = SourceInfo.aboutPlaylist(src == null ? "" : src.name, copy.name + " " + (e.title == null ? "" : e.title));
                 }
                 Episode first = at.get(e.season * 10000 + e.number);
                 if (first == null) {
@@ -393,6 +399,33 @@ public final class Vod {
         }
         Collections.sort(out, (a, b) -> a.season != b.season ? Integer.compare(a.season, b.season) : Integer.compare(a.number, b.number));
         return out;
+    }
+
+    /**
+     * Pure: copies found again added to a film's or episode's plays: one already there (the same address) keeps its
+     * place, taking the label and about it lacked; a new one goes after the rest. Returns how many were added.
+     */
+    public static int mergePlays(List<String[]> into, List<String[]> found) {
+        int added = 0;
+        for (String[] f : found) {
+            if (f == null || f.length == 0 || f[0] == null || f[0].isEmpty()) continue;
+            int at = -1;
+            for (int i = 0; i < into.size() && at < 0; i++) if (f[0].equals(into.get(i)[0])) at = i;
+            if (at < 0) {
+                into.add(f);
+                added++;
+                continue;
+            }
+            String[] have = into.get(at);
+            String[] both = new String[Math.max(5, have.length)];
+            for (int i = 0; i < both.length; i++) {
+                String mine = i < have.length && have[i] != null ? have[i] : "";
+                String theirs = i < f.length && f[i] != null ? f[i] : "";
+                both[i] = mine.isEmpty() ? theirs : mine;
+            }
+            into.set(at, both);
+        }
+        return added;
     }
 
     /** One playlist's episodes of a series: an Xtream account's asked for, an M3U playlist's from its index. */
@@ -483,7 +516,7 @@ public final class Vod {
             for (Episode e : eps) {
                 JSONArray p = new JSONArray();
                 for (String[] s : e.plays()) p.put(new JSONArray().put(s[0]).put(s[1] == null ? "" : s[1]).put(s[2] == null ? "" : s[2])
-                        .put(s.length > 3 && s[3] != null ? s[3] : ""));
+                        .put(s.length > 3 && s[3] != null ? s[3] : "").put(s.length > 4 && s[4] != null ? s[4] : ""));
                 a.put(new JSONObject().put("s", e.season).put("n", e.number).put("t", e.title == null ? "" : e.title).put("p", p));
             }
         } catch (org.json.JSONException ignored) {
@@ -506,11 +539,13 @@ public final class Vod {
                 if (first == null) continue;
                 Episode e = new Episode(o.optInt("s"), o.optInt("n"), o.optString("t"), first.optString(0), first.optString(1), first.optString(2));
                 e.label = first.optString(3);
+                e.about = first.optString(4);
                 for (int k = 1; k < p.length(); k++) {
                     JSONArray b = p.optJSONArray(k);
                     if (b == null) continue;
                     Episode alt = new Episode(e.season, e.number, e.title, b.optString(0), b.optString(1), b.optString(2));
                     alt.label = b.optString(3);
+                    alt.about = b.optString(4);
                     e.alternates.add(alt);
                 }
                 out.add(e);

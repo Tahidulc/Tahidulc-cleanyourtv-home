@@ -18,7 +18,8 @@ import androidx.annotation.NonNull;
  */
 public final class Icons extends Drawable {
     public static final int HOME = 0, SPORTS = 1, LIVE = 2, WATCH = 3, SETTINGS = 4, SEARCH = 5, CHEVRON = 6, BACK = 7,
-            MORE = 8, PLAY = 9, PLUS = 10, CHECK = 11, HEART = 12, DOWN = 13, CLOSE = 14, FILM = 15, SHARE = 16, STAR = 17;
+            MORE = 8, PLAY = 9, PLUS = 10, CHECK = 11, HEART = 12, DOWN = 13, CLOSE = 14, FILM = 15, SHARE = 16, STAR = 17,
+            CLOUD = 18;
     private final int kind;
     private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG), fill = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path p = new Path();
@@ -231,6 +232,19 @@ public final class Icons extends Drawable {
                 p.lineTo(17.5f, 10.5f);
                 p.lineTo(15.5f, 10.5f);
                 cv.drawPath(p, stroke);
+                break;
+            case CLOUD:
+                // A cloud on a flat foot, filled: the family's own files kept online (TorBox's copies).
+                p.moveTo(7.2f, 19f);
+                p.lineTo(17.4f, 19f);
+                p.cubicTo(20.2f, 19f, 22f, 17.1f, 22f, 14.8f);
+                p.cubicTo(22f, 12.5f, 20.3f, 10.8f, 18.1f, 10.7f);
+                p.cubicTo(17.4f, 7.3f, 14.9f, 5f, 11.8f, 5f);
+                p.cubicTo(8.9f, 5f, 6.6f, 7f, 6.1f, 9.9f);
+                p.cubicTo(3.7f, 10.3f, 2f, 12.3f, 2f, 14.6f);
+                p.cubicTo(2f, 17.1f, 4.2f, 19f, 7.2f, 19f);
+                p.close();
+                cv.drawPath(p, fill);
                 break;
             case STAR:
                 for (int i = 0; i < 10; i++) {
