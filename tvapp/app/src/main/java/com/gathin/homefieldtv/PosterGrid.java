@@ -94,7 +94,7 @@ final class PosterGrid extends View {
     }
 
     int columns() {
-        return Math.max(3, (int) ((right - left + GAP_X) / (Shelves.POSTER_W + GAP_X)));
+        return Math.max(3, (int) ((right - left + GAP_X) / (PosterArt.cardWidth(Shelves.POSTER_W) + GAP_X)));
     }
 
     private float rowPitch() {

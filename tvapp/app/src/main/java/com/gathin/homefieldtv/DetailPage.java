@@ -109,7 +109,7 @@ final class DetailPage extends View {
     DetailPage(Context c, Host host) {
         super(c);
         this.host = host;
-        art = new PosterArt(Ui.f(Shelves.POSTER_W));
+        art = new PosterArt(PosterArt.cardWidth(Ui.f(Shelves.POSTER_W)));
         bigP.setShadowLayer(Ui.f(12), 0, Ui.f(2), 0x99000000);
     }
 

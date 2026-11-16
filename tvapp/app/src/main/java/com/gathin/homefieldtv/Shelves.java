@@ -59,7 +59,7 @@ final class Shelves extends View {
 
     Shelves(Context c) {
         super(c);
-        art = new PosterArt(Ui.f(POSTER_W));
+        art = new PosterArt(PosterArt.cardWidth(Ui.f(POSTER_W)));
     }
 
     void setHost(Host h) {

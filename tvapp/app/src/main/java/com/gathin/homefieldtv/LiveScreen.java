@@ -92,14 +92,14 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
         FrameLayout root = new FrameLayout(tv);
         browse = new FrameLayout(tv);
         View shade = new View(tv);
-        shade.setBackgroundColor(0xE00E0E11);
+        shade.setBackgroundColor(Dark.alpha(Dark.GROUND, 0xE0));
         browseBack = new Backdrop(tv, 0f, 0f, 1920f, 1080f, Pics.DARK_FULL, 0.5f);
         info = new BrowseInfo(tv);
         rows = new BrowseRows(tv);
         // Over the picture, darker at the left (for the words) and at the foot (for the rows).
         View left = new View(tv), foot = new View(tv);
-        left.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{0xD90E0E11, 0x800E0E11, 0x000E0E11}));
-        foot.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x000E0E11, 0x330E0E11, 0xE60E0E11}));
+        left.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{Dark.alpha(Dark.GROUND, 0xD9), Dark.alpha(Dark.GROUND, 0x80), Dark.alpha(Dark.GROUND, 0)}));
+        foot.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{Dark.alpha(Dark.GROUND, 0), Dark.alpha(Dark.GROUND, 0x33), Dark.alpha(Dark.GROUND, 0xE6)}));
         browse.addView(shade, new FrameLayout.LayoutParams(-1, -1));
         browse.addView(browseBack, new FrameLayout.LayoutParams(-1, -1));
         browse.addView(left, new FrameLayout.LayoutParams(-1, -1));
@@ -420,7 +420,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
         private final Paint top = new Paint(), foot = new Paint(), bmp = new Paint(Paint.FILTER_BITMAP_FLAG), logoPaint = new Paint(Paint.FILTER_BITMAP_FLAG);
         private final Paint track = Dark.fill(0x4DFFFFFF), white = Dark.fill(0xFFFFFFFF), line = Dark.fill(0x40FFFFFF), lineAccent = Dark.fill(Dark.ACCENT);
         private final Paint chip = Dark.line(0x8CFFFFFF, 1.6f), thin = Dark.fill(0x40FFFFFF), accent = Dark.fill(Dark.ACCENT);
-        private final Paint tileBack = Dark.fill(0xFF000000), ring = Dark.line(0xE6FFFFFF, 3f), pillBack = Dark.fill(0xE6141417);
+        private final Paint tileBack = Dark.fill(0xFF000000), ring = Dark.line(Dark.alpha(Dark.RING, 0xE6), 3f), pillBack = Dark.fill(Dark.alpha(Dark.RAIL, 0xE6));
         private final TextPaint groupP = Dark.text(26, 600, Dark.SOFT), titleP = Dark.text(58, 600, Dark.TEXT);
         private final TextPaint lineP = Dark.text(30, 500, Dark.SOFT), numP = Dark.text(30, 400, Dark.MUTED), nameP = Dark.text(30, 700, Dark.TEXT);
         private final TextPaint chipP = Dark.text(22, 600, Dark.SOFT), nextLabel = Dark.text(24, 700, Dark.MUTED), nextP = Dark.text(28, 500, Dark.SOFT);
@@ -737,7 +737,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
         private boolean settled;
         private long last;
         private final Paint bmp = new Paint(Paint.FILTER_BITMAP_FLAG), tileBack = Dark.fill(0xFF000000);
-        private final Paint track = Dark.fill(0x40FFFFFF), bar = Dark.fill(Dark.ACCENT), ring = Dark.line(0xE6FFFFFF, 3f);
+        private final Paint track = Dark.fill(0x40FFFFFF), bar = Dark.fill(Dark.ACCENT), ring = Dark.line(Dark.alpha(Dark.RING, 0xE6), 3f);
         private final TextPaint headP = Dark.text(26, 700, Dark.TEXT), headNext = Dark.text(24, 700, Dark.MUTED);
         private final TextPaint nameP = Dark.text(20, 500, Dark.MUTED), nameOn = Dark.text(20, 600, Dark.SOFT);
         private final TextPaint tTitle = Dark.text(23, 600, Dark.TEXT), tDesc = Dark.text(18, 400, Dark.SOFT);

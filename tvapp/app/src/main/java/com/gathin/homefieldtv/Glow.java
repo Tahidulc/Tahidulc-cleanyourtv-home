@@ -17,10 +17,10 @@ final class Glow {
     private float shaderFor = -1f;
 
     Glow() {
-        fill.setColor(0xF00B2C6C);
+        fill.setColor(Ui.tint(0xF00B2C6C));
         line.setStyle(Paint.Style.STROKE);
         line.setStrokeWidth(Math.max(1f, Ui.f(2f)));
-        line.setColor(0xFF5E9FE8);
+        line.setColor(Ui.tint(0xFF5E9FE8));
     }
 
     /** A box only (no streaks): the guide's cells. */
@@ -40,7 +40,7 @@ final class Glow {
         if (sw != shaderFor) {
             streak.setShader(new LinearGradient(-sw / 2, 0, sw / 2, 0, new int[]{0x00FFFFFF, 0xFFFFFFFF, 0x00FFFFFF}, null,
                     Shader.TileMode.CLAMP));
-            halo.setShader(new RadialGradient(0, 0, sw / 2, new int[]{0xB0CFEAFF, 0x40A8D8FF, 0x00A8D8FF},
+            halo.setShader(new RadialGradient(0, 0, sw / 2, new int[]{Ui.tint(0xB0CFEAFF), Ui.tint(0x40A8D8FF), Ui.tint(0x00A8D8FF)},
                     new float[]{0f, 0.45f, 1f}, Shader.TileMode.CLAMP));
             shaderFor = sw;
         }

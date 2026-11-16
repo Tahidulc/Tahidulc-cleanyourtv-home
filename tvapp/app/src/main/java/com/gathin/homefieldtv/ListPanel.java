@@ -60,7 +60,7 @@ final class ListPanel extends View {
     private final Glow glow = new Glow();
     private final TextPaint titleP = Ui.paint(30, false, Ui.WHITE), titleOn = Ui.paint(30, true, Ui.WHITE);
     private final TextPaint subP = Ui.paint(24, false, Ui.FAINT), headP = Ui.paint(26, true, Ui.DIM), noteP = Ui.paint(26, false, Ui.DIM);
-    private final Paint line = Ui.fill(0x1FFFFFFF), logoBack = Ui.fill(0x33062A66), bmp = new Paint(Paint.FILTER_BITMAP_FLAG);
+    private final Paint line = Ui.fill(0x1FFFFFFF), logoBack = Ui.fill(Ui.tint(0x33062A66)), bmp = new Paint(Paint.FILTER_BITMAP_FLAG);
     private final Paint tileBack = Ui.fill(com.gathin.broadcast.LogoTile.GROUND);
     private final RectF r = new RectF();
     private final Runnable redraw = this::invalidate;

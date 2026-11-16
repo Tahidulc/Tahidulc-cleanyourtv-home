@@ -44,8 +44,8 @@ final class GuideGrid extends View {
 
     static final long HALF = 30 * 60_000L, WINDOW = 4 * HALF;
     /** The programmes' own deep colours, picked by title. */
-    private static final int[] DEEP = {0xFF213B32, 0xFF4A2323, 0xFF3B2550, 0xFF45421F, 0xFF233552, 0xFF4E3220, 0xFF1E3F4A, 0xFF4A2340};
-    static final int LIT_AIRED = 0xFFFFD48A, AIRED = 0x59000000, NONE = 0xFF1E1E23;
+    // The programmes' colours (Dark.DEEP) and the rest come from the theme.
+    static final int AIRED = 0x59000000;
     // Where things go (design pixels).
     static final float X = SidePanel.X + SidePanel.W + 36f, RIGHT = 1888f, RULER_Y = 302f, ROWS_Y = 328f;
     private static final float CHAN_W = 236f, PROG_X = X + CHAN_W, GAP = 6f, ROW_H = 80f, BOTTOM = 1064f;
@@ -65,10 +65,10 @@ final class GuideGrid extends View {
     /** Shown when there are no channels. */
     String empty = "";
 
-    private final Paint cell = Dark.fill(Dark.CARD), cellLit = Dark.fill(0xFF303038), block = Dark.fill(NONE);
-    private final Paint aired = Dark.fill(AIRED), lit = Dark.fill(Dark.ACCENT), litAired = Dark.fill(LIT_AIRED);
-    private final Paint ring = Dark.line(0xE6FFFFFF, 2.5f), nowLine = Dark.fill(0x8CFFFFFF), nowMark = Dark.fill(0xFFFFFFFF);
-    private final Paint tick = Dark.fill(0x33FFFFFF), stripBack = Dark.fill(0xFF1C1C22), tileBack = Dark.fill(0xFF000000);
+    private final Paint cell = Dark.fill(Dark.CARD), cellLit = Dark.fill(Dark.CARD_HI), block = Dark.fill(Dark.CARD);
+    private final Paint aired = Dark.fill(AIRED), lit = Dark.fill(Dark.ACCENT), litAired = Dark.fill(Dark.ACCENT_SOFT);
+    private final Paint ring = Dark.line(Dark.alpha(Dark.RING, 0xE6), 2.5f), nowLine = Dark.fill(0x8CFFFFFF), nowMark = Dark.fill(0xFFFFFFFF);
+    private final Paint tick = Dark.fill(0x33FFFFFF), stripBack = Dark.fill(Dark.CARD), tileBack = Dark.fill(0xFF000000);
     private final Paint tagFill = Dark.fill(Dark.ACCENT), tagLine = Dark.line(0x80FFFFFF, 1.5f);
     private final Paint chevron = Dark.line(0xB3FFFFFF, 2f), chevronInk = Dark.line(0xB31E1606, 2f);
     private final Paint bmp = new Paint(Paint.FILTER_BITMAP_FLAG), picPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
@@ -171,7 +171,7 @@ final class GuideGrid extends View {
 
     /** Pure: a programme's own deep colour, the same for the same title. */
     static int deep(String title) {
-        return DEEP[Math.floorMod(title == null ? 0 : title.hashCode(), DEEP.length)];
+        return Dark.DEEP[Math.floorMod(title == null ? 0 : title.hashCode(), Dark.DEEP.length)];
     }
 
     private void moved() {
@@ -405,7 +405,7 @@ final class GuideGrid extends View {
         float gap = Ui.f(GAP);
         if (s == null) {
             // No guide for this channel: one block across.
-            drawBlock(c, Ui.f(PROG_X), top, Ui.f(RIGHT) - gap, bottom, "No programme information", ch.name, NONE, -1f, here, false);
+            drawBlock(c, Ui.f(PROG_X), top, Ui.f(RIGHT) - gap, bottom, "No programme information", ch.name, Dark.CARD, -1f, here, false);
             return;
         }
         boolean drewFocus = false;
@@ -423,7 +423,7 @@ final class GuideGrid extends View {
         if (here && !drewFocus) {
             // Nothing in the guide at that time: the half hour the remote is on, lit.
             long a = cursor - cursor % HALF, b = a + HALF;
-            drawBlock(c, xAt(Math.max(a, winStart)), top, xAt(Math.min(b, winEnd)) - gap, bottom, "", "", NONE, -1f, true, false);
+            drawBlock(c, xAt(Math.max(a, winStart)), top, xAt(Math.min(b, winEnd)) - gap, bottom, "", "", Dark.CARD, -1f, true, false);
         }
     }
 

@@ -22,9 +22,9 @@ final class Strip extends View {
 
     Strip(Context c) {
         super(c);
-        back.setColor(0xFF0B4FA6);
-        edge.setColor(0x704F92DA);
-        word.setShader(new LinearGradient(0, Ui.f(70), 0, Ui.f(106), 0xFFFFFFFF, 0xFF9CD4FF, Shader.TileMode.CLAMP));
+        back.setColor(Ui.tint(0xFF0B4FA6));
+        edge.setColor(Ui.tint(0x704F92DA));
+        word.setShader(new LinearGradient(0, Ui.f(70), 0, Ui.f(106), 0xFFFFFFFF, Ui.tint(0xFF9CD4FF), Shader.TileMode.CLAMP));
         word.setLetterSpacing(-0.02f);
     }
 
