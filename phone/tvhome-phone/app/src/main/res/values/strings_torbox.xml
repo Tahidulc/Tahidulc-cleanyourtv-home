@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="torbox_title">TorBox</string>
+    <string name="torbox_body">Films and series already in your own TorBox play here as sources beside your playlists: its finished torrents, usenet and web downloads, matched to the film or episode you choose by their names. Nothing is searched for or added to your TorBox from here.</string>
+    <string name="torbox_on">Use TorBox for films and series</string>
+    <string name="torbox_first">Offer TorBox\'s copy before the playlists\'</string>
+    <string name="torbox_account">Your TorBox account</string>
+    <string name="torbox_none">Add your TorBox API key: on torbox.app, Settings, then API key. It stays on this phone and isn\'t shown again once saved.</string>
+    <string name="torbox_saved">API key saved</string>
+    <string name="torbox_checking">Checking with TorBox…</string>
+    <plurals name="torbox_ready">
+        <item quantity="one">Connected · %d film or episode ready</item>
+        <item quantity="other">Connected · %d films and episodes ready</item>
+    </plurals>
+    <string name="torbox_key">API key</string>
+    <string name="torbox_save">Save and check</string>
+    <string name="torbox_forget">Forget</string>
+</resources>

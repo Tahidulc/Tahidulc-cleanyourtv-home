@@ -27,7 +27,7 @@ import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.ui.PlayerView;
 
 /**
- * A film or an episode from the family's own playlist (Vod), full screen on its side: the player's own controls (play,
+ * A film or an episode from the family's own playlist or TorBox files (Vod), full screen on its side: the player's own controls (play,
  * pause, the bar to seek along), its name at the top while they show, the same sound as Live TV (FFmpeg for AC-3 and
  * the rest), and where it was left kept, so it carries on from there next time (and on Watch's Continue watching row,
  * VodHistory). When it won't play from one playlist, the same film or episode in the next one is tried, from where it
@@ -150,7 +150,7 @@ public final class VodPlayerActivity extends AppCompatActivity {
             if (u != null && !u.isEmpty()) playing = k;
         }
         if (stored == null || playing < 0) {
-            Toast.makeText(this, "This one isn't in your playlist any more", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "This one isn't in " + TorBox.where(this) + " any more", Toast.LENGTH_SHORT).show();
             finish();
             return;
         }
@@ -277,10 +277,12 @@ public final class VodPlayerActivity extends AppCompatActivity {
         player.addListener(new Player.Listener() {
             @Override public void onPlayerError(@NonNull PlaybackException e) {
                 if (next()) {
-                    Toast.makeText(VodPlayerActivity.this, "Trying your other playlist", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(VodPlayerActivity.this, TorBox.from(plays.get(playing)[0]) ? "Trying TorBox's copy"
+                            : "Trying your other playlist", Toast.LENGTH_SHORT).show();
                     return;
                 }
-                Toast.makeText(VodPlayerActivity.this, "It wouldn't play from your playlist", Toast.LENGTH_LONG).show();
+                Toast.makeText(VodPlayerActivity.this, TorBox.from(plays.get(playing)[0]) ? "It wouldn't play from TorBox"
+                        : "It wouldn't play from your playlist", Toast.LENGTH_LONG).show();
             }
 
             @Override public void onTracksChanged(@NonNull androidx.media3.common.Tracks tracks) {
@@ -332,7 +334,7 @@ public final class VodPlayerActivity extends AppCompatActivity {
                     if (w == playing || player == null) return;
                     String u = Vod.address(this, plays.get(w)[0]);
                     if (u == null || u.isEmpty()) {
-                        Toast.makeText(this, "That one isn't in your playlists any more", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(this, "That one isn't in " + TorBox.where(this) + " any more", Toast.LENGTH_SHORT).show();
                         return;
                     }
                     long pos = Math.max(0, player.getCurrentPosition());
@@ -507,7 +509,7 @@ public final class VodPlayerActivity extends AppCompatActivity {
         player.setMediaSource(Streams.source(as, url.contains(".m3u8")), position);
     }
 
-    /** On to the next playlist that has it, from where it had got to; false when there is none left. */
+    /** On to the next playlist (or TorBox) that has it, from where it had got to; false when there is none left. */
     private boolean next() {
         if (player == null) return false;
         long pos = Math.max(0, player.getCurrentPosition());

@@ -34,7 +34,8 @@ import java.util.regex.Pattern;
  * login, never kept). Titles are matched by TMDB's id when the provider gives one, else by name and year, with the
  * providers' tags ("EN -", "4K", "(1999)") set aside. A title in more than one of the playlists in use is found once,
  * the others' copies kept as its backups (and an episode's the same way), for the player to go on to when one won't
- * play. Off the main thread.
+ * play. With a TorBox key saved, the family's own finished files there are copies too (TorBox), before the playlists'
+ * or after them as Settings says. Off the main thread.
  */
 public final class Vod {
     private Vod() {}
@@ -249,16 +250,24 @@ public final class Vod {
     /**
      * The playlists' film (tv false) or series for a title: TMDB's id when the provider gives it, else the same name and
      * a year no more than one apart (either may be missing); the first playlist's that has it, with the others' copies as
-     * its alternates; null when none has it, or there is no playlist.
+     * its alternates (TorBox's, when it is in use, first or last as Settings says); null when none has it.
      */
     public static Item find(Context c, String title, String altTitle, String year, int tmdbId, boolean tv) {
-        Item main = null;
+        List<Item> all = new ArrayList<>();
+        List<Item> torbox = TorBox.find(c, title, altTitle, year, tv);
+        boolean torboxFirst = TorBox.first(c);
+        if (torboxFirst) all.addAll(torbox);
         for (Sources.Entry e : Sources.inUse(c)) {
             for (Item it : findIn(c, e, title, altTitle, year, tmdbId, tv)) {
                 it.label = label(e.name, it.name, it.url);
-                if (main == null) main = it;
-                else main.alternates.add(it);
+                all.add(it);
             }
+        }
+        if (!torboxFirst) all.addAll(torbox);
+        Item main = null;
+        for (Item it : all) {
+            if (main == null) main = it;
+            else main.alternates.add(it);
         }
         return main;
     }
@@ -368,9 +377,11 @@ public final class Vod {
         copies.add(series);
         copies.addAll(series.alternates);
         for (Item copy : copies) {
-            for (Episode e : episodesIn(c, copy)) {
-                Sources.Entry src = Sources.get(c, copy.source);
-                e.label = label(src == null ? "" : src.name, copy.name, e.url);
+            for (Episode e : TorBox.SOURCE.equals(copy.source) ? TorBox.episodes(c, copy) : episodesIn(c, copy)) {
+                if (e.label.isEmpty()) {
+                    Sources.Entry src = Sources.get(c, copy.source);
+                    e.label = label(src == null ? "" : src.name, copy.name, e.url);
+                }
                 Episode first = at.get(e.season * 10000 + e.number);
                 if (first == null) {
                     at.put(e.season * 10000 + e.number, e);
@@ -430,10 +441,12 @@ public final class Vod {
 
     /**
      * Where a film or episode plays: an M3U entry's own address, an Xtream one made from its playlist's login (the
-     * first playlist's when unmarked); null when that playlist has gone.
+     * first playlist's when unmarked), a TorBox file's TorBox's link for it; null when that playlist (or the TorBox key)
+     * has gone.
      */
     static String address(Context c, String url) {
         if (url == null) return null;
+        if (TorBox.ours(url)) return TorBox.address(c, url);
         String source = "p0";
         int bar = url.indexOf('|');
         if (bar > 0 && url.startsWith("p") && url.substring(bar + 1).startsWith("x:")) {

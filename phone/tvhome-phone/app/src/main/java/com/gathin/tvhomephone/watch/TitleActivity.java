@@ -35,6 +35,7 @@ import com.gathin.tvhomephone.SyncStore;
 import com.gathin.tvhomephone.glass.AmbientView;
 import com.gathin.tvhomephone.glass.Glass;
 import com.gathin.tvhomephone.glass.Icons;
+import com.gathin.tvhomephone.live.TorBox;
 import com.gathin.tvhomephone.live.Vod;
 import com.gathin.tvhomephone.live.VodHistory;
 import com.gathin.tvhomephone.live.VodPlayerActivity;
@@ -55,9 +56,10 @@ import java.util.TreeSet;
 /**
  * A film's or series' cover page, in the glass look the family chose after their reference picture: its backdrop across
  * the top of the screen, fading into the page's glow, with its logo and the line under it; Play (or Continue, when some
- * of it was left part-way) from the family's own playlists only (nothing else is looked for and no other app is opened),
- * which of them has it, frosted circles for My list, How was it?, the trailer and Film night (films), and what it's
- * about; for a series its seasons and episodes, and the Episode map; then the trailers, More like this and the cast.
+ * of it was left part-way) from the family's own playlists only, and their own files already in TorBox when its key is
+ * saved (nothing else is searched for or added, and no other app is opened), which of them has it, frosted circles for
+ * My list, How was it?, the trailer and Film night (films), and what it's about; for a series its seasons and episodes,
+ * and the Episode map; then the trailers, More like this and the cast.
  * Back and "…" float over the picture.
  */
 public class TitleActivity extends AppCompatActivity {
@@ -106,7 +108,7 @@ public class TitleActivity extends AppCompatActivity {
         @Override public void missing(int season, int number) {
             // The series in none of them: the full word on adding a playlist; one episode missing: a short one.
             if (found == null) playFound(null);
-            else Toast.makeText(TitleActivity.this, "Not in your playlists", Toast.LENGTH_SHORT).show();
+            else Toast.makeText(TitleActivity.this, "Not in " + TorBox.where(TitleActivity.this), Toast.LENGTH_SHORT).show();
         }
 
         @Override public void choose(View anchor, List<CoverMenu.Entry> entries) {
@@ -263,7 +265,7 @@ public class TitleActivity extends AppCompatActivity {
         progressRow.setVisibility(View.GONE);
         to.addView(progressRow, place(button, wrap, 12));
 
-        where = Glass.text(this, "Looking in your playlists…", 12, Glass.FAINT, Glass.body(this));
+        where = Glass.text(this, "Looking in " + TorBox.where(this) + "…", 12, Glass.FAINT, Glass.body(this));
         where.setGravity(wide ? Gravity.START : Gravity.CENTER_HORIZONTAL);
         where.setMaxLines(2);
         where.setEllipsize(TextUtils.TruncateAt.END);
@@ -571,19 +573,23 @@ public class TitleActivity extends AppCompatActivity {
         }
     }
 
-    /** Play: from the family's own playlists only (a film at once, a series by season and episode); nothing else. */
+    /**
+     * Play: from the family's own playlists and TorBox files only (a film at once, a series by season and episode);
+     * nothing else.
+     */
     private void play() {
         if (looked && !looking) {
             playFound(null);
             return;
         }
-        Toast.makeText(this, "Looking in your playlists…", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "Looking in " + TorBox.where(this) + "…", Toast.LENGTH_SHORT).show();
         lookInPlaylists(() -> playFound(null));
     }
 
     /**
-     * Looks for it in the family's own playlists (Vod: every playlist in use, every version), off the main thread; the
-     * line under Play says which have it, and the episodes they lack are dimmed; then (when given) runs.
+     * Looks for it in the family's own playlists (Vod: every playlist in use, every version, and their TorBox files),
+     * off the main thread; the line under Play says which have it, and the episodes they lack are dimmed; then (when
+     * given) runs.
      */
     private void lookInPlaylists(Runnable then) {
         looking = true;
@@ -608,15 +614,20 @@ public class TitleActivity extends AppCompatActivity {
         });
     }
 
-    /** "In your playlists: Main · 4K, Backup · HD", the seasons for a series, or that none has it. */
+    /**
+     * "In your playlists: Main · 4K, Backup · HD" ("Ready from TorBox · 1080p · MKV, Main · 4K" with TorBox's among
+     * them), the seasons for a series, or that none has it.
+     */
     private String whereWords() {
-        if (found == null) return "Not in your playlists";
+        if (found == null) return "Not in " + TorBox.where(this);
         List<String> names = new ArrayList<>();
         for (String[] p : found.plays()) {
             String l = p.length > 3 && p[3] != null ? p[3] : "";
             if (!l.isEmpty() && !names.contains(l)) names.add(l);
         }
-        String line = names.isEmpty() ? "In your playlist" : "In your playlists: " + String.join(", ", names);
+        boolean torbox = TorBox.from(found);
+        for (Vod.Item a : found.alternates) torbox |= TorBox.from(a);
+        String line = names.isEmpty() ? "In your playlist" : (torbox ? "Ready from " : "In your playlists: ") + String.join(", ", names);
         if (foundEps != null && !foundEps.isEmpty()) {
             Set<Integer> seasons = new TreeSet<>();
             for (Vod.Episode e : foundEps) seasons.add(e.season);
@@ -629,9 +640,15 @@ public class TitleActivity extends AppCompatActivity {
     /** What was found played: a film (its source chosen when there are several), a series' season and episode. */
     private void playFound(int[] episode) {
         if (found == null) {
-            new MaterialAlertDialogBuilder(this).setTitle("Not in your playlists")
-                    .setMessage("Homefield only plays films and series from your own playlists, and none of them has "
-                            + t.title + ". Add a playlist that has it in Settings, Live TV.")
+            boolean torbox = TorBox.on(this);
+            new MaterialAlertDialogBuilder(this).setTitle(torbox ? "Not in your playlists or TorBox" : "Not in your playlists")
+                    .setMessage(torbox
+                            ? "Homefield only plays films and series from your own playlists and the files already in your "
+                                    + "TorBox, and none of them has " + t.title + ". Add a playlist that has it in Settings, "
+                                    + "Live TV, or add it to your TorBox: it shows here within a couple of minutes."
+                            : "Homefield only plays films and series from your own playlists (and your own TorBox files, "
+                                    + "once its key is in Settings), and none of them has " + t.title
+                                    + ". Add a playlist that has it in Settings, Live TV.")
                     .setPositiveButton("OK", null).show();
             return;
         }
@@ -647,13 +664,13 @@ public class TitleActivity extends AppCompatActivity {
                     return;
                 }
             }
-            Toast.makeText(this, "S" + episode[0] + " E" + episode[1] + " isn't in your playlists", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "S" + episode[0] + " E" + episode[1] + " isn't in " + TorBox.where(this), Toast.LENGTH_LONG).show();
             return;
         }
         pickEpisode(foundEps);
     }
 
-    /** One episode (from the episode cards or the Episode map), from the playlists only. */
+    /** One episode (from the episode cards or the Episode map), from the playlists (and TorBox) only. */
     void playEpisode(int season, int number) {
         int[] ep = {season, number};
         if (looked && !looking) playFound(ep);
@@ -669,7 +686,7 @@ public class TitleActivity extends AppCompatActivity {
                 Vod.episodesJson(eps))));
     }
 
-    /** A series from the playlist: its season, then its episode. */
+    /** A series from the playlist (or TorBox): its season, then its episode. */
     private void pickEpisode(List<Vod.Episode> eps) {
         List<Integer> seasons = new ArrayList<>();
         for (Vod.Episode e : eps) if (!seasons.contains(e.season)) seasons.add(e.season);
@@ -679,7 +696,7 @@ public class TitleActivity extends AppCompatActivity {
         }
         String[] names = new String[seasons.size()];
         for (int i = 0; i < names.length; i++) names[i] = seasons.get(i) > 0 ? "Season " + seasons.get(i) : "Episodes";
-        new MaterialAlertDialogBuilder(this).setTitle(t.title + " · from your playlist")
+        new MaterialAlertDialogBuilder(this).setTitle(t.title + (TorBox.from(found) ? " · from TorBox" : " · from your playlist"))
                 .setItems(names, (d, w) -> pickIn(eps, seasons.get(w))).show();
     }
 
@@ -701,7 +718,7 @@ public class TitleActivity extends AppCompatActivity {
     }
 
     /**
-     * More than one source (another playlist, another version: "Main · 4K · MKV", "Backup · HD"): which to play, the
+     * More than one source (another playlist, another version, TorBox: "Main · 4K · MKV", "TorBox · 1080p"): which to play, the
      * best match first; the others stay its backups. One source plays straight away.
      */
     private void chooseSource(List<String[]> plays, Chosen chosen) {

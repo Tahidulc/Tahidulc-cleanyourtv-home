@@ -30,6 +30,8 @@ public class SettingsFragment extends Fragment {
         col.addView(com.gathin.tvhomephone.sports.SportsSettings.build(this, col));
         android.view.View live = com.gathin.tvhomephone.live.LiveTvSettings.build(this, col);
         col.addView(live);
+        // The family's own TorBox files, a source for films and series beside the playlists.
+        col.addView(com.gathin.tvhomephone.live.TorBoxSettings.build(this, col));
         col.addView(com.gathin.tvhomephone.live.SubtitleSettings.build(this, col));
         if (toPlaylists) {
             toPlaylists = false;
