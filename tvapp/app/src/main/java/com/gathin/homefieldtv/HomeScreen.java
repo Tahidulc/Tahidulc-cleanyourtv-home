@@ -70,7 +70,9 @@ final class HomeScreen extends Screen implements Rows.Host, LiveTv.Listener {
         tv.live.addListener(this);
         tv.live.place(panel.tvRect());
         Channel c = tv.channelToPlay();
-        if (c != null) tv.live.play(c);
+        // Back here because the phone stopped what it sent: the mini TV stays off until the remote plays something.
+        if (tv.takeMiniTvHeld()) tv.live.stop();
+        else if (c != null) tv.live.play(c);
         else tv.live.forget();
         fill();
     }

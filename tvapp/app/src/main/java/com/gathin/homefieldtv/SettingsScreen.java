@@ -26,8 +26,9 @@ import java.util.Locale;
  */
 final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Host {
     private static final List<String> MENU = Arrays.asList("Your playlists", "Add an M3U playlist", "Add an Xtream Codes login",
-            "Refresh now", "Remove everything", "Channel logos", "Theme", "Posters", "About");
-    static final int PLAYLISTS = 0, ADD_M3U = 1, ADD_XTREAM = 2, REFRESH = 3, CLEAR = 4, LOGOS = 5, THEME = 6, POSTERS = 7, ABOUT = 8;
+            "Refresh now", "Remove everything", "Channel logos", "Theme", "Posters", "Updates", "About");
+    static final int PLAYLISTS = 0, ADD_M3U = 1, ADD_XTREAM = 2, REFRESH = 3, CLEAR = 4, LOGOS = 5, THEME = 6, POSTERS = 7, UPDATES = 8,
+            ABOUT = 9;
 
     private Strip strip;
     private ListPanel menu, content;
@@ -74,6 +75,7 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
         f.addView(keys, new FrameLayout.LayoutParams(-1, -1));
         List<ListPanel.Item> items = new ArrayList<>();
         for (int i = 0; i < MENU.size(); i++) items.add(new ListPanel.Item(i, ListPanel.TEXT, MENU.get(i), ""));
+        items.get(UPDATES).dot = Updates.waiting(tv);
         menu.setItems(items);
         menu.setActive(true);
         fillContent();
@@ -212,6 +214,9 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
                 out.add(new ListPanel.Item(null, ListPanel.NOTE, "On the film and TV show rows, the grids and More like this.", ""));
                 break;
             }
+            case UPDATES:
+                updates(out);
+                break;
             default:
                 out.add(new ListPanel.Item(null, ListPanel.NOTE, "Homefield TV " + version(), ""));
                 out.add(new ListPanel.Item(null, ListPanel.NOTE, "Live TV, the guide, films and TV shows come only from your own playlists.", ""));
@@ -231,6 +236,58 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
         boolean themes = section() == THEME;
         look.setVisibility(themes ? View.VISIBLE : View.GONE);
         if (themes) look.show(inContent ? themeAt(content.item()) : Theme.current());
+    }
+
+    /**
+     * Updates: the version on this TV, Check for updates (and when it last looked), and when a newer one is waiting its
+     * name, what's new in it and Update now; why not, when something stood in the way.
+     */
+    private void updates(List<ListPanel.Item> out) {
+        Updates.Stage st = Updates.stage();
+        Updates.Offer o = Updates.ready(tv);
+        out.add(new ListPanel.Item(null, ListPanel.NOTE, "Homefield TV " + version() + " is on this TV", ""));
+        String when = st == Updates.Stage.CHECKING ? "Looking for an update…"
+                : Updates.checked(Updates.checkedAt(tv), System.currentTimeMillis(), java.time.ZoneId.systemDefault());
+        out.add(new ListPanel.Item("check", ListPanel.TEXT, "Check for updates", when));
+        if (o != null) {
+            out.add(new ListPanel.Item(null, ListPanel.HEADING, "Homefield TV " + o.name + " is ready", ""));
+            if (!o.notes.isEmpty()) {
+                out.add(new ListPanel.Item(null, ListPanel.NOTE, "What's new:", ""));
+                for (String line : Updates.lines(o.notes, 70)) out.add(new ListPanel.Item(null, ListPanel.NOTE, line, ""));
+            }
+            String sub = st == Updates.Stage.INSTALLING ? "Handing it to Android…"
+                    : st == Updates.Stage.ASKING ? "Android is asking: press Update"
+                    : Updates.megabytes(o.size) + "  ·  Android asks you to confirm";
+            out.add(new ListPanel.Item("update", ListPanel.TEXT, "Update now", sub));
+            if (!Updates.allowed(tv)) {
+                out.add(new ListPanel.Item(null, ListPanel.NOTE, "The first time, Android asks you to let Homefield TV install its updates.", ""));
+            }
+        } else if (st == Updates.Stage.IDLE && Updates.checkedAt(tv) > 0 && Updates.problem() == null) {
+            out.add(new ListPanel.Item(null, ListPanel.NOTE, "Homefield TV is up to date.", ""));
+        }
+        String why = Updates.problem();
+        if (why != null && !why.isEmpty()) out.add(new ListPanel.Item(null, ListPanel.NOTE, why, ""));
+    }
+
+    /** An update found, gone or under way: the menu's dot, and the Updates section when it is open. */
+    @Override void updatesChanged() {
+        if (menu == null) return;
+        List<ListPanel.Item> items = menu.items();
+        if (items.size() > UPDATES) items.get(UPDATES).dot = Updates.waiting(tv);
+        menu.invalidate();
+        if (!editing && section() == UPDATES) {
+            ListPanel.Item at = content.item();
+            Object tag = at == null ? null : at.tag;
+            fillContent();
+            // The remote stays on the line it was on (Check for updates, or Update now).
+            List<ListPanel.Item> now = content.items();
+            for (int i = 0; tag != null && i < now.size(); i++) {
+                if (tag.equals(now.get(i).tag)) {
+                    content.setFocus(i);
+                    break;
+                }
+            }
+        }
     }
 
     /** The theme a line of the Theme section is for (the one in use for any other line). */
@@ -391,6 +448,10 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
                 tv.restartLook(POSTERS);
                 return;
             }
+            case UPDATES:
+                if (t.equals("check")) Updates.check(tv, null);
+                else if (t.equals("update")) Updates.update(tv);
+                return;
             case REFRESH:
                 status = "Reading your playlist…";
                 fillContent();

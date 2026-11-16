@@ -26,6 +26,8 @@ final class ListPanel extends View {
         final Object tag;
         final int kind;
         String title, subtitle, picture = "";
+        /** A dot after the title: something waiting there (an update). */
+        boolean dot;
 
         Item(Object tag, int kind, String title, String subtitle) {
             this.tag = tag;
@@ -61,7 +63,7 @@ final class ListPanel extends View {
     private final TextPaint titleP = Ui.paint(30, false, Ui.WHITE), titleOn = Ui.paint(30, true, Ui.WHITE);
     private final TextPaint subP = Ui.paint(24, false, Ui.FAINT), headP = Ui.paint(26, true, Ui.DIM), noteP = Ui.paint(26, false, Ui.DIM);
     private final Paint line = Ui.fill(0x1FFFFFFF), logoBack = Ui.fill(Ui.tint(0x33062A66)), bmp = new Paint(Paint.FILTER_BITMAP_FLAG);
-    private final Paint tileBack = Ui.fill(com.gathin.broadcast.LogoTile.GROUND);
+    private final Paint tileBack = Ui.fill(com.gathin.broadcast.LogoTile.GROUND), dot = Ui.fill(Dark.ACCENT);
     private final RectF r = new RectF();
     private final Runnable redraw = this::invalidate;
 
@@ -245,14 +247,13 @@ final class ListPanel extends View {
             if (b != null) c.drawBitmap(b, r.centerX() - b.getWidth() / 2f, r.centerY() - b.getHeight() / 2f, bmp);
             tx += lw + Ui.f(24);
         }
-        float room = right - tx - Ui.f(16);
+        float room = right - tx - Ui.f(16) - (it.dot ? Ui.f(30) : 0);
         TextPaint tp = on ? titleOn : titleP;
         float mid = Ui.f(top + h / 2);
-        if (it.subtitle.isEmpty()) {
-            c.drawText(Ui.fit(it.title, tp, room), tx, mid + Ui.f(10), tp);
-        } else {
-            c.drawText(Ui.fit(it.title, tp, room), tx, mid - Ui.f(4), tp);
-            c.drawText(Ui.fit(it.subtitle, subP, room), tx, mid + Ui.f(28), subP);
-        }
+        String title = Ui.fit(it.title, tp, room);
+        float base = it.subtitle.isEmpty() ? mid + Ui.f(10) : mid - Ui.f(4);
+        c.drawText(title, tx, base, tp);
+        if (!it.subtitle.isEmpty()) c.drawText(Ui.fit(it.subtitle, subP, room), tx, mid + Ui.f(28), subP);
+        if (it.dot) c.drawCircle(tx + tp.measureText(title) + Ui.f(18), base - Ui.f(11), Ui.f(7), dot);
     }
 }

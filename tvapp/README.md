@@ -69,12 +69,18 @@ wordmark are Homefield; it carries no Sky logo or name.
   Midnight blue, Emerald, Crimson or Graphite, each with its own ground, panels, cards, accent, focus rings, guide
   colours and badges, and a tint for the blue screens; a picture of the app under the list takes each theme's colours
   as the remote moves through them, and OK keeps one (the screens start again in it, back on Settings). Posters:
-  Portrait / Landscape.
+  Portrait / Landscape. Updates: the version on this TV, Check for updates (it also looks quietly as the app starts)
+  and when it last looked; when a newer Homefield TV has been put on this TV (update.json and the APK in the app's own
+  folder, files/update/), its name, what's new and Update now. The APK is checked first (its size, its SHA-256, that it
+  is Homefield TV, newer, and signed with the same key), then handed to Android's installer, which asks before it
+  updates; the first time, Android asks to let Homefield TV install apps. A dot on Settings shows one is waiting, and
+  What's new shows once after an update.
 - **From the phone:** while Homefield TV is open (or playing), the family's phone can send it the channel it is
   watching (its Live TV's cast button). The TV makes itself known on the home network (`_homefieldtv._tcp`, with its
-  name) and answers only addresses on that network: the channel is played only when this TV's own playlists have it
-  (by its stream id, else its guide id, else its tidied name), with "Playing … from …" for a moment. The phone's stream
-  address and login are never used.
+  name), listens on port 47830 when it is free (the phone tries it when the announcement doesn't reach it) and answers
+  only addresses on that network: the channel is played only when this TV's own playlists have it (by its stream id,
+  else its guide id, else its tidied name), with "Playing … from …" for a moment, and the phone's Stop lets go of it
+  (back to Home, its mini TV left off). The phone's stream address and login are never used.
 
 ## Getting a playlist on to a TV
 
@@ -112,3 +118,4 @@ The APK is `app/build/outputs/apk/release/app-release.apk`, signed with the debu
 | 1.2 | Films and TV shows in a new dark look: the rail; every category at a glance under a big picture of the title the remote is on; the side panel of lists (All categories, all of them, Continue watching, My list, the categories with their counts) and a grid for each; posters drawn as the phone's (a fade into the poster's own colour, New, 4K / 1080p / 720p and Dolby marks from the playlists' names, genre and rating, title and year); a title's page with the backdrop full screen, Play and round buttons, the story, facts and cast, a series' season pills over one row of every episode, the trailer, the cast and more like it. My list (the heart). Names lose the picture and sound tags after them. Outfit (SIL Open Font License 1.1) for the dark screens. |
 | 1.3 | The TV guide and live TV in the dark look. The guide in the phone's guide's colours, with the categories (and their counts) down the side, the channel's band at the top over the programme's picture, and a strip under the channel's row with the programme's picture from Sky's public UK guide, its times, what it is and two lines about it. OK while watching brings up the banner with the picture's size and frame rate as the player has them and a row of the last ten channels watched on this TV; Up and Down bring up the live screen, the programme's picture behind and each category's channels as tiles with a picture of what's on, its title and a line about it. Pictures cross-fade, words fade and rise, pages cross-fade, and posters and tiles grow inside a ring as the remote moves. |
 | 1.4 | Colour themes in Settings, Theme: Homefield (as it came), Midnight blue, Emerald, Crimson and Graphite, each with its own ground, panels, cards, accent, focus rings, guide colours and New badge, and the blue screens tinted to match; a picture of the app under the list changes as the remote moves through them, and the one chosen is kept. Settings, Posters: Portrait / Landscape: landscape cards are 16:9 with the title's backdrop, as the phone's. The family's phone can send the channel it is watching to the TV while Homefield TV is open: played only when the TV's own playlists have it, from the home network only. |
+| 1.5 | Updates from inside the app: Settings, Updates shows the version on this TV, Check for updates and when it last looked. A newer version put on this TV (update.json and the APK in the app's own folder) is offered once its size, SHA-256, package, version and signing key check out: its name, what's new and Update now, which hands it to Android's installer (Android asks first; the first time it asks to let Homefield TV install apps). A dot on Settings while one waits; it looks quietly as the app starts; What's new once after an update. From the phone: its Stop lets go of the channel it sent, and the TV listens on port 47830 when it is free. |

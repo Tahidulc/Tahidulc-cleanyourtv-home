@@ -28,7 +28,8 @@ final class Rail extends View {
     private final Paint ink = Dark.fill(Dark.ACCENT_INK), on = Dark.fill(0xFFFFFFFF), tag = Dark.fill(0xF2FFFFFF);
     private final Paint stroke = Dark.line(Dark.MUTED, 2.6f), strokeDark = Dark.line(0xFF111114, 2.6f);
     private final Paint solid = Dark.fill(Dark.MUTED), solidDark = Dark.fill(0xFF111114);
-    private final Paint strokeAmber = Dark.line(Dark.ACCENT, 2.6f), solidAmber = Dark.fill(Dark.ACCENT);
+    private final Paint strokeAmber = Dark.line(Dark.ACCENT, 2.6f), solidAmber = Dark.fill(Dark.ACCENT), dot = Dark.fill(Dark.ACCENT);
+    private final Paint dotEdge = Dark.line(Dark.RAIL, 3f);
     private final TextPaint time = Dark.text(22, 500, Dark.SOFT), label = Dark.text(26, 600, 0xFF111114);
 
     Rail(Context c, int page) {
@@ -110,6 +111,12 @@ final class Rail extends View {
             } else {
                 Dark.icon(c, ICONS[i], cx, cy, Ui.f(30), stroke, solid);
             }
+        }
+        // A newer Homefield TV waiting (Settings, Updates): a dot on Settings.
+        if (Updates.waiting(getContext())) {
+            float sx = cx + Ui.f(19), sy = Ui.f(y(SETTINGS)) - Ui.f(19);
+            c.drawCircle(sx, sy, Ui.f(8), dotEdge);
+            c.drawCircle(sx, sy, Ui.f(7), dot);
         }
     }
 }
