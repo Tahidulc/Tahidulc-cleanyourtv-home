@@ -52,6 +52,16 @@ public final class SyncStore {
         return out;
     }
 
+    /** Every item of one type as kept (key, data, deleted, updated), tombstones included: for sync.LiveSync to apply. */
+    public static synchronized List<JSONObject> items(Context c, String type) {
+        List<JSONObject> out = new ArrayList<>();
+        for (Object v : prefs(c).getAll().values()) {
+            JSONObject it = parse(v);
+            if (it != null && type.equals(it.optString("type"))) out.add(it);
+        }
+        return out;
+    }
+
     /** One item's data, or null when there is none (or it was deleted). */
     public static synchronized JSONObject get(Context c, String type, String key) {
         JSONObject it = parse(prefs(c).getAll().get(id(type, key)));

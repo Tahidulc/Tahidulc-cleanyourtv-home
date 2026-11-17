@@ -340,6 +340,7 @@ public final class Library {
         fav = null;
         matches.clear();
         changed();
+        com.gathin.tvhomephone.sync.SyncStartup.soon();
     }
 
     /** Categories were hidden, shown or starred (Groups): the lists and the chips again. */
@@ -347,6 +348,7 @@ public final class Library {
         remask();
         matches.clear();
         changed();
+        com.gathin.tvhomephone.sync.SyncStartup.soon();
     }
 
     /** Channels were hidden or unhidden (Hidden): the lists again. */
@@ -354,6 +356,7 @@ public final class Library {
         remask();
         matches.clear();
         changed();
+        com.gathin.tvhomephone.sync.SyncStartup.soon();
     }
 
     private synchronized void remask() {

@@ -42,10 +42,19 @@ public final class SyncSettings {
         };
         box.addView(Ui.label(c, "YOUR TVS", Ui.SHOWS));
         TextView why = Ui.text(c, "My list, ratings, Film night, Coming up's pop-ups, reminders and starred clubs stay the "
-                + "same on this phone and every paired TV.", 14, Ui.SOFT, false);
+                + "same on this phone, your tablet, every paired TV and Homefield TV, and so do the things switched on below. "
+                + "They go through the TVs, so pair this phone with each TV.", 14, Ui.SOFT, false);
         why.setPadding(0, Ui.dp(c, 6), 0, Ui.dp(c, 10));
         box.addView(why);
         box.addView(list, Ui.fill());
+        // What else syncs, each on its own switch (LiveSync).
+        box.addView(Ui.label(c, "WHAT SYNCS", Ui.SHOWS), Ui.margins(Ui.fill(), c, 0, 18, 0, 0));
+        box.addView(kind(c, "Playlists", "Your IPTV playlists, logins included, only between your own paired devices",
+                LiveSync.PLAYLISTS));
+        box.addView(kind(c, "Favourites & recents", "Favourite and recent channels, hidden and favourite categories", LiveSync.PICKS));
+        box.addView(kind(c, "Continue watching", "Where each film and episode is up to", LiveSync.WATCHING));
+        box.addView(kind(c, "Settings", "Posters, subtitles, the scoreboard and sports alerts (TorBox's key stays on each device)",
+                LiveSync.SETTINGS));
         LinearLayout buttons = Ui.row(c);
         buttons.addView(Ui.pill(c, "Find TVs", true, v -> findTvs(host, found, paint[0])), Ui.margins(Ui.wrap(), c, 0, 8, 8, 0));
         buttons.addView(Ui.pill(c, "Sync now", false, v -> {
@@ -64,6 +73,29 @@ public final class SyncSettings {
         });
         paint[0].run();
         return box;
+    }
+
+    /** One kind's line: its name, what it covers, and its On/Off. */
+    private static View kind(Context c, String name, String what, String kind) {
+        LinearLayout row = Ui.row(c);
+        row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        row.setPadding(0, Ui.dp(c, 8), 0, Ui.dp(c, 8));
+        LinearLayout words = Ui.column(c);
+        words.addView(Ui.text(c, name, 16, 0xFFFFFFFF, true));
+        words.addView(Ui.text(c, what, 13, Ui.DIM, false));
+        row.addView(words, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        boolean[] on = {LiveSync.on(c, kind)};
+        com.google.android.material.button.MaterialButton b = Ui.pill(c, on[0] ? "On" : "Off", true, null);
+        b.setAlpha(on[0] ? 1f : 0.55f);
+        b.setOnClickListener(v -> {
+            on[0] = !on[0];
+            LiveSync.setOn(c, kind, on[0]);
+            b.setText(on[0] ? "On" : "Off");
+            b.setAlpha(on[0] ? 1f : 0.55f);
+        });
+        b.setContentDescription(name + " sync");
+        row.addView(b);
+        return row;
     }
 
     private static void fill(Fragment host, LinearLayout list, Runnable repaint) {
