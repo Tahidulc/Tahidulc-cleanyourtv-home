@@ -27,9 +27,9 @@ import java.util.Locale;
  */
 final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Host {
     private static final List<String> MENU = Arrays.asList("Your playlists", "Add an M3U playlist", "Add an Xtream Codes login",
-            "Refresh now", "Remove everything", "Channel logos", "Theme", "Posters", "Live TV", "Updates", "Scoreboard", "About");
+            "Refresh now", "Remove everything", "Channel logos", "Theme", "Posters", "Live TV", "Updates", "Scoreboard", "Sync", "About");
     static final int PLAYLISTS = 0, ADD_M3U = 1, ADD_XTREAM = 2, REFRESH = 3, CLEAR = 4, LOGOS = 5, THEME = 6, POSTERS = 7, LIVE = 8,
-            UPDATES = 9, SCOREBOARD = 10, ABOUT = 11;
+            UPDATES = 9, SCOREBOARD = 10, SYNC = 11, ABOUT = 12;
 
     private Strip strip;
     private ListPanel menu, content;
@@ -239,6 +239,9 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
                 break;
             case SCOREBOARD:
                 BoardSettings.fill(tv, out);
+                break;
+            case SYNC:
+                SyncSettings.fill(tv, out);
                 break;
             default:
                 out.add(new ListPanel.Item(null, ListPanel.NOTE, "Homefield TV " + version(), ""));
@@ -520,6 +523,20 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
             case LIVE: {
                 int at = content.focusIndex();
                 if (LiveSettings.chosen(tv, t)) {
+                    fillContent();
+                    content.setFocus(at);
+                }
+                return;
+            }
+            case SYNC: {
+                int at = content.focusIndex();
+                Runnable again = () -> {
+                    if (section() != SYNC) return;
+                    int now = content.focusIndex();
+                    fillContent();
+                    content.setFocus(now);
+                };
+                if (SyncSettings.chosen(tv, t, again)) {
                     fillContent();
                     content.setFocus(at);
                 }
