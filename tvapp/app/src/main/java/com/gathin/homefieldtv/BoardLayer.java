@@ -1137,6 +1137,16 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
 
     // ---- the remote (the live screen asks first) ---------------------------------------------------------------------------
 
+    /** Whether a game was found for the channel playing (the player's bar then has a Scoreboard button). */
+    boolean hasGame() {
+        return game != null;
+    }
+
+    /** Whether the board has the remote now: its menu is up, or it is being moved. */
+    boolean takesKeys() {
+        return moving != 0 || menu.open;
+    }
+
     /** OK held over the match: the scoreboard's menu (true), or nothing to set (false: the live screen's own). */
     boolean okLong() {
         if (game == null || menu.open) return false;

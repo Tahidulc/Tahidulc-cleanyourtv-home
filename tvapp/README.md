@@ -36,27 +36,47 @@ wordmark are Homefield; it carries no Sky logo or name.
   channel whose provider keeps an archive, Left goes on back into the programmes already shown, as far as the archive
   goes (the guide keeps up to three days of them): each has a small circle arrow, its strip says Catch-up, OK plays it
   from its start, and Back comes back to the time now. No mini TV here: the stream is let go until a channel is chosen.
-- **Live TV:** full screen. OK brings up the channel banner over a dark scrim: the channel's group and small logo at
-  the top; its large logo, what's on (its times, how far through, what's left), the channel, the picture's size and
-  frames a second as the player has them, what's next, a thin amber line across for how far through it is, and a row
-  of the last ten channels watched on this TV (not the one playing), each with what's on and how far through. Left and
-  Right go along the row; OK changes to one at once. Up and Down bring up the live screen without leaving the channel:
-  the picture of what's on the channel the remote is on fills the screen behind, darkened; along the top what's on
-  after it; its logo, the programme's title, the channel, the times and three lines about it; then the category's row
-  of channels, each tile the channel's logo over a picture of what's on with its title, a line about it and how far
-  through it is (on its black tile when there is no picture), and the next category's row below. Up and Down go
-  through the channels, Left and Right along the row, OK changes to the one the remote is on. The channel keys and the
-  number keys change at once; Back, or a few seconds with no key, hides it all. A stream that drops is tried on the
-  same channel in another playlist, then again. Where the provider keeps the programme on now in its archive (or the
-  stream itself reaches back to its start), the banner has Watch from the start over the logo (Left from the row, or
-  the remote's rewind key) and the live screen says so; holding OK brings up the channel's menu.
+- **Live TV:** full screen, the picture alone. A channel changed to brings up the info card at the foot for the channel banner's
+  seconds (Settings, Player; 6 as it comes), and INFO brings it up too: a card in the playback panel's colour with the
+  channel's logo and name, the programme's title, the date and the clock, its times with a bar and the minutes left,
+  the playlist and the group, chips for the picture and the sound as the player has them (FHD, 50 FPS, STEREO), two
+  lines about it and what's next. CH+ and CH− bring up the next or previous channel's card without leaving the channel
+  (OK then changes to it); Up and Down change channel (Settings, Remote can make them bring up the live screen's rows of
+  channels instead, as Homefield TV came); Right goes back to the channel watched last; the number keys go to a channel,
+  the number in a box at the top right. OK brings up the overlay: the card at the top, a line across the foot for how
+  far through the programme is, and a row of tiles under it (TV guide, History, then the channels last watched, each with
+  what's on and how far through); Down from the tiles brings up the bar. OK held, or MENU, brings up the bar alone: round
+  buttons along the foot, each with its label (Search, Channels list, History, Movies, TV shows, Recordings, My list,
+  then Video tracks, Audio tracks, Audio offset, Closed captions, Display mode and Sleep timer labelled with what they are
+  set to, then Add to favourites, Scoreboard over a match, Channel options, Settings and Exit). Each of the picture's and
+  sound's buttons opens its list at the right: Video tracks is the Picture quality (Adaptive, 4K, 1080p, 720p, SD, Data
+  saver); Audio tracks the stream's sound tracks, or Off; Audio offset the sound's delay for this channel, 50 ms a press
+  either way, with Reset and Apply to all channels; Closed captions the subtitles (below); Display mode the picture's
+  shape for this channel or all of them (Normal, Full, Zoom, Zoom - 2.35:1, Reduced, 4:3, 16:9, 2.35:1); Sleep timer
+  stops the picture after 15 minutes to 4 hours; Channel options has Watch from the start and Lock this channel. Left
+  brings up the channel list over the picture: the channels of the group playing down the left, the programmes of the
+  one the remote is on beside them, and its programme in a card at the top right; Left again opens the groups (the
+  playlist, Favourites, All channels, then the family's groups), and OK plays a channel with the list staying. Left
+  held, or Channels list, opens it on its own ground with the picture playing on in a window at the top right. Up held
+  brings up History, Right held the programme's description, Down held Search. Back goes to the TV guide with the
+  channel in its picture; Back held stops the picture and goes Home. What is up goes after 10 seconds with no key. A
+  stream that drops is tried on the same channel in another playlist, then again. Where the provider keeps the
+  programme on now in its archive (or the stream itself reaches back to its start), Channel options has Watch from the
+  start, as has the remote's rewind key.
+- **History:** Up held while watching, or History on the overlay's tiles and the bar: over the dimmed picture, the
+  programmes watched on this TV in the last seven days, day by day, each with its times, the time it was watched and the
+  channel's logo and name (a programme counts once it has been watched for 10 seconds, and once however often). OK on
+  one on now plays its channel; on one the archive keeps, plays it from its start; one that has ended with no archive
+  to play it from is left out. Right goes to an entry's delete button, and the bin at the top right clears them all
+  after asking. Kept on this TV only.
 - **Subtitles:** over full-screen live TV and catch-up only (not the small pictures on Home and in the guide), for
   every channel: Off (as it starts), From the channel (the subtitles a channel sends: DVB subtitles where it puts them,
   its subtitle playlists, captions) or Automatic, made on the TV from what's said as it's said, a channel's own showing
   instead when it plainly sends some (a bare captions track every stream is given doesn't count). Chosen from the
-  channel's menu (OK held, Subtitles, the one chosen ticked) or Settings, Live TV, with their look (white with an
-  outline, white on a black box, yellow) and size. The words keep about 40 letters to a line near the foot, move up
-  above the banner and the catch-up bar while they are up, and go while the live screen's rows are up. Automatic uses
+  player's bar (Closed captions, the one chosen ticked, with what the channel sends) or Settings, Live TV, with their
+  look (white with an outline, white on a black box, yellow) and size. The words keep about 40 letters to a line near the
+  foot, move up above the info card and the overlay while they are up, and go while the channel lists and the live
+  screen's rows are up. Automatic uses
   the TV's own on-device speech recognition where it has it (Android 13 and later); where it hasn't, it asks first
   ("a one-time download of about 40 MB, about 70 MB on the TV") and only then fetches Vosk's small English model into
   the app's own storage, its progress where the words go. The sound is heard on the TV, by a copy taken in the
@@ -74,20 +94,23 @@ wordmark are Homefield; it carries no Sky logo or name.
   the server says, its times in the server's own time zone; the older timeshift.php address when the newer one
   doesn't answer), and an M3U playlist's catchup, catchup-days and catchup-source (default, append, shift, Flussonic
   and Xtream; {utc}, {start}, {end}, {duration}, {offset}, {lutc}, {Y}{m}{d}{H}{M}{S} and the like filled in; also the
-  older timeshift and tvg-rec), or an Xtream server's M3U address given its archive by the player API. Over the picture,
-  along the foot: the programme's title, its day and times, the channel and Catch-up (or how far behind live it is:
-  "−12:34 behind live"), then a bar across the programme from its start to its end, the part shown filled, the live
-  edge marked, the knob where the picture is with play or pause in it, and the time in a bubble while it moves. Left
-  and Right move it 10 seconds a press, more as they are held (30 seconds, a minute, three minutes), and the archive
-  is asked for from there a moment after the remote rests; OK plays or pauses; Up or Back go live. It goes on into the
-  next programme when one ends, and is live again at the live edge. The archive's address is made on the TV from the
+  older timeshift and tvg-rec), or an Xtream server's M3U address given its archive by the player API. It starts with
+  the info card at the foot, the archive's mark and the programme's whole length in it. OK brings up the overlay: the
+  card at the top; across the foot a line for the programme, the part shown in the accent and what has been on so far
+  in light grey; the time ("00:05 / 55:00") at the left; the buttons in the middle (to the programme's start or the one
+  before, back, pause, on, the next programme or live); at the right, in a pill, from the start again and LIVE. Down
+  brings up the row of tiles in the buttons' place, Up takes them away. Left and Right (and the rewind and fast forward
+  keys) move it 10 seconds a press, more as they are held (30 seconds, a minute, three minutes), and the archive is asked
+  for from there a moment after the remote rests; play/pause pauses. Up and Down change channel, live; CH+ and CH−
+  bring up a channel's card; OK held or MENU the player's bar. Back closes the overlay, then goes to the TV guide. It
+  goes on into the next programme when one ends, and is live again at the live edge. The archive's address is made on the TV from the
   channel's own, and like it is never shown or written out. Channels with no archive don't offer any of it.
 - **Sports:** Sports in the menu lists today's live and coming games (football, NFL, NBA, tennis, UFC, F1) with their
   crests and competitions; a game's page has the score and clock, events, live stats, line-ups, momentum and Watch on
   buttons (English channels first), all held back to match the channel being watched. Over a match in the player, the
   scoreboard: the game found from the channel and its guide, its clock set at kick-off with OK, alerts beside it, the
-  kick-off and after-goal pop-ups and the line-ups, a cover for the channel's logo, a menu on OK held, and a Scoreboard
-  section in Settings.
+  kick-off and after-goal pop-ups and the line-ups, a cover for the channel's logo, its menu from the player's bar
+  (Scoreboard), and a Scoreboard section in Settings.
 - **Moving about:** on the dark screens the picture behind cross-fades as the remote moves to another title or
   channel, the words fade in and rise into place a moment after, pages cross-fade into each other, and the poster or
   tile the remote is on grows a little inside a soft white ring. Opacity, a small move and scale only, nothing

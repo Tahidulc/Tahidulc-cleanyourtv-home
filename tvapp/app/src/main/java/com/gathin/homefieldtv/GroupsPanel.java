@@ -79,6 +79,8 @@ final class GroupsPanel extends View {
 
     /** The column's left edge (design pixels): beside the rail, or the drawer. */
     float x = Rail.W;
+    /** The column's own colour (0: the ground, as beside the menu; the player's lists give theirs). */
+    int background;
     private final List<Entry> all = new ArrayList<>(), shown = new ArrayList<>();
     private int focus;
     private Object current;
@@ -241,7 +243,7 @@ final class GroupsPanel extends View {
             else moving = true;
         }
         float x0 = Ui.f(x), x1 = Ui.f(x + W);
-        back.setColor(Palette.GROUND);
+        back.setColor(background != 0 ? background : Palette.GROUND);
         c.drawRect(x0, 0, x1, getHeight(), back);
         c.save();
         c.clipRect(x0, 0, x1, getHeight());

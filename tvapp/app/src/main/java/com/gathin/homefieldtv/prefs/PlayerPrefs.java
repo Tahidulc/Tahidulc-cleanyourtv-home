@@ -84,14 +84,25 @@ public final class PlayerPrefs {
 
     // ---- the picture's shape --------------------------------------------------------------------------------------
 
-    public static final int FIT = 0, FILL = 1, ZOOM = 2, WIDE = 3, STANDARD = 4;
-    public static final String[] ASPECT_NAMES = {"Fit", "Fill", "Zoom", "16:9", "4:3"};
+    /**
+     * The picture's shapes, named as the player's Display mode names them: Normal (the whole picture, bars where its shape
+     * differs), Full (stretched), Zoom (fills the screen, its edges cut off), 16:9 and 4:3 (shown as that shape), and since
+     * the player's Display mode: Zoom - 2.35:1 (a wide film inside a 16:9 picture filling the screen's height), Reduced
+     * (the whole picture a little smaller) and 2.35:1 (shown as that shape). The numbers are kept: 0 to 4 as they were.
+     */
+    public static final int FIT = 0, FILL = 1, ZOOM = 2, WIDE = 3, STANDARD = 4, ZOOM_235 = 5, REDUCED = 6, CINEMA = 7;
+    public static final String[] ASPECT_NAMES = {"Normal", "Full", "Zoom", "16:9", "4:3", "Zoom - 2.35:1", "Reduced", "2.35:1"};
     public static final String[] ASPECT_ABOUT = {"The whole picture, bars where its shape differs", "Stretched to the whole screen",
-            "Fills the screen, its edges cut off", "Shown as 16:9", "Shown as 4:3"};
+            "Fills the screen, its edges cut off", "Shown as 16:9", "Shown as 4:3",
+            "A wide film inside a 16:9 picture, filling the screen's height", "The whole picture, a little smaller",
+            "Shown as 2.35:1"};
+    /** The shapes in the order the player's Display mode lists them. */
+    public static final int[] DISPLAY_ORDER = {FIT, FILL, ZOOM, ZOOM_235, REDUCED, STANDARD, WIDE, CINEMA};
+    private static final int LAST_SHAPE = 7;
 
     /** The shape every channel starts with (Settings → Player → Picture). */
     public static int aspect(Context c) {
-        return clamp(prefs(c).getInt("aspect", FIT), 0, 4);
+        return clamp(prefs(c).getInt("aspect", FIT), 0, LAST_SHAPE);
     }
 
     public static void setAspect(Context c, int mode) {
@@ -103,7 +114,7 @@ public final class PlayerPrefs {
         if (channelKey == null || channelKey.isEmpty()) return aspect(c);
         try {
             JSONObject o = new JSONObject(prefs(c).getString("aspect.channels", "{}"));
-            if (o.has(channelKey)) return clamp(o.optInt(channelKey, FIT), 0, 4);
+            if (o.has(channelKey)) return clamp(o.optInt(channelKey, FIT), 0, LAST_SHAPE);
         } catch (Exception ignored) {
             // the default
         }
@@ -123,9 +134,14 @@ public final class PlayerPrefs {
         }
     }
 
+    /** The player's Display mode, Apply to all channels: the shape for every channel, none keeping its own. */
+    public static void setAspectAll(Context c, int mode) {
+        prefs(c).edit().putInt("aspect", clamp(mode, 0, LAST_SHAPE)).remove("aspect.channels").apply();
+    }
+
     /** Films' and episodes' shape (one for all of them). */
     public static int vodAspect(Context c) {
-        return clamp(prefs(c).getInt("aspect.vod", FIT), 0, 4);
+        return clamp(prefs(c).getInt("aspect.vod", FIT), 0, LAST_SHAPE);
     }
 
     public static void setVodAspect(Context c, int mode) {
@@ -217,6 +233,49 @@ public final class PlayerPrefs {
         int v = clamp(Math.round(ms / (float) DELAY_STEP) * DELAY_STEP, -DELAY_MAX, DELAY_MAX);
         prefs(c).edit().putInt("delay", v).apply();
         PlayerSetup.delayUs = v * 1000L;
+    }
+
+    /** A channel's own sound offset (the player's Audio offset), else every channel's (delayMs). */
+    public static int delayFor(Context c, String channelKey) {
+        if (channelKey == null || channelKey.isEmpty()) return delayMs(c);
+        try {
+            JSONObject o = new JSONObject(prefs(c).getString("delay.channels", "{}"));
+            if (o.has(channelKey)) return clamp(o.optInt(channelKey, 0), -DELAY_MAX, DELAY_MAX);
+        } catch (Exception ignored) {
+            // every channel's
+        }
+        return delayMs(c);
+    }
+
+    /** A channel's own sound offset kept (none of its own when it is every channel's), and used now. */
+    public static void setDelayFor(Context c, String channelKey, int ms) {
+        if (channelKey == null || channelKey.isEmpty()) return;
+        int v = clamp(Math.round(ms / (float) DELAY_STEP) * DELAY_STEP, -DELAY_MAX, DELAY_MAX);
+        try {
+            JSONObject o = new JSONObject(prefs(c).getString("delay.channels", "{}"));
+            if (v == delayMs(c)) o.remove(channelKey);
+            else o.put(channelKey, v);
+            prefs(c).edit().putString("delay.channels", o.toString()).apply();
+        } catch (Exception ignored) {
+            // not kept
+        }
+        PlayerSetup.delayUs = v * 1000L;
+    }
+
+    /** Audio offset, Apply to all channels: every channel's offset, none keeping its own; used now. */
+    public static void setDelayAll(Context c, int ms) {
+        prefs(c).edit().remove("delay.channels").apply();
+        setDelayMs(c, ms);
+    }
+
+    /** The sound's offset for what plays now: a channel's own (key), or every channel's (null: films, nothing). */
+    public static void useDelay(Context c, String channelKey) {
+        PlayerSetup.delayUs = delayFor(c, channelKey) * 1000L;
+    }
+
+    /** Pure: an offset as the player's Audio offset writes it: "0 ms", "+150 ms", "-100 ms". */
+    public static String offsetWords(int ms) {
+        return ms == 0 ? "0 ms" : (ms > 0 ? "+" : "-") + Math.abs(ms) + " ms";
     }
 
     /** Pure: the delay in words ("In step", "Sound 150 ms later", "Sound 100 ms earlier"). */
