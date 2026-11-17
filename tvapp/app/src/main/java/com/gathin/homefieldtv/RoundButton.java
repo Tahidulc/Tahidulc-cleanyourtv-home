@@ -64,7 +64,30 @@ final class RoundButton {
         if (text == null || text.isEmpty()) return;
         label.setColor(focused ? Palette.TEXT1 : Palette.TEXT2);
         String t = Ui.fit(text, label, Ui.f(BAR_PITCH + 40));
-        c.drawText(t, cx - label.measureText(t) / 2f, cy + Ui.f(BAR_LABEL + 10), label);
+        // The label's capitals start BAR_LABEL under the icon's middle (988 for an icon at 940, its foot at 1004).
+        c.drawText(t, cx - label.measureText(t) / 2f, labelBase(cy), label);
+    }
+
+    /** bar() with a label of two lines (the value labels "English / Stereo", "Add to / favourites"): 28 a line. */
+    static void bar(Canvas c, float cx, float cy, int icon, String line1, String line2, boolean focused) {
+        bar(c, cx, cy, icon, line1, focused);
+        if (line2 == null || line2.isEmpty()) return;
+        String t = Ui.fit(line2, label, Ui.f(BAR_PITCH + 40));
+        c.drawText(t, cx - label.measureText(t) / 2f, labelBase(cy) + Ui.f(BAR_LINE), label);
+    }
+
+    /** The second line of a bar's label sits this far under the first. */
+    static final float BAR_LINE = 28f;
+
+    private static float labelBase(float cy) {
+        return cy + Ui.f(BAR_LABEL) + label.getTextSize() * 0.711f;
+    }
+
+    /** A bar label's width (screen pixels), its longer line. */
+    static float barLabelWidth(String line1, String line2) {
+        paints();
+        float w = line1 == null ? 0f : label.measureText(line1);
+        return line2 == null ? w : Math.max(w, label.measureText(line2));
     }
 
     static void transport(Canvas c, float cx, float cy, int icon, boolean focused) {

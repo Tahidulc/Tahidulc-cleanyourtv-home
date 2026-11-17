@@ -66,6 +66,20 @@ abstract class Screen {
         ok();
     }
 
+    /**
+     * Whether this key, now, means one thing pressed and another held (the player's Left, Up, Right, Down and Back, as
+     * TiviMate's remote has them): then a press comes to key() or back() when the key is let go, and holding it comes to
+     * keyLong() instead, once.
+     */
+    boolean holds(int code) {
+        return false;
+    }
+
+    /** A key held (holds said so): true when used; false gives it as a press after all. */
+    boolean keyLong(int code) {
+        return false;
+    }
+
     /** Back: true when the screen used it itself, false to close it. */
     boolean back() {
         return false;
