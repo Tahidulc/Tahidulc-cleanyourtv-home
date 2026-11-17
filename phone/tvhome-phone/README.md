@@ -649,3 +649,8 @@ that make sense everywhere (posters, subtitles, scoreboard looks, alert kinds); 
 layout) and TorBox's key stay on each device. Settings → Sync has a switch for each kind, all on. A device new to a kind
 takes the family's first, so nothing is overwritten. Remove everything resets this device only and switches its
 Playlists sync off; removing one playlist removes it everywhere. SYNC.md has the details.
+
+**Every source, the best first (5.24).** A film's or episode's copies are offered best first with no limit on size:
+4K, then 1080p, 720p and the rest; Dolby Vision or HDR before SDR, Dolby Atmos or surround before stereo, then the bigger
+file; AVI and the like last. TorBox's copies come before the playlists' (unless Settings put them last), and the
+playlists' copies are in that order too. 5.17's 1080p-first order and its preference for files under 20 GB are gone.
