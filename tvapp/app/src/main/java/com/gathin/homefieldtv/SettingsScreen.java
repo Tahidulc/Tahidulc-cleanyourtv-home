@@ -551,6 +551,7 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
                         tv.live.forget();
                         lib.clear();
                         Resume.clear(tv);
+                        com.gathin.homefieldtv.engine.Copies.clear(tv);
                     });
                     status = "";
                 } else {

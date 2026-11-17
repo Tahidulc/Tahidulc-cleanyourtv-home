@@ -33,6 +33,7 @@ import com.gathin.homefieldtv.engine.Catalog;
 import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Resume;
 import com.gathin.homefieldtv.engine.Streams;
+import com.gathin.homefieldtv.engine.Copies;
 import com.gathin.homefieldtv.engine.TorBox;
 import com.gathin.homefieldtv.prefs.Afr;
 import com.gathin.homefieldtv.prefs.Picture;
@@ -45,14 +46,18 @@ import com.gathin.homefieldtv.prefs.PlayerSetup;
  * plays, Left and Right go back and on (further the longer they are held), Back stops and keeps the place. At the end
  * of an episode the next one starts. The address is made from the login here and never kept or logged.
  *
- * It plays from every copy there is, tried in turn: the family's own TorBox files of it first (all of them found before
- * anything plays, unless Settings put them last), then the playlist's copy and its copies in the other playlists. The bar
+ * It plays from every copy there is, the best first (Formats: 4K, then 1080p, 720p and the rest; HDR before SDR; Atmos
+ * or surround before stereo; the bigger file), tried in turn: the family's own TorBox files of it first (all of them
+ * found before anything plays, unless Settings put them last), then the playlists' copies. Play on a title's page (or
+ * an episode chosen) shows every one of them first, as the phone's Choose a source does, the best first with the remote
+ * on it: OK plays the one chosen, the others kept as its backups in their order. Resume and Continue watching carry on
+ * straight away from the copy it was started on; the next episode starts straight away from its best copy. The bar
  * shows where it is playing from (TorBox's green mark, a playlist's blue one); Up lists the copies, and another one
  * chosen carries on from the same moment.
  */
 @OptIn(markerClass = UnstableApi.class)
 public final class VodActivity extends Activity {
-    static final String TITLE = "title", EPISODE = "episode", START = "start";
+    static final String TITLE = "title", EPISODE = "episode", START = "start", CHOOSE = "choose";
     private static final long BAR_MS = 4500;
 
     private ExoPlayer player;
@@ -71,6 +76,11 @@ public final class VodActivity extends Activity {
     private SourcePicker picker;
     private final SourcePicker.Mark mark = new SourcePicker.Mark();
     private boolean asHls, barOn = true, ended, ready, nextQueued;
+    /**
+     * Play from a title's page: every source shown first (choose). Resume and Continue watching (resume): the copy it was
+     * started on first. The next episode: neither, its best copy first.
+     */
+    private boolean choose, resume;
     /** Previews: where the bar shows it is, as no stream plays there. */
     static long previewPos, previewDur;
     static boolean previewPlaying = true;
@@ -121,6 +131,8 @@ public final class VodActivity extends Activity {
         root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> fitSurface());
         setContentView(root);
         startAt = getIntent().getLongExtra(START, 0);
+        choose = getIntent().getBooleanExtra(CHOOSE, false);
+        resume = !choose;
         open(getIntent().getStringExtra(TITLE), getIntent().getStringExtra(EPISODE));
     }
 
@@ -213,7 +225,46 @@ public final class VodActivity extends Activity {
         }
         at = 0;
         error = "";
+        if (choose && plays.size() > 1) {
+            // Every source before it plays, the best first, as the phone's Choose a source.
+            choose = false;
+            chooseSource();
+            return;
+        }
+        if (resume) {
+            // Resume and Continue watching: the copy it was started on first, the others after it in their order.
+            int was = Copies.find(this, title.key, episodeId(), plays);
+            if (was > 0) {
+                java.util.List<Catalog.Play> order = Copies.chosenFirst(plays, was);
+                plays.clear();
+                plays.addAll(order);
+            }
+        }
+        Copies.started(this, title.key, episodeId(), plays.get(0));
         prepare(true);
+    }
+
+    private String episodeId() {
+        return episode == null ? "" : episode.id;
+    }
+
+    /** Every copy, the best first and the remote on it: OK plays the one chosen (the rest its backups), Back goes back. */
+    private void chooseSource() {
+        if (picker == null) {
+            picker = new SourcePicker(this);
+            ((ViewGroup) surface.getParent()).addView(picker, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT));
+        }
+        barOn = false;
+        bar.invalidate();
+        picker.choose(plays, i -> {
+            java.util.List<Catalog.Play> order = Copies.chosenFirst(plays, i);
+            plays.clear();
+            plays.addAll(order);
+            at = 0;
+            Copies.started(this, title.key, episodeId(), plays.get(0));
+            prepare(true);
+        }, this::finish);
     }
 
     private Catalog.Play current() {
@@ -470,6 +521,15 @@ public final class VodActivity extends Activity {
         prepare(true);
     }
 
+    /** Previews: these copies as if found, shown before playing as Play shows them. */
+    void previewChoose(java.util.List<Catalog.Play> copies) {
+        plays.clear();
+        plays.addAll(copies);
+        at = 0;
+        error = "";
+        chooseSource();
+    }
+
     /** Previews: these copies as if found, the one at now playing; the list of them opened when asked. */
     void previewSources(java.util.List<Catalog.Play> copies, int now, boolean list) {
         plays.clear();
@@ -547,6 +607,9 @@ public final class VodActivity extends Activity {
         }
         episode = next;
         startAt = 0;
+        // The next episode: straight away, from its best copy (as the phone's).
+        choose = false;
+        resume = false;
         if (player != null) player.stop();
         start();
     }

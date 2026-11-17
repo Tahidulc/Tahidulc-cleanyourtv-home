@@ -106,6 +106,7 @@ public final class Setup extends ContentProvider {
             int n = Sources.list(c).size();
             Library.get(c).clear();
             Resume.clear(c);
+            Copies.clear(c);
             return n;
         }
         if (Sources.get(c, last) == null) return 0;

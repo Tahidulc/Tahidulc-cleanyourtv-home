@@ -44,45 +44,68 @@ public class TorBoxOwnTest {
         return new Catalog.Episode(id, season, number, "", "", "", 0, "mkv", "", "", "");
     }
 
-    // ---- the order on a TV that shows 4K -------------------------------------------------------------------------
+    // ---- the order: the best first, with no limit on size ----------------------------------------------------------
 
-    private static List<TorBox.File> versions() {
+    @Test public void bestVersionFirstWithNoSizeLimit() {
         List<TorBox.File> lib = new ArrayList<>();
         lib.add(file(1, 1, "Glass.Harbour.2024.720p.WEB.mp4", "Glass.Harbour.2024.720p", 2 * GB));
         lib.add(file(2, 1, "Glass.Harbour.2024.2160p.REMUX.mkv", "Glass.Harbour.2024.2160p.REMUX", 58 * GB));
         lib.add(file(3, 1, "Glass.Harbour.2024.1080p.WEB-DL.mkv", "Glass.Harbour.2024.1080p", 7 * GB));
-        lib.add(file(4, 1, "Glass.Harbour.2024.2160p.WEB-DL.DV.mkv", "Glass.Harbour.2024.2160p.WEB", 16 * GB));
-        lib.add(file(5, 1, "Glass.Harbour.2024.1080p.BluRay.avi", "Glass.Harbour.2024.1080p.AVI", 9 * GB));
-        return lib;
+        lib.add(file(4, 1, "Glass.Harbour.2024.2160p.WEB-DL.mkv", "Glass.Harbour.2024.2160p.WEB", 16 * GB));
+        lib.add(file(5, 1, "Glass.Harbour.2024.2160p.BluRay.avi", "Glass.Harbour.2024.2160p.AVI", 30 * GB));
+        // 4K first however big (the bigger first), then 1080p, then 720p; AVI after them all, even in 4K.
+        assertEquals(Arrays.asList("Glass.Harbour.2024.2160p.REMUX.mkv", "Glass.Harbour.2024.2160p.WEB-DL.mkv",
+                "Glass.Harbour.2024.1080p.WEB-DL.mkv", "Glass.Harbour.2024.720p.WEB.mp4", "Glass.Harbour.2024.2160p.BluRay.avi"),
+                names(TorBox.films(lib, "Glass Harbour", null, "2024")));
     }
 
-    @Test public void fourKUnderTwentyGigabytesFirstOnAFourKScreen() {
-        List<TorBox.File> lib = versions();
-        assertEquals(Arrays.asList("Glass.Harbour.2024.2160p.WEB-DL.DV.mkv", "Glass.Harbour.2024.1080p.WEB-DL.mkv",
-                "Glass.Harbour.2024.2160p.REMUX.mkv", "Glass.Harbour.2024.720p.WEB.mp4"),
-                names(TorBox.films(lib, "Glass Harbour", null, "2024", true)).subList(0, 4));
-        // An AVI goes after them all, whatever its picture.
-        List<TorBox.File> all = new ArrayList<>(lib);
-        all.sort((a, b) -> TorBox.compare(a, b, true));
-        assertEquals("Glass.Harbour.2024.1080p.BluRay.avi", all.get(all.size() - 1).name);
+    @Test public void hdrThenSurroundThenTheBiggerFile() {
+        List<TorBox.File> lib = new ArrayList<>();
+        lib.add(file(1, 1, "Glass.Harbour.2024.2160p.WEB-DL.mkv", "Glass.Harbour.2024.2160p", 40 * GB));
+        lib.add(file(2, 1, "Glass.Harbour.2024.2160p.WEB-DL.DV.mkv", "Glass.Harbour.2024.2160p.DV", 16 * GB));
+        lib.add(file(3, 1, "Glass.Harbour.2024.2160p.HDR10.DDP5.1.mkv", "Glass.Harbour.2024.2160p.HDR10", 15 * GB));
+        lib.add(file(4, 1, "Glass.Harbour.2024.2160p.HDR.AAC2.0.mkv", "Glass.Harbour.2024.2160p.HDR", 20 * GB));
+        // HDR before SDR, however big; within HDR, surround (5.1 here) before stereo, then the bigger file.
+        assertEquals(Arrays.asList("Glass.Harbour.2024.2160p.HDR10.DDP5.1.mkv", "Glass.Harbour.2024.2160p.HDR.AAC2.0.mkv",
+                "Glass.Harbour.2024.2160p.WEB-DL.DV.mkv", "Glass.Harbour.2024.2160p.WEB-DL.mkv"),
+                names(TorBox.films(lib, "Glass Harbour", null, "2024")));
+        // What a download's name says counts for a file whose own name says nothing.
+        TorBox.File plain = file(5, 1, "gh-main.mkv", "Glass.Harbour.2024.2160p.DV.Atmos", 10 * GB);
+        assertTrue(TorBox.compare(plain, lib.get(0)) < 0);
+        Catalog.Play p = TorBox.play(plain);
+        assertEquals("Dolby Vision", p.hdr);
+        assertEquals("Dolby Atmos", p.sound);
     }
 
-    @Test public void thePhonesOrderElsewhere() {
-        List<TorBox.File> lib = versions();
-        List<String> order = names(TorBox.films(lib, "Glass Harbour", null, "2024", false));
-        assertEquals("Glass.Harbour.2024.1080p.WEB-DL.mkv", order.get(0));
-        assertEquals("Glass.Harbour.2024.2160p.WEB-DL.DV.mkv", order.get(1));
-        assertEquals("Glass.Harbour.2024.2160p.REMUX.mkv", order.get(2));
-        // The four-argument form is the phone's order too.
-        assertEquals(order, names(TorBox.films(lib, "Glass Harbour", null, "2024")));
-    }
-
-    @Test public void episodesInTheSameOrders() {
+    @Test public void episodesInTheSameOrder() {
         List<TorBox.File> lib = new ArrayList<>();
         lib.add(file(1, 1, "Paper.Lanterns.S01E02.1080p.WEB.mkv", "Paper.Lanterns.S01.1080p", 2 * GB));
         lib.add(file(2, 1, "Paper.Lanterns.S01E02.2160p.WEB.mkv", "Paper.Lanterns.S01.2160p", 6 * GB));
-        assertEquals("Paper.Lanterns.S01E02.2160p.WEB.mkv", TorBox.episodeVersions(lib, "Paper Lanterns", null, 1, 2, true).get(0).name);
-        assertEquals("Paper.Lanterns.S01E02.1080p.WEB.mkv", TorBox.episodeVersions(lib, "Paper Lanterns", null, 1, 2, false).get(0).name);
+        lib.add(file(3, 1, "Paper.Lanterns.S01E02.2160p.WEB.DV.mkv", "Paper.Lanterns.S01.2160p.DV", 5 * GB));
+        assertEquals(Arrays.asList("Paper.Lanterns.S01E02.2160p.WEB.DV.mkv", "Paper.Lanterns.S01E02.2160p.WEB.mkv",
+                "Paper.Lanterns.S01E02.1080p.WEB.mkv"), names(TorBox.episodeVersions(lib, "Paper Lanterns", null, 1, 2)));
+    }
+
+    private static Catalog.Play copy(String url, String playlist, int picture, String hdr, String sound, String kind) {
+        Catalog.Play p = new Catalog.Play(url, null, null);
+        p.playlist = playlist;
+        p.picture = picture;
+        p.hdr = hdr;
+        p.sound = sound;
+        p.kind = kind;
+        return p;
+    }
+
+    @Test public void thePlaylistsCopiesBestFirstTooTorBoxsFirst() {
+        Catalog.Play mine = copy("http://example.com/movie/1.mkv", "Home", 0, "", "", "MKV");
+        Catalog.Play fhd = copy("http://example.org/movie/2.mkv", "Spare", Catalog.PICTURE_1080, "", "", "MKV");
+        Catalog.Play uhd = copy("http://example.org/movie/3.mp4", "Spare", Catalog.PICTURE_4K, "HDR", "", "MP4");
+        Catalog.Play avi = copy("http://example.net/movie/4.avi", "Old", Catalog.PICTURE_4K, "", "", "AVI");
+        mine.backups.addAll(Arrays.asList(avi, fhd, uhd));
+        Catalog.Play tb = TorBox.play(file(9, 1, "Glass.Harbour.2024.2160p.mkv", "Glass.Harbour.2024.2160p", 14 * GB));
+        // TorBox's first (the family's choice), then the playlists' the best first: what says nothing after what does.
+        assertEquals(Arrays.asList(tb, uhd, fhd, mine, avi), TorBox.order(Arrays.asList(tb), mine, true));
+        assertEquals(Arrays.asList(uhd, fhd, mine, avi, tb), TorBox.order(Arrays.asList(tb), mine, false));
     }
 
     // ---- the account's titles --------------------------------------------------------------------------------------

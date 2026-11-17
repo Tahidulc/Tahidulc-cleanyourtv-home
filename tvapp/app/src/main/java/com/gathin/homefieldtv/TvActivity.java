@@ -397,14 +397,18 @@ public final class TvActivity extends Activity {
         PinScreen.forSettings(this, () -> push(new SettingsScreen(this)));
     }
 
-    /** A film (episode null) or an episode, full screen, from start ms in. */
-    void play(Catalog.Title t, Catalog.Episode e, long startMs) {
+    /**
+     * A film (episode null) or an episode, full screen, from start ms in: with every source shown first (choose: Play on
+     * a title's page, an episode chosen), or straight away from the copy it was started on (Resume, Continue watching).
+     */
+    void play(Catalog.Title t, Catalog.Episode e, long startMs, boolean choose) {
         if (t == null) return;
         live.stop();
         Intent i = new Intent(this, VodActivity.class)
                 .putExtra(VodActivity.TITLE, t.key)
                 .putExtra(VodActivity.EPISODE, e == null ? "" : e.id)
-                .putExtra(VodActivity.START, startMs);
+                .putExtra(VodActivity.START, startMs)
+                .putExtra(VodActivity.CHOOSE, choose);
         startActivity(i);
     }
 

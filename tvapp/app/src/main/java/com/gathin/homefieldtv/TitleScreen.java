@@ -84,10 +84,10 @@ final class TitleScreen extends Screen implements DetailPage.Host {
         List<DetailPage.Button> buttons = new ArrayList<>();
         if (!title.series) {
             if (p != null && p.position > 0) {
-                buttons.add(new DetailPage.Button("Resume  ·  " + Ui.left(p.duration - p.position), -1, () -> tv.play(title, null, p.position)));
-                buttons.add(new DetailPage.Button("From the start", Dark.RESTART, () -> tv.play(title, null, 0)));
+                buttons.add(new DetailPage.Button("Resume  ·  " + Ui.left(p.duration - p.position), -1, () -> tv.play(title, null, p.position, false)));
+                buttons.add(new DetailPage.Button("From the start", Dark.RESTART, () -> tv.play(title, null, 0, true)));
             } else {
-                buttons.add(new DetailPage.Button("Play", -1, () -> tv.play(title, null, 0)));
+                buttons.add(new DetailPage.Button("Play", -1, () -> tv.play(title, null, 0, true)));
             }
         } else if (details == null) {
             buttons.add(new DetailPage.Button(asked && !asking ? "Couldn't get the episodes: try again" : "Finding the episodes…", -1, this::ask));
@@ -97,16 +97,17 @@ final class TitleScreen extends Screen implements DetailPage.Host {
             if (resume != null) {
                 String label = (p.position > 0 ? "Resume" : "Play") + " S" + resume.season + " E" + resume.number
                         + (p.position > 0 ? "  ·  " + Ui.left(p.duration - p.position) : "");
-                buttons.add(new DetailPage.Button(label, -1, () -> tv.play(title, resume, p.position)));
+                // Resume: straight away from the copy it was started on; an episode from its start (the next one): every source first.
+                buttons.add(new DetailPage.Button(label, -1, () -> tv.play(title, resume, p.position, p.position <= 0)));
             } else if (!all.isEmpty()) {
                 Catalog.Episode first = all.get(0);
-                buttons.add(new DetailPage.Button("Play S" + first.season + " E" + first.number, -1, () -> tv.play(title, first, 0)));
+                buttons.add(new DetailPage.Button("Play S" + first.season + " E" + first.number, -1, () -> tv.play(title, first, 0, true)));
             } else {
                 buttons.add(new DetailPage.Button(title.torbox() ? "No episodes in your TorBox" : "No episodes in your playlist", -1, () -> { }));
             }
             if (resume != null && !all.isEmpty()) {
                 Catalog.Episode first = all.get(0);
-                buttons.add(new DetailPage.Button("From the first episode", Dark.RESTART, () -> tv.play(title, first, 0)));
+                buttons.add(new DetailPage.Button("From the first episode", Dark.RESTART, () -> tv.play(title, first, 0, true)));
             }
         }
         boolean on = MyList.has(tv, title.key);
@@ -174,7 +175,8 @@ final class TitleScreen extends Screen implements DetailPage.Host {
 
     @Override public void play(Catalog.Episode ep) {
         Resume.Point p = Resume.get(tv, title.key, ep.id);
-        tv.play(title, ep, p == null ? 0 : p.position);
+        // An episode chosen: every source shown first (as the phone's), then on from where it was left, if it was.
+        tv.play(title, ep, p == null ? 0 : p.position, true);
     }
 
     @Override public void open(Catalog.Title t) {

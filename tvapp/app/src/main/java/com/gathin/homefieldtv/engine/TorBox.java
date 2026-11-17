@@ -461,67 +461,43 @@ public final class TorBox {
     }
 
     /**
-     * Pure: the order versions are offered in, as the phone's: 1080p first (surest to play smoothly), then 4K, 720p, the
-     * rest; within those one under 20 GB (sure to stream) first, then the bigger; AVI and the like after them all.
+     * Pure: the order versions are offered in, the best first, as the phone's, with no limit on size (Formats.compare):
+     * 4K, then 1080p, 720p and the rest; within the same picture HDR (Dolby Vision or any other) before SDR, Dolby Atmos
+     * or surround before stereo, then the bigger file; AVI and the like after them all.
      */
     static int compare(File a, File b) {
-        return compare(a, b, false);
+        return compare(said(a), said(b));
     }
 
-    /**
-     * Pure: the same on a TV whose screen shows 4K (uhd): a 4K version under 20 GB first (sure to stream), then 1080p,
-     * then the rest in the phone's order (a bigger 4K, 720p, the others).
-     */
-    static int compare(File a, File b, boolean uhd) {
-        int ra = rank(a, uhd), rb = rank(b, uhd);
-        if (ra != rb) return Integer.compare(ra, rb);
-        boolean sa = a.size > 0 && a.size <= 20L * 1024 * MB, sb = b.size > 0 && b.size <= 20L * 1024 * MB;
-        if (sa != sb) return sa ? -1 : 1;
-        return Long.compare(b.size, a.size);
-    }
+    /** What a file's name (and its download's) says of it: its kind, picture, HDR, sound and size. */
+    static final class Said {
+        final String kind, hdr, sound;
+        final int picture;
+        final long size;
 
-    static int rank(File f) {
-        return rank(f, false);
-    }
-
-    static int rank(File f, boolean uhd) {
-        int r, p = picture(f);
-        if (uhd) {
-            boolean small = f.size > 0 && f.size <= 20L * 1024 * MB;
-            r = p == Catalog.PICTURE_4K && small ? 0 : p == Catalog.PICTURE_1080 ? 1 : p == Catalog.PICTURE_4K ? 2
-                    : p == Catalog.PICTURE_720 ? 3 : 4;
-        } else {
-            switch (p) {
-                case Catalog.PICTURE_1080: r = 0; break;
-                case Catalog.PICTURE_4K: r = 1; break;
-                case Catalog.PICTURE_720: r = 2; break;
-                default: r = 3; break;
-            }
+        Said(File f) {
+            String words = f.name + " " + f.item;
+            kind = Catalog.kindOf(f.name);
+            picture = picture(f);
+            hdr = Formats.hdr(words);
+            sound = Formats.audio(words);
+            size = f.size;
         }
-        String kind = Catalog.kindOf(f.name);
-        return kind.equals("MKV") || kind.equals("MP4") || kind.equals("M4V") || kind.equals("WEBM") || kind.equals("MOV") ? r : r + 5;
     }
 
-    private static volatile Boolean uhd;
+    static Said said(File f) {
+        return new Said(f);
+    }
 
-    /** Whether this TV's screen shows 4K (a mode 3840 pixels wide or more), read once. */
-    public static boolean uhdScreen(Context c) {
-        Boolean had = uhd;
-        if (had != null) return had;
-        boolean u = false;
-        try {
-            android.hardware.display.DisplayManager dm = c.getSystemService(android.hardware.display.DisplayManager.class);
-            android.view.Display d = dm == null ? null : dm.getDisplay(android.view.Display.DEFAULT_DISPLAY);
-            if (d != null) {
-                for (android.view.Display.Mode m : d.getSupportedModes()) {
-                    if (Math.max(m.getPhysicalWidth(), m.getPhysicalHeight()) >= 3840) u = true;
-                }
-            }
-        } catch (RuntimeException ignored) {
-            // not known: the phone's order
-        }
-        uhd = u;
-        return u;
+    private static int compare(Said a, Said b) {
+        return Formats.compare(a.kind, a.picture, a.hdr, a.sound, a.size, b.kind, b.picture, b.hdr, b.sound, b.size);
+    }
+
+    /** Files put in that order, each one's names read once. */
+    static void sortBest(List<File> files) {
+        Map<File, Said> by = new java.util.IdentityHashMap<>();
+        for (File f : files) by.put(f, said(f));
+        Collections.sort(files, (a, b) -> compare(by.get(a), by.get(b)));
     }
 
     /** Pure: two titles alike as the playlists' are (Catalog.key), and with their spaces gone ("Ocean's" and "Oceans"). */
@@ -552,11 +528,6 @@ public final class TorBox {
      * apart at most), else, for the only picture in its download, by the download's name; the surest first.
      */
     static List<File> films(List<File> lib, String title, String alt, String year) {
-        return films(lib, title, alt, year, false);
-    }
-
-    /** Pure: the same in the order for a TV that shows 4K, or not (uhd). */
-    static List<File> films(List<File> lib, String title, String alt, String year, boolean uhd) {
         int want = 0;
         try {
             want = year == null || year.length() < 4 ? 0 : Integer.parseInt(year.substring(0, 4));
@@ -574,7 +545,7 @@ public final class TorBox {
                     || (f.single && !item.episodic() && item.year > 0 && fits(item, title, alt, want));
             if (match) out.add(f);
         }
-        Collections.sort(out, (a, b) -> compare(a, b, uhd));
+        sortBest(out);
         return out.size() > VERSIONS ? new ArrayList<>(out.subList(0, VERSIONS)) : out;
     }
 
@@ -596,11 +567,6 @@ public final class TorBox {
 
     /** Pure: a series' episode files in the library, by its name (or its original one): its own, its folders' or its download's. */
     static List<File> episodeFiles(List<File> lib, String show, String alt) {
-        return episodeFiles(lib, show, alt, false);
-    }
-
-    /** Pure: the same in the order for a TV that shows 4K, or not (uhd). */
-    static List<File> episodeFiles(List<File> lib, String show, String alt, boolean uhd) {
         List<File> out = new ArrayList<>();
         for (File f : lib) {
             if (!video(f.name, f.size)) continue;
@@ -613,19 +579,14 @@ public final class TorBox {
             }
             if (named) out.add(f);
         }
-        Collections.sort(out, (a, b) -> compare(a, b, uhd));
+        sortBest(out);
         return out;
     }
 
     /** Pure: one episode's versions in the library (its season and number), the surest first. */
     static List<File> episodeVersions(List<File> lib, String show, String alt, int season, int number) {
-        return episodeVersions(lib, show, alt, season, number, false);
-    }
-
-    /** Pure: the same in the order for a TV that shows 4K, or not (uhd). */
-    static List<File> episodeVersions(List<File> lib, String show, String alt, int season, int number, boolean uhd) {
         List<File> out = new ArrayList<>();
-        for (File f : episodeFiles(lib, show, alt, uhd)) {
+        for (File f : episodeFiles(lib, show, alt)) {
             Release r = episode(f);
             if (r != null && r.season == season && r.episode == number) out.add(f);
         }
@@ -986,6 +947,9 @@ public final class TorBox {
         p.size = f.size;
         p.picture = picture(f);
         p.kind = Catalog.kindOf(f.name);
+        String words = f.name + " " + f.item;
+        p.hdr = Formats.hdr(words);
+        p.sound = Formats.audio(words);
         return p;
     }
 
@@ -1002,15 +966,14 @@ public final class TorBox {
         } catch (IOException x) {
             return out;
         }
-        boolean u = uhdScreen(c);
         Own own = t.torbox() ? owns.get(t.key) : null;
         List<File> found;
         if (own != null) {
             // One of the family's own titles: its own files, whatever name TMDB gave it.
-            found = t.series ? episodeVersions(own.files, own.name, null, e.season, e.number, u)
-                    : films(own.files, own.name, null, String.valueOf(own.year), u);
+            found = t.series ? episodeVersions(own.files, own.name, null, e.season, e.number)
+                    : films(own.files, own.name, null, String.valueOf(own.year));
         } else {
-            found = t.series ? episodeVersions(lib, t.name, null, e.season, e.number, u) : films(lib, t.name, null, t.year, u);
+            found = t.series ? episodeVersions(lib, t.name, null, e.season, e.number) : films(lib, t.name, null, t.year);
         }
         for (File f : found) {
             out.add(play(f));
@@ -1028,6 +991,8 @@ public final class TorBox {
             theirs.add(playlist);
             theirs.addAll(playlist.backups);
         }
+        // The playlists' copies the best first too, as far as their names say (those alike in the playlists' order).
+        Formats.sort(theirs);
         List<Catalog.Play> out = new ArrayList<>();
         if (torboxFirst && torbox != null) out.addAll(torbox);
         out.addAll(theirs);

@@ -420,27 +420,24 @@ public final class TorBox {
     }
 
     /**
-     * Pure: the order versions are offered in: 1080p first (sure to play on a phone), then 4K, 720p, the rest; within
-     * those one under 20 GB (sure to stream) first, then the bigger; AVI and the like after them all.
+     * Pure: the order versions are offered in, the best first, with no limit on size (SourceInfo.compare): 4K, then
+     * 1080p, 720p and the rest; within the same picture HDR (Dolby Vision or any other) before SDR, Dolby Atmos or
+     * surround before stereo, then the bigger file; AVI and the like after them all.
      */
     static int compare(File a, File b) {
-        int ra = rank(a), rb = rank(b);
-        if (ra != rb) return Integer.compare(ra, rb);
-        boolean sa = a.size > 0 && a.size <= 20L * 1024 * MB, sb = b.size > 0 && b.size <= 20L * 1024 * MB;
-        if (sa != sb) return sa ? -1 : 1;
-        return Long.compare(b.size, a.size);
+        return SourceInfo.compare(info(a), info(b));
     }
 
-    static int rank(File f) {
-        int r;
-        switch (quality(f)) {
-            case "1080p": r = 0; break;
-            case "4K": r = 1; break;
-            case "HD": r = 2; break;
-            default: r = 3; break;
-        }
-        String ext = Vod.extension(f.name);
-        return ext.equals("MKV") || ext.equals("MP4") || ext.equals("M4V") || ext.equals("WEBM") || ext.equals("MOV") ? r : r + 4;
+    /** What a file's name (and its download's) says of it, as the source picker shows it. */
+    static SourceInfo info(File f) {
+        return SourceInfo.torbox(f.name, f.size, f.item);
+    }
+
+    /** Files put in that order, each one's name read once. */
+    static void sortBest(List<File> files) {
+        java.util.Map<File, SourceInfo> said = new java.util.IdentityHashMap<>();
+        for (File f : files) said.put(f, info(f));
+        Collections.sort(files, (a, b) -> SourceInfo.compare(said.get(a), said.get(b)));
     }
 
     /** Pure: two titles alike as the playlists' are (Vod.key), and with their spaces gone ("Ocean's" and "Oceans"). */
@@ -483,7 +480,7 @@ public final class TorBox {
                     || (f.single && !item.episodic() && item.year > 0 && fits(item, title, alt, want));
             if (match) out.add(f);
         }
-        Collections.sort(out, TorBox::compare);
+        sortBest(out);
         return out.size() > VERSIONS ? new ArrayList<>(out.subList(0, VERSIONS)) : out;
     }
 
@@ -517,7 +514,7 @@ public final class TorBox {
             }
             if (named) out.add(f);
         }
-        Collections.sort(out, TorBox::compare);
+        sortBest(out);
         return out;
     }
 

@@ -88,8 +88,9 @@ public class TorBoxTest {
 
         List<TorBox.File> got = TorBox.films(lib, "Glass Harbour", "", "2024");
         assertEquals(3, got.size());
-        assertEquals("torbox:torrent:1:1", got.get(0).stored());
-        assertEquals("torbox:torrent:2:1", got.get(1).stored());
+        // The best first: the 4K, then the 1080p, then the 720p.
+        assertEquals("torbox:torrent:2:1", got.get(0).stored());
+        assertEquals("torbox:torrent:1:1", got.get(1).stored());
         assertEquals("torbox:torrent:4:7", got.get(2).stored());
 
         // No year to go by: the 1988 film too.
@@ -129,15 +130,38 @@ public class TorBoxTest {
         assertNull(TorBox.episode(file(9, 2, "Harbour.Lights.2020.mkv", "Harbour Lights", GB)));
     }
 
-    @Test public void surestVersionFirst() {
-        TorBox.File uhd = file(1, 1, "Film.2024.2160p.mkv", "x", 18 * GB);
-        TorBox.File fhd = file(2, 1, "Film.2024.1080p.mkv", "x", 9 * GB);
-        TorBox.File remux = file(3, 1, "Film.2024.1080p.Remux.mkv", "x", 35 * GB);
-        TorBox.File hd = file(4, 1, "Film.2024.720p.mkv", "x", 4 * GB);
-        TorBox.File avi = file(5, 1, "Film.2024.1080p.avi", "x", 2 * GB);
-        List<TorBox.File> all = new ArrayList<>(Arrays.asList(avi, hd, remux, uhd, fhd));
+    @Test public void bestVersionFirstWithNoSizeLimit() {
+        TorBox.File remux4k = file(1, 1, "Film.2024.2160p.UHD.BluRay.REMUX.mkv", "x", 61 * GB);
+        TorBox.File web4k = file(2, 1, "Film.2024.2160p.WEB-DL.mkv", "x", 18 * GB);
+        TorBox.File fhd = file(3, 1, "Film.2024.1080p.mkv", "x", 9 * GB);
+        TorBox.File remux = file(4, 1, "Film.2024.1080p.Remux.mkv", "x", 35 * GB);
+        TorBox.File hd = file(5, 1, "Film.2024.720p.mkv", "x", 4 * GB);
+        TorBox.File sd = file(6, 1, "Film.2024.480p.mkv", "x", GB);
+        TorBox.File avi = file(7, 1, "Film.2024.2160p.avi", "x", 30 * GB);
+        List<TorBox.File> all = new ArrayList<>(Arrays.asList(avi, sd, hd, remux, fhd, web4k, remux4k));
         all.sort(TorBox::compare);
-        assertEquals(Arrays.asList(fhd, remux, uhd, hd, avi), all);
+        // 4K first however big, the bigger first; then 1080p, 720p, the rest; AVI after them all, even in 4K.
+        assertEquals(Arrays.asList(remux4k, web4k, remux, fhd, hd, sd, avi), all);
+        // The same through sortBest, each name read once.
+        List<TorBox.File> again = new ArrayList<>(Arrays.asList(avi, sd, hd, remux, fhd, web4k, remux4k));
+        TorBox.sortBest(again);
+        assertEquals(all, again);
+    }
+
+    @Test public void hdrThenSurroundBeforeSize() {
+        TorBox.File sdr = file(1, 1, "Film.2024.2160p.WEB-DL.mkv", "x", 40 * GB);
+        TorBox.File dv = file(2, 1, "Film.2024.2160p.WEB-DL.DV.mkv", "x", 16 * GB);
+        TorBox.File hdr10 = file(3, 1, "Film.2024.2160p.HDR10.DDP5.1.mkv", "x", 15 * GB);
+        TorBox.File hdrStereo = file(4, 1, "Film.2024.2160p.HDR.AAC2.0.mkv", "x", 20 * GB);
+        TorBox.File atmos = file(5, 1, "Film.2024.2160p.DV.Atmos.mkv", "x", 12 * GB);
+        List<TorBox.File> all = new ArrayList<>(Arrays.asList(sdr, hdrStereo, hdr10, dv, atmos));
+        all.sort(TorBox::compare);
+        // HDR before SDR; within HDR, Atmos or surround before stereo (or sound not said); then the bigger.
+        assertEquals(Arrays.asList(hdr10, atmos, hdrStereo, dv, sdr), all);
+        // What a download's name says counts for a file whose own name says nothing.
+        TorBox.File plain = file(6, 1, "gh-main.mkv", "Glass.Harbour.2024.2160p.DV.TrueHD.7.1", 10 * GB);
+        assertEquals("Dolby Vision", TorBox.info(plain).hdr);
+        assertTrue(TorBox.compare(plain, sdr) < 0);
     }
 
     @Test public void labelsSayTheSourceAndPicture() {
