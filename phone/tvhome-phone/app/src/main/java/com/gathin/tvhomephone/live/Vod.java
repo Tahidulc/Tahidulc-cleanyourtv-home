@@ -277,21 +277,24 @@ public final class Vod {
 
     /**
      * The playlists' film (tv false) or series for a title: TMDB's id when the provider gives it, else the same name and
-     * a year no more than one apart (either may be missing); the first playlist's that has it, with the others' copies as
-     * its alternates (TorBox's, when it is in use, first or last as Settings says); null when none has it.
+     * a year no more than one apart (either may be missing); the best copy, with the others as its alternates: TorBox's
+     * (when it is in use, first or last as Settings says), each the best first, and the playlists' the best first where
+     * their names say (SourceInfo.compare; those that say nothing in the playlists' order); null when none has it.
      */
     public static Item find(Context c, String title, String altTitle, String year, int tmdbId, boolean tv) {
         List<Item> all = new ArrayList<>();
         List<Item> torbox = TorBox.find(c, title, altTitle, year, tv);
         boolean torboxFirst = TorBox.first(c);
         if (torboxFirst) all.addAll(torbox);
+        List<Item> theirs = new ArrayList<>();
         for (Sources.Entry e : Sources.inUse(c)) {
             for (Item it : findIn(c, e, title, altTitle, year, tmdbId, tv)) {
                 it.label = label(e.name, it.name, it.url);
                 it.about = SourceInfo.aboutPlaylist(e.name, it.name);
-                all.add(it);
+                theirs.add(it);
             }
         }
+        all.addAll(bestFirst(theirs));
         if (!torboxFirst) all.addAll(torbox);
         Item main = null;
         for (Item it : all) {
@@ -299,6 +302,54 @@ public final class Vod {
             else main.alternates.add(it);
         }
         return main;
+    }
+
+    /** Pure: the playlists' copies the best first, as their names say (SourceInfo.compare); those alike in their order. */
+    static List<Item> bestFirst(List<Item> items) {
+        List<Item> out = new ArrayList<>(items);
+        java.util.Map<Item, SourceInfo> said = new java.util.IdentityHashMap<>();
+        for (Item it : out) said.put(it, SourceInfo.of(it.url, it.label, it.about));
+        Collections.sort(out, (a, b) -> SourceInfo.compare(said.get(a), said.get(b)));
+        return out;
+    }
+
+    /**
+     * Pure: an episode's copies (itself and its alternates) the best first: TorBox's as TorBox sorted them, the
+     * playlists' as their names say, TorBox's before the playlists' or after them (torboxFirst). The episode itself when
+     * it is still the first, else the first made the episode, with the episode's own name where it has none.
+     */
+    static Episode bestFirst(Episode e, boolean torboxFirst) {
+        List<Episode> mine = new ArrayList<>(), theirs = new ArrayList<>();
+        List<Episode> copies = new ArrayList<>();
+        copies.add(e);
+        copies.addAll(e.alternates);
+        for (Episode x : copies) (TorBox.ours(x.url) ? mine : theirs).add(x);
+        java.util.Map<Episode, SourceInfo> said = new java.util.IdentityHashMap<>();
+        for (Episode x : theirs) said.put(x, SourceInfo.of(x.url, x.label, x.about));
+        Collections.sort(theirs, (a, b) -> SourceInfo.compare(said.get(a), said.get(b)));
+        List<Episode> order = new ArrayList<>(torboxFirst ? mine : theirs);
+        order.addAll(torboxFirst ? theirs : mine);
+        Episode first = order.get(0);
+        Episode out = first;
+        if (first != e) {
+            String name = first.title == null || first.title.isEmpty() ? e.title : first.title;
+            out = new Episode(first.season, first.number, name, first.url, first.ua, first.ref);
+            out.label = first.label;
+            out.about = first.about;
+        }
+        out.alternates.clear();
+        for (int i = 1; i < order.size(); i++) {
+            Episode x = order.get(i);
+            if (x == e && first != e) {
+                // The episode, now a backup: as a copy of its own, without the list of the others.
+                Episode copy = new Episode(e.season, e.number, e.title, e.url, e.ua, e.ref);
+                copy.label = e.label;
+                copy.about = e.about;
+                x = copy;
+            }
+            out.alternates.add(x);
+        }
+        return out;
     }
 
     /** The Xtream accounts' versions of a title, for asking their providers about them (StreamFacts). Off the main thread. */
@@ -430,6 +481,9 @@ public final class Vod {
                 }
             }
         }
+        // Each episode's copies the best first (TorBox's first or last, as Settings say).
+        boolean torboxFirst = TorBox.first(c);
+        for (int i = 0; i < out.size(); i++) out.set(i, bestFirst(out.get(i), torboxFirst));
         Collections.sort(out, (a, b) -> a.season != b.season ? Integer.compare(a.season, b.season) : Integer.compare(a.number, b.number));
         return out;
     }

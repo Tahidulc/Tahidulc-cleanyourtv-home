@@ -65,6 +65,63 @@ public final class SourceInfo {
         return new SourceInfo(torbox, playlist, name, video(words), hd(words), hdr(words), audio(words), container, size);
     }
 
+    /** TorBox's copy of a file, as of() reads it from what the lookup keeps, without the keeping. */
+    static SourceInfo torbox(String name, long size, String download) {
+        String n = name == null ? "" : name, d = download == null ? "" : download;
+        String words = n + " " + d;
+        return new SourceInfo(true, "", n, video(words), hd(words), hdr(words), audio(words), Vod.extension(n), Math.max(0, size));
+    }
+
+    // ---- the best first ---------------------------------------------------------------------------------------------
+
+    /**
+     * Pure: which of two copies is offered first, the best: one in a file the players take well (MKV, MP4, M4V, WEBM, MOV,
+     * or not known) before AVI and the like; then the picture (4K, then 1080p, then 720p, then the rest); then HDR (Dolby
+     * Vision or any other) before SDR; then Dolby Atmos or surround sound before stereo; then the bigger file. 0 for two
+     * it can't tell apart (their order kept).
+     */
+    public static int compare(SourceInfo a, SourceInfo b) {
+        int c = Boolean.compare(poor(a.container), poor(b.container));
+        if (c == 0) c = Integer.compare(pictureRank(a.video), pictureRank(b.video));
+        if (c == 0) c = Boolean.compare(a.hdr.isEmpty(), b.hdr.isEmpty());
+        if (c == 0) c = Boolean.compare(!surround(a.audio), !surround(b.audio));
+        if (c == 0) c = Long.compare(b.size, a.size);
+        return c;
+    }
+
+    /** Pure: the plays ({address, user agent, referrer, label, about}) in the same order, best first; alike ones as they were. */
+    public static int compare(String[] a, String[] b) {
+        return compare(of(a), of(b));
+    }
+
+    /** Pure: 4K first, then 1080p, then 720p, then the rest (SD, or a picture not known). */
+    static int pictureRank(String video) {
+        switch (video == null ? "" : video) {
+            case "4K": return 0;
+            case "1080p": return 1;
+            case "720p": return 2;
+            default: return 3;
+        }
+    }
+
+    /** Pure: a file the players may struggle with: AVI, TS and the like (a kind not known isn't one). */
+    static boolean poor(String container) {
+        String k = container == null ? "" : container;
+        return !k.isEmpty() && !k.matches("MKV|MP4|M4V|WEBM|MOV");
+    }
+
+    /**
+     * Pure: sound with more than two channels, as audio() says it: Dolby Atmos; 5.1 or 7.1; DTS:X, DTS-HD and Dolby
+     * TrueHD; Dolby Digital, Dolby Digital+ and DTS unless they say stereo.
+     */
+    static boolean surround(String audio) {
+        String a = audio == null ? "" : audio;
+        if (a.isEmpty()) return false;
+        if (a.startsWith("Dolby Atmos") || a.endsWith("5.1") || a.endsWith("7.1")) return true;
+        if (a.startsWith("DTS:X") || a.startsWith("DTS-HD") || a.startsWith("Dolby TrueHD")) return true;
+        return (a.startsWith("Dolby Digital") || a.startsWith("DTS")) && !a.endsWith("Stereo");
+    }
+
     /** What the lookup keeps beside a playlist's copy: its playlist and its entry's name. */
     static String aboutPlaylist(String playlist, String name) {
         try {
