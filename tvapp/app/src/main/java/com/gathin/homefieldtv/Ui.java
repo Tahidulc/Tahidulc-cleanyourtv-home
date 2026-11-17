@@ -160,6 +160,15 @@ final class Ui {
         return com.gathin.homefieldtv.prefs.Look.clock == com.gathin.homefieldtv.prefs.Look.CLOCK_OFF ? "" : clock(t);
     }
 
+    /** "Tue, 17 Nov, 10.45am": the date and the clock as the guide's corner shows them (no clock when it is off). */
+    static String dateClock(long t) {
+        ZonedDateTime z = at(t);
+        String d = z.getDayOfWeek().getDisplayName(TextStyle.SHORT, Locale.UK) + ", " + z.getDayOfMonth() + " "
+                + z.getMonth().getDisplayName(TextStyle.SHORT, Locale.UK);
+        String c = cornerClock(t);
+        return c.isEmpty() ? d : d + ", " + c;
+    }
+
     /** "Wednesday". */
     static String dayName(long t) {
         return at(t).getDayOfWeek().getDisplayName(TextStyle.FULL, Locale.UK);

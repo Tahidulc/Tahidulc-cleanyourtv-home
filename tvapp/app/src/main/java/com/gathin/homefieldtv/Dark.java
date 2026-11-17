@@ -11,21 +11,24 @@ import android.text.TextPaint;
 import java.util.Locale;
 
 /**
- * The dark look of Films, TV shows, a title's page and the TV guide: a near-black ground, Outfit throughout, white
- * writing with greys under it, Homefield's amber for what is chosen, white rings and pills for where the remote is,
- * line icons drawn as paths, and a person's initials in a circle where there is no photo. Sizes are design pixels of
- * a 1920 x 1080 screen (Ui.f).
+ * The colours, words and icons the screens drawn before the colour themes' tokens (Palette, Type) still use: the
+ * theme's ground, panels and accent (Theme.apply sets them to the theme's: Indigo • Blue until then), white writing
+ * with the theme's greys under it, Roboto throughout (text() is Type's), the light accent for the rings round where the
+ * remote is, line icons drawn as paths (the menu's among them), Homefield's mark, and a person's initials in a circle
+ * where there is no photo. Sizes are design pixels of a 1920 x 1080 screen (Ui.f).
  */
 final class Dark {
     private Dark() {}
 
-    // The theme's colours (Theme sets them as the app starts; Homefield's own until then).
-    static int GROUND = 0xFF0E0E11, RAIL = 0xFF141417, PANEL = 0xFF131316, CARD = 0xFF1E1E23, CARD_HI = 0xFF2A2A31;
-    static final int TEXT = 0xFFFFFFFF, SOFT = 0xFFD1D1D6, MUTED = 0xFF8E8E93, FAINT = 0xFF5E5E66, LINE = 0x1FFFFFFF;
-    /** The accent (Homefield's amber): the page the rail is on, the button the remote is on, the stars; its ink on it. */
-    static int ACCENT = 0xFFFFB547, ACCENT_INK = 0xFF1E1606;
-    /** The accent's lighter shade (the part of a programme already shown), the New badge, the focus rings. */
-    static int ACCENT_SOFT = 0xFFFFD48A, BADGE = 0xFFFFD25A, RING = 0xFFFFFFFF;
+    // The theme's colours (Theme sets them as the app starts; Indigo • Blue's until then).
+    static int GROUND = 0xFF151B3F, RAIL = 0xFF1F295F, PANEL = 0xFF1F295F, CARD = 0xFF1F295F, CARD_HI = 0xFF2A377F;
+    static final int TEXT = 0xFFFFFFFF, LINE = 0x1FFFFFFF;
+    /** The greys under white writing: white at 80, 60 and 37.5 % over the theme's ground. */
+    static int SOFT = 0xFFD0D1D9, MUTED = 0xFFA1A4B2, FAINT = 0xFF6D7187;
+    /** The accent: the page the rail is on, the button the remote is on, the stars; the writing on it. */
+    static int ACCENT = 0xFF2196F3, ACCENT_INK = 0xFFFFFFFF;
+    /** The light accent (the part of a programme already shown, the focus rings); the New badge. */
+    static int ACCENT_SOFT = 0xFF90CAF9, BADGE = 0xFF2196F3, RING = 0xFF90CAF9;
     /** The guide's programme colours, picked by title. */
     static final int[] DEEP = Theme.DEEP.clone();
 
@@ -34,6 +37,7 @@ final class Dark {
         return (colour & 0x00FFFFFF) | (Math.max(0, Math.min(255, a)) << 24);
     }
 
+    /** Outfit: the scoreboards' own lettering (BoardPrefs). The screens write in Roboto (Type). */
     static Typeface outfit = Typeface.DEFAULT;
 
     static void init(Context c) {
@@ -44,21 +48,9 @@ final class Dark {
         }
     }
 
-    /** Writing in Outfit at a weight (400 regular, 500 medium, 600 semi-bold, 700 bold), size in design pixels. */
+    /** Writing in Roboto at a weight (up to 450 regular, up to 650 medium, then bold), size in design pixels. */
     static TextPaint text(float size, int weight, int color) {
-        TextPaint p = new TextPaint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
-        p.setTypeface(outfit);
-        // Settings → Appearance → Text size.
-        p.setTextSize(Ui.f(size) * com.gathin.homefieldtv.prefs.Look.text);
-        p.setColor(color);
-        try {
-            p.setFontVariationSettings("'wght' " + weight);
-        } catch (RuntimeException ignored) {
-            // the font's own weight
-        }
-        // Where the variable font can't be set to a weight, a heavier one is drawn bolder.
-        if (weight >= 600 && outfit == Typeface.DEFAULT) p.setFakeBoldText(true);
-        return p;
+        return Type.paint(size, weight, color);
     }
 
     static Paint fill(int color) {
@@ -166,6 +158,9 @@ final class Dark {
 
     static final int HOME = 0, GUIDE = 1, FILMS = 2, SHOWS = 3, SEARCH = 4, SETTINGS = 5, HEART = 6, HEART_FULL = 7,
             RESTART = 8, PLAY = 9, INFO = 10, LIST = 11, GRID = 12, RESUME = 13, STAR = 14, FOLDER = 15, LIVE = 16;
+    /** The menu's: a TV with a play shape (the guide), a clapperboard (Movies), stacked screens (TV shows), record, a
+     *  bookmark (My list), a cogwheel (Settings); and a tick and an outline star. */
+    static final int TV = 17, CLAPPER = 18, STACK = 19, RECORD = 20, BOOKMARK = 21, CHECK = 22, STAR_LINE = 23, GEAR = 24;
 
     private static final Path P = new Path();
     private static final RectF ARC = new RectF();
@@ -311,6 +306,72 @@ final class Dark {
                 p.close();
                 c.drawPath(p, stroke);
                 break;
+            case TV:
+                c.drawRoundRect(cx - h * 0.88f, cy - h * 0.72f, cx + h * 0.88f, cy + h * 0.5f, h * 0.14f, h * 0.14f, stroke);
+                c.drawLine(cx - h * 0.4f, cy + h * 0.84f, cx + h * 0.4f, cy + h * 0.84f, stroke);
+                p.moveTo(cx - h * 0.18f, cy - h * 0.4f);
+                p.lineTo(cx + h * 0.32f, cy - h * 0.11f);
+                p.lineTo(cx - h * 0.18f, cy + h * 0.18f);
+                p.close();
+                c.drawPath(p, solid);
+                break;
+            case CLAPPER:
+                c.drawRoundRect(cx - h * 0.85f, cy - h * 0.36f, cx + h * 0.85f, cy + h * 0.8f, h * 0.1f, h * 0.1f, stroke);
+                c.drawRect(cx - h * 0.85f, cy - h * 0.78f, cx + h * 0.85f, cy - h * 0.36f, stroke);
+                for (int i = -1; i <= 1; i++) {
+                    c.drawLine(cx + i * h * 0.55f - h * 0.12f, cy - h * 0.78f, cx + i * h * 0.55f + h * 0.12f, cy - h * 0.36f, stroke);
+                }
+                break;
+            case STACK:
+                c.drawRoundRect(cx - h * 0.85f, cy - h * 0.3f, cx + h * 0.85f, cy + h * 0.82f, h * 0.12f, h * 0.12f, stroke);
+                c.drawLine(cx - h * 0.62f, cy - h * 0.56f, cx + h * 0.62f, cy - h * 0.56f, stroke);
+                c.drawLine(cx - h * 0.38f, cy - h * 0.82f, cx + h * 0.38f, cy - h * 0.82f, stroke);
+                p.moveTo(cx - h * 0.16f, cy - h * 0.02f);
+                p.lineTo(cx + h * 0.28f, cy + h * 0.26f);
+                p.lineTo(cx - h * 0.16f, cy + h * 0.54f);
+                p.close();
+                c.drawPath(p, solid);
+                break;
+            case RECORD:
+                c.drawCircle(cx, cy, h * 0.82f, stroke);
+                c.drawCircle(cx, cy, h * 0.36f, solid);
+                break;
+            case BOOKMARK:
+                p.moveTo(cx - h * 0.56f, cy - h * 0.82f);
+                p.lineTo(cx + h * 0.56f, cy - h * 0.82f);
+                p.lineTo(cx + h * 0.56f, cy + h * 0.86f);
+                p.lineTo(cx, cy + h * 0.42f);
+                p.lineTo(cx - h * 0.56f, cy + h * 0.86f);
+                p.close();
+                c.drawPath(p, stroke);
+                break;
+            case CHECK:
+                p.moveTo(cx - h * 0.62f, cy + h * 0.02f);
+                p.lineTo(cx - h * 0.18f, cy + h * 0.46f);
+                p.lineTo(cx + h * 0.66f, cy - h * 0.42f);
+                c.drawPath(p, stroke);
+                break;
+            case STAR_LINE:
+                c.drawPath(Ui.star(cx, cy, h * 0.9f), stroke);
+                break;
+            case GEAR: {
+                // Eight teeth round the wheel, a hole in its middle.
+                float body = h * 0.6f, tip = h * 0.88f;
+                for (int i = 0; i < 8; i++) {
+                    double a = Math.PI * i / 4;
+                    for (int k = 0; k < 4; k++) {
+                        double at = a + Math.toRadians(k == 0 ? -17 : k == 1 ? -9 : k == 2 ? 9 : 17);
+                        float rad = k == 0 || k == 3 ? body : tip;
+                        float x = cx + (float) Math.cos(at) * rad, y = cy + (float) Math.sin(at) * rad;
+                        if (i == 0 && k == 0) p.moveTo(x, y);
+                        else p.lineTo(x, y);
+                    }
+                }
+                p.close();
+                c.drawPath(p, stroke);
+                c.drawCircle(cx, cy, h * 0.28f, stroke);
+                break;
+            }
             default:
                 break;
         }

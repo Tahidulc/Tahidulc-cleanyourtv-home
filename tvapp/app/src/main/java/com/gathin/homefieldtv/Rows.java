@@ -107,13 +107,13 @@ final class Rows extends View {
 
     private final Lift lift = new Lift();
     private final PosterArt art;
-    private final TextPaint headP = Dark.text(30, 600, Dark.TEXT);
+    private final TextPaint headP = Type.paint(30f, Type.MEDIUM, Palette.TEXT1), countP = Type.paint(Type.ROW, Type.REGULAR, Palette.TEXT2);
     private final TextPaint tTitle = Dark.text(25, 600, Dark.TEXT), tLine = Dark.text(19, 400, Dark.SOFT);
     private final TextPaint nameP = Dark.text(21, 500, Dark.MUTED), nameOn = Dark.text(21, 600, Dark.SOFT);
     private final TextPaint leftP = Dark.text(19, 500, Dark.MUTED), logoName = Dark.text(28, 700, Dark.TEXT);
     private final Paint bmp = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG), black = Dark.fill(0xFF000000);
     private final Paint card = Dark.fill(Dark.CARD), track = Dark.fill(0x40FFFFFF), bar = Dark.fill(Dark.ACCENT);
-    private final Paint ring = Dark.line(Dark.alpha(Dark.RING, 0xE6), 3f);
+    private final Paint ring = Dark.line(Palette.ACCENT_LIGHT, Focus.BORDER);
     private final RectF r = new RectF();
     private final Runnable redraw = this::invalidate;
 
@@ -312,8 +312,15 @@ final class Rows extends View {
     private void drawRow(Canvas c, Row x, float y, int a, boolean focusedRow, long now) {
         float x0 = Ui.f(left);
         if (!x.title.isEmpty()) {
-            headP.setAlpha(a);
-            c.drawText(Ui.fit(x.title, headP, getWidth() - x0 - Ui.f(60)), x0, y + Ui.f(36), headP);
+            // The row's name, and how far along it the remote is at the right ("3 / 25").
+            String count = x.tiles.isEmpty() ? "" : (Math.min(x.focus, x.tiles.size() - 1) + 1) + " / " + x.tiles.size();
+            float cw = countP.measureText(count), right = getWidth() - Ui.f(72);
+            headP.setColor(Palette.TEXT1);
+            headP.setAlpha(Math.round(a * ((Palette.TEXT1 >>> 24) & 0xFF) / 255f));
+            c.drawText(Ui.fit(x.title, headP, right - cw - Ui.f(40) - x0), x0, y + Ui.f(36), headP);
+            countP.setColor(Palette.TEXT2);
+            countP.setAlpha(Math.round(a * ((Palette.TEXT2 >>> 24) & 0xFF) / 255f));
+            c.drawText(count, right - cw, y + Ui.f(36), countP);
         }
         int k = x.kind;
         float ty = y + Ui.f(HEAD), tw = Ui.f(tileW(k)), pitch = tw + Ui.f(GAP);

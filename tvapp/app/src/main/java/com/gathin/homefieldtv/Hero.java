@@ -11,11 +11,11 @@ import android.view.View;
 import java.util.Locale;
 
 /**
- * The big picture at the top of Home, in the dark look of Films and TV shows (Billboard): whatever the remote is on,
- * its wide picture on the right fading into the dark (a Backdrop under this view, cross-fading into the next one's as
- * the remote moves), and at the left a small line over its title (a film's category, or a channel's logo), the title
- * large, a line of facts (the amber star and its rating, the running time, year and genres, the age rating in its box)
- * and a few lines of its story. The writing fades and rises into place a moment after the remote moves to another one.
+ * The big picture at the top of Home: whatever the remote is on, its wide picture on the right fading into the ground
+ * (a Backdrop under this view, cross-fading into the next one's as the remote moves), and at the left a small grey
+ * line over its title (a film's category, or a channel's logo), the title (medium), a grey line of facts (the rating in
+ * its grey chip, the running time, year and genres, the age rating in its box) and a few grey lines of its story. The
+ * writing fades and rises into place a moment after the remote moves to another one.
  */
 final class Hero extends View {
     /** Where the writing goes (design pixels): the small line's baseline at textY. */
@@ -31,10 +31,10 @@ final class Hero extends View {
     private float rating;
     private StaticLayout titleL, plotL;
 
-    private final TextPaint chipP = Dark.text(24, 500, Dark.MUTED), metaP = Dark.text(25, 500, Dark.SOFT);
-    private final TextPaint plotP = Dark.text(27, 400, 0xE6FFFFFF), ageP = Dark.text(19, 700, Dark.SOFT);
-    private TextPaint titleP = title(72f);
-    private final Paint star = Dark.fill(Dark.ACCENT), ageBox = Dark.line(0x99FFFFFF, 1.5f);
+    private final TextPaint chipP = Type.paint(Type.SMALL, Type.REGULAR, Palette.TEXT2), metaP = Type.paint(26f, Type.REGULAR, Palette.TEXT2);
+    private final TextPaint plotP = Type.paint(Type.ROW, Type.REGULAR, Palette.TEXT2), ageP = Type.paint(19f, Type.BOLD, Palette.TEXT2);
+    private TextPaint titleP = title(56f);
+    private final Paint ageBox = Dark.line(Palette.TEXT2, 1.5f);
     private final Paint bmp = new Paint(Paint.FILTER_BITMAP_FLAG);
     private final Runnable redraw = this::invalidate;
 
@@ -44,9 +44,7 @@ final class Hero extends View {
     }
 
     private static TextPaint title(float size) {
-        TextPaint p = Dark.text(size, 700, Dark.TEXT);
-        p.setLetterSpacing(-0.01f);
-        return p;
+        return Type.paint(size, Type.MEDIUM, Palette.TEXT1);
     }
 
     void setTitleSize(float size) {
@@ -98,14 +96,9 @@ final class Hero extends View {
         if (rating > 0 || !meta.isEmpty() || !badge.isEmpty()) {
             float base = y + Ui.f(10), mx = x;
             if (rating > 0) {
-                Dark.icon(c, Dark.STAR, mx + Ui.f(11), base - Ui.f(8), Ui.f(22), star, star);
+                // The rating in its grey chip, as a film's facts show it.
                 String r = String.format(Locale.UK, "%.1f", Math.min(10f, rating));
-                c.drawText(r, mx + Ui.f(28), base, metaP);
-                mx += Ui.f(28) + metaP.measureText(r);
-                if (!meta.isEmpty()) {
-                    c.drawText(" · ", mx, base, metaP);
-                    mx += metaP.measureText(" · ");
-                }
+                mx += Chips.grey(c, mx, base - Ui.f(9), r) + Ui.f(16);
             }
             if (!meta.isEmpty()) {
                 String m = Ui.fit(meta, metaP, Ui.f(textW) - (mx - x) - Ui.f(80));

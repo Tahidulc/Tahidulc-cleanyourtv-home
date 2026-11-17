@@ -3,7 +3,6 @@ package com.gathin.homefieldtv;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
-import android.text.TextPaint;
 import android.view.KeyEvent;
 import android.view.View;
 import android.widget.FrameLayout;
@@ -21,87 +20,97 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Settings, in the dark look: the rail, the sections down a side panel beside it (as Films' lists), and the section the
- * remote is on to the right under its name: the family's playlists (which are in use, when each runs out), adding an
- * M3U address or an Xtream Codes login with the on-screen keyboard (kept only when it gives live channels, typed on a
- * dark sheet that rises over the page), reading everything again, removing everything from this TV, and the rest. The
- * password is never shown, only dots; an address shows only its server's name. Left from the sections goes on to the
- * rail, as on every dark screen.
+ * Settings, as a panel down the right over the screen it was opened from (RightPanel: that screen dimmed, Settings in
+ * the band): the sections as rows, About last. OK on a section opens it as a page sliding in from the right, its name
+ * in the band and its lines as rows: each line's title with its value or description in grey under it, section names
+ * in the accent, notes in grey. Back goes back a page, the remote on the section it came from, and on the sections
+ * closes the panel. Each section's lines are as they were (the family's playlists and when each runs out, adding an M3U
+ * address or an Xtream Codes login, TorBox, reading everything again, removing everything, and the rest): typing goes on
+ * the on-screen keyboard over a dark sheet risen from the foot, a password only ever shows as dots and an address only
+ * its server's name. The colour theme is its own page (ThemeSettings): the primaries and the accents as colour discs,
+ * the pair in use ticked; OK keeps a choice and the screens are made again in it, Settings opening again on it.
  */
-final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Host {
+final class SettingsScreen extends Screen implements RightPanel.Host, Keyboard.Host {
     private static final List<String> MENU = Arrays.asList("Your playlists", "Add an M3U playlist", "Add an Xtream Codes login",
-            "TorBox", "Refresh now", "Remove everything", "Channel logos", "Theme", "Posters", "Live TV", "Reminders", "Updates",
-            "Scoreboard", "Sync", "About");
+            "TorBox", "Refresh now", "Remove everything", "Channel logos", "Colour theme", "Posters", "Live TV", "Reminders",
+            "Updates", "Scoreboard", "Sync", "About");
     static final int PLAYLISTS = 0, ADD_M3U = 1, ADD_XTREAM = 2, TORBOX = 3, REFRESH = 4, CLEAR = 5, LOGOS = 6, THEME = 7, POSTERS = 8,
             LIVE = 9, REMINDERS = 10, UPDATES = 11, SCOREBOARD = 12, SYNC = 13, ABOUT = 14;
 
-    /** Where the side panel of sections goes and where the section's page starts (design pixels). */
-    static final float PANEL_X = Rail.W, PANEL_W = SidePanel.W, PAGE_X = 616f, PAGE_W = 1224f;
-    private Rail rail;
-    private Frame frame;
-    private ListPanel menu, content;
-    private ThemePreview look;
-    /** Settings' player, sound and stream sections (MoreSettings), after Updates. */
+    /** The line the remote goes back to after the screens are made again for a new theme (-1: the usual one). */
+    private static int reopenFocus = -1;
+
+    private RightPanel panel;
+    /** Settings' player, sound and stream sections (MoreSettings), before About. */
     private MoreSettings more;
     private Keyboard keys;
     private Shade shade;
-    private boolean inContent, editing, confirm;
+    /** The sections in their order (tags: MENU's numbers, then MoreSettings'), and the open one's tag (-1: none). */
+    private final List<ListPanel.Item> menu = new ArrayList<>();
+    private int section = -1;
+    /** The open section's lines, as its helpers make them (the page shows them as rows, one for one). */
+    private List<ListPanel.Item> items = new ArrayList<>();
+    private boolean editing, confirm;
     private String editField = "", status = "", sub = "";
     // What is being typed in: kept on this screen only until the playlist is added.
     private String name = "", url = "", guide = "", server = "", user = "", pass = "";
+    /** Opened again on this section (a menu number) with no slide, after the screens are made again (-1: as usual). */
+    private final int reopen;
 
     SettingsScreen(TvActivity tv) {
+        this(tv, -1);
+    }
+
+    SettingsScreen(TvActivity tv, int reopenAt) {
         super(tv);
+        reopen = reopenAt;
     }
 
     @Override View build() {
         FrameLayout f = new FrameLayout(tv);
-        f.setBackgroundColor(Dark.GROUND);
-        rail = new Rail(tv, Rail.SETTINGS);
-        frame = new Frame(tv);
-        menu = new ListPanel(tv);
-        menu.pills = true;
-        menu.x = PANEL_X + 36f;
-        menu.y = 150f;
-        menu.w = PANEL_W - 72f;
-        menu.bottom = 1050f;
-        menu.setHost(this);
-        content = new ListPanel(tv);
-        content.x = PAGE_X;
-        content.y = 150f;
-        content.w = PAGE_W;
-        content.bottom = 1050f;
-        content.setHost(this);
-        look = new ThemePreview(tv);
-        look.setVisibility(View.GONE);
+        panel = new RightPanel(tv);
+        panel.setHost(this);
         shade = new Shade(tv);
         keys = new Keyboard(tv, Keyboard.FULL);
-        keys.x = (Rail.W + 1920f) / 2f - keys.width() / 2f;
+        keys.x = (1920f - keys.width()) / 2f;
         keys.y = Shade.TOP + 26f;
         keys.setHost(this);
         keys.setVisibility(View.GONE);
         shade.setVisibility(View.GONE);
-        f.addView(frame, new FrameLayout.LayoutParams(-1, -1));
-        f.addView(menu, new FrameLayout.LayoutParams(-1, -1));
-        f.addView(content, new FrameLayout.LayoutParams(-1, -1));
-        f.addView(look, new FrameLayout.LayoutParams(-1, -1));
-        f.addView(rail, new FrameLayout.LayoutParams(-1, -1));
+        f.addView(panel, new FrameLayout.LayoutParams(-1, -1));
         f.addView(shade, new FrameLayout.LayoutParams(-1, -1));
         f.addView(keys, new FrameLayout.LayoutParams(-1, -1));
-        List<ListPanel.Item> items = new ArrayList<>();
-        for (int i = 0; i < MENU.size(); i++) items.add(new ListPanel.Item(i, ListPanel.TEXT, MENU.get(i), ""));
+        for (int i = 0; i < MENU.size(); i++) menu.add(new ListPanel.Item(i, ListPanel.TEXT, MENU.get(i), ""));
         more = new MoreSettings(tv, (field, label, value, secret) -> openKeys(field, label));
-        MoreSettings.addSections(items, ABOUT);
-        items.get(UPDATES).dot = Updates.waiting(tv);
-        menu.setItems(items);
-        menu.setActive(true);
-        fillContent();
+        MoreSettings.addSections(menu, ABOUT);
         return f;
     }
 
+    /** Over the screen it was opened from, which stays on screen (dimmed), the live picture included. */
+    @Override boolean overlay() {
+        return true;
+    }
+
+    @Override boolean overVideo() {
+        return true;
+    }
+
+    @Override void opening() {
+        if (reopen >= 0) {
+            // The screens made again for a new theme: back where it was, with no slide.
+            panel.open("Settings", null, sectionRows(), reopen, false);
+            open(reopen, false);
+            return;
+        }
+        panel.open("Settings", null, sectionRows(), 0, true);
+    }
+
+    @Override boolean closing(Runnable done) {
+        panel.close(done);
+        return true;
+    }
+
     @Override void shown() {
-        tv.live.stop();
-        tv.live.place(null);
         tv.live.subs.watch(this::subsChanged);
         fillContent();
     }
@@ -112,14 +121,8 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
 
     /** The speech model on its way or in: Live TV's lines again, the remote where it was. */
     private void subsChanged() {
-        if (editing || content == null || section() != LIVE) return;
-        int at = content.focusIndex();
+        if (editing || section != LIVE) return;
         fillContent();
-        content.setFocus(at);
-    }
-
-    @Override void tick() {
-        rail.invalidate();
     }
 
     @Override void channelsChanged() {
@@ -130,52 +133,121 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
         channelsChanged();
     }
 
-    private int section() {
-        ListPanel.Item it = menu.item();
-        return it == null ? 0 : (Integer) it.tag;
+    /** The sections as rows: their names, the colour theme's under its name, a dot on Updates when one waits. */
+    private List<RowList.Row> sectionRows() {
+        List<RowList.Row> rows = new ArrayList<>();
+        for (ListPanel.Item it : menu) {
+            int tag = (Integer) it.tag;
+            RowList.Row r = RowList.Row.item(it, it.title, tag == THEME ? Theme.name() : "");
+            r.dot = tag == UPDATES && Updates.waiting(tv);
+            rows.add(r);
+        }
+        return rows;
+    }
+
+    /** Pure: a section's lines as rows, one for one (headings as section names, notes as notes). */
+    static List<RowList.Row> rows(List<ListPanel.Item> items) {
+        List<RowList.Row> out = new ArrayList<>(items.size());
+        for (ListPanel.Item it : items) {
+            RowList.Row r;
+            if (it.kind == ListPanel.HEADING) r = RowList.Row.header(it.title);
+            else if (it.kind == ListPanel.NOTE) r = RowList.Row.note(it.title);
+            else r = RowList.Row.item(it, it.title, it.subtitle);
+            r.dot = it.dot;
+            out.add(r);
+        }
+        return out;
     }
 
     /** Previews: a section open, with what was typed. */
     void preview(int sectionIndex, String n, String s, String u) {
-        menu.setFocus(sectionIndex);
         name = n;
         server = s;
         user = u;
         pass = "password";
-        fillContent();
+        if (section >= 0) panel.pop(sectionRows());
+        open(sectionIndex, false);
     }
 
-    /**
-     * Opened on a section with the remote in its list on what is chosen there: as the screens come back after a new
-     * theme or poster shape (TvActivity.restartLook), and for previews.
-     */
-    void openAt(int section) {
-        if (menu == null) return;
-        menu.setFocus(section);
-        fillContent();
-        toContent();
+    /** Opened on a section (its place in the list) with the remote in it on what is chosen there (previews). */
+    void openAt(int index) {
+        if (panel == null) return;
+        if (section >= 0) panel.pop(sectionRows());
+        open(index, false);
     }
 
-    private void fillContent() {
-        if (content == null) return;
-        ListPanel.Item at = menu.item();
-        frame.set(at == null ? "" : at.title);
-        List<ListPanel.Item> out = new ArrayList<>();
-        Library lib = Library.get(tv);
-        if (MoreSettings.owns(section())) {
-            more.fill(section(), out);
-            content.setItems(out);
-            look.setVisibility(View.GONE);
+    /** A section opened as a page: its name in the band, its lines as rows, the remote on what is chosen there. */
+    private void open(int index, boolean animate) {
+        if (index < 0 || index >= menu.size()) return;
+        section = (Integer) menu.get(index).tag;
+        status = "";
+        sub = "";
+        confirm = false;
+        more.reset();
+        String title = menu.get(index).title;
+        if (section == THEME) {
+            List<RowList.Row> rows = ThemeSettings.rows();
+            int at = reopenFocus >= 0 ? reopenFocus : ThemeSettings.focus(rows);
+            reopenFocus = -1;
+            panel.push(title, section, rows, at, animate);
             return;
         }
-        switch (section()) {
+        items = content(section);
+        int at = firstLine();
+        if (section == POSTERS) at = PosterArt.landscape ? 2 : 1;
+        else if (section == LIVE) at = LiveSettings.focus(tv);
+        if (reopenFocus >= 0) at = reopenFocus;
+        reopenFocus = -1;
+        panel.push(title, section, rows(items), at, animate);
+    }
+
+    private int firstLine() {
+        for (int i = 0; i < items.size(); i++) if (items.get(i).focusable()) return i;
+        return 0;
+    }
+
+    /** Back on the sections, the remote on the one it came from. */
+    private void toSections() {
+        section = -1;
+        items = new ArrayList<>();
+        panel.pop(sectionRows());
+    }
+
+    private int focusIndex() {
+        return panel.list().focusIndex();
+    }
+
+    private void setFocus(int i) {
+        panel.setFocus(i);
+    }
+
+    /** The open section's lines made again (the remote on the same line number), or the sections' rows. */
+    private void fillContent() {
+        if (panel == null) return;
+        if (section < 0) {
+            if (panel.depth() == 1) panel.set(sectionRows());
+            return;
+        }
+        if (section == THEME) return;
+        items = content(section);
+        panel.set(rows(items));
+    }
+
+    /** A section's lines, as its helpers give them. */
+    private List<ListPanel.Item> content(int sec) {
+        List<ListPanel.Item> out = new ArrayList<>();
+        Library lib = Library.get(tv);
+        if (MoreSettings.owns(sec)) {
+            more.fill(sec, out);
+            return out;
+        }
+        switch (sec) {
             case PLAYLISTS: {
                 if (!sub.isEmpty()) {
                     Sources.Entry e = Sources.get(tv, sub);
                     if (e == null) {
                         sub = "";
-                        fillContent();
-                        return;
+                        return content(sec);
                     }
                     out.add(new ListPanel.Item(null, ListPanel.HEADING, e.name, ""));
                     out.add(new ListPanel.Item("only", ListPanel.TEXT, "Use only this playlist", "The others stay, not in use"));
@@ -244,12 +316,6 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
                 out.add(new ListPanel.Item("plain", ListPanel.TEXT, "As the playlist gives them", Pics.tiles ? "The logos as they come" : "Chosen"));
                 out.add(new ListPanel.Item(null, ListPanel.NOTE, "In the guide, the channel banner, search and on Home.", ""));
                 break;
-            case THEME:
-                for (int i = 0; i < Theme.ALL.length; i++) {
-                    Theme th = Theme.ALL[i];
-                    out.add(new ListPanel.Item("theme:" + i, ListPanel.TEXT, th.name, (i == Theme.current() ? "Chosen  ·  " : "") + th.about));
-                }
-                break;
             case POSTERS: {
                 boolean wide = PosterArt.landscape;
                 out.add(new ListPanel.Item(null, ListPanel.HEADING, "Posters: Portrait / Landscape", ""));
@@ -286,14 +352,10 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
                 out.add(new ListPanel.Item(null, ListPanel.NOTE, "Hold OK on a channel to add it to your favourites.", ""));
                 out.add(new ListPanel.Item(null, ListPanel.NOTE, "Type a channel's number to go straight to it.", ""));
                 out.add(new ListPanel.Item(null, ListPanel.NOTE, "Back from Home goes back to the TV you were watching.", ""));
-                out.add(new ListPanel.Item(null, ListPanel.NOTE, "Font: Outfit (SIL Open Font License).", ""));
+                out.add(new ListPanel.Item(null, ListPanel.NOTE, "Scoreboard lettering: Outfit (SIL Open Font License).", ""));
                 break;
         }
-        content.setItems(out);
-        // The theme's picture under its list: the theme the remote is on there, else the one in use.
-        boolean themes = section() == THEME;
-        look.setVisibility(themes ? View.VISIBLE : View.GONE);
-        if (themes) look.show(inContent ? themeAt(content.item()) : Theme.current());
+        return out;
     }
 
     /**
@@ -313,10 +375,10 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
                 out.add(new ListPanel.Item(null, ListPanel.NOTE, "What's new:", ""));
                 for (String line : Updates.lines(o.notes, 70)) out.add(new ListPanel.Item(null, ListPanel.NOTE, line, ""));
             }
-            String sub = st == Updates.Stage.INSTALLING ? "Handing it to Android…"
+            String about = st == Updates.Stage.INSTALLING ? "Handing it to Android…"
                     : st == Updates.Stage.ASKING ? "Android is asking: press Update"
                     : Updates.megabytes(o.size) + "  ·  Android asks you to confirm";
-            out.add(new ListPanel.Item("update", ListPanel.TEXT, "Update now", sub));
+            out.add(new ListPanel.Item("update", ListPanel.TEXT, "Update now", about));
             if (!Updates.allowed(tv)) {
                 out.add(new ListPanel.Item(null, ListPanel.NOTE, "The first time, Android asks you to let Homefield TV install its updates.", ""));
             }
@@ -327,35 +389,31 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
         if (why != null && !why.isEmpty()) out.add(new ListPanel.Item(null, ListPanel.NOTE, why, ""));
     }
 
-    /** An update found, gone or under way: the menu's dot, and the Updates section when it is open. */
+    /** An update found, gone or under way: the sections' dot, and the Updates page when it is open. */
     @Override void updatesChanged() {
-        if (menu == null) return;
-        List<ListPanel.Item> items = menu.items();
-        if (items.size() > UPDATES) items.get(UPDATES).dot = Updates.waiting(tv);
-        menu.invalidate();
-        if (!editing && section() == UPDATES) {
-            ListPanel.Item at = content.item();
+        if (panel == null) return;
+        if (section < 0) {
+            fillContent();
+            return;
+        }
+        if (!editing && section == UPDATES) {
+            ListPanel.Item at = item();
             Object tag = at == null ? null : at.tag;
             fillContent();
             // The remote stays on the line it was on (Check for updates, or Update now).
-            List<ListPanel.Item> now = content.items();
-            for (int i = 0; tag != null && i < now.size(); i++) {
-                if (tag.equals(now.get(i).tag)) {
-                    content.setFocus(i);
+            for (int i = 0; tag != null && i < items.size(); i++) {
+                if (tag.equals(items.get(i).tag)) {
+                    setFocus(i);
                     break;
                 }
             }
         }
     }
 
-    /** The theme a line of the Theme section is for (the one in use for any other line). */
-    private static int themeAt(ListPanel.Item it) {
-        if (it == null || !(it.tag instanceof String) || !((String) it.tag).startsWith("theme:")) return Theme.current();
-        try {
-            return Integer.parseInt(((String) it.tag).substring(6));
-        } catch (NumberFormatException e) {
-            return Theme.current();
-        }
+    /** The line the remote is on, in the open section. */
+    private ListPanel.Item item() {
+        RowList.Row r = panel.list().focused();
+        return r != null && r.tag instanceof ListPanel.Item ? (ListPanel.Item) r.tag : null;
     }
 
     private String version() {
@@ -394,23 +452,7 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
 
     @Override boolean key(int code, KeyEvent e) {
         if (editing) return keys.key(code, e);
-        if (rail.active()) {
-            if (code == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                fromRail();
-                return true;
-            }
-            return rail.key(code) || code == KeyEvent.KEYCODE_DPAD_LEFT;
-        }
-        if (inContent) return content.key(code);
-        boolean used = menu.key(code);
-        if (used && code != KeyEvent.KEYCODE_DPAD_RIGHT && code != KeyEvent.KEYCODE_DPAD_LEFT) {
-            status = "";
-            sub = "";
-            confirm = false;
-            more.reset();
-            fillContent();
-        }
-        return used;
+        return panel.key(code);
     }
 
     @Override void ok() {
@@ -418,23 +460,7 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
             keys.ok();
             return;
         }
-        if (rail.active()) {
-            // Settings itself: back to the sections; anywhere else as the rail goes on every dark screen.
-            if (rail.focus == Rail.SETTINGS) fromRail();
-            else Rail.go(tv, rail.focus, Rail.SETTINGS);
-            return;
-        }
-        if (inContent) {
-            content.ok();
-            return;
-        }
-        toContent();
-    }
-
-    /** From the rail back to the sections. */
-    private void fromRail() {
-        rail.setActive(false);
-        menu.setActive(true);
+        panel.ok();
     }
 
     @Override boolean back() {
@@ -442,58 +468,40 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
             closeKeys();
             return true;
         }
-        if (rail.active()) {
-            fromRail();
+        if (section < 0) return false;
+        // A player, sound or stream setting's choices closed, the remote back on that setting.
+        int line = MoreSettings.owns(section) ? more.back(section) : MoreSettings.STAY;
+        if (line != MoreSettings.STAY) {
+            fillContent();
+            setFocus(line);
             return true;
         }
-        if (inContent) {
-            // A player, sound or stream setting's choices closed, the remote back on that setting.
-            int line = MoreSettings.owns(section()) ? more.back(section()) : MoreSettings.STAY;
-            if (line != MoreSettings.STAY) {
-                fillContent();
-                content.setFocus(line);
-                return true;
-            }
-            if (!sub.isEmpty() || confirm) {
-                sub = "";
-                confirm = false;
-                fillContent();
-                return true;
-            }
-            toMenu();
+        if (!sub.isEmpty() || confirm) {
+            sub = "";
+            confirm = false;
+            fillContent();
+            setFocus(firstLine());
             return true;
         }
-        return false;
+        toSections();
+        return true;
     }
 
-    private void toContent() {
-        if (!content.canFocus()) return;
-        inContent = true;
-        menu.setActive(false);
-        content.setActive(true);
-        // Into Theme or Posters on what is chosen there.
-        if (section() == THEME) {
-            content.setFocus(Theme.current());
-            look.show(themeAt(content.item()));
-        } else if (section() == POSTERS) {
-            content.setFocus(PosterArt.landscape ? 2 : 1);
-        } else if (section() == LIVE) {
-            content.setFocus(LiveSettings.focus(tv));
-        }
-    }
-
-    private void toMenu() {
-        inContent = false;
-        menu.setActive(true);
-        content.setActive(false);
-        if (section() == THEME) look.show(Theme.current());
-    }
-
-    @Override public void chosen(ListPanel list, ListPanel.Item item) {
-        if (list == menu) {
-            toContent();
+    @Override public void chosen(RightPanel p, RowList.Row row) {
+        if (section < 0) {
+            open(panel.list().focusIndex(), true);
             return;
         }
+        if (section == THEME) {
+            if (ThemeSettings.chosen(tv, row)) {
+                // Kept; every screen made again in its colours, back here on the same disc.
+                reopenFocus = panel.list().focusIndex();
+                tv.restartLook(menuIndex(THEME));
+            }
+            return;
+        }
+        if (!(row.tag instanceof ListPanel.Item)) return;
+        ListPanel.Item item = (ListPanel.Item) row.tag;
         Object tag = item.tag;
         if (!(tag instanceof String)) return;
         String t = (String) tag;
@@ -502,15 +510,15 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
             openKeys(t.substring(2), item.title);
             return;
         }
-        if (MoreSettings.owns(section())) {
-            int line = more.chosen(section(), t, content.items());
+        if (MoreSettings.owns(section)) {
+            int line = more.chosen(section, t, items);
             if (line != MoreSettings.STAY) {
                 fillContent();
-                content.setFocus(more.isOpen() ? more.focus(content.items()) : line);
+                setFocus(more.isOpen() ? more.focus(items) : line);
             }
             return;
         }
-        switch (section()) {
+        switch (section) {
             case PLAYLISTS:
                 if (t.equals("all")) {
                     Sources.setActive(tv, Sources.ALL);
@@ -529,39 +537,31 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
                     sub = t;
                 }
                 fillContent();
-                content.setFocus(sub.isEmpty() ? 0 : 1);
+                setFocus(sub.isEmpty() ? firstLine() : 1);
                 return;
             case ADD_M3U:
             case ADD_XTREAM:
                 if (t.equals("add")) add();
                 return;
             case TORBOX: {
-                int at = content.focusIndex();
+                int at = focusIndex();
                 if (TorBoxSettings.chosen(tv, t, this::torboxChanged)) {
                     fillContent();
                     // The remote stays on a line there is (Check and Forget go with the key).
-                    content.setFocus(Math.min(at, Math.max(0, content.items().size() - 1)));
+                    setFocus(Math.min(at, Math.max(0, items.size() - 1)));
                 }
                 return;
             }
             case LOGOS:
                 Pics.setTiles(tv, t.equals("tiles"));
                 fillContent();
-                content.setFocus(t.equals("tiles") ? 0 : 1);
+                setFocus(t.equals("tiles") ? 0 : 1);
                 return;
-            case THEME: {
-                // Kept, then every screen made again in its colours, back here on it.
-                int i = themeAt(item);
-                if (i == Theme.current()) return;
-                Theme.save(tv, i);
-                tv.restartLook(THEME);
-                return;
-            }
             case POSTERS: {
                 boolean wide = t.equals("wide");
                 if (wide == PosterArt.landscape) return;
                 PosterArt.setLandscape(tv, wide);
-                tv.restartLook(POSTERS);
+                tv.restartLook(menuIndex(POSTERS));
                 return;
             }
             case UPDATES:
@@ -594,44 +594,44 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
                     confirm = false;
                 }
                 fillContent();
-                content.setFocus(confirm ? 1 : 0);
+                setFocus(confirm ? 1 : 0);
                 return;
             case SCOREBOARD: {
-                int at = content.focusIndex();
+                int at = focusIndex();
                 if (BoardSettings.chosen(tv, t)) {
                     fillContent();
-                    content.setFocus(at);
+                    setFocus(at);
                 }
                 return;
             }
             case LIVE: {
-                int at = content.focusIndex();
+                int at = focusIndex();
                 if (LiveSettings.chosen(tv, t)) {
                     fillContent();
-                    content.setFocus(at);
+                    setFocus(at);
                 }
                 return;
             }
             case REMINDERS: {
-                int at = content.focusIndex();
+                int at = focusIndex();
                 if (ReminderSettings.chosen(tv, t)) {
                     fillContent();
                     // The remote stays on a line there is (one cancelled goes).
-                    content.setFocus(Math.min(at, Math.max(0, content.items().size() - 1)));
+                    setFocus(Math.min(at, Math.max(0, items.size() - 1)));
                 }
                 return;
             }
             case SYNC: {
-                int at = content.focusIndex();
+                int at = focusIndex();
                 Runnable again = () -> {
-                    if (section() != SYNC) return;
-                    int now = content.focusIndex();
+                    if (section != SYNC) return;
+                    int now = focusIndex();
                     fillContent();
-                    content.setFocus(now);
+                    setFocus(now);
                 };
                 if (SyncSettings.chosen(tv, t, again)) {
                     fillContent();
-                    content.setFocus(at);
+                    setFocus(at);
                 }
                 return;
             }
@@ -639,9 +639,15 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
         }
     }
 
+    /** A section's place in the list (its tag found), for opening Settings again on it. */
+    private int menuIndex(int tag) {
+        for (int i = 0; i < menu.size(); i++) if ((Integer) menu.get(i).tag == tag) return i;
+        return 0;
+    }
+
     /** The playlist tried, and kept only when it gives live channels. */
     private void add() {
-        boolean m3u = section() == ADD_M3U;
+        boolean m3u = section == ADD_M3U;
         Source s = m3u ? new Source(Source.M3U, url, guide, null, null, null) : new Source(Source.XTREAM, null, guide, server, user, pass);
         if (!s.usable()) {
             status = m3u ? "Type the playlist's address first." : "Type the server's address, the username and the password first.";
@@ -661,26 +667,10 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
         });
     }
 
-    /** Moving through the themes: the picture under them takes each one's colours (Theme is only kept on OK). */
-    @Override public void focused(ListPanel list, ListPanel.Item item) {
-        if (list == content && section() == THEME) look.show(themeAt(item));
-    }
+    @Override public void focused(RightPanel p, RowList.Row row) {}
 
-    @Override public boolean edge(ListPanel list, int dir) {
-        if (list == menu && dir == Ui.RIGHT) {
-            toContent();
-            return true;
-        }
-        if (list == content && dir == Ui.LEFT) {
-            toMenu();
-            return true;
-        }
-        if (list == menu && dir == Ui.LEFT) {
-            // On to the rail, as on every dark screen.
-            menu.setActive(false);
-            rail.setActive(true);
-            return true;
-        }
+    /** Left, Right and the lists' ends: nothing more to go to inside the panel. */
+    @Override public boolean edge(RightPanel p, int dir) {
         return true;
     }
 
@@ -688,10 +678,10 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
 
     /** TorBox answered a check: its words on the section's lines, the remote where it was. */
     private void torboxChanged() {
-        if (editing || content == null || section() != TORBOX) return;
-        int at = content.focusIndex();
+        if (editing || section != TORBOX) return;
+        int at = focusIndex();
         fillContent();
-        content.setFocus(Math.min(at, Math.max(0, content.items().size() - 1)));
+        setFocus(Math.min(at, Math.max(0, items.size() - 1)));
     }
 
     private void openKeys(String field, String label) {
@@ -706,14 +696,14 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
         keys.reset();
         keys.setVisibility(View.VISIBLE);
         shade.setVisibility(View.VISIBLE);
-        content.setActive(false);
+        panel.list().setActive(false);
     }
 
     private void closeKeys() {
         editing = false;
         keys.setVisibility(View.GONE);
         shade.setVisibility(View.GONE);
-        content.setActive(true);
+        panel.list().setActive(true);
         fillContent();
     }
 
@@ -762,37 +752,11 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
         return true;
     }
 
-    /** The side panel the sections lie on, with Settings over them, and the section's name over its page. */
-    private static final class Frame extends View {
-        private final Paint back = Dark.fill(Dark.PANEL), edge = Dark.fill(Dark.LINE);
-        private final TextPaint head = Dark.text(40, 600, Dark.TEXT);
-        private String title = "";
-
-        Frame(Context c) {
-            super(c);
-        }
-
-        void set(String section) {
-            String s = section == null ? "" : section;
-            if (s.equals(title)) return;
-            title = s;
-            invalidate();
-        }
-
-        @Override protected void onDraw(Canvas c) {
-            float x0 = Ui.f(PANEL_X), x1 = Ui.f(PANEL_X + PANEL_W);
-            c.drawRect(x0, 0, x1, getHeight(), back);
-            c.drawRect(x1 - Math.max(1f, Ui.f(1.5f)), 0, x1, getHeight(), edge);
-            c.drawText("Settings", x0 + Ui.f(40), Ui.f(100), head);
-            c.drawText(Ui.fit(title, head, Ui.f(PAGE_W)), Ui.f(PAGE_X), Ui.f(100), head);
-        }
-    }
-
-    /** The page darkened behind the keyboard, which sits on a dark sheet risen from the foot. */
+    /** The screen darkened behind the keyboard, which sits on a sheet of the panel's colour risen from the foot. */
     private static final class Shade extends View {
         /** The sheet's top (design pixels). */
         static final float TOP = 436f;
-        private final Paint dim = Dark.fill(0x99000000), sheet = Dark.fill(Dark.RAIL), edge = Dark.line(Dark.LINE, 1.5f);
+        private final Paint dim = Dark.fill(Palette.SCRIM), sheet = Dark.fill(Palette.PANEL), edge = Dark.line(Palette.DIVIDER, 2f);
 
         Shade(Context c) {
             super(c);
@@ -800,9 +764,9 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
 
         @Override protected void onDraw(Canvas c) {
             c.drawRect(0, 0, getWidth(), getHeight(), dim);
-            float l = Ui.f(Rail.W), t = Ui.f(TOP), rad = Ui.f(28);
-            c.drawRoundRect(l, t, getWidth() + rad, getHeight() + rad, rad, rad, sheet);
-            c.drawRoundRect(l, t, getWidth() + rad, getHeight() + rad, rad, rad, edge);
+            float t = Ui.f(TOP), rad = Ui.f(16);
+            c.drawRoundRect(-rad, t, getWidth() + rad, getHeight() + rad, rad, rad, sheet);
+            c.drawRoundRect(-rad, t, getWidth() + rad, getHeight() + rad, rad, rad, edge);
         }
     }
 }
