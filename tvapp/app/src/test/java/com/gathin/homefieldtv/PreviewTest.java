@@ -165,7 +165,12 @@ public class PreviewTest {
         a.openSettings();
         idle();
         shot(a, "16-settings");
-        ((SettingsScreen) a.top()).preview(2, "Home", "http://provider.example:8080", "family");
+        SettingsScreen st = (SettingsScreen) a.top();
+        st.openAt("playlists.add.xtream", -1);
+        st.previewTyped("f:name", "Home");
+        st.previewTyped("f:server", "http://provider.example:8080");
+        st.previewTyped("f:user", "family");
+        st.previewTyped("f:pass", "password");
         press(a, KeyEvent.KEYCODE_DPAD_DOWN, 2);
         shot(a, "17-settings-xtream");
         press(a, KeyEvent.KEYCODE_DPAD_CENTER);

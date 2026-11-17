@@ -6,9 +6,9 @@ import com.gathin.homefieldtv.sync.TvSync;
 import java.util.List;
 
 /**
- * Settings' Sync section: Homefield TV keeps the family's playlists, favourite and recent channels, Continue watching
- * and some settings the same as the phones and tablets, through the launcher on this TV (phone/tvhome-phone/SYNC.md).
- * When it last synced (OK: Sync now), and a switch for each kind, all on to begin with.
+ * Settings → General → Sync: Homefield TV keeps the family's playlists, favourite and recent channels, Continue
+ * watching and some settings the same as the phones and tablets, through the launcher on this TV
+ * (phone/tvhome-phone/SYNC.md). When it last synced (OK: Sync now), and a switch for each kind, all on to begin with.
  */
 final class SyncSettings {
     private SyncSettings() {}
@@ -20,30 +20,23 @@ final class SyncSettings {
             {TvLiveSync.WATCHING, "Continue watching", "Where each film and episode is up to"},
             {TvLiveSync.SETTINGS, "Settings", "Posters and the scoreboard"}};
 
-    /** The section's lines, as the settings list shows them. */
-    static void fill(TvActivity tv, List<ListPanel.Item> out) {
-        out.add(new ListPanel.Item(null, ListPanel.HEADING, "Sync with your phones and tablets", ""));
-        out.add(new ListPanel.Item("now", ListPanel.TEXT, "Sync now", TvSync.status(tv)));
-        out.add(new ListPanel.Item(null, ListPanel.HEADING, "What syncs", ""));
+    /** The page's rows: Sync now and when it last synced, then a switch for each kind. */
+    static void rows(TvActivity tv, List<RowList.Row> out) {
+        out.add(RowList.Row.item("now", "Sync now", TvSync.status(tv)));
+        out.add(RowList.Row.header("What syncs"));
         for (String[] k : KINDS) {
             String what = TvLiveSync.PLAYLISTS.equals(k[0]) && TvLiveSync.offByRemoveEverything(tv)
-                    ? "Since Remove everything on this TV: OK to take in the family's playlists again" : k[2];
-            out.add(new ListPanel.Item("kind:" + k[0], ListPanel.TEXT, k[1], (TvLiveSync.on(tv, k[0]) ? "On" : "Off") + "  ·  " + what));
+                    ? "Since Remove everything on this TV: on takes in the family's playlists again" : k[2];
+            out.add(RowList.Row.toggle("kind:" + k[0], k[1], what, TvLiveSync.on(tv, k[0])));
         }
-        out.add(new ListPanel.Item(null, ListPanel.NOTE, "Through the launcher on this TV, which passes them on to your phones, tablets and other TVs.", ""));
-        out.add(new ListPanel.Item(null, ListPanel.NOTE, "TorBox's key stays on each device.", ""));
-    }
-
-    /** Remove everything's question: what it does to the family's other devices (nothing) and to Playlists sync here. */
-    static void removeNote(List<ListPanel.Item> out) {
-        out.add(new ListPanel.Item(null, ListPanel.NOTE, "From this TV only: your phones, tablets and other TVs keep theirs.", ""));
-        out.add(new ListPanel.Item(null, ListPanel.NOTE, "Playlists sync is switched off here so they don't come straight back; Sync turns it on again.", ""));
+        out.add(RowList.Row.note("Through the launcher on this TV, which passes them on to your phones, tablets and other TVs. "
+                + "TorBox's key stays on each device."));
     }
 
     /** Under Remove everything, once done: Playlists sync is off on this TV. */
-    static void removedNote(TvActivity tv, List<ListPanel.Item> out) {
+    static void removedNote(TvActivity tv, List<RowList.Row> out) {
         if (!TvLiveSync.offByRemoveEverything(tv)) return;
-        out.add(new ListPanel.Item(null, ListPanel.NOTE, "Removed from this TV only. Playlists sync is off here: Sync turns it on again.", ""));
+        out.add(RowList.Row.note("Removed from this TV only. Playlists sync is off here: Sync turns it on again."));
     }
 
     /** Remove everything chosen: clear (what it removes) for this TV only, with Playlists sync switched off (TvLiveSync). */

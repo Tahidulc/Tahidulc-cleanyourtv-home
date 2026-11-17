@@ -633,7 +633,8 @@ public final class VodActivity extends Activity {
                                 "S" + next.season + " E" + next.number + (next.title.isEmpty() ? "" : "  ·  " + next.title), pic, 0,
                                 next.minutes * 60_000L, System.currentTimeMillis()));
                         nextQueued = true;
-                        h.postDelayed(nextEpisode, 10_000);
+                        // Settings → Other → VOD → Autoplay next episode: on by itself after a few seconds, else on OK.
+                        if (com.gathin.homefieldtv.prefs.OtherPrefs.autoplayNext(VodActivity.this)) h.postDelayed(nextEpisode, 10_000);
                     } else {
                         h.postDelayed(VodActivity.this::finish, 1500);
                     }
@@ -723,7 +724,8 @@ public final class VodActivity extends Activity {
                     c.drawText("UP NEXT", r.left + Ui.f(32), r.top + Ui.f(50), nextKicker);
                     c.drawText(Ui.fit("S" + next.season + " E" + next.number + (next.title.isEmpty() ? "" : "  " + next.title), nextP,
                             r.width() - Ui.f(64)), r.left + Ui.f(32), r.top + Ui.f(102), nextP);
-                    c.drawText("Starts in a few seconds  ·  OK to start it now", r.left + Ui.f(32), r.top + Ui.f(146), nextSmall);
+                    c.drawText(com.gathin.homefieldtv.prefs.OtherPrefs.autoplayNext(getContext())
+                            ? "Starts in a few seconds  ·  OK to start it now" : "OK to start it", r.left + Ui.f(32), r.top + Ui.f(146), nextSmall);
                 }
             }
             if (!barOn || player == null && !Exec.inline) return;

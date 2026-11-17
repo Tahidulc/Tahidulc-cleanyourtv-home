@@ -244,12 +244,15 @@ public class BigPlaylistTest {
         time("TV shows: opened", 3, () -> a.openBrowse(true), () -> home(a));
         a.openBrowse(false);
         idle();
-        // Left to the side panel, then All films: one grid of every film.
-        press(a, KeyEvent.KEYCODE_DPAD_LEFT);
+        // The categories' column opens on All movies: up to the playlists' heading, then down onto All movies again,
+        // one grid of every film shown at once as the remote lands on it.
+        press(a, KeyEvent.KEYCODE_DPAD_UP);
         time("Films: All films chosen (30,000 posters)", 1, () -> {
             press(a, KeyEvent.KEYCODE_DPAD_DOWN);
             shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(250));
         });
+        // Into the posters, and along them.
+        time("Films: into the posters and along them", 5, () -> press(a, KeyEvent.KEYCODE_DPAD_RIGHT));
         home(a);
         a.openSearch();
         idle();

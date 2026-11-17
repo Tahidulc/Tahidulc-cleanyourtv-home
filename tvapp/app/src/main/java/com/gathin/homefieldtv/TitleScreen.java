@@ -17,16 +17,20 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * A film's or a series' page, dark: its backdrop filling the screen, its title large at the top left, and at the foot
- * Play (or Resume where it was left) with round buttons beside it (My list's heart, from the start, the trailer), the
- * story and facts in the middle and who is in it on the right. Down from there: for a series its seasons as pills over
- * one row of every episode, season after season, the season's pill moving along as the row goes (and a season chosen
- * sliding the row to its first episode); then the trailer, the cast, and more from its category.
+ * A film's or a series' page, as the family's other app has it: its picture on the right fading into the ground, its
+ * words at the top left (VodHero: title and year, rating, facts, cast, director, story), and the buttons and rows
+ * under them (DetailPage). A film: Play, or Resume and Play from beginning where it was left part-way. A series:
+ * Resume S2 E8 (or Play S1 E1) and Play from beginning, then its seasons' rows of episodes. Round buttons after them:
+ * the trailer (in the TV's YouTube app), My list's bookmark (with a plus, or filled once on it), and where something
+ * was started, taking it off Continue watching. Play shows every source first, the best first (VodActivity's Choose a
+ * source); Resume carries on straight away from the copy it was started on.
  */
 final class TitleScreen extends Screen implements DetailPage.Host {
     private Catalog.Title title;
     private Catalog.Details details;
     private boolean asked, asking;
+    private VodHero hero;
+    private Backdrop picture;
     private DetailPage page;
 
     TitleScreen(TvActivity tv, Catalog.Title t) {
@@ -36,8 +40,13 @@ final class TitleScreen extends Screen implements DetailPage.Host {
 
     @Override View build() {
         FrameLayout f = new FrameLayout(tv);
-        f.setBackgroundColor(Dark.GROUND);
-        page = new DetailPage(tv, this);
+        f.setBackgroundColor(Palette.GROUND);
+        picture = new Backdrop(tv, 560f, 0f, 1360f, 765f, Pics.DARK);
+        hero = new VodHero(tv);
+        hero.w = 860f;
+        page = new DetailPage(tv, this, hero);
+        f.addView(picture, new FrameLayout.LayoutParams(-1, -1));
+        f.addView(hero, new FrameLayout.LayoutParams(-1, -1));
         f.addView(page, new FrameLayout.LayoutParams(-1, -1));
         details = Catalog.get(tv).cachedDetails(title);
         fill();
@@ -84,36 +93,44 @@ final class TitleScreen extends Screen implements DetailPage.Host {
         List<DetailPage.Button> buttons = new ArrayList<>();
         if (!title.series) {
             if (p != null && p.position > 0) {
-                buttons.add(new DetailPage.Button("Resume  ·  " + Ui.left(p.duration - p.position), -1, () -> tv.play(title, null, p.position, false)));
-                buttons.add(new DetailPage.Button("From the start", Dark.RESTART, () -> tv.play(title, null, 0, true)));
+                buttons.add(new DetailPage.Button("Resume", Dark.PLAY, true, () -> tv.play(title, null, p.position, false)));
+                buttons.add(new DetailPage.Button("Play from beginning", Dark.RESTART, true, () -> tv.play(title, null, 0, true)));
             } else {
-                buttons.add(new DetailPage.Button("Play", -1, () -> tv.play(title, null, 0, true)));
+                buttons.add(new DetailPage.Button("Play", Dark.PLAY, true, () -> tv.play(title, null, 0, true)));
             }
         } else if (details == null) {
-            buttons.add(new DetailPage.Button(asked && !asking ? "Couldn't get the episodes: try again" : "Finding the episodes…", -1, this::ask));
+            buttons.add(new DetailPage.Button(asked && !asking ? "Couldn't get the episodes: try again" : "Finding the episodes…",
+                    Dark.PLAY, true, this::ask));
         } else {
             List<Catalog.Episode> all = details.episodes();
             Catalog.Episode resume = p == null ? null : details.episode(p.episode);
             if (resume != null) {
-                String label = (p.position > 0 ? "Resume" : "Play") + " S" + resume.season + " E" + resume.number
-                        + (p.position > 0 ? "  ·  " + Ui.left(p.duration - p.position) : "");
+                String label = (p.position > 0 ? "Resume" : "Play") + " S" + resume.season + " E" + resume.number;
                 // Resume: straight away from the copy it was started on; an episode from its start (the next one): every source first.
-                buttons.add(new DetailPage.Button(label, -1, () -> tv.play(title, resume, p.position, p.position <= 0)));
+                buttons.add(new DetailPage.Button(label, Dark.PLAY, true, () -> tv.play(title, resume, p.position, p.position <= 0)));
+                if (!all.isEmpty()) {
+                    Catalog.Episode first = all.get(0);
+                    buttons.add(new DetailPage.Button("Play from beginning", Dark.RESTART, true, () -> tv.play(title, first, 0, true)));
+                }
             } else if (!all.isEmpty()) {
                 Catalog.Episode first = all.get(0);
-                buttons.add(new DetailPage.Button("Play S" + first.season + " E" + first.number, -1, () -> tv.play(title, first, 0, true)));
+                buttons.add(new DetailPage.Button("Play S" + first.season + " E" + first.number, Dark.PLAY, true,
+                        () -> tv.play(title, first, 0, true)));
             } else {
-                buttons.add(new DetailPage.Button(title.torbox() ? "No episodes in your TorBox" : "No episodes in your playlist", -1, () -> { }));
-            }
-            if (resume != null && !all.isEmpty()) {
-                Catalog.Episode first = all.get(0);
-                buttons.add(new DetailPage.Button("From the first episode", Dark.RESTART, () -> tv.play(title, first, 0, true)));
+                buttons.add(new DetailPage.Button(title.torbox() ? "No episodes in your TorBox" : "No episodes in your playlist",
+                        Dark.PLAY, true, () -> { }));
             }
         }
-        boolean on = MyList.has(tv, title.key);
-        buttons.add(1, new DetailPage.Button(on ? "On My list" : "Add to My list", on ? Dark.HEART_FULL : Dark.HEART, this::toggleList));
         String trailer = trailerId(details == null ? "" : details.trailer);
-        if (!trailer.isEmpty()) buttons.add(new DetailPage.Button("Trailer", Dark.PLAY, () -> trailer(trailer)));
+        if (!trailer.isEmpty()) {
+            buttons.add(new DetailPage.Button("Trailer", DetailPage.GLYPH + Glyphs.TRAILER, false, () -> trailer(trailer)));
+        }
+        boolean on = MyList.has(tv, title.key);
+        buttons.add(new DetailPage.Button(on ? "On My list" : "Add to My list", DetailPage.GLYPH + (on ? Glyphs.BOOKMARK_ON
+                : Glyphs.BOOKMARK_ADD), false, this::toggleList));
+        if (p != null) {
+            buttons.add(new DetailPage.Button("Remove from Continue watching", DetailPage.GLYPH + Glyphs.TRASH, false, this::forget));
+        }
 
         List<PosterArt.Item> more = new ArrayList<>();
         for (Catalog.Category c : Catalog.get(tv).categories(title.series)) {
@@ -129,7 +146,9 @@ final class TitleScreen extends Screen implements DetailPage.Host {
                 more.add(it);
             }
         }
-        page.set(title, details, buttons, trailer, more, resumeEpisode(p));
+        hero.show(title, details, title.torbox() ? Catalog.TORBOX : "");
+        picture.set(details != null && !details.backdrop.isEmpty() ? details.backdrop : title.backdrop);
+        page.set(title, details, buttons, more, resumeEpisode(p));
     }
 
     private String resumeEpisode(Resume.Point p) {
@@ -139,6 +158,13 @@ final class TitleScreen extends Screen implements DetailPage.Host {
     private void toggleList() {
         boolean on = MyList.toggle(tv, title.key);
         Toast.makeText(tv, on ? title.name + " added to My list" : title.name + " taken off My list", Toast.LENGTH_SHORT).show();
+        fill();
+    }
+
+    /** Taken off Continue watching (every episode's place, for a series). */
+    private void forget() {
+        Resume.remove(tv, title.key);
+        Toast.makeText(tv, title.name + " taken off Continue watching", Toast.LENGTH_SHORT).show();
         fill();
     }
 
@@ -185,10 +211,6 @@ final class TitleScreen extends Screen implements DetailPage.Host {
         tv.openTitle(t);
     }
 
-    @Override public void trailerChosen(String id) {
-        trailer(id);
-    }
-
     @Override public void left() {
         tv.pop();
     }
@@ -196,5 +218,10 @@ final class TitleScreen extends Screen implements DetailPage.Host {
     @Override public float progress(Catalog.Episode ep) {
         Resume.Point p = Resume.get(tv, title.key, ep.id);
         return p == null || p.position <= 0 ? -1f : p.progress();
+    }
+
+    /** Previews: the remote on a row (-1: the buttons) and along it. */
+    void previewFocus(int row, int along) {
+        page.focus(row, along);
     }
 }

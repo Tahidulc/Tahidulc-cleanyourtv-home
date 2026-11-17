@@ -8,43 +8,33 @@ import com.gathin.homefieldtv.sports.InStep;
 import java.util.List;
 
 /**
- * Settings' Scoreboard section: the scoreboard over matches in the player (BoardLayer) and the cover over the channel's
- * logo on or off, the look (the Scoreboard Lab's and By competition), what comes out of it, the pop-ups, the kick-off's
- * card and the sounds; each line's OK changes it (a look steps on to the next). Moving and sizing are done over the match
- * itself (OK held there), as on the launcher.
+ * Settings → Other → Scoreboard: the scoreboard over matches in the player (BoardLayer) and the cover over the channel's
+ * logo, each with its switch; the look (the Scoreboard Lab's and By competition) and the goal sound, OK stepping on to
+ * the next; the alerts, pop-ups, the kick-off's card and the swishes. Moving and sizing are done over the match itself
+ * (OK held there), as on the launcher.
  */
 final class BoardSettings {
     private BoardSettings() {}
 
-    private static String onOff(boolean on) {
-        return on ? "On" : "Off";
+    /** The page's rows. */
+    static void rows(Context c, List<RowList.Row> out) {
+        out.add(RowList.Row.toggle("board", "Scoreboard", "Over a match you're watching, in step with your channel", BoardPrefs.on(c)));
+        out.add(RowList.Row.toggle("logo", "Logo cover", "Over the channel's own logo while a match is on", BoardPrefs.logoOn(c)));
+        out.add(RowList.Row.item("look", "Look", BoardPrefs.style(c).label + "  ·  OK for the next"));
+        out.add(RowList.Row.header("Alerts and pop-ups"));
+        out.add(RowList.Row.toggle("drops", "Alerts beside the board", "Cards, substitutions, VAR, added time, half and full time",
+                BoardPrefs.dropsOn(c)));
+        out.add(RowList.Row.toggle("var", "VAR explained", "The check, then the decision and why", BoardPrefs.varExplainedOn(c)));
+        out.add(RowList.Row.toggle("popup", "Kick-off and goal pop-ups", "The kick-off, after a goal and the second half", BoardPrefs.popupOn(c)));
+        out.add(RowList.Row.toggle("lineups", "Line-ups before kick-off", "Both elevens, seven minutes before", BoardPrefs.lineupsOn(c)));
+        out.add(RowList.Row.toggle("ask", "Ask at each kick-off", "OK as it kicks off sets the clock with your channel's", InStep.asking(c)));
+        out.add(RowList.Row.header("Sounds"));
+        out.add(RowList.Row.item("sound", "Goal sound", Sfx.goalName(BoardPrefs.goalSound(c)) + "  ·  OK for the next"));
+        out.add(RowList.Row.toggle("swish", "Swishes", "As alerts slide out and the new score pops up", BoardPrefs.swishOn(c)));
+        out.add(RowList.Row.note("Over a match, hold OK for the scoreboard's menu: the look, timing, moving and sizing it and the logo cover."));
     }
 
-    /** The section's lines, as the settings list shows them. */
-    static void fill(Context c, List<ListPanel.Item> out) {
-        out.add(new ListPanel.Item(null, ListPanel.HEADING, "Scoreboard over matches", ""));
-        out.add(new ListPanel.Item("board", ListPanel.TEXT, "Scoreboard", onOff(BoardPrefs.on(c))
-                + "  ·  Over a match you're watching, in step with your channel"));
-        out.add(new ListPanel.Item("logo", ListPanel.TEXT, "Logo cover", onOff(BoardPrefs.logoOn(c))
-                + "  ·  Over the channel's own logo while a match is on"));
-        out.add(new ListPanel.Item("look", ListPanel.TEXT, "Look", BoardPrefs.style(c).label + "  ·  OK for the next"));
-        out.add(new ListPanel.Item("drops", ListPanel.TEXT, "Alerts beside the board", onOff(BoardPrefs.dropsOn(c))
-                + "  ·  Cards, substitutions, VAR, added time, half and full time"));
-        out.add(new ListPanel.Item("var", ListPanel.TEXT, "VAR explained", onOff(BoardPrefs.varExplainedOn(c))
-                + "  ·  The check, then the decision and why"));
-        out.add(new ListPanel.Item("popup", ListPanel.TEXT, "Kick-off and goal pop-ups", onOff(BoardPrefs.popupOn(c))
-                + "  ·  The kick-off, after a goal and the second half"));
-        out.add(new ListPanel.Item("lineups", ListPanel.TEXT, "Line-ups before kick-off", onOff(BoardPrefs.lineupsOn(c))
-                + "  ·  Both elevens, seven minutes before"));
-        out.add(new ListPanel.Item("ask", ListPanel.TEXT, "Ask at each kick-off", onOff(InStep.asking(c))
-                + "  ·  OK as it kicks off sets the clock with your channel's"));
-        out.add(new ListPanel.Item("sound", ListPanel.TEXT, "Goal sound", Sfx.goalName(BoardPrefs.goalSound(c)) + "  ·  OK for the next"));
-        out.add(new ListPanel.Item("swish", ListPanel.TEXT, "Swishes", onOff(BoardPrefs.swishOn(c))
-                + "  ·  As alerts slide out and the new score pops up"));
-        out.add(new ListPanel.Item(null, ListPanel.NOTE, "Over a match, hold OK for the scoreboard's menu: the look, timing, moving and sizing it and the logo cover.", ""));
-    }
-
-    /** A line chosen: what it sets, changed (true), or not one of the section's (false). */
+    /** A row chosen: what it sets, changed (true), or not one of the page's (false). */
     static boolean chosen(Context c, String tag) {
         switch (tag) {
             case "board": BoardPrefs.setOn(c, !BoardPrefs.on(c)); return true;

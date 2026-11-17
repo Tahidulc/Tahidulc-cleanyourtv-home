@@ -53,10 +53,9 @@ final class SourcePicker extends View {
     private final Handler h = new Handler(Looper.getMainLooper());
     private final Runnable idle = this::close;
     private final Mark mark = new Mark();
-    private final Paint panel = Dark.fill(Dark.alpha(Dark.PANEL, 0xF5)), hi = Dark.fill(Dark.CARD_HI);
-    private final Paint ring = Dark.line(Dark.alpha(Dark.RING, 0xE6), 3f), edge = Dark.line(0x26FFFFFF, 1.5f);
+    private final Paint panel = Dark.fill(Palette.PANEL);
     private final Paint chip = Dark.line(0x66FFFFFF, 1.5f), tick = Dark.line(Dark.TEXT, 3.2f);
-    private final TextPaint title = Dark.text(34, 700, Dark.TEXT), sub = Dark.text(22, 500, Dark.MUTED);
+    private final TextPaint title = Type.paint(Type.PICKER, Type.MEDIUM, Palette.TEXT1), sub = Dark.text(22, 500, Dark.MUTED);
     private final TextPaint chipP = Dark.text(20, 700, Dark.SOFT), status = Dark.text(22, 700, Dark.TEXT);
     private final TextPaint detail = Dark.text(21, 500, Dark.MUTED), hint = Dark.text(21, 500, Dark.MUTED);
     private final TextPaint torboxHead = Dark.text(19, 700, TORBOX_SOFT), iptvHead = Dark.text(19, 700, IPTV_SOFT);
@@ -322,8 +321,10 @@ final class SourcePicker extends View {
         if (!open || lines.isEmpty()) return;
         float x = Ui.f(choosing ? CHOOSE_X : X), w = Ui.f(choosing ? CHOOSE_W : W);
         r.set(x, Ui.f(TOP), x + w, Ui.f(BOTTOM));
-        c.drawRoundRect(r, Ui.f(26), Ui.f(26), panel);
-        c.drawRoundRect(r, Ui.f(26), Ui.f(26), edge);
+        // As the panels draw a list: the panel's colour (over a film, the playback panels'), corners of 16.
+        panel.setColor(choosing ? Palette.PANEL : Palette.PLAYBACK);
+        c.drawRoundRect(r, Ui.f(16), Ui.f(16), panel);
+        title.setColor(Palette.TEXT1);
         c.drawText(choosing ? "Choose a source" : "Play from", x + Ui.f(36), Ui.f(TOP + 62), title);
         String count = choosing
                 ? plays.size() + " sources  ·  the best first  ·  the others stay as backups: change between them while it plays"
@@ -371,10 +372,8 @@ final class SourcePicker extends View {
     private void drawCopy(Canvas c, int index, boolean on, float x, float w, float y) {
         Catalog.Play p = plays.get(index);
         r.set(x + Ui.f(18), Ui.f(y + 4), x + w - Ui.f(18), Ui.f(y + ROW - 4));
-        if (on) {
-            c.drawRoundRect(r, Ui.f(18), Ui.f(18), hi);
-            c.drawRoundRect(r, Ui.f(18), Ui.f(18), ring);
-        }
+        // Where the remote is: the focus pill (the accent at 37.5 %).
+        if (on) Focus.pill(c, r);
         float left = x + Ui.f(40), right = x + w - Ui.f(40);
         float cy = Ui.f(y + 38);
         float mx = left + mark.draw(c, left, cy, Ui.f(38), p.torbox, p.playlist, Ui.f(240));

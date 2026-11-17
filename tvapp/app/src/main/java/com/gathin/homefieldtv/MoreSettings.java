@@ -1,351 +1,579 @@
 package com.gathin.homefieldtv;
 
-import com.gathin.homefieldtv.engine.Sources;
+import com.gathin.homefieldtv.backups.BackupStore;
+import com.gathin.homefieldtv.engine.Library;
+import com.gathin.homefieldtv.engine.Resume;
 import com.gathin.homefieldtv.prefs.General;
 import com.gathin.homefieldtv.prefs.Look;
+import com.gathin.homefieldtv.prefs.OtherPrefs;
 import com.gathin.homefieldtv.prefs.PlayerPrefs;
 import com.gathin.homefieldtv.prefs.RemoteKeys;
+import com.gathin.homefieldtv.sync.TvSync;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 
 /**
- * Settings' own sections beside the playlists', as a TV player's settings go: Player (the buffer for live TV and for
- * films, the picture's quality — Adaptive or a fixed one —, the decoders, the picture's shape, matching the TV's refresh
- * rate, tunnelled playback, the channel banner), Sound (passed through or decoded, two speakers, languages, its delay),
- * Stream problems (reconnecting, the provider's adaptive stream, a playlist's own user agent), General (the screen it
- * starts on, starting with the TV), Appearance (the clock, programme times, the words' size, the live screen's tiles, the
- * guide's rows, progress bars, channel numbers) and Remote (Up and Down, OK, OK held, the number keys' wait, the channel
- * before, the colour keys). Each line opens its choices in place; a switch changes with OK. Guide, Categories, Parental
- * control and Backup are ExtraSettings', handed over whole.
+ * Settings' General, Appearance, Playback, Remote control, Other and About pages, in the family's other app's order and
+ * with its names where Homefield TV has the same setting; Homefield's own settings after them on the same page, under
+ * their own section names where there are several (SettingsScreen lists them all).
  *
- * SettingsScreen shows them before About (their sections' tags from BASE), hands them OK and Back, and opens its
- * keyboard for what is typed (fields named "m:…").
+ * <pre>
+ *   general              Auto start app on boot · Start on · Back up data · Restore data › · Sync › · Remove everything
+ *   appearance           TV guide › · Player › · Groups › · Logos › · Font size · Color theme › · Posters · Programme times
+ *   appearance.guide     Show channel numbers · Rows in the guide · Progress bars
+ *   appearance.player    Clock · Panels timeout, sec · Live TV's channel tiles
+ *   appearance.logos     Channel logos (on black tiles, or as the playlist gives them)
+ *   playback             Buffer size · Decoder · Auto frame rate (AFR) · Audio passthrough · Tunneled playback; Picture;
+ *                        Sound (Sound languages ›); Subtitles ›; Stream problems
+ *   remote.player        OK · Long OK · Up / Down · Channel up and down · Number keys wait · The channel before; Color keys
+ *   other                Search › · Reminders › · Recording › · VOD › · Scoreboard ›
+ *   about                Version · Updates ›, and a few words about Homefield TV
+ * </pre>
+ *
+ * Rows are tagged by what OK does: "page:" opens a page, "pick:" a setting's choices, "tog:" flips a switch, "do:" acts.
  */
-final class MoreSettings {
-    static final int BASE = 100;
-    static final int PLAYER = BASE, SOUND = BASE + 1, PROBLEMS = BASE + 2, GENERAL = BASE + 3, LOOK = BASE + 4, REMOTE = BASE + 5,
-            GUIDE = BASE + 6, CATEGORIES = BASE + 7, PARENTAL = BASE + 8, BACKUP = BASE + 9;
-    static final String[] NAMES = {"Player", "Sound", "Stream problems", "General", "Appearance", "Remote", "Guide", "Categories",
-            "Parental control", "Backup"};
-    /** chosen(): nothing to focus after it. */
-    static final int STAY = -1;
-
-    /** What MoreSettings asks of the Settings screen: its keyboard for something typed. */
-    interface Host {
-        void type(String field, String label, String value, boolean secret);
-    }
+final class MoreSettings implements SettingsScreen.Pages {
+    /** The sound delays offered (the player's menu goes 50 ms at a time). */
+    static final int[] DELAYS = {-500, -400, -300, -200, -150, -100, -50, 0, 50, 100, 150, 200, 300, 400, 500};
+    /** The font sizes as the other app names them (Medium: as Homefield came). */
+    static final String[] FONT_NAMES = {"Small", "Medium", "Large", "Extra large"};
+    /** Where Homefield starts, as a choice of the screen it opens on (Live TV: the last channel turned on). */
+    static final String[] START_NAMES = {"Home", "Live TV, the last channel turned on", "TV guide", "Movies", "TV shows"};
+    /** Panels timeout, sec: how long the channel banner stays (PlayerPrefs.BANNER_SECONDS). */
+    static final String[] TIMEOUT_NAMES = {"Off", "3", "6", "10"};
+    static final String[] LOGO_NAMES = {"On black tiles", "As the playlist gives them"};
+    static final String[] POSTER_NAMES = {"Portrait", "Landscape"};
+    static final String[] ON_OFF = {"Off", "On"};
 
     private final TvActivity tv;
-    private final Host host;
-    /** Guide, Categories, Parental control and Backup. */
-    private final ExtraSettings extra;
-    /** The setting whose choices are open ("" for its section's own lines). */
-    private String open = "";
+    private final SettingsScreen s;
 
-    MoreSettings(TvActivity tv, Host host) {
+    MoreSettings(TvActivity tv, SettingsScreen s) {
         this.tv = tv;
-        this.host = host;
-        this.extra = new ExtraSettings(tv, host);
+        this.s = s;
     }
 
-    /** The sections, into Settings' menu at a place (before About). */
-    static void addSections(List<ListPanel.Item> menu, int at) {
-        for (int i = 0; i < NAMES.length; i++) menu.add(Math.min(at + i, menu.size()), new ListPanel.Item(BASE + i, ListPanel.TEXT, NAMES[i], ""));
+    // ---- the pages ------------------------------------------------------------------------------------------------
+
+    @Override public boolean owns(String page) {
+        return !page.isEmpty();
     }
 
-    static boolean owns(int section) {
-        return section >= BASE && section < BASE + NAMES.length;
-    }
-
-    /** Another section chosen in the menu: its choices closed. */
-    void reset() {
-        open = "";
-        extra.reset();
-    }
-
-    /** Back in a section: its open choices closed, the line to put the remote on (its setting's); STAY when none was open. */
-    int back(int section) {
-        if (section >= GUIDE) return extra.back(section);
-        if (open.isEmpty()) return STAY;
-        String was = open;
-        open = "";
-        return lineOf(section, was);
-    }
-
-    /** Whether a setting's choices are open. */
-    boolean isOpen() {
-        return !open.isEmpty() || extra.isOpen();
-    }
-
-    // ---- the lines ------------------------------------------------------------------------------------------------
-
-    void fill(int section, List<ListPanel.Item> out) {
-        if (section >= GUIDE) {
-            extra.fill(section, out);
-            return;
+    @Override public String title(String page) {
+        switch (page) {
+            case "general": return "General";
+            case "general.sync": return "Sync";
+            case "appearance": return "Appearance";
+            case "appearance.guide": return "TV guide";
+            case "appearance.player": return "Player";
+            case "appearance.logos": return "Logos";
+            case "theme": return "Color theme";
+            case "playback": return "Playback";
+            case "playback.subtitles": return "Subtitles";
+            case "playback.languages": return "Sound languages";
+            case "remote": return "Remote control";
+            case "remote.player": return "Player";
+            case "other": return "Other";
+            case "other.search": return "Search";
+            case "other.reminders": return "Reminders";
+            case "other.recording": return "Recording";
+            case "other.vod": return "VOD";
+            case "other.scoreboard": return "Scoreboard";
+            case "about": return "About";
+            case "about.updates": return "Updates";
+            default: return "";
         }
-        if (!open.isEmpty()) {
-            choices(open, out);
-            return;
-        }
-        switch (section) {
-            case PLAYER:
-                out.add(line("buffer.live", "Buffer for live TV", PlayerPrefs.BUFFER_NAMES[PlayerPrefs.buffer(tv, true)]
-                        + "  ·  " + PlayerPrefs.BUFFER_ABOUT[PlayerPrefs.buffer(tv, true)]));
-                out.add(line("buffer.vod", "Buffer for films and episodes", PlayerPrefs.BUFFER_NAMES[PlayerPrefs.buffer(tv, false)]
-                        + "  ·  " + PlayerPrefs.BUFFER_ABOUT[PlayerPrefs.buffer(tv, false)]));
-                out.add(new ListPanel.Item(null, ListPanel.NOTE, PlayerPrefs.BUFFER_HINT, ""));
-                int q = PlayerPrefs.indexOf(PlayerPrefs.QUALITY_CHOICES, PlayerPrefs.quality(tv));
-                out.add(line("quality", "Picture quality", PlayerPrefs.QUALITY_NAMES[q] + "  ·  " + PlayerPrefs.QUALITY_ABOUT[q]));
-                out.add(line("decoder", "Decoder", PlayerPrefs.DECODER_NAMES[PlayerPrefs.decoder(tv)] + "  ·  "
-                        + PlayerPrefs.DECODER_ABOUT[PlayerPrefs.decoder(tv)]));
-                out.add(line("aspect", "Picture for channels", PlayerPrefs.ASPECT_NAMES[PlayerPrefs.aspect(tv)] + "  ·  "
-                        + PlayerPrefs.ASPECT_ABOUT[PlayerPrefs.aspect(tv)]));
-                out.add(line("aspect.vod", "Picture for films and episodes", PlayerPrefs.ASPECT_NAMES[PlayerPrefs.vodAspect(tv)] + "  ·  "
-                        + PlayerPrefs.ASPECT_ABOUT[PlayerPrefs.vodAspect(tv)]));
-                out.add(toggle("afr", "Match frame rate", PlayerPrefs.matchFrameRate(tv),
-                        "The TV's refresh rate set to the programme's (50 Hz for UK channels) while you watch"));
-                out.add(toggle("tunnel", "Tunnelled playback", PlayerPrefs.tunnelled(tv),
-                        "Smoother on some TVs; the sound's delay can't be moved then"));
-                out.add(line("banner", "Channel banner", PlayerPrefs.BANNER_NAMES[PlayerPrefs.indexOf(PlayerPrefs.BANNER_SECONDS,
-                        PlayerPrefs.bannerSeconds(tv))] + "  ·  How long it stays when you change channel"));
-                out.add(new ListPanel.Item(null, ListPanel.NOTE, "While watching, MENU or the settings key opens the player's menu: "
-                        + "each channel's own picture, the sound's delay and track.", ""));
-                out.add(new ListPanel.Item(null, ListPanel.NOTE, "Changes start with the next channel or film.", ""));
-                break;
-            case SOUND:
-                out.add(toggle("passthrough", "Sound to your amplifier or soundbar", PlayerPrefs.passthrough(tv),
-                        "Dolby Digital, Dolby Digital Plus and DTS sent as they are, when what's plugged in can play them"));
-                out.add(toggle("downmix", "Two speakers (stereo)", PlayerPrefs.downmix(tv),
-                        "Surround sound mixed down to two, decoded on this TV"));
-                out.add(line("languages", "Sound languages", languages()));
-                out.add(line("delay", "Sound delay", PlayerPrefs.delayWords(PlayerPrefs.delayMs(tv))));
-                out.add(new ListPanel.Item(null, ListPanel.NOTE, "Fine-tune the delay while watching, in the player's menu.", ""));
-                break;
-            case GENERAL:
-                general(out);
-                break;
-            case LOOK:
-                look(out);
-                break;
-            case REMOTE:
-                remote(out);
-                break;
+    }
+
+    /** Pure: the picture's shapes' names in the order the player's Display mode lists them (PlayerPrefs.DISPLAY_ORDER). */
+    static String[] shapeNames() {
+        String[] n = new String[PlayerPrefs.DISPLAY_ORDER.length];
+        for (int i = 0; i < n.length; i++) n[i] = PlayerPrefs.ASPECT_NAMES[PlayerPrefs.DISPLAY_ORDER[i]];
+        return n;
+    }
+
+    /** Pure: a shape's line in that order (the first for one not in it). */
+    static int shapeAt(int mode) {
+        for (int i = 0; i < PlayerPrefs.DISPLAY_ORDER.length; i++) if (PlayerPrefs.DISPLAY_ORDER[i] == mode) return i;
+        return 0;
+    }
+
+    /** Pure: the page a setting's choices are opened from. */
+    static String pageOf(String key) {
+        switch (key) {
+            case "start": return "general";
+            case "text": case "posters": case "times": return "appearance";
+            case "rows": return "appearance.guide";
+            case "clock": case "banner": case "tiles": return "appearance.player";
+            case "logos": return "appearance.logos";
+            case "subs.look": case "subs.size": return "playback.subtitles";
+            case "updown": case "direction": case "ok": case "oklong": case "wait": case "previous": return "remote.player";
+            case "rec.before": case "rec.after": return "other.recording";
+            case "x.lists.hours": return "playlists";
+            case "x.guide.hours": case "x.shift": return "epg";
+            case "x.mode": return "parental";
+            case "x.sorting": return "appearance.groups";
             default:
-                out.add(line("retries", "When a channel drops", "Connect again: " + PlayerPrefs.RETRY_NAMES[PlayerPrefs.indexOf(
-                        PlayerPrefs.RETRY_COUNTS, PlayerPrefs.retries(tv))] + "  ·  1, 2, 4, 8, then 10 seconds apart"));
-                out.add(toggle("hls", "The provider's adaptive stream", PlayerPrefs.hlsFirst(tv),
-                        "HLS tried first for a channel given as MPEG-TS, kept only where it plays"));
-                out.add(new ListPanel.Item(null, ListPanel.NOTE, "Picture quality Adaptive: a channel that drops is tried twice at once, "
-                        + "then its copy in another playlist, then a step down, all as the same channel; then these tries.", ""));
-                List<Sources.Entry> all = Sources.list(tv);
-                if (!all.isEmpty()) out.add(new ListPanel.Item(null, ListPanel.HEADING, "User agent", ""));
-                for (Sources.Entry e : all) {
-                    String ua = PlayerPrefs.agentFor(tv, e.id);
-                    out.add(new ListPanel.Item("type:ua:" + e.id, ListPanel.TEXT, e.name,
-                            ua.isEmpty() ? "The app's own (or the channel's)" : ua));
-                }
-                if (!all.isEmpty()) {
-                    out.add(new ListPanel.Item(null, ListPanel.NOTE, "Only for a provider that asks for one; leave it empty for the app's own.", ""));
-                }
+                return key.startsWith("colour.") ? "remote.player" : "playback";
+        }
+    }
+
+    @Override public List<RowList.Row> rows(String page) {
+        List<RowList.Row> out = new ArrayList<>();
+        switch (page) {
+            case "general": general(out); break;
+            case "general.sync": SyncSettings.rows(tv, out); break;
+            case "appearance": appearance(out); break;
+            case "appearance.guide":
+                out.add(tog("numbers", "Show channel numbers", "", Look.numbers));
+                out.add(pick("rows", "Rows in the guide", Look.ROWS_NAMES[Look.rows]));
+                out.add(tog("progress", "Progress bars", "How far through each programme is, in the guide and on live TV", Look.progress));
                 break;
+            case "appearance.player":
+                out.add(pick("clock", "Clock", Look.CLOCK_NAMES[Look.clock]));
+                out.add(pick("banner", "Panels timeout, sec", TIMEOUT_NAMES[bannerIndex()]));
+                out.add(pick("tiles", "Live TV's channel tiles", Look.TILES_NAMES[Look.logos ? 1 : 0]));
+                break;
+            case "appearance.logos":
+                out.add(pick("logos", "Channel logos", LOGO_NAMES[Pics.tiles ? 0 : 1]));
+                out.add(RowList.Row.note("In the TV guide, the channel banner, search and on Home."));
+                break;
+            case "theme": return ThemeSettings.rows();
+            case "playback": playback(out); break;
+            case "playback.subtitles": LiveSettings.rows(tv, out); break;
+            case "playback.languages": languages(out); break;
+            case "remote":
+                out.add(page("remote.player", "Player", ""));
+                out.add(RowList.Row.note("The keys while a channel is on full screen."));
+                break;
+            case "remote.player": remote(out); break;
+            case "other":
+                out.add(page("other.search", "Search", ""));
+                out.add(page("other.reminders", "Reminders", ""));
+                out.add(page("other.recording", "Recording", ""));
+                out.add(page("other.vod", "VOD", ""));
+                out.add(page("other.scoreboard", "Scoreboard", ""));
+                break;
+            case "other.search":
+                out.add(tog("history", "Show search history", "", OtherPrefs.showHistory(tv)));
+                out.add(tog("favfirst", "Show favorite channels first", "", OtherPrefs.favouritesFirst(tv)));
+                break;
+            case "other.reminders": ReminderSettings.rows(tv, out); break;
+            case "other.recording": RecordingsScreen.settingsRows(tv, out); break;
+            case "other.vod":
+                out.add(tog("autonext", "Autoplay next episode", "", OtherPrefs.autoplayNext(tv)));
+                break;
+            case "other.scoreboard": BoardSettings.rows(tv, out); break;
+            case "about": about(out); break;
+            case "about.updates": updates(out); break;
+            default: break;
         }
+        return out;
     }
 
-    /** General: the screen it starts on, and starting with the TV (with Android's own permission for it, where needed). */
-    private void general(List<ListPanel.Item> out) {
-        int s = General.start(tv);
-        String about = General.START_ABOUT[s];
-        out.add(line("start", "Start on", General.START_NAMES[s] + (about.isEmpty() ? "" : "  ·  " + about)));
-        out.add(toggle("boot", "Start when the TV starts", General.onBoot(tv), "Homefield TV opens as the TV finishes starting"));
+    /** General: as the other app's, then Homefield's own Sync and Remove everything. */
+    private void general(List<RowList.Row> out) {
+        out.add(tog("boot", "Auto start app on boot", "", General.onBoot(tv)));
         if (General.onBoot(tv) && !General.mayOpenAtBoot(tv)) {
-            out.add(new ListPanel.Item("do:overlay", ListPanel.TEXT, "Allow it to open at start-up",
-                    "Android wants \"Display over other apps\" allowed for Homefield TV first"));
+            out.add(RowList.Row.item("do:overlay", "Allow it to open at start-up", "Android wants \"Display over other apps\" allowed first"));
         }
-        out.add(new ListPanel.Item(null, ListPanel.NOTE, "Start on is used when Homefield TV starts afresh, not when you come back to it.", ""));
+        out.add(pick("start", "Start on", START_NAMES[General.start(tv)]));
+        BackupStore.Kept last = BackupStore.kept(tv, BackupStore.LAST);
+        out.add(RowList.Row.item("do:backup", "Back up data", last == null ? "" : "Last: " + when(last.contents.made)
+                + (ExtraSettings.savedWhere().isEmpty() ? "" : "  ·  " + ExtraSettings.savedWhere())));
+        out.add(page("general.restore", "Restore data", ""));
+        out.add(page("general.sync", "Sync", TvSync.status(tv)));
+        out.add(RowList.Row.item("do:remove", "Remove everything", "Your playlists, channels and favourites, from this TV only"));
+        SyncSettings.removedNote(tv, out);
     }
 
-    /** Appearance: the clock, programme times, the words' size, the live screen's tiles, the guide, progress bars, numbers. */
-    private void look(List<ListPanel.Item> out) {
-        out.add(line("clock", "Clock", Look.CLOCK_NAMES[Look.clock] + "  ·  " + Look.CLOCK_ABOUT[Look.clock]));
-        int t = Look.times24 ? 0 : 1;
-        out.add(line("times", "Programme times", Look.TIMES_NAMES[t] + "  ·  " + Look.TIMES_ABOUT[t]));
-        out.add(line("text", "Text size", Look.TEXT_NAMES[Look.textSize]));
-        int tiles = Look.logos ? 1 : 0;
-        out.add(line("tiles", "Live TV's channel tiles", Look.TILES_NAMES[tiles] + "  ·  " + Look.TILES_ABOUT[tiles]));
-        out.add(line("rows", "Rows in the guide", Look.ROWS_NAMES[Look.rows] + "  ·  " + Look.ROWS_ABOUT[Look.rows]));
-        out.add(toggle("progress", "Progress bars", Look.progress, "How far through each programme is, in the guide and on live TV"));
-        out.add(toggle("numbers", "Channel numbers", Look.numbers, "Beside each channel in the guide and on live TV"));
+    /** Appearance: the other app's sub-pages and settings, then Homefield's posters and programme times. */
+    private void appearance(List<RowList.Row> out) {
+        out.add(page("appearance.guide", "TV guide", ""));
+        out.add(page("appearance.player", "Player", ""));
+        out.add(page("appearance.groups", "Groups", ""));
+        out.add(page("appearance.logos", "Logos", ""));
+        out.add(pick("text", "Font size", FONT_NAMES[Look.textSize]));
+        out.add(page("theme", "Color theme", Theme.name()));
+        out.add(pick("posters", "Posters", POSTER_NAMES[PosterArt.landscape ? 1 : 0]));
+        out.add(pick("times", "Programme times", Look.TIMES_NAMES[Look.times24 ? 0 : 1]));
     }
 
-    /** Remote: for live TV full screen. */
-    private void remote(List<ListPanel.Item> out) {
-        out.add(line("updown", "Up and Down", RemoteKeys.UPDOWN_NAMES[RemoteKeys.upDown(tv)]));
-        out.add(line("direction", "Channel up and down", RemoteKeys.DIRECTION_NAMES[RemoteKeys.reversed(tv) ? 1 : 0]));
-        out.add(line("ok", "OK", RemoteKeys.ACTION_NAMES[RemoteKeys.ok(tv)]));
-        out.add(line("oklong", "OK held", RemoteKeys.ACTION_NAMES[RemoteKeys.okLong(tv)]
-                + "  ·  over a match, the scoreboard's menu first"));
-        out.add(line("wait", "Number keys wait", RemoteKeys.WAIT_NAMES[PlayerPrefs.indexOf(RemoteKeys.WAITS_MS, RemoteKeys.waitMs(tv))]
-                + "  ·  before changing channel"));
-        out.add(line("previous", "The channel before", RemoteKeys.PREVIOUS_NAMES[RemoteKeys.previous(tv)]));
-        out.add(new ListPanel.Item(null, ListPanel.HEADING, "Colour keys", ""));
+    /** Playback: the other app's lines first, then Homefield's picture, sound, subtitles and stream settings. */
+    private void playback(List<RowList.Row> out) {
+        out.add(pick("buffer.live", "Buffer size", PlayerPrefs.BUFFER_NAMES[PlayerPrefs.buffer(tv, true)]));
+        out.add(pick("buffer.vod", "Buffer size for movies and episodes", PlayerPrefs.BUFFER_NAMES[PlayerPrefs.buffer(tv, false)]));
+        out.add(pick("decoder", "Decoder", PlayerPrefs.DECODER_NAMES[PlayerPrefs.decoder(tv)]));
+        out.add(pick("afr", "Auto frame rate (AFR)", ON_OFF[PlayerPrefs.matchFrameRate(tv) ? 1 : 0]));
+        out.add(tog("passthrough", "Audio passthrough", "Dolby Digital, Dolby Digital Plus and DTS to your amplifier or soundbar",
+                PlayerPrefs.passthrough(tv)));
+        out.add(tog("tunnel", "Tunneled playback", "Smoother on some TVs; the sound's delay can't be moved then", PlayerPrefs.tunnelled(tv)));
+        out.add(RowList.Row.header("Picture"));
+        int q = PlayerPrefs.indexOf(PlayerPrefs.QUALITY_CHOICES, PlayerPrefs.quality(tv));
+        out.add(pick("quality", "Picture quality", PlayerPrefs.QUALITY_NAMES[q]));
+        out.add(pick("aspect", "Picture for channels", PlayerPrefs.ASPECT_NAMES[PlayerPrefs.aspect(tv)]));
+        out.add(pick("aspect.vod", "Picture for movies and episodes", PlayerPrefs.ASPECT_NAMES[PlayerPrefs.vodAspect(tv)]));
+        out.add(RowList.Row.header("Sound"));
+        out.add(tog("downmix", "Two speakers (stereo)", "Surround sound mixed down to two, decoded on this TV", PlayerPrefs.downmix(tv)));
+        out.add(page("playback.languages", "Sound languages", languageNames()));
+        out.add(pick("delay", "Sound delay", PlayerPrefs.delayWords(PlayerPrefs.delayMs(tv))));
+        out.add(RowList.Row.header("Subtitles"));
+        out.add(page("playback.subtitles", "Subtitles on live TV", LiveSubs.MODES[LiveSubs.mode(tv)]));
+        out.add(RowList.Row.header("Stream problems"));
+        out.add(pick("retries", "When a channel drops", PlayerPrefs.RETRY_NAMES[PlayerPrefs.indexOf(PlayerPrefs.RETRY_COUNTS,
+                PlayerPrefs.retries(tv))]));
+        out.add(tog("hls", "The provider's adaptive stream", "HLS tried first for a channel given as MPEG-TS, kept only where it plays",
+                PlayerPrefs.hlsFirst(tv)));
+        out.add(RowList.Row.note("While watching, MENU (or OK held) brings up the player's bar: Display mode, Audio offset and Audio "
+                + "tracks there are each channel's own. Changes here start with the next channel or film."));
+    }
+
+    /** The sound's languages, each with its switch, the order they were switched on in under them. */
+    private void languages(List<RowList.Row> out) {
+        List<String> on = PlayerPrefs.languages(tv);
+        for (String code : PlayerPrefs.LANGUAGE_CODES) {
+            int at = on.indexOf(code);
+            out.add(RowList.Row.toggle("lang:" + code, PlayerPrefs.languageName(code), at >= 0 ? ordinal(at + 1) + " choice" : "", at >= 0));
+        }
+        out.add(RowList.Row.note("The first one a channel or film has plays; at least one stays on."));
+    }
+
+    /** Remote control › Player: the keys on full-screen live TV. */
+    private void remote(List<RowList.Row> out) {
+        out.add(pick("ok", "OK", RemoteKeys.ACTION_NAMES[RemoteKeys.ok(tv)]));
+        out.add(pick("oklong", "Long OK", RemoteKeys.ACTION_NAMES[RemoteKeys.okLong(tv)]));
+        out.add(pick("updown", "Up / Down", RemoteKeys.UPDOWN_NAMES[RemoteKeys.upDown(tv)]));
+        out.add(pick("direction", "Channel up and down", RemoteKeys.DIRECTION_NAMES[RemoteKeys.reversed(tv) ? 1 : 0]));
+        out.add(pick("wait", "Number keys wait", RemoteKeys.WAIT_NAMES[PlayerPrefs.indexOf(RemoteKeys.WAITS_MS, RemoteKeys.waitMs(tv))]));
+        out.add(pick("previous", "The channel before", RemoteKeys.PREVIOUS_NAMES[RemoteKeys.previous(tv)]));
+        out.add(RowList.Row.header("Color keys"));
         for (int i = 0; i < RemoteKeys.COLOUR_NAMES.length; i++) {
-            out.add(line("colour." + i, RemoteKeys.COLOUR_NAMES[i], RemoteKeys.ACTION_NAMES[RemoteKeys.colour(tv, i)]));
+            out.add(pick("colour." + i, RemoteKeys.COLOUR_NAMES[i], RemoteKeys.ACTION_NAMES[RemoteKeys.colour(tv, i)]));
         }
-        out.add(new ListPanel.Item(null, ListPanel.NOTE, "These are for live TV full screen.", ""));
+        out.add(RowList.Row.note("Over a match, Long OK opens the scoreboard's menu first."));
     }
 
-    private static ListPanel.Item line(String key, String title, String sub) {
-        return new ListPanel.Item("set:" + key, ListPanel.TEXT, title, sub);
+    /** About: the version, Updates, and the few words Homefield's About had. */
+    private void about(List<RowList.Row> out) {
+        out.add(RowList.Row.item("about:version", "Version", "Homefield TV " + version()));
+        Updates.Offer o = Updates.ready(tv);
+        RowList.Row u = page("about.updates", "Updates", o != null ? "Homefield TV " + o.name + " is ready to install"
+                : Updates.stage() == Updates.Stage.CHECKING ? "Looking for an update…"
+                : Updates.checked(Updates.checkedAt(tv), System.currentTimeMillis(), java.time.ZoneId.systemDefault()));
+        u.dot = Updates.waiting(tv);
+        out.add(u);
+        out.add(RowList.Row.note("Live TV, the guide, movies and TV shows come only from your own playlists, which stay on this TV "
+                + "in the app's own storage."));
+        out.add(RowList.Row.header("Adding a login from a computer"));
+        out.add(RowList.Row.note("adb shell content insert --uri content://com.gathin.homefieldtv.setup/xtream "
+                + "--bind server:s:… --bind user:s:… --bind pass:s:…"));
+        out.add(RowList.Row.header("The remote"));
+        out.add(RowList.Row.note("Add a channel to your favourites from the player's bar (OK held, or MENU). Type a channel's number "
+                + "to go straight to it."));
+        out.add(RowList.Row.note("Scoreboard lettering: Outfit (SIL Open Font License)."));
     }
 
-    private static ListPanel.Item toggle(String key, String title, boolean on, String about) {
-        return new ListPanel.Item("tog:" + key, ListPanel.TEXT, title, (on ? "On" : "Off") + "  ·  " + about);
+    /**
+     * Updates: the version on this TV, Check for updates (and when it last looked), and when a newer one is waiting its
+     * name, what's new in it and Update now; why not, when something stood in the way.
+     */
+    private void updates(List<RowList.Row> out) {
+        Updates.Stage st = Updates.stage();
+        Updates.Offer o = Updates.ready(tv);
+        out.add(RowList.Row.item("about:version", "Installed", "Homefield TV " + version()));
+        String when = st == Updates.Stage.CHECKING ? "Looking for an update…"
+                : Updates.checked(Updates.checkedAt(tv), System.currentTimeMillis(), java.time.ZoneId.systemDefault());
+        out.add(RowList.Row.item("do:check", "Check for updates", when));
+        if (o != null) {
+            out.add(RowList.Row.header("Homefield TV " + o.name + " is ready"));
+            String about = st == Updates.Stage.INSTALLING ? "Handing it to Android…"
+                    : st == Updates.Stage.ASKING ? "Android is asking: press Update"
+                    : Updates.megabytes(o.size) + "  ·  Android asks you to confirm";
+            RowList.Row now = RowList.Row.item("do:update", "Update now", about);
+            now.dot = true;
+            out.add(now);
+            if (!o.notes.isEmpty()) {
+                out.add(RowList.Row.header("What's new"));
+                out.add(RowList.Row.note(String.join("\n", Updates.lines(o.notes, 70))));
+            }
+            if (!Updates.allowed(tv)) out.add(RowList.Row.note("The first time, Android asks you to let Homefield TV install its updates."));
+        } else if (st == Updates.Stage.IDLE && Updates.checkedAt(tv) > 0 && Updates.problem() == null) {
+            out.add(RowList.Row.note("Homefield TV is up to date."));
+        }
+        String why = Updates.problem();
+        if (why != null && !why.isEmpty()) out.add(RowList.Row.note(why));
     }
 
-    private String languages() {
+    // ---- rows -----------------------------------------------------------------------------------------------------
+
+    static RowList.Row page(String page, String title, String value) {
+        return RowList.Row.item("page:" + page, title, value);
+    }
+
+    static RowList.Row pick(String key, String title, String value) {
+        return RowList.Row.item("pick:" + key, title, value);
+    }
+
+    static RowList.Row tog(String key, String title, String value, boolean on) {
+        return RowList.Row.toggle("tog:" + key, title, value, on);
+    }
+
+    private int bannerIndex() {
+        return Math.max(0, PlayerPrefs.indexOf(PlayerPrefs.BANNER_SECONDS, PlayerPrefs.bannerSeconds(tv)));
+    }
+
+    private String languageNames() {
         List<String> names = new ArrayList<>();
         for (String code : PlayerPrefs.languages(tv)) names.add(PlayerPrefs.languageName(code));
         return String.join(", ", names);
     }
 
-    /** A setting's choices, the one in use marked. */
-    private void choices(String key, List<ListPanel.Item> out) {
-        String[] names;
-        String[] about = null;
-        int chosen;
-        switch (key) {
-            case "buffer.live":
-                names = PlayerPrefs.BUFFER_NAMES;
-                about = PlayerPrefs.BUFFER_ABOUT;
-                chosen = PlayerPrefs.buffer(tv, true);
-                break;
-            case "buffer.vod":
-                names = new String[]{"", PlayerPrefs.BUFFER_NAMES[1], PlayerPrefs.BUFFER_NAMES[2], PlayerPrefs.BUFFER_NAMES[3], PlayerPrefs.BUFFER_NAMES[4]};
-                about = PlayerPrefs.BUFFER_ABOUT;
-                chosen = PlayerPrefs.buffer(tv, false);
-                break;
-            case "decoder":
-                names = PlayerPrefs.DECODER_NAMES;
-                about = PlayerPrefs.DECODER_ABOUT;
-                chosen = PlayerPrefs.decoder(tv);
-                break;
-            case "quality":
-                names = PlayerPrefs.QUALITY_NAMES;
-                about = PlayerPrefs.QUALITY_ABOUT;
-                chosen = PlayerPrefs.indexOf(PlayerPrefs.QUALITY_CHOICES, PlayerPrefs.quality(tv));
-                break;
-            case "aspect":
-                names = PlayerPrefs.ASPECT_NAMES;
-                about = PlayerPrefs.ASPECT_ABOUT;
-                chosen = PlayerPrefs.aspect(tv);
-                break;
-            case "aspect.vod":
-                names = PlayerPrefs.ASPECT_NAMES;
-                about = PlayerPrefs.ASPECT_ABOUT;
-                chosen = PlayerPrefs.vodAspect(tv);
-                break;
-            case "banner":
-                names = PlayerPrefs.BANNER_NAMES;
-                chosen = PlayerPrefs.indexOf(PlayerPrefs.BANNER_SECONDS, PlayerPrefs.bannerSeconds(tv));
-                break;
-            case "retries":
-                names = PlayerPrefs.RETRY_NAMES;
-                chosen = PlayerPrefs.indexOf(PlayerPrefs.RETRY_COUNTS, PlayerPrefs.retries(tv));
-                break;
-            case "delay": {
-                names = new String[DELAYS.length];
-                for (int i = 0; i < DELAYS.length; i++) names[i] = PlayerPrefs.delayWords(DELAYS[i]);
-                chosen = -1;
-                int d = PlayerPrefs.delayMs(tv);
-                for (int i = 0; i < DELAYS.length; i++) if (DELAYS[i] == d) chosen = i;
-                break;
-            }
-            case "languages": {
-                List<String> on = PlayerPrefs.languages(tv);
-                out.add(new ListPanel.Item(null, ListPanel.HEADING, "Sound languages, in the order ticked", ""));
-                for (String code : PlayerPrefs.LANGUAGE_CODES) {
-                    int at = on.indexOf(code);
-                    out.add(new ListPanel.Item("lang:" + code, ListPanel.TEXT, PlayerPrefs.languageName(code),
-                            at >= 0 ? "Ticked  ·  " + ordinal(at + 1) + " choice" : ""));
-                }
-                out.add(new ListPanel.Item("done", ListPanel.TEXT, "Done", ""));
-                return;
-            }
-            case "start":
-                names = General.START_NAMES;
-                about = General.START_ABOUT;
-                chosen = General.start(tv);
-                break;
-            case "clock":
-                names = Look.CLOCK_NAMES;
-                about = Look.CLOCK_ABOUT;
-                chosen = Look.clock;
-                break;
-            case "times":
-                names = Look.TIMES_NAMES;
-                about = Look.TIMES_ABOUT;
-                chosen = Look.times24 ? 0 : 1;
-                break;
-            case "text":
-                names = Look.TEXT_NAMES;
-                chosen = Look.textSize;
-                break;
-            case "tiles":
-                names = Look.TILES_NAMES;
-                about = Look.TILES_ABOUT;
-                chosen = Look.logos ? 1 : 0;
-                break;
-            case "rows":
-                names = Look.ROWS_NAMES;
-                about = Look.ROWS_ABOUT;
-                chosen = Look.rows;
-                break;
-            case "updown":
-                names = RemoteKeys.UPDOWN_NAMES;
-                chosen = RemoteKeys.upDown(tv);
-                break;
-            case "direction":
-                names = RemoteKeys.DIRECTION_NAMES;
-                chosen = RemoteKeys.reversed(tv) ? 1 : 0;
-                break;
-            case "ok":
-                names = actionNames(RemoteKeys.OK_ACTIONS);
-                chosen = PlayerPrefs.indexOf(RemoteKeys.OK_ACTIONS, RemoteKeys.ok(tv));
-                break;
-            case "oklong":
-                names = actionNames(RemoteKeys.OK_LONG_ACTIONS);
-                chosen = PlayerPrefs.indexOf(RemoteKeys.OK_LONG_ACTIONS, RemoteKeys.okLong(tv));
-                break;
-            case "wait":
-                names = RemoteKeys.WAIT_NAMES;
-                chosen = PlayerPrefs.indexOf(RemoteKeys.WAITS_MS, RemoteKeys.waitMs(tv));
-                break;
-            case "previous":
-                names = RemoteKeys.PREVIOUS_NAMES;
-                chosen = RemoteKeys.previous(tv);
-                break;
-            default:
-                if (key.startsWith("colour.")) {
-                    names = actionNames(RemoteKeys.COLOUR_ACTIONS);
-                    chosen = PlayerPrefs.indexOf(RemoteKeys.COLOUR_ACTIONS, RemoteKeys.colour(tv, colourOf(key)));
-                    break;
-                }
-                open = "";
-                return;
+    static String ordinal(int n) {
+        int t = n % 100;
+        if (t >= 11 && t <= 13) return n + "th";
+        switch (n % 10) {
+            case 1: return n + "st";
+            case 2: return n + "nd";
+            case 3: return n + "rd";
+            default: return n + "th";
         }
-        out.add(new ListPanel.Item(null, ListPanel.HEADING, title(key), ""));
-        for (int i = 0; i < names.length; i++) {
-            if (names[i].isEmpty()) continue;
-            String sub = (i == chosen ? "Chosen" : "") + (about != null && i < about.length ? (i == chosen ? "  ·  " : "") + about[i] : "");
-            out.add(new ListPanel.Item("opt:" + key + ":" + i, ListPanel.TEXT, names[i], sub));
-        }
-        if (key.startsWith("buffer")) out.add(new ListPanel.Item(null, ListPanel.NOTE, PlayerPrefs.BUFFER_HINT, ""));
     }
 
-    /** The sound delays offered in Settings (the player's menu goes 50 ms at a time). */
-    static final int[] DELAYS = {-500, -400, -300, -200, -150, -100, -50, 0, 50, 100, 150, 200, 300, 400, 500};
+    static String when(long t) {
+        return t <= 0 ? "some time ago" : new SimpleDateFormat("d MMM yyyy, HH:mm", Locale.UK).format(new Date(t));
+    }
+
+    private String version() {
+        try {
+            return tv.getPackageManager().getPackageInfo(tv.getPackageName(), 0).versionName;
+        } catch (android.content.pm.PackageManager.NameNotFoundException | RuntimeException e) {
+            return "";
+        }
+    }
+
+    // ---- OK on a row ----------------------------------------------------------------------------------------------
+
+    @Override public void chosen(String page, RowList.Row row) {
+        String t = row.tag instanceof String ? (String) row.tag : "";
+        if (t.startsWith("page:")) {
+            s.open(t.substring(5));
+        } else if (t.startsWith("pick:")) {
+            s.open(SettingsScreen.PICK + t.substring(5));
+        } else if (t.startsWith("tog:")) {
+            flip(t.substring(4));
+            s.refresh();
+        } else if (t.startsWith("do:")) {
+            act(t.substring(3));
+        } else if (page.equals("theme")) {
+            // A colour kept: every screen made again in it, Settings opened again here on the same disc.
+            if (ThemeSettings.chosen(tv, row)) s.restart("theme");
+        } else if (page.equals("playback.languages") && t.startsWith("lang:")) {
+            PlayerPrefs.setLanguages(tv, PlayerPrefs.toggleLanguage(PlayerPrefs.languages(tv), t.substring(5)));
+            s.refresh();
+        } else if (page.equals("playback.subtitles")) {
+            if (LiveSettings.chosen(tv, t)) s.refresh();
+        } else if (page.equals("other.reminders")) {
+            if (ReminderSettings.chosen(tv, t)) s.refresh();
+        } else if (page.equals("other.scoreboard")) {
+            if (BoardSettings.chosen(tv, t)) s.refresh();
+        } else if (page.equals("general.sync")) {
+            if (SyncSettings.chosen(tv, t, () -> s.refresh())) s.refresh();
+        }
+    }
+
+    private void flip(String key) {
+        switch (key) {
+            case "boot": General.setOnBoot(tv, !General.onBoot(tv)); break;
+            case "numbers": Look.setNumbers(tv, !Look.numbers); break;
+            case "progress": Look.setProgress(tv, !Look.progress); break;
+            case "passthrough": PlayerPrefs.setPassthrough(tv, !PlayerPrefs.passthrough(tv)); break;
+            case "tunnel": PlayerPrefs.setTunnelled(tv, !PlayerPrefs.tunnelled(tv)); break;
+            case "downmix": PlayerPrefs.setDownmix(tv, !PlayerPrefs.downmix(tv)); break;
+            case "hls": PlayerPrefs.setHlsFirst(tv, !PlayerPrefs.hlsFirst(tv)); break;
+            case "history": OtherPrefs.setShowHistory(tv, !OtherPrefs.showHistory(tv)); break;
+            case "favfirst": OtherPrefs.setFavouritesFirst(tv, !OtherPrefs.favouritesFirst(tv)); break;
+            case "autonext": OtherPrefs.setAutoplayNext(tv, !OtherPrefs.autoplayNext(tv)); break;
+            default: break;
+        }
+    }
+
+    private void act(String what) {
+        switch (what) {
+            case "overlay":
+                overlaySettings();
+                break;
+            case "backup":
+                ExtraSettings.backUp(tv, version(), s);
+                s.refresh();
+                break;
+            case "remove":
+                s.ask("Remove everything from this TV?", "Your playlists, channels, favourites and where you left films go from "
+                        + "this TV. Your phones, tablets and other TVs keep theirs; Playlists sync is switched off here so they "
+                        + "don't come straight back (Sync turns it on again).", "Yes, remove everything", "No, keep it all", () ->
+                        // This TV only: nothing removed elsewhere, and Playlists sync switched off here (SyncSettings).
+                        SyncSettings.removeEverything(tv, () -> {
+                            tv.live.forget();
+                            Library.get(tv).clear();
+                            Resume.clear(tv);
+                            com.gathin.homefieldtv.engine.Copies.clear(tv);
+                        }));
+                break;
+            case "check":
+                Updates.check(tv, null);
+                s.refresh();
+                break;
+            case "update":
+                Updates.update(tv);
+                break;
+            default:
+                break;
+        }
+    }
+
+    /** Android's own page for "Display over other apps", for Homefield TV (start at start-up); a word where the TV hasn't it. */
+    private void overlaySettings() {
+        android.content.Intent i = new android.content.Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                android.net.Uri.parse("package:" + tv.getPackageName()));
+        try {
+            tv.startActivity(i);
+        } catch (RuntimeException e) {
+            s.toast("This TV doesn't show that setting; it can be allowed from a computer over adb.");
+        }
+    }
+
+    // ---- a setting's choices --------------------------------------------------------------------------------------
+
+    @Override public SettingsScreen.Picker picker(String key) {
+        switch (key) {
+            case "start": return new SettingsScreen.Picker("Start on", START_NAMES, General.start(tv),
+                    "Used when Homefield TV starts afresh, not when you come back to it.");
+            case "text": return new SettingsScreen.Picker("Font size", FONT_NAMES, Look.textSize, "The screens start again in it.");
+            case "posters": return new SettingsScreen.Picker("Posters", POSTER_NAMES, PosterArt.landscape ? 1 : 0,
+                    "Landscape: each film's and show's wide picture with its title at the foot. On the film and TV show rows, "
+                            + "the grids and More like this.");
+            case "times": return new SettingsScreen.Picker("Programme times", Look.TIMES_NAMES, Look.times24 ? 0 : 1,
+                    Look.TIMES_ABOUT[0] + ", or " + Look.TIMES_ABOUT[1]);
+            case "rows": return new SettingsScreen.Picker("Rows in the guide", Look.ROWS_NAMES, Look.rows, null);
+            case "clock": return new SettingsScreen.Picker("Clock", Look.CLOCK_NAMES, Look.clock, "The time in the screens' corners.");
+            case "banner": return new SettingsScreen.Picker("Panels timeout, sec", TIMEOUT_NAMES, bannerIndex(),
+                    "How long the channel's banner stays when you change channel.");
+            case "tiles": return new SettingsScreen.Picker("Live TV's channel tiles", Look.TILES_NAMES, Look.logos ? 1 : 0, null);
+            case "logos": return new SettingsScreen.Picker("Channel logos", LOGO_NAMES, Pics.tiles ? 0 : 1,
+                    "On black tiles: each logo trimmed and set in the middle of a black tile, a dark one turned light.");
+            case "buffer.live": return new SettingsScreen.Picker("Buffer size", PlayerPrefs.BUFFER_NAMES, PlayerPrefs.buffer(tv, true),
+                    PlayerPrefs.BUFFER_HINT);
+            case "buffer.vod": {
+                String[] n = PlayerPrefs.BUFFER_NAMES.clone();
+                // Minimal is live TV's only.
+                n[0] = "";
+                return new SettingsScreen.Picker("Buffer size for movies and episodes", n, PlayerPrefs.buffer(tv, false), PlayerPrefs.BUFFER_HINT);
+            }
+            case "decoder": return new SettingsScreen.Picker("Decoder", PlayerPrefs.DECODER_NAMES, PlayerPrefs.decoder(tv),
+                    PlayerPrefs.DECODER_ABOUT[PlayerPrefs.decoder(tv)]);
+            case "afr": return new SettingsScreen.Picker("Auto frame rate (AFR)", ON_OFF, PlayerPrefs.matchFrameRate(tv) ? 1 : 0,
+                    "The TV's refresh rate set to the programme's (50 Hz for UK channels) while you watch.");
+            case "quality": {
+                int q = PlayerPrefs.indexOf(PlayerPrefs.QUALITY_CHOICES, PlayerPrefs.quality(tv));
+                return new SettingsScreen.Picker("Picture quality", PlayerPrefs.QUALITY_NAMES, q, PlayerPrefs.QUALITY_ABOUT[Math.max(0, q)]);
+            }
+            case "aspect": return new SettingsScreen.Picker("Picture for channels", shapeNames(), shapeAt(PlayerPrefs.aspect(tv)),
+                    "Each channel can keep its own, from the player's Display mode.");
+            case "aspect.vod": return new SettingsScreen.Picker("Picture for movies and episodes", shapeNames(),
+                    shapeAt(PlayerPrefs.vodAspect(tv)), null);
+            case "delay": {
+                String[] n = new String[DELAYS.length];
+                int chosen = -1, d = PlayerPrefs.delayMs(tv);
+                for (int i = 0; i < DELAYS.length; i++) {
+                    n[i] = PlayerPrefs.delayWords(DELAYS[i]);
+                    if (DELAYS[i] == d) chosen = i;
+                }
+                return new SettingsScreen.Picker("Sound delay", n, chosen,
+                        "Every channel's; one can keep its own, from the player's Audio offset.");
+            }
+            case "retries": return new SettingsScreen.Picker("When a channel drops", PlayerPrefs.RETRY_NAMES,
+                    PlayerPrefs.indexOf(PlayerPrefs.RETRY_COUNTS, PlayerPrefs.retries(tv)), "Connected again 1, 2, 4, 8, then 10 seconds apart.");
+            case "subs.look": return new SettingsScreen.Picker("Look", LiveSubs.LOOKS, LiveSubs.look(tv), null);
+            case "subs.size": return new SettingsScreen.Picker("Size", LiveSubs.SIZES, LiveSubs.size(tv), null);
+            case "updown": return new SettingsScreen.Picker("Up / Down", RemoteKeys.UPDOWN_NAMES, RemoteKeys.upDown(tv), null);
+            case "direction": return new SettingsScreen.Picker("Channel up and down", RemoteKeys.DIRECTION_NAMES,
+                    RemoteKeys.reversed(tv) ? 1 : 0, null);
+            case "ok": return new SettingsScreen.Picker("OK", actionNames(RemoteKeys.OK_ACTIONS),
+                    PlayerPrefs.indexOf(RemoteKeys.OK_ACTIONS, RemoteKeys.ok(tv)), null);
+            case "oklong": return new SettingsScreen.Picker("Long OK", actionNames(RemoteKeys.OK_LONG_ACTIONS),
+                    PlayerPrefs.indexOf(RemoteKeys.OK_LONG_ACTIONS, RemoteKeys.okLong(tv)), "Over a match, the scoreboard's menu first.");
+            case "wait": return new SettingsScreen.Picker("Number keys wait", RemoteKeys.WAIT_NAMES,
+                    PlayerPrefs.indexOf(RemoteKeys.WAITS_MS, RemoteKeys.waitMs(tv)), "Before changing channel.");
+            case "previous": return new SettingsScreen.Picker("The channel before", RemoteKeys.PREVIOUS_NAMES, RemoteKeys.previous(tv), null);
+            case "rec.before": return new SettingsScreen.Picker("Start recording before program start, min", margins(),
+                    PlayerPrefs.indexOf(OtherPrefs.MARGINS, OtherPrefs.before(tv)), RecordingsScreen.MARGIN_NOTE);
+            case "rec.after": return new SettingsScreen.Picker("Stop recording after program end, min", margins(),
+                    PlayerPrefs.indexOf(OtherPrefs.MARGINS, OtherPrefs.after(tv)), RecordingsScreen.MARGIN_NOTE);
+            default:
+                if (key.startsWith("colour.")) {
+                    int i = colourOf(key);
+                    return new SettingsScreen.Picker(RemoteKeys.COLOUR_NAMES[i] + " key", actionNames(RemoteKeys.COLOUR_ACTIONS),
+                            PlayerPrefs.indexOf(RemoteKeys.COLOUR_ACTIONS, RemoteKeys.colour(tv, i)), null);
+                }
+                return null;
+        }
+    }
+
+    @Override public void picked(String key, int i) {
+        switch (key) {
+            case "start": General.setStart(tv, i); break;
+            case "text":
+                if (i != Look.textSize) {
+                    Look.setTextSize(tv, i);
+                    // The words' size is set as the screens are made: made again, Settings open here.
+                    s.restart("appearance");
+                }
+                break;
+            case "posters":
+                if ((i == 1) != PosterArt.landscape) {
+                    PosterArt.setLandscape(tv, i == 1);
+                    s.restart("appearance");
+                }
+                break;
+            case "times": Look.setTimes24(tv, i == 0); break;
+            case "rows": Look.setRows(tv, i); break;
+            case "clock": Look.setClock(tv, i); break;
+            case "banner": PlayerPrefs.setBannerSeconds(tv, PlayerPrefs.BANNER_SECONDS[i]); break;
+            case "tiles": Look.setLogos(tv, i == 1); break;
+            case "logos": Pics.setTiles(tv, i == 0); break;
+            case "buffer.live": PlayerPrefs.setBuffer(tv, true, i); break;
+            case "buffer.vod": PlayerPrefs.setBuffer(tv, false, i); break;
+            case "decoder": PlayerPrefs.setDecoder(tv, i); break;
+            case "afr": PlayerPrefs.setMatchFrameRate(tv, i == 1); break;
+            case "quality": PlayerPrefs.setQuality(tv, PlayerPrefs.QUALITY_CHOICES[i]); break;
+            case "aspect": PlayerPrefs.setAspect(tv, PlayerPrefs.DISPLAY_ORDER[i]); break;
+            case "aspect.vod": PlayerPrefs.setVodAspect(tv, PlayerPrefs.DISPLAY_ORDER[i]); break;
+            case "delay": PlayerPrefs.setDelayMs(tv, DELAYS[i]); break;
+            case "retries": PlayerPrefs.setRetries(tv, PlayerPrefs.RETRY_COUNTS[i]); break;
+            case "subs.look": tv.live.subs.setLook(i); break;
+            case "subs.size": tv.live.subs.setSize(i); break;
+            case "updown": RemoteKeys.setUpDown(tv, i); break;
+            case "direction": RemoteKeys.setReversed(tv, i == 1); break;
+            case "ok": RemoteKeys.setOk(tv, RemoteKeys.OK_ACTIONS[i]); break;
+            case "oklong": RemoteKeys.setOkLong(tv, RemoteKeys.OK_LONG_ACTIONS[i]); break;
+            case "wait": RemoteKeys.setWaitMs(tv, RemoteKeys.WAITS_MS[i]); break;
+            case "previous": RemoteKeys.setPrevious(tv, i); break;
+            case "rec.before": OtherPrefs.setBefore(tv, OtherPrefs.MARGINS[i]); break;
+            case "rec.after": OtherPrefs.setAfter(tv, OtherPrefs.MARGINS[i]); break;
+            default:
+                if (key.startsWith("colour.")) RemoteKeys.setColour(tv, colourOf(key), RemoteKeys.COLOUR_ACTIONS[i]);
+                break;
+        }
+    }
+
+    private static String[] margins() {
+        String[] n = new String[OtherPrefs.MARGINS.length];
+        for (int i = 0; i < n.length; i++) n[i] = String.valueOf(OtherPrefs.MARGINS[i]);
+        return n;
+    }
 
     private static String[] actionNames(int[] actions) {
         String[] out = new String[actions.length];
@@ -362,188 +590,11 @@ final class MoreSettings {
         }
     }
 
-    private static String title(String key) {
-        switch (key) {
-            case "buffer.live": return "Buffer for live TV";
-            case "buffer.vod": return "Buffer for films and episodes";
-            case "decoder": return "Decoder";
-            case "quality": return "Picture quality";
-            case "aspect": return "Picture for channels";
-            case "aspect.vod": return "Picture for films and episodes";
-            case "banner": return "Channel banner";
-            case "retries": return "When a channel drops, try again";
-            case "delay": return "Sound delay";
-            case "start": return "Start on";
-            case "clock": return "Clock";
-            case "times": return "Programme times";
-            case "text": return "Text size";
-            case "tiles": return "Live TV's channel tiles";
-            case "rows": return "Rows in the guide";
-            case "updown": return "Up and Down, full screen";
-            case "direction": return "Channel up and down";
-            case "ok": return "OK, full screen";
-            case "oklong": return "OK held, full screen";
-            case "wait": return "Number keys wait";
-            case "previous": return "The channel before";
-            default:
-                return key.startsWith("colour.") ? RemoteKeys.COLOUR_NAMES[colourOf(key)] + " key" : "";
-        }
-    }
+    // ---- typed in: none of these pages' (ExtraSettings has every field) ------------------------------------------
 
-    private static String ordinal(int n) {
-        switch (n) {
-            case 1: return "1st";
-            case 2: return "2nd";
-            case 3: return "3rd";
-            default: return n + "th";
-        }
-    }
-
-    /** Where the remote goes on entering the lines: the choice in use when choices are open, else the first line. */
-    int focus(List<ListPanel.Item> items) {
-        if (extra.isOpen()) return extra.focus(items);
-        if (open.isEmpty()) return 0;
-        for (int i = 0; i < items.size(); i++) {
-            String sub = items.get(i).subtitle;
-            if (sub != null && sub.startsWith("Chosen")) return i;
-        }
-        return 1;
-    }
-
-    // ---- OK on a line ---------------------------------------------------------------------------------------------
-
-    /**
-     * OK on a line of a section: a switch flipped, a setting's choices opened or one chosen (the lines back, the remote
-     * on that setting). Returns the line to put the remote on once Settings has filled them again, or STAY.
-     */
-    int chosen(int section, String tag, List<ListPanel.Item> before) {
-        if (section >= GUIDE) return extra.chosen(section, tag, before);
-        if (tag.startsWith("tog:")) {
-            String key = tag.substring(4);
-            flip(key);
-            return indexOfTag(before, tag);
-        }
-        if (tag.startsWith("set:")) {
-            open = tag.substring(4);
-            return 0;
-        }
-        if (tag.startsWith("type:")) {
-            String field = tag.substring(5);
-            host.type("m:" + field, "User agent", value(field), false);
-            return STAY;
-        }
-        if (tag.startsWith("lang:")) {
-            PlayerPrefs.setLanguages(tv, PlayerPrefs.toggleLanguage(PlayerPrefs.languages(tv), tag.substring(5)));
-            return indexOfTag(before, tag);
-        }
-        if (tag.equals("do:overlay")) {
-            overlaySettings();
-            return STAY;
-        }
-        if (tag.equals("done")) {
-            String was = open;
-            open = "";
-            return was.isEmpty() ? 0 : lineOf(section, was);
-        }
-        if (tag.startsWith("opt:")) {
-            String[] p = tag.split(":");
-            if (p.length < 3) return STAY;
-            String key = p[1];
-            int i = Integer.parseInt(p[2]);
-            apply(key, i);
-            open = "";
-            return lineOf(section, key);
-        }
-        return STAY;
-    }
-
-    private void flip(String key) {
-        switch (key) {
-            case "afr": PlayerPrefs.setMatchFrameRate(tv, !PlayerPrefs.matchFrameRate(tv)); break;
-            case "tunnel": PlayerPrefs.setTunnelled(tv, !PlayerPrefs.tunnelled(tv)); break;
-            case "passthrough": PlayerPrefs.setPassthrough(tv, !PlayerPrefs.passthrough(tv)); break;
-            case "downmix": PlayerPrefs.setDownmix(tv, !PlayerPrefs.downmix(tv)); break;
-            case "hls": PlayerPrefs.setHlsFirst(tv, !PlayerPrefs.hlsFirst(tv)); break;
-            case "boot": General.setOnBoot(tv, !General.onBoot(tv)); break;
-            case "progress": Look.setProgress(tv, !Look.progress); break;
-            case "numbers": Look.setNumbers(tv, !Look.numbers); break;
-            default: break;
-        }
-    }
-
-    /** Android's own page for "Display over other apps", for Homefield TV (start at start-up); a word where the TV hasn't it. */
-    private void overlaySettings() {
-        android.content.Intent i = new android.content.Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                android.net.Uri.parse("package:" + tv.getPackageName()));
-        try {
-            tv.startActivity(i);
-        } catch (RuntimeException e) {
-            android.widget.Toast.makeText(tv, "This TV doesn't show that setting; it can be allowed from a computer over adb.",
-                    android.widget.Toast.LENGTH_LONG).show();
-        }
-    }
-
-    private void apply(String key, int i) {
-        switch (key) {
-            case "buffer.live": PlayerPrefs.setBuffer(tv, true, i); break;
-            case "buffer.vod": PlayerPrefs.setBuffer(tv, false, i); break;
-            case "decoder": PlayerPrefs.setDecoder(tv, i); break;
-            case "quality": PlayerPrefs.setQuality(tv, PlayerPrefs.QUALITY_CHOICES[i]); break;
-            case "aspect": PlayerPrefs.setAspect(tv, i); break;
-            case "aspect.vod": PlayerPrefs.setVodAspect(tv, i); break;
-            case "banner": PlayerPrefs.setBannerSeconds(tv, PlayerPrefs.BANNER_SECONDS[i]); break;
-            case "retries": PlayerPrefs.setRetries(tv, PlayerPrefs.RETRY_COUNTS[i]); break;
-            case "delay": PlayerPrefs.setDelayMs(tv, DELAYS[i]); break;
-            case "start": General.setStart(tv, i); break;
-            case "clock": Look.setClock(tv, i); break;
-            case "times": Look.setTimes24(tv, i == 0); break;
-            case "text":
-                if (i != Look.textSize) {
-                    Look.setTextSize(tv, i);
-                    // The words' size is set as the screens are made: made again, Settings open here.
-                    tv.restartLook(SettingsScreen.ABOUT + (LOOK - BASE));
-                }
-                break;
-            case "tiles": Look.setLogos(tv, i == 1); break;
-            case "rows": Look.setRows(tv, i); break;
-            case "updown": RemoteKeys.setUpDown(tv, i); break;
-            case "direction": RemoteKeys.setReversed(tv, i == 1); break;
-            case "ok": RemoteKeys.setOk(tv, RemoteKeys.OK_ACTIONS[i]); break;
-            case "oklong": RemoteKeys.setOkLong(tv, RemoteKeys.OK_LONG_ACTIONS[i]); break;
-            case "wait": RemoteKeys.setWaitMs(tv, RemoteKeys.WAITS_MS[i]); break;
-            case "previous": RemoteKeys.setPrevious(tv, i); break;
-            default:
-                if (key.startsWith("colour.")) RemoteKeys.setColour(tv, colourOf(key), RemoteKeys.COLOUR_ACTIONS[i]);
-                break;
-        }
-    }
-
-    /** The line a setting is on in its section (its lines filled afresh to find it). */
-    private int lineOf(int section, String key) {
-        List<ListPanel.Item> items = new ArrayList<>();
-        String was = open;
-        open = "";
-        fill(section, items);
-        open = was;
-        int i = indexOfTag(items, "set:" + key);
-        return i < 0 ? 0 : i;
-    }
-
-    private static int indexOfTag(List<ListPanel.Item> items, String tag) {
-        for (int i = 0; i < items.size(); i++) if (tag.equals(items.get(i).tag)) return i;
-        return STAY;
-    }
-
-    // ---- typed in -------------------------------------------------------------------------------------------------
-
-    String value(String field) {
-        if (ExtraSettings.ownsField(field)) return extra.value(field);
-        if (field.startsWith("ua:")) return PlayerPrefs.agentFor(tv, field.substring(3));
+    @Override public String value(String field) {
         return "";
     }
 
-    void typed(String field, String text) {
-        if (ExtraSettings.ownsField(field)) extra.typed(field, text);
-        else if (field.startsWith("ua:")) PlayerPrefs.setAgentFor(tv, field.substring(3), text);
-    }
+    @Override public void typed(String field, String text) {}
 }
