@@ -162,8 +162,14 @@ final class BrowseScreen extends Screen implements Shelves.Host, PosterGrid.Host
             madeFrom = all;
             categoryShelves.clear();
             List<Catalog.Title> recent = cat.recent(series, 60);
+            // The family's own TorBox titles that no playlist has come first, then the newest, then each category.
+            Catalog.Category own = null;
+            for (Catalog.Category c : cat.categories(series)) if (c.name.equals(Catalog.TORBOX)) own = c;
+            if (own != null) categoryShelves.add(new Shelves.Shelf(own.name, items(own.titles, ROW_MAX)));
             if (!recent.isEmpty()) categoryShelves.add(new Shelves.Shelf("Recently added", items(recent, 60)));
-            for (Catalog.Category c : cat.categories(series)) categoryShelves.add(new Shelves.Shelf(c.name, items(c.titles, ROW_MAX)));
+            for (Catalog.Category c : cat.categories(series)) {
+                if (c != own) categoryShelves.add(new Shelves.Shelf(c.name, items(c.titles, ROW_MAX)));
+            }
         }
         list.addAll(categoryShelves);
         shelves.set(list);

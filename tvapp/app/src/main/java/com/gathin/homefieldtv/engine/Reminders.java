@@ -64,6 +64,11 @@ public final class Reminders {
         return c.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 
+    /** Read again on next use (Settings → Backup has just put back another list). */
+    public static synchronized void forget() {
+        cache = null;
+    }
+
     private static synchronized List<Reminder> all(Context c) {
         if (cache == null) {
             cache = parse(prefs(c).getString(KEY, ""));

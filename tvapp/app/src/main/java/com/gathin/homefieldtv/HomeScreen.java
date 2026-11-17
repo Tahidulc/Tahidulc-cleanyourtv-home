@@ -168,6 +168,14 @@ final class HomeScreen extends Screen implements Rows.Host, LiveTv.Listener {
         }
         if (!cont.isEmpty()) list.add(new Rows.Row("Continue watching", Rows.WIDE, cont));
 
+        // The family's own TorBox films and shows that no playlist has, newest first, with TorBox's cloud.
+        List<Catalog.Title> own = new ArrayList<>(cat.own(false));
+        own.addAll(cat.own(true));
+        own.sort((a, b) -> Long.compare(b.added, a.added));
+        List<Rows.Tile> mine = posters(own.subList(0, Math.min(30, own.size())));
+        for (Rows.Tile t : mine) t.torbox = true;
+        if (!mine.isEmpty()) list.add(new Rows.Row(Catalog.TORBOX, Rows.POSTER, mine));
+
         List<Rows.Tile> films = posters(cat.recent(false, 30));
         if (!films.isEmpty()) list.add(new Rows.Row("New films", Rows.POSTER, films));
         List<Rows.Tile> shows = posters(cat.recent(true, 30));
@@ -329,13 +337,9 @@ final class HomeScreen extends Screen implements Rows.Host, LiveTv.Listener {
     }
 
     private void zap(int dir) {
-        Library lib = Library.get(tv);
-        List<Channel> all = lib.all();
-        if (all.isEmpty()) return;
-        Channel c = tv.live.channel();
-        int i = c == null ? -1 : lib.position(c.key);
-        i = ((i + dir) % all.size() + all.size()) % all.size();
-        tv.live.play(all.get(i));
+        // Settings → Categories and Parental control: past hidden categories and locked channels.
+        Channel c = com.gathin.homefieldtv.prefs.Shown.step(tv, Library.get(tv).all(), tv.live.channel(), dir);
+        if (c != null && !com.gathin.homefieldtv.prefs.Parental.blocks(tv, c)) tv.live.play(c);
     }
 
     @Override void ok() {

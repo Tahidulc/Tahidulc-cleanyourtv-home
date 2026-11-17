@@ -380,9 +380,15 @@ final class PosterArt {
         Catalog.Title t = it.title;
         float m = u * 0.055f, bh = u * 0.13f, rad = u * 0.035f;
         if (it.badge == null) it.badge = badge(t.added, System.currentTimeMillis());
+        float left = x + m;
+        if (t.torbox()) {
+            // One of the family's own TorBox titles (no playlist has it): TorBox's green cloud first.
+            SourcePicker.badge(c, left + bh / 2f, y + m + bh / 2f, bh, alpha);
+            left += bh + u * 0.03f;
+        }
         if (!it.badge.isEmpty()) {
             float tw = badgeP.measureText(it.badge);
-            tmp.set(x + m, y + m, x + m + tw + u * 0.1f, y + m + bh);
+            tmp.set(left, y + m, left + tw + u * 0.1f, y + m + bh);
             pill.setColor(Dark.BADGE);
             pill.setAlpha(alpha);
             c.drawRoundRect(tmp, rad, rad, pill);
@@ -405,14 +411,14 @@ final class PosterArt {
         Bitmap mark = t.anyDolbyVision() ? dolbyVision : t.anyAtmos() ? atmos : null;
         if (mark != null) {
             float mh = u * 0.06f, mw = mh * mark.getWidth() / mark.getHeight();
-            float left = right - mw;
+            float markLeft = right - mw;
             // Never under the New badge: left out where the poster is too narrow for both.
-            if (it.badge.isEmpty() || left > x + m + badgeP.measureText(it.badge) + u * 0.14f) {
+            if (it.badge.isEmpty() || markLeft > left + badgeP.measureText(it.badge) + u * 0.14f) {
                 // On a dark plate of its own, so it reads over a bright poster too.
-                tmp.set(left - u * 0.025f, y + m, right + u * 0.025f, y + m + ch);
+                tmp.set(markLeft - u * 0.025f, y + m, right + u * 0.025f, y + m + ch);
                 plate.setAlpha(alpha * 0xB3 / 255);
                 c.drawRoundRect(tmp, u * 0.025f, u * 0.025f, plate);
-                tmp.set(left, y + m + (ch - mh) / 2f, right, y + m + (ch + mh) / 2f);
+                tmp.set(markLeft, y + m + (ch - mh) / 2f, right, y + m + (ch + mh) / 2f);
                 bmp.setAlpha(alpha);
                 c.drawBitmap(mark, null, tmp, bmp);
             }

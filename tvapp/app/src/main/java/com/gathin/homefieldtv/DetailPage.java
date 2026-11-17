@@ -124,7 +124,7 @@ final class DetailPage extends View {
         buttons.addAll(list);
         button = Math.max(0, Math.min(button, buttons.size() - 1));
         Sources.Entry e = Sources.get(getContext(), t.playlist());
-        playlist = e == null ? "" : e.name;
+        playlist = t.torbox() ? Catalog.TORBOX : e == null ? "" : e.name;
         eps.clear();
         seasons.clear();
         epTitles.clear();
@@ -344,8 +344,9 @@ final class DetailPage extends View {
         if (!trailer.isEmpty()) drawVideos(c, videosY() - o);
         if (!cast.isEmpty() || !director.isEmpty()) drawCast(c, castY() - o);
         if (!more.isEmpty()) drawMore(c, moreY() - o);
-        // Below the top part: the title centred over the page as it scrolls (the series' row has its own).
-        boolean ownHeader = !eps.isEmpty() && o >= episodesY() - 60f && o < videosY() - 300f;
+        // Below the top part: the title centred over the page as it scrolls (the series' row has its own, near the top
+        // too on a short page that can't scroll it all the way up: one title, not two).
+        boolean ownHeader = !eps.isEmpty() && o >= episodesY() - 300f && o < videosY() - 300f;
         if (o > 700f && !ownHeader) {
             if (band.getShader() == null) band.setShader(new LinearGradient(0, 0, 0, Ui.f(170), 0xF20E0E11, 0x000E0E11, Shader.TileMode.CLAMP));
             c.drawRect(0, 0, getWidth(), Ui.f(170), band);
@@ -505,6 +506,11 @@ final class DetailPage extends View {
         } else {
             card.setColor(PosterArt.blank(title.name + e.number));
             c.drawRoundRect(r, Ui.f(14), Ui.f(14), card);
+        }
+        if (e.torbox) {
+            // An episode only the family's TorBox has: its cloud on the still's top left.
+            float d = Ui.f(36);
+            SourcePicker.badge(c, x + Ui.f(12) + d / 2f, y + Ui.f(12) + d / 2f, d, 255);
         }
         float p = host.progress(e);
         if (p >= 0f) {

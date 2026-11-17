@@ -10,7 +10,8 @@ wordmark are Homefield; it carries no Sky logo or name.
 ## Screens
 
 - **Home:** the menu (Home, TV guide, Movies, TV shows, Sports, Search, Settings), the time and a mini TV playing the
-  last channel; a large picture of what is highlighted, then rows: On now, Continue watching, New films, New TV shows,
+  last channel; a large picture of what is highlighted, then rows: On now, Continue watching, Your TorBox (the family's
+  own TorBox films and shows that no playlist has, newest first, each with TorBox's cloud), New films, New TV shows,
   Sport on now and favourite channels.
 - **TV guide (dark):** the rail, then the categories down the side with how many channels each has (All channels,
   Favourites, Recently watched, Entertainment, Sport, News, Movies, Kids, Documentaries, Music, then the playlist's own
@@ -84,7 +85,7 @@ wordmark are Homefield; it carries no Sky logo or name.
   blurred, and each picture read once at the size it is shown, so it stays light on a TV with 1 GB of memory.
 - **Films and TV shows (dark):** a slim rail down the left (Homefield's mark, the time, Home, the TV guide, Films, TV
   shows, Search, Settings). First every category at a glance: a row of posters a category (Continue watching and My
-  list first, then Recently added) under a big picture of whatever the remote is on: its backdrop, title, facts (★
+  list first, then Your TorBox, then Recently added) under a big picture of whatever the remote is on: its backdrop, title, facts (★
   rating, genre, running time, age rating), story and who is in it. Left from a row's first poster opens the side panel
   of lists: All categories, all the films (or shows), Continue watching, My list, then each category with how many it
   has; any of them but All categories shows as one grid of posters beside the panel.
@@ -93,15 +94,19 @@ wordmark are Homefield; it carries no Sky logo or name.
   under it, "New" on the top left for a title the playlist added in the last fortnight, the best picture the family's
   playlists have of it on the top right (4K, 1080p or 720p in a white chip, read from the names, with the Dolby Vision
   or Atmos mark where a name says so), and the title and year under the card. The poster the remote is on grows a little
-  inside a white ring. Settings, Posters: Landscape makes every card 16:9, as the phone's landscape posters: the title's
+  inside a white ring. One of the family's own TorBox titles has TorBox's green cloud on its top left, "New" beside it;
+  without a TMDB poster its card is drawn in a colour of its own with its title. Settings, Posters: Landscape makes every
+  card 16:9, as the phone's landscape posters: the title's
   wide backdrop (TMDB's at w780, the poster where there is none), the title at the foot's left in at most half the
   card's width (where the phone puts the title's logo; the TV has no logos), the genre and rating left-aligned under it,
   the fade rising from a quarter of the way down, the same badges and chips, and the title and year under the card.
 - **A title (dark):** its backdrop filling the screen and its title large; Play (or Resume where it was left) with round
-  buttons beside it (My list's heart, from the start, the trailer in the TV's YouTube app); the playlist it is from, its
-  story and facts in the middle, who is in it on the right. Down from there: a series' seasons as pills over one row of
-  every episode, season after season (each with its still, "S1 E8", its title, two lines of story, its length and when
-  it was first shown), the season's pill following the row and a season chosen sliding the row to its first episode;
+  buttons beside it (My list's heart, from the start, the trailer in the TV's YouTube app); the playlist it is from (Your
+  TorBox for the family's own), its story and facts in the middle, who is in it on the right. Down from there: a series'
+  seasons as pills over one row of every episode, season after season (each with its still, "S1 E8", its title, two
+  lines of story, its length and when it was first shown; an episode only the family's TorBox has, with TorBox's cloud on
+  its still, in its place among the playlist's), the season's pill following the row and a season chosen sliding the
+  row to its first episode;
   then the trailer, the cast in circles (initials, as the playlist gives no photos), and more from its category.
 - **Player:** the playback bar. OK pauses and plays, Left and Right go back and on (faster when held), Back keeps the
   place, and a series goes on to the next episode. It plays from every copy there is, tried in turn: the family's own
@@ -114,8 +119,16 @@ wordmark are Homefield; it carries no Sky logo or name.
   downloads) play as copies beside the playlists', matched by their names: the title, with its year no more than a year
   apart, and a series' season and episode (from the file's name, its folders or its download's name). Every version is
   offered, the surest first: 1080p, then 4K, then 720p; one under 20 GB before a bigger one; MKV and MP4 before AVI and
-  the like. Nothing is searched for or added to the account. The API key stays on this TV, is never shown again once
-  saved and never written to the log, and goes only to TorBox: in its requests, and in a file's address as it starts.
+  the like. On a TV whose screen shows 4K: a 4K version under 20 GB first, then 1080p, then the rest. Films and series in
+  the account that no playlist has are listed as titles of their own under Your TorBox (a film by its name and year, a
+  series by its name, with its seasons and episodes from the files), in Movies and TV shows, their grids and on Home; a
+  series' episodes that only TorBox has join the playlist's. Their posters, stories, cast and episode names come from
+  TMDB where it knows the title, with the key the TV launcher on this TV hands over (launcher 5.33 and later; kept in
+  memory only, never written down, logged or shown, and sent only to TMDB); what TMDB said is kept on this TV for a
+  fortnight, and without it the posters are drawn. They are read again as the app comes back after a quarter of an
+  hour, and when TorBox is turned on, checked or forgotten. Nothing is searched for or added to the account. The API key
+  stays on this TV, is never shown again once saved and never written to the log, and goes only to TorBox: in its
+  requests, and in a file's address as it starts.
 - **Search:** channels, films and TV shows, typed on the on-screen keyboard.
 - **Settings:** the playlists (all of them together or one, their expiry dates, and catch-up: "Catch-up: 120 channels
   keep programmes for up to 7 days", or "Your provider keeps no catch-up for these channels"), adding an M3U playlist
@@ -139,7 +152,14 @@ wordmark are Homefield; it carries no Sky logo or name.
   track. General: the screen it starts on (Home, Live TV, the guide, films or TV shows) and starting when the TV starts.
   Appearance: the clock, programme times, text size, live TV's channel tiles, the guide's rows, progress bars and
   channel numbers. Remote, for live TV full screen: Up and Down, the channel keys' way round, OK and OK held, how long
-  the number keys wait, the channel before, and the colour keys. Sync: Sync now and when it last synced, and a switch
+  the number keys wait, the channel before, and the colour keys. Guide: how often the guide and the playlists are read
+  again, reading them as the app starts, a time shift for a guide whose times are out, and more XMLTV guides that fill in
+  what the playlists' own leave out. Categories: the live categories hidden (out of the guide, Live TV, channel up and
+  down and Search; favourites stay), moved and renamed. Parental control: a four-number PIN, asked before a locked
+  category's or channel's programme plays (channels locked from their menu in Live TV, OK held), locked channels shown
+  or hidden, and Settings locked too. Backup: settings, playlists, favourites, recent channels, reminders and My list
+  saved to a file on the TV and in Downloads, and put back from this TV's backup or a file picked; never the TorBox key,
+  and nothing sent over the network. Sync: Sync now and when it last synced, and a switch
   for each kind (playlists, favourites and recents, Continue watching, settings), passed on by the launcher on this TV
   to the family's phones, tablets and other TVs; TorBox's key stays on each device. Updates: the version on this TV,
   Check for updates (it also looks quietly as the app starts)
@@ -199,4 +219,5 @@ The APK is `app/build/outputs/apk/release/app-release.apk`, signed with the debu
 | 1.6 | Catch-up: programmes from the provider's archive (Xtream Codes' tv_archive in the server's time zone, M3U catchup, catchup-days and catchup-source of every kind) and the programme on now from its start. The guide goes back into the archive's programmes with a small circle arrow on each (OK plays one; Back comes back to now); the channel banner has Watch from the start; a bar across the programme with the live edge, the time in a bubble as it moves, Left and Right 10 seconds a press and faster held, OK to pause, Up to go live, on into the next programme. OK held in the guide and on live TV brings up a small menu (watch, from the start, favourites). Settings says how many channels keep programmes and for how long. Sports hub and scoreboard in the player: Sports in the menu with today's games, a page for each (score, clock, events, live stats, line-ups) held back to the channel, and the scoreboard over a match with its alerts, pop-ups and line-ups, and a Scoreboard section in Settings. |
 | 1.7 | Subtitles on live TV and catch-up, for every channel: Off (as it starts), From the channel (DVB subtitles where the channel puts them, subtitle playlists, captions) or Automatic, made on the TV from what's said as it's said, with a channel's own showing instead when it plainly sends some. In the channel's menu (OK held, Subtitles) and Settings, Live TV, with their look (white with an outline, on a black box, yellow) and size. The words sit near the foot, move up above the banner and the catch-up bar, and go under the live screen's rows. Automatic uses the TV's own speech recognition where it has it (Android 13 and later), else asks before a one-time download of Vosk's small English model (about 40 MB, about 70 MB on the TV; Apache 2.0, with JNA); nothing heard leaves the TV. |
 | 1.8 | Reminders: in the guide, OK held on a programme to come, Remind me, and a bell on its block; a minute before it starts a card pops up over whatever is on the TV, other apps too (the channel's logo, the title, "Starts in 1 min"): OK opens the channel, Back puts it away, gone after about 20 seconds. Display over other apps asked for once, with a notification instead where it isn't allowed; never wakes a TV that is off; kept after a restart; listed in Settings, Reminders. Player settings: buffer size, Picture quality (Adaptive keeps you on your channel as the quality follows your connection), decoder, aspect and zoom, frame-rate matching, sound passthrough and delay; the channel banner's time; the player's menu on MENU. |
+| 1.10 | Your TorBox: the films and series in the family's own TorBox that no playlist has, as titles of their own, in a Your TorBox row on Home and first on Movies and TV shows, in their grids, with TorBox's green cloud on each poster. Their posters, stories and episode names from TMDB where it knows them (the key from the TV launcher 5.33, kept in memory only), drawn posters without. A series' episodes that only TorBox has join its row, each with the cloud. On a TV that shows 4K, TorBox's copies go 4K under 20 GB first, then 1080p, then the rest. Settings: the guide's and playlists' updates, a guide time shift and more XMLTV guides; live categories hidden, moved and renamed; parental control with a PIN for locked categories, channels and Settings; backup and restore, on this TV or from a file, without the TorBox key. |
 | 1.9 | TorBox in Movies and TV shows: films and episodes already in the family's own TorBox account play as copies beside the playlists', every version of them, all found before anything plays and tried first (or last, as Settings say); nothing is searched for or added. The player's bar shows where it plays from (TorBox's green mark with a cloud, a playlist's blue one with a screen) and Up lists every copy to change source while watching, from the same moment. Settings, TorBox: on or off, first or last, the API key (typed as dots, or sent from a computer over adb), Check and Forget. Settings: start screen, start with the TV, clock and text size, guide rows, what OK, the colour keys and the number keys do. Sync: your playlists, favourite channels, categories, recents, Continue watching and shared settings follow you between your phones, tablets and this TV (needs the TV launcher 5.32); Remove everything resets this TV only. A reminder due while the TV's screen is off now waits and shows once it is on, while its programme has only just begun. |

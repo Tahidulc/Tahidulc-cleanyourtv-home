@@ -16,7 +16,10 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
@@ -106,6 +109,8 @@ public final class TorBox {
         final long size;
         /** The only film-sized picture in its download (a sample or an extra aside). */
         boolean single;
+        /** When its download was added to the account (ms), 0 when not known. */
+        long added;
 
         File(String kind, int itemId, int id, String name, String path, String item, long size) {
             this.kind = kind;
@@ -227,6 +232,7 @@ public final class TorBox {
             if (it == null || !ready(it)) continue;
             JSONArray fs = it.optJSONArray("files");
             List<File> mine = new ArrayList<>();
+            long at = time(it.optString("created_at", ""));
             for (int j = 0; fs != null && j < fs.length(); j++) {
                 JSONObject f = fs.optJSONObject(j);
                 if (f == null) continue;
@@ -235,10 +241,25 @@ public final class TorBox {
                 if (name.isEmpty()) name = last(path);
                 mine.add(new File(kind, it.optInt("id"), f.optInt("id"), name, path, it.optString("name", ""), f.optLong("size")));
             }
+            for (File f : mine) f.added = at;
             int pictures = 0;
             for (File f : mine) if (video(f.name, f.size)) pictures++;
             for (File f : mine) f.single = pictures == 1 && video(f.name, f.size);
             out.addAll(mine);
+        }
+    }
+
+    /** Pure: a time as TorBox gives it ("2024-05-01T12:34:56Z", with or without a zone), in ms; 0 when it can't be read. */
+    static long time(String s) {
+        if (s == null || s.isEmpty()) return 0;
+        try {
+            return java.time.OffsetDateTime.parse(s).toInstant().toEpochMilli();
+        } catch (RuntimeException e) {
+            try {
+                return java.time.LocalDateTime.parse(s).toInstant(java.time.ZoneOffset.UTC).toEpochMilli();
+            } catch (RuntimeException e2) {
+                return 0;
+            }
         }
     }
 
@@ -444,7 +465,15 @@ public final class TorBox {
      * rest; within those one under 20 GB (sure to stream) first, then the bigger; AVI and the like after them all.
      */
     static int compare(File a, File b) {
-        int ra = rank(a), rb = rank(b);
+        return compare(a, b, false);
+    }
+
+    /**
+     * Pure: the same on a TV whose screen shows 4K (uhd): a 4K version under 20 GB first (sure to stream), then 1080p,
+     * then the rest in the phone's order (a bigger 4K, 720p, the others).
+     */
+    static int compare(File a, File b, boolean uhd) {
+        int ra = rank(a, uhd), rb = rank(b, uhd);
         if (ra != rb) return Integer.compare(ra, rb);
         boolean sa = a.size > 0 && a.size <= 20L * 1024 * MB, sb = b.size > 0 && b.size <= 20L * 1024 * MB;
         if (sa != sb) return sa ? -1 : 1;
@@ -452,15 +481,47 @@ public final class TorBox {
     }
 
     static int rank(File f) {
-        int r;
-        switch (picture(f)) {
-            case Catalog.PICTURE_1080: r = 0; break;
-            case Catalog.PICTURE_4K: r = 1; break;
-            case Catalog.PICTURE_720: r = 2; break;
-            default: r = 3; break;
+        return rank(f, false);
+    }
+
+    static int rank(File f, boolean uhd) {
+        int r, p = picture(f);
+        if (uhd) {
+            boolean small = f.size > 0 && f.size <= 20L * 1024 * MB;
+            r = p == Catalog.PICTURE_4K && small ? 0 : p == Catalog.PICTURE_1080 ? 1 : p == Catalog.PICTURE_4K ? 2
+                    : p == Catalog.PICTURE_720 ? 3 : 4;
+        } else {
+            switch (p) {
+                case Catalog.PICTURE_1080: r = 0; break;
+                case Catalog.PICTURE_4K: r = 1; break;
+                case Catalog.PICTURE_720: r = 2; break;
+                default: r = 3; break;
+            }
         }
         String kind = Catalog.kindOf(f.name);
-        return kind.equals("MKV") || kind.equals("MP4") || kind.equals("M4V") || kind.equals("WEBM") || kind.equals("MOV") ? r : r + 4;
+        return kind.equals("MKV") || kind.equals("MP4") || kind.equals("M4V") || kind.equals("WEBM") || kind.equals("MOV") ? r : r + 5;
+    }
+
+    private static volatile Boolean uhd;
+
+    /** Whether this TV's screen shows 4K (a mode 3840 pixels wide or more), read once. */
+    public static boolean uhdScreen(Context c) {
+        Boolean had = uhd;
+        if (had != null) return had;
+        boolean u = false;
+        try {
+            android.hardware.display.DisplayManager dm = c.getSystemService(android.hardware.display.DisplayManager.class);
+            android.view.Display d = dm == null ? null : dm.getDisplay(android.view.Display.DEFAULT_DISPLAY);
+            if (d != null) {
+                for (android.view.Display.Mode m : d.getSupportedModes()) {
+                    if (Math.max(m.getPhysicalWidth(), m.getPhysicalHeight()) >= 3840) u = true;
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // not known: the phone's order
+        }
+        uhd = u;
+        return u;
     }
 
     /** Pure: two titles alike as the playlists' are (Catalog.key), and with their spaces gone ("Ocean's" and "Oceans"). */
@@ -468,6 +529,11 @@ public final class TorBox {
         String k = squash(title);
         if (k.isEmpty()) return false;
         return k.equals(squash(want)) || (alt != null && !alt.isEmpty() && k.equals(squash(alt)));
+    }
+
+    /** A title as compared (squash), for the answers kept about it. */
+    static String squashed(String title) {
+        return squash(title);
     }
 
     /** A title as Catalog.key makes it, spaces gone; one that is only a year ("1917", "2012") as it is. */
@@ -486,6 +552,11 @@ public final class TorBox {
      * apart at most), else, for the only picture in its download, by the download's name; the surest first.
      */
     static List<File> films(List<File> lib, String title, String alt, String year) {
+        return films(lib, title, alt, year, false);
+    }
+
+    /** Pure: the same in the order for a TV that shows 4K, or not (uhd). */
+    static List<File> films(List<File> lib, String title, String alt, String year, boolean uhd) {
         int want = 0;
         try {
             want = year == null || year.length() < 4 ? 0 : Integer.parseInt(year.substring(0, 4));
@@ -503,7 +574,7 @@ public final class TorBox {
                     || (f.single && !item.episodic() && item.year > 0 && fits(item, title, alt, want));
             if (match) out.add(f);
         }
-        Collections.sort(out, TorBox::compare);
+        Collections.sort(out, (a, b) -> compare(a, b, uhd));
         return out.size() > VERSIONS ? new ArrayList<>(out.subList(0, VERSIONS)) : out;
     }
 
@@ -525,6 +596,11 @@ public final class TorBox {
 
     /** Pure: a series' episode files in the library, by its name (or its original one): its own, its folders' or its download's. */
     static List<File> episodeFiles(List<File> lib, String show, String alt) {
+        return episodeFiles(lib, show, alt, false);
+    }
+
+    /** Pure: the same in the order for a TV that shows 4K, or not (uhd). */
+    static List<File> episodeFiles(List<File> lib, String show, String alt, boolean uhd) {
         List<File> out = new ArrayList<>();
         for (File f : lib) {
             if (!video(f.name, f.size)) continue;
@@ -537,18 +613,367 @@ public final class TorBox {
             }
             if (named) out.add(f);
         }
-        Collections.sort(out, TorBox::compare);
+        Collections.sort(out, (a, b) -> compare(a, b, uhd));
         return out;
     }
 
     /** Pure: one episode's versions in the library (its season and number), the surest first. */
     static List<File> episodeVersions(List<File> lib, String show, String alt, int season, int number) {
+        return episodeVersions(lib, show, alt, season, number, false);
+    }
+
+    /** Pure: the same in the order for a TV that shows 4K, or not (uhd). */
+    static List<File> episodeVersions(List<File> lib, String show, String alt, int season, int number, boolean uhd) {
         List<File> out = new ArrayList<>();
-        for (File f : episodeFiles(lib, show, alt)) {
+        for (File f : episodeFiles(lib, show, alt, uhd)) {
             Release r = episode(f);
             if (r != null && r.season == season && r.episode == number) out.add(f);
         }
         return out.size() > VERSIONS ? new ArrayList<>(out.subList(0, VERSIONS)) : out;
+    }
+
+    // ---- the account's own titles: those no playlist has -------------------------------------------------------------
+
+    /** One title in the account: a film (by its name and year) or a series (by its name), with all its files. */
+    static final class Own {
+        final boolean series;
+        final String name;
+        /** A film's year; a series' where its download's name says one (else 0). */
+        final int year;
+        final List<File> files = new ArrayList<>();
+
+        Own(boolean series, String name, int year) {
+            this.series = series;
+            this.name = name;
+            this.year = year;
+        }
+
+        /** Its id among the catalogue's titles: "glassharbour|2024" for a film, "paperlanterns" for a series. */
+        String id() {
+            return squash(name) + (series ? "" : "|" + year);
+        }
+
+        /** When the newest of its downloads came into the account (ms), 0 when not known. */
+        long added() {
+            long at = 0;
+            for (File f : files) at = Math.max(at, f.added);
+            return at;
+        }
+
+        /** The best picture its files' names say (Catalog's PICTURE_*, 0 for none). */
+        int picture() {
+            int p = 0;
+            for (File f : files) p = Math.max(p, TorBox.picture(f));
+            return p;
+        }
+
+        /** Whether one of its files' (or downloads') names says Dolby Vision, or Dolby Atmos. */
+        boolean dolbyVision() {
+            for (File f : files) if (Catalog.dolbyVisionOf(f.name) || Catalog.dolbyVisionOf(f.item)) return true;
+            return false;
+        }
+
+        boolean atmos() {
+            for (File f : files) if (Catalog.atmosOf(f.name) || Catalog.atmosOf(f.item)) return true;
+            return false;
+        }
+    }
+
+    /**
+     * Pure: the account's films and series, each once: a film by its name and the year its names say (its own name's,
+     * else, for the only picture in its download, the download's), a series by the name of its episodes (their own,
+     * their folders' or their download's). A film whose names say no year is left out (it can't be told from another).
+     */
+    static List<Own> titles(List<File> lib) {
+        Map<String, Own> by = new LinkedHashMap<>();
+        for (File f : lib) {
+            if (!video(f.name, f.size)) continue;
+            Release ep = episode(f);
+            Own o;
+            if (ep != null) {
+                String show = showOf(f, ep);
+                if (!named(show)) continue;
+                String k = "s|" + squash(show);
+                o = by.get(k);
+                if (o == null) by.put(k, o = new Own(true, show, parse(f.item).year));
+            } else {
+                Release own = parse(f.name), item = parse(f.item);
+                if (own.year == 0 && !item.episodic() && sameTitle(item.title, own.title, null)) own.year = item.year;
+                Release use = own.year > 0 && named(own.title) ? own
+                        : f.single && !item.episodic() && item.year > 0 && named(item.title) ? item : null;
+                if (use == null) continue;
+                String k = "m|" + squash(use.title) + "|" + use.year;
+                o = by.get(k);
+                if (o == null) by.put(k, o = new Own(false, use.title, use.year));
+            }
+            o.files.add(f);
+        }
+        return new ArrayList<>(by.values());
+    }
+
+    /** An episode file's series: its own name's title, else its folders' (the nearest first), else its download's. */
+    private static String showOf(File f, Release ep) {
+        if (named(ep.title)) return ep.title;
+        String[] folders = f.path.split("[/\\\\]");
+        for (int i = folders.length - 2; i >= 0; i--) {
+            String t = parse(folders[i]).title;
+            if (named(t)) return t;
+        }
+        String t = parse(f.item).title;
+        return named(t) ? t : "";
+    }
+
+    /** Pure: a name a title could have: a few letters (or a number such as "1917"), not a code such as "a1b2c3". */
+    static boolean named(String t) {
+        String s = t == null ? "" : t.trim();
+        if (s.matches("\\d{1,4}")) return true;
+        int letters = 0;
+        for (int i = 0; i < s.length(); i++) if (Character.isLetter(s.charAt(i))) letters++;
+        if (letters < 2) return false;
+        return s.indexOf(' ') >= 0 || s.length() < 6 || !s.matches(".*\\d.*");
+    }
+
+    /**
+     * Pure: those of the account's titles that no playlist has: a film that none has by its name with a year at most one
+     * apart (or none said), a series that none has by its name.
+     */
+    static List<Own> onlyOwn(List<Own> own, List<Catalog.Title> films, List<Catalog.Title> series) {
+        Map<String, List<Integer>> years = new HashMap<>();
+        for (Catalog.Title t : films) {
+            String k = squash(t.name);
+            List<Integer> l = years.get(k);
+            if (l == null) years.put(k, l = new ArrayList<>(1));
+            l.add(yearOf(t.year));
+        }
+        java.util.Set<String> shows = new java.util.HashSet<>();
+        for (Catalog.Title t : series) shows.add(squash(t.name));
+        List<Own> out = new ArrayList<>();
+        for (Own o : own) {
+            if (o.series) {
+                if (!shows.contains(squash(o.name))) out.add(o);
+                continue;
+            }
+            boolean had = false;
+            List<Integer> l = years.get(squash(o.name));
+            for (int i = 0; l != null && i < l.size() && !had; i++) had = l.get(i) == 0 || Math.abs(l.get(i) - o.year) <= 1;
+            if (!had) out.add(o);
+        }
+        return out;
+    }
+
+    static int yearOf(String y) {
+        try {
+            return y == null || y.length() < 4 ? 0 : Integer.parseInt(y.substring(0, 4));
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    /**
+     * Pure: an own title as the catalogue's, listed under Catalog.TORBOX: its name and year, what TMDB says of it where it
+     * matched one (its name as TMDB writes it, its poster, backdrop, story and rating), and the best picture and sound its
+     * files' names say (for the poster's chips).
+     */
+    static Catalog.Title title(Own o, Tmdb.Match m) {
+        boolean found = m != null && m.id > 0;
+        String name = found && !m.name.isEmpty() ? m.name : tidy(o.name);
+        // The picture and sound go after the name as a playlist's names have them, for the poster's chips; the name
+        // shown loses them again (Catalog.displayName).
+        StringBuilder raw = new StringBuilder(name);
+        String q = Catalog.pictureName(o.picture());
+        if (!q.isEmpty()) raw.append(' ').append(q);
+        if (o.dolbyVision()) raw.append(" DV");
+        if (o.atmos()) raw.append(" Atmos");
+        String year = found && !m.year.isEmpty() ? m.year : o.year > 0 ? String.valueOf(o.year) : "";
+        return new Catalog.Title(SOURCE, o.series, o.id(), raw.toString(), Catalog.TORBOX, found ? m.poster : "",
+                found ? m.backdrop : "", found ? m.rating : "", found ? m.plot : "", o.added(), "", "", null, null, year);
+    }
+
+    /** Pure: a name from a file as a title is written: one all in small letters given capitals ("the long tide"). */
+    static String tidy(String name) {
+        if (name == null) return "";
+        if (!name.equals(name.toLowerCase(Locale.ROOT))) return name;
+        StringBuilder b = new StringBuilder(name.length());
+        boolean start = true;
+        for (int i = 0; i < name.length(); i++) {
+            char ch = name.charAt(i);
+            b.append(start ? Character.toUpperCase(ch) : ch);
+            start = ch == ' ' || ch == '-' || ch == '(';
+        }
+        return b.toString();
+    }
+
+    /**
+     * The account's films and series that none of the playlists has (films and series: the playlists'), as catalogue
+     * titles, newest first, with what TMDB said of each before; asked of TMDB for those it hasn't been where the launcher
+     * gives its key (lookUp). Empty with TorBox not in use; null when TorBox couldn't be read (the titles shown stay).
+     * Off the main thread.
+     */
+    static List<List<Catalog.Title>> ownTitles(Context c, List<Catalog.Title> films, List<Catalog.Title> series, boolean lookUp) {
+        List<Catalog.Title> f = new ArrayList<>(), s = new ArrayList<>();
+        List<List<Catalog.Title>> out = new ArrayList<>();
+        out.add(f);
+        out.add(s);
+        if (!on(c)) return out;
+        List<File> lib;
+        try {
+            lib = library(c, false);
+        } catch (IOException e) {
+            return null;
+        }
+        List<Own> own = onlyOwn(titles(lib), films, series);
+        own.sort((a, b) -> {
+            long x = a.added(), y = b.added();
+            return x != y ? Long.compare(y, x) : a.name.compareToIgnoreCase(b.name);
+        });
+        Map<String, Own> files = new HashMap<>();
+        Map<String, Tmdb.Match> said = new HashMap<>();
+        for (Own o : own) {
+            Tmdb.Match m = lookUp ? Tmdb.find(c, o.series, o.name, o.year) : Tmdb.cached(c, o.series, o.name, o.year);
+            Catalog.Title t = title(o, m);
+            files.put(t.key, o);
+            if (m != null && m.id > 0) said.put(t.key, m);
+            (o.series ? s : f).add(t);
+        }
+        owns = files;
+        matched = said;
+        return out;
+    }
+
+    /** Whether some of these own titles haven't been asked of TMDB yet and could be now (the launcher gives its key). */
+    static boolean unasked(Context c, List<Catalog.Title> titles) {
+        if (titles.isEmpty() || !Tmdb.ready(c)) return false;
+        Map<String, Own> by = owns;
+        for (Catalog.Title t : titles) {
+            Own o = by.get(t.key);
+            if (o != null && !Tmdb.asked(c, o.series, o.name, o.year)) return true;
+        }
+        return false;
+    }
+
+    /** The own titles read last, by their keys: their files, and what TMDB said of them. */
+    private static volatile Map<String, Own> owns = new HashMap<>();
+    private static volatile Map<String, Tmdb.Match> matched = new HashMap<>();
+
+    /**
+     * An own title's page: what TMDB says of it (its story, genres, cast and trailer) where it matched one, and a
+     * series' seasons and episodes from its files, each named as TMDB's season names it. Off the main thread.
+     */
+    static Catalog.Details details(Context c, Catalog.Title t) {
+        Tmdb.Match m = matched.get(t.key);
+        boolean found = m != null && m.id > 0;
+        List<Catalog.Season> seasons = null;
+        if (t.series) {
+            Own o = owns.get(t.key);
+            List<Catalog.Episode> eps;
+            if (o != null) {
+                eps = ownEpisodes(o.files, o.name);
+            } else {
+                try {
+                    eps = ownEpisodes(library(c, false), t.name);
+                } catch (IOException e) {
+                    eps = new ArrayList<>();
+                }
+            }
+            if (found) {
+                List<Catalog.Episode> named = new ArrayList<>(eps.size());
+                java.util.TreeMap<Integer, List<Catalog.Episode>> by = new java.util.TreeMap<>();
+                for (Catalog.Episode e : eps) {
+                    List<Catalog.Episode> l = by.get(e.season);
+                    if (l == null) by.put(e.season, l = new ArrayList<>());
+                    l.add(e);
+                }
+                int asked = 0;
+                for (Map.Entry<Integer, List<Catalog.Episode>> e : by.entrySet()) {
+                    // A dozen seasons' names at most; the rest as their files say.
+                    named.addAll(asked++ < 12 ? Tmdb.named(e.getValue(), Tmdb.season(c, m.id, e.getKey())) : e.getValue());
+                }
+                eps = named;
+            }
+            seasons = Catalog.seasonsOf(eps);
+        }
+        org.json.JSONObject j = found ? Tmdb.details(c, t.series, m.id) : null;
+        return j != null ? Tmdb.detailsOf(j, t, seasons) : Catalog.plainDetails(t, seasons);
+    }
+
+    /** Pure: a TorBox series' episodes as its page lists them: each (season, number) once, from its files, in order. */
+    static List<Catalog.Episode> ownEpisodes(List<File> lib, String show) {
+        Map<Integer, Catalog.Episode> at = new java.util.TreeMap<>();
+        for (File f : episodeFiles(lib, show, null)) {
+            Release r = episode(f);
+            if (r == null || r.season < 0 || r.episode < 0) continue;
+            int k = r.season * 10000 + r.episode;
+            if (at.containsKey(k)) continue;
+            Catalog.Episode e = new Catalog.Episode(episodeId(r.season, r.episode), r.season, r.episode, "", "", "", 0, "", "", "", "");
+            e.torbox = true;
+            at.put(k, e);
+        }
+        return new ArrayList<>(at.values());
+    }
+
+    /** An episode only TorBox has: its id ("tb:2:5"), the same on every page and in Continue watching. */
+    static String episodeId(int season, int number) {
+        return "tb:" + season + ":" + number;
+    }
+
+    /**
+     * Pure: a playlist series' episodes with those only TorBox has (by season and number) put in among them, marked as
+     * TorBox's; the playlist's own as they were.
+     */
+    static List<Catalog.Episode> withOwn(List<Catalog.Episode> playlist, List<Catalog.Episode> torbox) {
+        java.util.Set<Integer> have = new java.util.HashSet<>();
+        for (Catalog.Episode e : playlist) have.add(e.season * 10000 + e.number);
+        List<Catalog.Episode> out = new ArrayList<>(playlist);
+        for (Catalog.Episode e : torbox) if (have.add(e.season * 10000 + e.number)) out.add(e);
+        out.sort((a, b) -> a.season != b.season ? Integer.compare(a.season, b.season) : Integer.compare(a.number, b.number));
+        return out;
+    }
+
+    /**
+     * A series' page's details with its episodes that only TorBox has put in among the playlist's (or, for a TorBox
+     * series, all of them from its files); as they were with TorBox not in use or not answering. Off the main thread.
+     */
+    static Catalog.Details withOwnEpisodes(Context c, Catalog.Title t, Catalog.Details d) {
+        if (t == null || !t.series || !on(c)) return d;
+        List<File> lib;
+        try {
+            lib = library(c, false);
+        } catch (IOException e) {
+            return d;
+        }
+        List<Catalog.Episode> own = ownEpisodes(lib, t.name);
+        if (own.isEmpty()) return d;
+        List<Catalog.Episode> had = d == null ? new ArrayList<>() : d.episodes();
+        List<Catalog.Episode> all = withOwn(had, own);
+        if (all.size() == had.size()) return d;
+        return Catalog.withEpisodes(d, t, namedOwn(c, t, all));
+    }
+
+    /**
+     * A playlist series' episodes with TorBox's own among them named as TMDB's seasons name them (the series found by its
+     * name, where the launcher gives its key); the playlist's, and all of them without TMDB, as they were.
+     */
+    private static List<Catalog.Episode> namedOwn(Context c, Catalog.Title t, List<Catalog.Episode> all) {
+        if (!Tmdb.ready(c)) return all;
+        Tmdb.Match m = Tmdb.find(c, true, t.name, yearOf(t.year));
+        if (m == null || m.id <= 0) return all;
+        java.util.TreeMap<Integer, List<Catalog.Episode>> bySeason = new java.util.TreeMap<>();
+        for (Catalog.Episode e : all) {
+            if (!e.torbox) continue;
+            List<Catalog.Episode> l = bySeason.get(e.season);
+            if (l == null) bySeason.put(e.season, l = new ArrayList<>());
+            l.add(e);
+        }
+        Map<String, Catalog.Episode> named = new HashMap<>();
+        int asked = 0;
+        for (Map.Entry<Integer, List<Catalog.Episode>> s : bySeason.entrySet()) {
+            // A dozen seasons' names at most; the rest as their files say.
+            if (asked++ >= 12) break;
+            for (Catalog.Episode e : Tmdb.named(s.getValue(), Tmdb.season(c, m.id, s.getKey()))) named.put(e.id, e);
+        }
+        List<Catalog.Episode> out = new ArrayList<>(all.size());
+        for (Catalog.Episode e : all) out.add(named.containsKey(e.id) ? named.get(e.id) : e);
+        return out;
     }
 
     // ---- for the player ---------------------------------------------------------------------------------------------
@@ -577,7 +1002,17 @@ public final class TorBox {
         } catch (IOException x) {
             return out;
         }
-        for (File f : t.series ? episodeVersions(lib, t.name, null, e.season, e.number) : films(lib, t.name, null, t.year)) {
+        boolean u = uhdScreen(c);
+        Own own = t.torbox() ? owns.get(t.key) : null;
+        List<File> found;
+        if (own != null) {
+            // One of the family's own titles: its own files, whatever name TMDB gave it.
+            found = t.series ? episodeVersions(own.files, own.name, null, e.season, e.number, u)
+                    : films(own.files, own.name, null, String.valueOf(own.year), u);
+        } else {
+            found = t.series ? episodeVersions(lib, t.name, null, e.season, e.number, u) : films(lib, t.name, null, t.year, u);
+        }
+        for (File f : found) {
             out.add(play(f));
         }
         return out;

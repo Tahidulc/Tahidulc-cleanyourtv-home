@@ -129,18 +129,30 @@ public final class VodActivity extends Activity {
         Catalog cat = Catalog.get(this);
         title = cat.title(key);
         if (title == null) {
-            if (!cat.ready()) {
-                error = "Finding it…";
+            // One of the family's own TorBox titles waits for TorBox to be read (after the app starts afresh).
+            boolean torbox = key != null && key.startsWith("torbox|"), own = torbox && TorBox.on(this);
+            if (!cat.ready() || own) {
+                error = own ? "Looking in your TorBox…" : "Finding it…";
+                int tries = cat.ownTries();
+                if (own) cat.ownTitles();
                 cat.addListener(new Runnable() {
                     @Override public void run() {
-                        if (cat.title(key) == null) return;
+                        if (cat.title(key) == null) {
+                            // TorBox read (or tried) without it: said, not waited on for ever.
+                            if (own && cat.ownTries() != tries) {
+                                cat.removeListener(this);
+                                error = "It isn't in your TorBox any more, or TorBox couldn't be asked.";
+                                bar.invalidate();
+                            }
+                            return;
+                        }
                         cat.removeListener(this);
                         open(key, episodeId);
                     }
                 });
                 cat.ensure();
             } else {
-                error = "That isn't in your playlist any more.";
+                error = torbox ? "TorBox is turned off in Settings." : "That isn't in your playlist any more.";
             }
             bar.invalidate();
             return;
@@ -194,7 +206,8 @@ public final class VodActivity extends Activity {
         plays.clear();
         plays.addAll(TorBox.order(torbox, mine, TorBox.first(this)));
         if (plays.isEmpty()) {
-            error = "Its playlist has gone from this TV.";
+            error = title != null && title.torbox() ? "It isn't in your TorBox any more, or TorBox is turned off."
+                    : "Its playlist has gone from this TV.";
             bar.invalidate();
             return;
         }

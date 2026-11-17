@@ -102,7 +102,7 @@ final class TitleScreen extends Screen implements DetailPage.Host {
                 Catalog.Episode first = all.get(0);
                 buttons.add(new DetailPage.Button("Play S" + first.season + " E" + first.number, -1, () -> tv.play(title, first, 0)));
             } else {
-                buttons.add(new DetailPage.Button("No episodes in your playlist", -1, () -> { }));
+                buttons.add(new DetailPage.Button(title.torbox() ? "No episodes in your TorBox" : "No episodes in your playlist", -1, () -> { }));
             }
             if (resume != null && !all.isEmpty()) {
                 Catalog.Episode first = all.get(0);
