@@ -415,8 +415,9 @@ public final class Catalog {
 
     /** The newest titles first, by when the provider added them; the list's last ones when it gives no dates. */
     public List<Title> recent(boolean series, int max) {
-        List<Title> all = series ? model.series : model.films;
-        return newest(all, max);
+        // The playlists' newest: the family's own TorBox titles have a row of their own.
+        Model m = base;
+        return newest(series ? m.series : m.films, max);
     }
 
     static List<Title> newest(List<Title> all, int max) {

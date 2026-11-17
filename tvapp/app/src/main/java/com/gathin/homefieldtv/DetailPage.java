@@ -344,8 +344,9 @@ final class DetailPage extends View {
         if (!trailer.isEmpty()) drawVideos(c, videosY() - o);
         if (!cast.isEmpty() || !director.isEmpty()) drawCast(c, castY() - o);
         if (!more.isEmpty()) drawMore(c, moreY() - o);
-        // Below the top part: the title centred over the page as it scrolls (the series' row has its own).
-        boolean ownHeader = !eps.isEmpty() && o >= episodesY() - 60f && o < videosY() - 300f;
+        // Below the top part: the title centred over the page as it scrolls (the series' row has its own, near the top
+        // too on a short page that can't scroll it all the way up: one title, not two).
+        boolean ownHeader = !eps.isEmpty() && o >= episodesY() - 300f && o < videosY() - 300f;
         if (o > 700f && !ownHeader) {
             if (band.getShader() == null) band.setShader(new LinearGradient(0, 0, 0, Ui.f(170), 0xF20E0E11, 0x000E0E11, Shader.TileMode.CLAMP));
             c.drawRect(0, 0, getWidth(), Ui.f(170), band);

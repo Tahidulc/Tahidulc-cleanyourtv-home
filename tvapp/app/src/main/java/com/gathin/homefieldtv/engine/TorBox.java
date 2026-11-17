@@ -946,7 +946,34 @@ public final class TorBox {
         List<Catalog.Episode> had = d == null ? new ArrayList<>() : d.episodes();
         List<Catalog.Episode> all = withOwn(had, own);
         if (all.size() == had.size()) return d;
-        return Catalog.withEpisodes(d, t, all);
+        return Catalog.withEpisodes(d, t, namedOwn(c, t, all));
+    }
+
+    /**
+     * A playlist series' episodes with TorBox's own among them named as TMDB's seasons name them (the series found by its
+     * name, where the launcher gives its key); the playlist's, and all of them without TMDB, as they were.
+     */
+    private static List<Catalog.Episode> namedOwn(Context c, Catalog.Title t, List<Catalog.Episode> all) {
+        if (!Tmdb.ready(c)) return all;
+        Tmdb.Match m = Tmdb.find(c, true, t.name, yearOf(t.year));
+        if (m == null || m.id <= 0) return all;
+        java.util.TreeMap<Integer, List<Catalog.Episode>> bySeason = new java.util.TreeMap<>();
+        for (Catalog.Episode e : all) {
+            if (!e.torbox) continue;
+            List<Catalog.Episode> l = bySeason.get(e.season);
+            if (l == null) bySeason.put(e.season, l = new ArrayList<>());
+            l.add(e);
+        }
+        Map<String, Catalog.Episode> named = new HashMap<>();
+        int asked = 0;
+        for (Map.Entry<Integer, List<Catalog.Episode>> s : bySeason.entrySet()) {
+            // A dozen seasons' names at most; the rest as their files say.
+            if (asked++ >= 12) break;
+            for (Catalog.Episode e : Tmdb.named(s.getValue(), Tmdb.season(c, m.id, s.getKey()))) named.put(e.id, e);
+        }
+        List<Catalog.Episode> out = new ArrayList<>(all.size());
+        for (Catalog.Episode e : all) out.add(named.containsKey(e.id) ? named.get(e.id) : e);
+        return out;
     }
 
     // ---- for the player ---------------------------------------------------------------------------------------------
