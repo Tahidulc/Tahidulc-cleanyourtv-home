@@ -85,6 +85,27 @@ public final class Guide {
         }
     }
 
+    /**
+     * Pure: a schedule cut to the programmes still on at from and starting before to, with descriptions only for those
+     * starting before descTo (the memory given back when Android asks: Library.trim).
+     */
+    static Schedule window(Schedule s, long from, long to, long descTo) {
+        int a = s.from(from), n = s.start.length;
+        while (a < n && s.stop[a] <= from) a++;
+        int b = a;
+        while (b < n && s.start[b] < to) b++;
+        int k = b - a;
+        long[] st = new long[k], en = new long[k];
+        String[] t = new String[k], d = new String[k];
+        for (int i = 0; i < k; i++) {
+            st[i] = s.start[a + i];
+            en[i] = s.stop[a + i];
+            t[i] = s.title[a + i];
+            d[i] = st[i] < descTo ? s.desc[a + i] : "";
+        }
+        return new Schedule(st, en, t, d);
+    }
+
     /** Collects programmes for one channel key, then makes its Schedule. */
     static final class Builder {
         final List<long[]> times = new ArrayList<>();

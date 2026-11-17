@@ -39,8 +39,9 @@ import java.util.List;
  * The remote's row is in the focus pill, 16 px in from the list's sides and as tall as the row (Focus.pill); when the
  * list is not where the remote is (setActive(false)) that row keeps the selected pill. Up and Down jump to the next row
  * that can be chosen (headers, notes and dividers are passed over; no wrap-around), the list scrolling in SCROLL_MS to
- * keep it whole in sight (with the section name just over it); Page keys move six rows. OK lights the row for
- * FLASH_MS and tells the host. Words start 48 px in (TEXT_X).
+ * keep it whole in sight (with the section name just over it), gliding there on the display's frame clock (Glide: a held
+ * key glides on smoothly, never starting over); Page keys move six rows. OK lights the row for FLASH_MS and tells the
+ * host. Words start 48 px in (TEXT_X). A frame makes nothing new: every row's words are laid out or cut to fit once.
  *
  * The list's place is x, top, w, bottom in design pixels (the panel sets them); heading, when set, is a title drawn
  * at headingY (the panel's band) that slides with the list. Hosts change a row (its value, its switch) and call
@@ -78,6 +79,19 @@ final class RowList extends View {
         // Laid out for the list's width (setRows / refresh).
         StaticLayout titleL, valueL;
         float height;
+        /** The title cut to fit one line (headers, icon rows), for the width and words it was cut for. */
+        private String fit, fitFor;
+        private float fitW = -1f;
+
+        /** The title cut to fit width with p (kept until the title or the width changes). */
+        String fitted(TextPaint p, float width) {
+            if (fit == null || width != fitW || !title.equals(fitFor)) {
+                fit = Ui.fit(title, p, width);
+                fitFor = title;
+                fitW = width;
+            }
+            return fit;
+        }
 
         Row(int kind, Object tag, String title, String value) {
             this.kind = kind;
@@ -156,9 +170,13 @@ final class RowList extends View {
     private int focus = -1;
     private boolean active = true;
     private Host host;
-    private float scroll, scrollFrom, scrollTo;
-    private long scrollAt, flashAt;
+    /** The list's scroll (design pixels), gliding to where the remote's row is whole in sight. */
+    private final Glide scroll = new Glide(SCROLL_MS);
+    private long flashAt;
     private int flash = -1;
+    /** The heading cut to fit (kept while it and the width stay the same). */
+    private String headingFit, headingFor;
+    private float headingW = -1f;
 
     private final TextPaint titleP = Type.paint(Type.ROW, Type.REGULAR, Palette.TEXT1);
     private final TextPaint valueP = Type.paint(Type.SMALL, Type.REGULAR, Palette.TEXT2);
@@ -307,16 +325,10 @@ final class RowList extends View {
             float y0 = yOf(focus), y1 = y0 + rows.get(focus).height;
             // A section's name just over the remote's row stays in sight with it.
             if (focus > 0 && rows.get(focus - 1).kind == HEADER) y0 -= rows.get(focus - 1).height;
-            target = scrollFor(scrollTo, y0, y1, bottom - top, total());
+            target = scrollFor(scroll.target(), y0, y1, bottom - top, total());
         }
-        if (now || Exec.inline) {
-            scroll = scrollFrom = scrollTo = target;
-            scrollAt = 0;
-        } else if (target != scrollTo) {
-            scrollFrom = scroll;
-            scrollTo = target;
-            scrollAt = SystemClock.uptimeMillis();
-        }
+        if (now) scroll.jump(target);
+        else scroll.to(target);
     }
 
     // ---- the remote -----------------------------------------------------------------------------------------------
@@ -330,11 +342,8 @@ final class RowList extends View {
                     return true;
                 }
                 // At the top: the lines above (a section's name, a note) come into sight.
-                if (scrollTo > 0f) {
-                    scrollFrom = scroll;
-                    scrollTo = 0f;
-                    scrollAt = Exec.inline ? 0 : SystemClock.uptimeMillis();
-                    if (Exec.inline) scroll = 0f;
+                if (scroll.target() > 0f) {
+                    scroll.to(0f);
                     invalidate();
                 }
                 return host != null && host.edge(this, Ui.UP);
@@ -402,20 +411,20 @@ final class RowList extends View {
 
     @Override protected void onDraw(Canvas c) {
         long t = SystemClock.uptimeMillis();
-        boolean moving = false;
-        if (scrollAt != 0) {
-            float k = Math.min(1f, (t - scrollAt) / (float) SCROLL_MS);
-            scroll = scrollFrom + (scrollTo - scrollFrom) * Fade.EASE.getInterpolation(k);
-            if (k >= 1f) scrollAt = 0;
-            else moving = true;
-        }
+        boolean moving = scroll.step();
         if (heading != null && !heading.isEmpty()) {
             headingP.setColor(Palette.TEXT1);
-            c.drawText(Ui.fit(heading, headingP, Ui.f(w - TEXT_X * 2)), Ui.f(x + TEXT_X), Ui.f(headingY), headingP);
+            float hw = Ui.f(w - TEXT_X * 2);
+            if (headingFit == null || hw != headingW || !heading.equals(headingFor)) {
+                headingFit = Ui.fit(heading, headingP, hw);
+                headingFor = heading;
+                headingW = hw;
+            }
+            c.drawText(headingFit, Ui.f(x + TEXT_X), Ui.f(headingY), headingP);
         }
         c.save();
         c.clipRect(Ui.f(x), Ui.f(top), Ui.f(x + w), Ui.f(bottom));
-        float y = top - scroll;
+        float y = top - scroll.value();
         for (int i = 0; i < rows.size(); i++) {
             Row row = rows.get(i);
             if (y > bottom) break;
@@ -435,7 +444,7 @@ final class RowList extends View {
         switch (row.kind) {
             case HEADER:
                 headerP.setColor(Palette.ACCENT);
-                c.drawText(Ui.fit(row.title, headerP, right - left - Ui.f(TEXT_X * 2)), left + Ui.f(TEXT_X), top0 + Ui.f(48), headerP);
+                c.drawText(row.fitted(headerP, right - left - Ui.f(TEXT_X * 2)), left + Ui.f(TEXT_X), top0 + Ui.f(48), headerP);
                 return;
             case NOTE:
                 noteP.setColor(Palette.TEXT2);
@@ -470,7 +479,7 @@ final class RowList extends View {
             iconFill.setColor(ink);
             Dark.icon(c, row.icon, left + Ui.f(60), cy, Ui.f(36), iconLine, iconFill);
             titleP.setColor(ink);
-            c.drawText(Ui.fit(row.title, titleP, right - left - Ui.f(ICON_TEXT_X + TEXT_X)), left + Ui.f(ICON_TEXT_X),
+            c.drawText(row.fitted(titleP, right - left - Ui.f(ICON_TEXT_X + TEXT_X)), left + Ui.f(ICON_TEXT_X),
                     Type.centred(titleP, cy), titleP);
             return;
         }

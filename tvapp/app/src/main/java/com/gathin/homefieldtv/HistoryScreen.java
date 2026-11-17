@@ -5,7 +5,6 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.RectF;
-import android.os.SystemClock;
 import android.text.StaticLayout;
 import android.text.TextPaint;
 import android.view.KeyEvent;
@@ -13,7 +12,6 @@ import android.view.View;
 import android.widget.FrameLayout;
 
 import com.gathin.homefieldtv.engine.Channel;
-import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.History;
 import com.gathin.homefieldtv.engine.Library;
@@ -51,6 +49,8 @@ final class HistoryScreen extends Screen implements DialogCard.Host {
         final History.Entry entry;
         final Channel channel;
         float y, h;
+        /** Its day and times as the list writes them (made the first time it is drawn). */
+        String span;
 
         Line(int kind, String day, History.Entry entry, Channel channel) {
             this.kind = kind;
@@ -67,8 +67,8 @@ final class HistoryScreen extends Screen implements DialogCard.Host {
     private static final int BIN = -2;
     private Panel panel;
     private DialogCard dialog;
-    private float scroll, scrollFrom, scrollTo;
-    private long scrollAt;
+    /** The list's scroll (design pixels), gliding on the display's frame clock (a held key glides on smoothly). */
+    private final Glide scroll = new Glide(SCROLL_MS);
 
     HistoryScreen(TvActivity tv) {
         super(tv);
@@ -200,25 +200,19 @@ final class HistoryScreen extends Screen implements DialogCard.Host {
 
     private void settle(boolean now) {
         Line l = focusedLine();
-        float target = scrollTo;
+        float target = scroll.target();
         if (l != null) {
             float room = 1080f - TOP;
             float y0 = l.y - TOP, y1 = l.y + l.h - TOP;
             // A day's name just over the remote's entry stays in sight with it.
             if (focus > 0 && lines.get(focus - 1).kind == HEADER) y0 -= HEADER_H;
             float total = lines.isEmpty() ? 0f : lines.get(lines.size() - 1).y + lines.get(lines.size() - 1).h - TOP;
-            target = RowList.scrollFor(scrollTo, y0, y1, room, total);
+            target = RowList.scrollFor(scroll.target(), y0, y1, room, total);
         } else if (focus == BIN) {
             target = 0f;
         }
-        if (now || Exec.inline) {
-            scroll = scrollFrom = scrollTo = target;
-            scrollAt = 0;
-        } else if (target != scrollTo) {
-            scrollFrom = scroll;
-            scrollTo = target;
-            scrollAt = SystemClock.uptimeMillis();
-        }
+        if (now) scroll.jump(target);
+        else scroll.to(target);
     }
 
     @Override void ok() {
@@ -291,7 +285,9 @@ final class HistoryScreen extends Screen implements DialogCard.Host {
         private final RectF r = new RectF();
         private final Runnable redraw = this::invalidate;
         private final InfoCard where = new InfoCard(this);
-        private String cardKey = "";
+        /** The entry the card was laid out for; the words measured once (TextFit). */
+        private History.Entry cardEntry;
+        private TextFit titles, words, names;
         private StaticLayout cardTitle, cardDesc;
 
         Panel(Context c) {
@@ -302,14 +298,8 @@ final class HistoryScreen extends Screen implements DialogCard.Host {
         }
 
         @Override protected void onDraw(Canvas c) {
-            long t = SystemClock.uptimeMillis();
-            boolean moving = false;
-            if (scrollAt != 0) {
-                float k = Math.min(1f, (t - scrollAt) / (float) SCROLL_MS);
-                scroll = scrollFrom + (scrollTo - scrollFrom) * Fade.EASE.getInterpolation(k);
-                if (k >= 1f) scrollAt = 0;
-                else moving = true;
-            }
+            boolean moving = scroll.step();
+            float sc = scroll.value();
             // The picture dimmed under it all.
             c.drawColor(Palette.alpha(Palette.GROUND, 0xB8));
             long now = System.currentTimeMillis();
@@ -334,7 +324,7 @@ final class HistoryScreen extends Screen implements DialogCard.Host {
             c.clipRect(0, Ui.f(TOP - 8f), Ui.f(LIST_X + LIST_W + 8f), getHeight());
             for (int i = 0; i < lines.size(); i++) {
                 Line l = lines.get(i);
-                float y = l.y - scroll;
+                float y = l.y - sc;
                 if (y > 1080f) break;
                 if (y + l.h < 0f) continue;
                 switch (l.kind) {
@@ -377,30 +367,37 @@ final class HistoryScreen extends Screen implements DialogCard.Host {
             else if (lit) Focus.selected(c, r);
             boolean onNow = e.stop == 0 || e.start <= now && now < e.stop;
             titleP.setColor(onNow ? Palette.ACCENT_LIGHT : Palette.TEXT1);
-            c.drawText(Ui.fit(e.title, titleP, Ui.f(640f)), Ui.f(72f), Ui.f(y + 50f), titleP);
-            // Its day and times, the catch-up mark or how far it is, and when it was watched.
+            if (titles == null) {
+                titles = new TextFit(titleP, 128);
+                words = new TextFit(lineP, 128);
+                names = new TextFit(nameP, 128);
+            }
+            titles.line(c, e.title, Ui.f(72f), Ui.f(y + 50f), Ui.f(640f));
+            // Its day and times, the catch-up mark or how far it is, and when it was watched (kept with the line).
             lineP.setColor(Palette.TEXT2);
             float x = Ui.f(72f), base = Ui.f(y + 87f);
             if (e.stop > 0) {
-                boolean today = dayName(e.start, now).equals("Today");
-                String sp = (today ? "" : dayName(e.start, now) + ", ") + LiveText.span(e.start, e.stop);
-                c.drawText(sp, x, base, lineP);
-                x += lineP.measureText(sp) + Ui.f(24);
+                if (l.span == null) {
+                    boolean today = dayName(e.start, now).equals("Today");
+                    l.span = (today ? "" : dayName(e.start, now) + ", ") + LiveText.span(e.start, e.stop);
+                }
+                c.drawText(l.span, x, base, lineP);
+                x += words.width(l.span) + Ui.f(24);
                 if (onNow) {
                     Bars.thin(c, x, base - Ui.f(9), Ui.f(80), Ui.f(6), LiveText.progress(now, e.start, e.stop));
                     x += Ui.f(80 + 24);
-                    c.drawText(InfoCard.minutes(e.stop - now), x, base, lineP);
+                    c.drawText(Words.minutes(e.stop - now), x, base, lineP);
                 } else {
                     icon(c, Dark.HISTORY, x + Ui.f(14), base - Ui.f(9), 28f, Palette.TEXT2);
                 }
             }
-            String at = LiveText.hm(e.at);
-            c.drawText(at, Ui.f(680f) - lineP.measureText(at), base, lineP);
+            String at = Words.hm(e.at);
+            c.drawText(at, Ui.f(680f) - words.width(at), base, lineP);
             // The channel.
             Bitmap logo = Pics.get(l.channel.logo, Ui.px(99), Ui.px(66), Pics.tiles ? Pics.READY : Pics.FIT, redraw);
             if (logo != null) c.drawBitmap(logo, Ui.f(728f) + (Ui.f(99) - logo.getWidth()) / 2f, Ui.f(y + 22f) + (Ui.f(66) - logo.getHeight()) / 2f, bmp);
             nameP.setColor(Palette.TEXT1);
-            c.drawText(Ui.fit(l.channel.name, nameP, Ui.f(lit ? 196f : 260f)), Ui.f(851f), Type.centred(nameP, Ui.f(y + ENTRY_H / 2f)), nameP);
+            names.line(c, l.channel.name, Ui.f(851f), Type.centred(nameP, Ui.f(y + ENTRY_H / 2f)), Ui.f(lit ? 196f : 260f));
             if (lit) {
                 float cx = Ui.f(1092f), cy = Ui.f(y + ENTRY_H / 2f);
                 if (onDelete) Focus.circle(c, cx, cy, Ui.f(72f));
@@ -414,10 +411,9 @@ final class HistoryScreen extends Screen implements DialogCard.Host {
             Guide.Schedule s = lib.schedule(e.key);
             int i = s == null || e.stop == 0 ? -1 : s.at(e.start);
             String desc = i >= 0 && s.start[i] == e.start ? s.desc[i] : "";
-            String k = e.key + "|" + e.start;
             float x0 = 1192f, y0 = 160f, inner = 680f - 64f;
-            if (!k.equals(cardKey)) {
-                cardKey = k;
+            if (e != cardEntry) {
+                cardEntry = e;
                 cardTitleP.setColor(Palette.TEXT1);
                 descP.setColor(Palette.TEXT2);
                 cardTitle = InfoCard.lines(e.title, cardTitleP, Ui.px(inner), 2, 42f / 36f);
@@ -434,9 +430,9 @@ final class HistoryScreen extends Screen implements DialogCard.Host {
             lineP.setColor(Palette.TEXT2);
             float base = Ui.f(y + 28f);
             if (e.stop > 0) {
-                String sp = LiveText.span(e.start, e.stop);
+                String sp = Words.span(e.start, e.stop);
                 c.drawText(sp, tx, base, lineP);
-                float ix = tx + lineP.measureText(sp) + Ui.f(24);
+                float ix = tx + words.width(sp) + Ui.f(24);
                 boolean onNow = e.start <= now && now < e.stop;
                 if (onNow) Bars.thin(c, ix, base - Ui.f(9), Ui.f(80), Ui.f(6), LiveText.progress(now, e.start, e.stop));
                 else icon(c, Dark.HISTORY, ix + Ui.f(14), base - Ui.f(9), 28f, Palette.TEXT2);

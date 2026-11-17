@@ -78,7 +78,8 @@ final class SearchScreen extends Screen implements Keyboard.Host {
     private int historyFocus;
     private final List<Row> rows = new ArrayList<>();
     private int row;
-    private float scroll, scrollTo;
+    /** The results' scroll (design pixels), gliding on the display's frame clock (never a jump from row to row). */
+    private final Glide scroll = new Glide(RowList.SCROLL_MS * 4 / 3);
     private boolean searching;
     private final Handler h = new Handler(Looper.getMainLooper());
     private final Runnable run = this::search;
@@ -91,7 +92,7 @@ final class SearchScreen extends Screen implements Keyboard.Host {
 
     @Override View build() {
         FrameLayout f = new FrameLayout(tv);
-        f.setBackgroundColor(Palette.GROUND);
+        // No ground of its own: the window's (TvActivity) is the screen's, so it is filled once, not twice.
         page = new Page(tv);
         keys = new Keyboard(tv, Keyboard.SEARCH);
         keys.x = 1148f;
@@ -176,7 +177,7 @@ final class SearchScreen extends Screen implements Keyboard.Host {
         if (!ch.isEmpty()) rows.add(row(CHANNELS, new ArrayList<>(ch)));
         if (!shows.isEmpty()) rows.add(row(SHOWS, new ArrayList<>(shows)));
         row = 0;
-        scroll = scrollTo = 0;
+        scroll.jump(0f);
         // The strip's suggestions: names found that start with the words.
         List<String> words = new ArrayList<>();
         String low = q.toLowerCase(Locale.ROOT);
@@ -467,16 +468,17 @@ final class SearchScreen extends Screen implements Keyboard.Host {
     /** The results scrolled so the remote's row is in sight under the field. */
     private void settleScroll() {
         if (area != RESULTS || rows.isEmpty()) {
-            scrollTo = 0;
-            scroll = 0;
+            scroll.to(0f);
+            if (page != null) page.invalidate();
             return;
         }
         float y = 0;
         for (int i = 0; i < row; i++) y += rowHeight(rows.get(i));
-        float bottom = y + rowHeight(rows.get(row)) - 66f;
-        if (bottom - scrollTo > 1080f - RESULTS_Y) scrollTo = bottom - (1080f - RESULTS_Y);
-        if (y < scrollTo) scrollTo = y;
-        scroll = scrollTo;
+        float bottom = y + rowHeight(rows.get(row)) - 66f, to = scroll.target();
+        if (bottom - to > 1080f - RESULTS_Y) to = bottom - (1080f - RESULTS_Y);
+        if (y < to) to = y;
+        scroll.to(to);
+        if (page != null) page.invalidate();
     }
 
     static final float RESULTS_Y = 214f, ROW_HEAD = 96f, TILE_W = 236f, TILE_H = 178f;
@@ -583,23 +585,28 @@ final class SearchScreen extends Screen implements Keyboard.Host {
                 }
                 return;
             }
+            boolean moving = scroll.step();
             c.save();
             c.clipRect(0, Ui.f(190), getWidth(), getHeight());
-            float y = RESULTS_Y - scroll;
+            float y = RESULTS_Y - scroll.value();
             for (int i = 0; i < rows.size(); i++) {
                 Row rw = rows.get(i);
                 float h = rowHeight(rw);
                 if (y > 1080f) break;
                 if (y + h > 190f) {
                     // With the remote in the results, the rows it is not on are dimmed, as the other app's are.
+                    // Drawn as they are, then the ground at 45 % over them: the same as a layer at 55 %, with no layer.
                     boolean dim = area == RESULTS && i != row;
-                    if (dim) c.saveLayerAlpha(0, Ui.f(Math.max(190f, y)), getWidth(), Ui.f(Math.min(1080f, y + h)), 0x8C);
                     drawRow(c, rw, y, area == RESULTS && i == row);
-                    if (dim) c.restore();
+                    if (dim) {
+                        fill.setColor(Palette.alpha(Palette.GROUND, 0x73));
+                        c.drawRect(0, Ui.f(Math.max(190f, y)), getWidth(), Ui.f(Math.min(1080f, y + h)), fill);
+                    }
                 }
                 y += h;
             }
             c.restore();
+            if (moving) postInvalidateOnAnimation();
         }
 
         private void drawRow(Canvas c, Row rw, float y, boolean here) {

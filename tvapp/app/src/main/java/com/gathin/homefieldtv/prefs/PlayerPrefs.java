@@ -57,6 +57,18 @@ public final class PlayerPrefs {
         }
     }
 
+    /**
+     * Pure: the most memory a buffer size may hold, in bytes, whatever its seconds say: the player keeps its buffer in
+     * the app's own memory, and a 4K stream's 50 seconds would be some 150 MB of it on a TV with 1–2 GB in all. Live TV
+     * 12, 20, 32, 48 or 64 MB (Normal's 32 is about 10 seconds of 4K, 30 of HD); films and episodes 24, 40, 56 or 72 MB.
+     * The seconds still decide first; this only stops a fast stream filling the TV's memory.
+     */
+    public static int bufferBytes(boolean live, int size) {
+        int s = Math.max(live ? MINIMAL : SMALL, Math.min(VERY_LARGE, size));
+        int[] mb = live ? new int[]{12, 20, 32, 48, 64} : new int[]{24, 24, 40, 56, 72};
+        return mb[s] << 20;
+    }
+
     public static int buffer(Context c, boolean live) {
         int v = prefs(c).getInt(live ? "buffer.live" : "buffer.vod", NORMAL);
         return Math.max(live ? MINIMAL : SMALL, Math.min(VERY_LARGE, v));

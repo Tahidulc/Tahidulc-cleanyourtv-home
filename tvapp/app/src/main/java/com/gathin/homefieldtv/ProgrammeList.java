@@ -5,13 +5,11 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.RectF;
-import android.os.SystemClock;
 import android.text.StaticLayout;
 import android.text.TextPaint;
 import android.view.KeyEvent;
 import android.view.View;
 
-import com.gathin.homefieldtv.engine.Exec;
 
 import java.time.Instant;
 import java.time.ZoneId;
@@ -77,8 +75,10 @@ final class ProgrammeList extends View {
     private int focus = -1;
     private boolean active, onTrash;
     private Host host;
-    private float scroll, scrollFrom, scrollTo;
-    private long scrollAt;
+    /** The list's scroll (design pixels), gliding on the display's frame clock (a held key glides on smoothly). */
+    private final Glide scroll = new Glide(SCROLL_MS);
+    /** Titles and times measured once, cut from their kept widths (TextFit). */
+    private TextFit titles, whens;
 
     private final TextPaint titleP = Type.paint(30f, Type.REGULAR, Palette.TEXT1), whenP = Type.paint(26f, Type.REGULAR, Palette.TEXT2);
     private final TextPaint headP = Type.paint(Type.ROW, Type.REGULAR, Palette.TEXT2), nameP = Type.paint(Type.ROW, Type.REGULAR, Palette.TEXT1);
@@ -151,16 +151,10 @@ final class ProgrammeList extends View {
             float y0 = tops.get(focus), y1 = y0 + ROW;
             // A day's name just over the remote's row stays in sight with it.
             if (focus == 0 || !entries.get(focus - 1).day.equals(entries.get(focus).day)) y0 -= HEAD;
-            target = RowList.scrollFor(scrollTo, y0, y1 + GAP, 1080f - TOP, total);
+            target = RowList.scrollFor(scroll.target(), y0, y1 + GAP, 1080f - TOP, total);
         }
-        if (now || Exec.inline) {
-            scroll = scrollFrom = scrollTo = target;
-            scrollAt = 0;
-        } else if (target != scrollTo) {
-            scrollFrom = scroll;
-            scrollTo = target;
-            scrollAt = SystemClock.uptimeMillis();
-        }
+        if (now) scroll.jump(target);
+        else scroll.to(target);
     }
 
     boolean key(int code) {
@@ -207,19 +201,17 @@ final class ProgrammeList extends View {
     // ---- drawing --------------------------------------------------------------------------------------------------
 
     @Override protected void onDraw(Canvas c) {
-        long t = SystemClock.uptimeMillis();
-        boolean moving = false;
-        if (scrollAt != 0) {
-            float k = Math.min(1f, (t - scrollAt) / (float) SCROLL_MS);
-            scroll = scrollFrom + (scrollTo - scrollFrom) * Fade.EASE.getInterpolation(k);
-            if (k >= 1f) scrollAt = 0;
-            else moving = true;
+        boolean moving = scroll.step();
+        float sc = scroll.value();
+        if (titles == null) {
+            titles = new TextFit(titleP, 128);
+            whens = new TextFit(whenP, 128);
         }
         float x0 = Ui.f(left), x1 = Ui.f(left + W);
         c.save();
         c.clipRect(x0 - Ui.f(24), 0, x1 + Ui.f(24), getHeight());
         for (int i = 0; i < heads.size(); i++) {
-            float y = heads.get(i)[0] - scroll;
+            float y = heads.get(i)[0] - sc;
             if (y > 1080f || y + HEAD < 0f) continue;
             if (heads.get(i)[1] > 0f) {
                 fill.setColor(Palette.DIVIDER);
@@ -229,7 +221,7 @@ final class ProgrammeList extends View {
             c.drawText(headNames.get(i), x0 + Ui.f(24), Ui.f(y + 58), headP);
         }
         for (int i = 0; i < entries.size(); i++) {
-            float y = tops.get(i) - scroll;
+            float y = tops.get(i) - sc;
             if (y > 1080f || y + ROW < 0f) continue;
             drawEntry(c, entries.get(i), x0, Ui.f(y), i == focus);
         }
@@ -246,14 +238,13 @@ final class ProgrammeList extends View {
         else if (on) Focus.selected(c, r);
         titleP.setColor(e.now ? Palette.ACCENT_LIGHT : Palette.TEXT1);
         float textRoom = Ui.f(LOGO_X - 48);
-        c.drawText(Ui.fit(e.title, titleP, textRoom), x + Ui.f(24), y + Ui.f(48), titleP);
+        titles.line(c, e.title, x + Ui.f(24), y + Ui.f(48), textRoom);
         whenP.setColor(Palette.TEXT2);
-        float stateW = e.state.isEmpty() ? 0f : whenP.measureText(e.state) + Ui.f(24);
-        String when = Ui.fit(e.when, whenP, textRoom - stateW - Ui.f(48));
+        float stateW = e.state.isEmpty() ? 0f : whens.width(e.state) + Ui.f(24);
         float wx = x + Ui.f(24);
-        c.drawText(when, wx, y + Ui.f(90), whenP);
+        float drawn = whens.line(c, e.when, wx, y + Ui.f(90), textRoom - stateW - Ui.f(48));
         if (e.archive || e.bell) {
-            float ix = wx + whenP.measureText(when) + Ui.f(30), iy = y + Ui.f(81);
+            float ix = wx + drawn + Ui.f(30), iy = y + Ui.f(81);
             icon.setColor(Palette.TEXT2);
             icon.setStrokeWidth(Math.max(1f, Ui.f(2.5f)));
             iconFill.setColor(Palette.TEXT2);
@@ -262,7 +253,7 @@ final class ProgrammeList extends View {
         }
         if (!e.state.isEmpty()) {
             whenP.setColor(e.stateLit ? Palette.ACCENT_LIGHT : Palette.TEXT2);
-            c.drawText(e.state, x + Ui.f(LOGO_X - 24) - whenP.measureText(e.state), y + Ui.f(90), whenP);
+            c.drawText(e.state, x + Ui.f(LOGO_X - 24) - whens.width(e.state), y + Ui.f(90), whenP);
         }
         // The channel: its logo and name.
         Bitmap b = e.logo.isEmpty() ? null : Pics.get(e.logo, Ui.px(LOGO_W), Ui.px(LOGO_H), Pics.logoMode(), redraw);

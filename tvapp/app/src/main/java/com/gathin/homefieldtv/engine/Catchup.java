@@ -124,7 +124,9 @@ public final class Catchup {
     public static Channel source(Channel c) {
         if (c == null) return null;
         if (c.hasArchive()) return c;
-        for (Channel a : c.alternates) if (a.hasArchive()) return a;
+        // By index: asked for each row of the guide on every frame it draws (no iterator made).
+        List<Channel> alts = c.alternates;
+        for (int i = 0, n = alts.size(); i < n; i++) if (alts.get(i).hasArchive()) return alts.get(i);
         return null;
     }
 
