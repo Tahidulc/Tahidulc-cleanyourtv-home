@@ -6,7 +6,9 @@
     <!-- Settings, Updates: a newer Homefield TV put on this TV handed to Android's installer (it asks first). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Reminders: a card a minute before a programme, over other apps when Android allows it (asked for once), else a
-         notification; their alarm exact where Android allows, never one that wakes the TV, made again after a restart. -->
+         notification; their alarm exact where Android allows, never one that wakes the TV, made again after a restart.
+         Settings → General → Start when the TV starts (BootStart; off until chosen): Android 10 and later also want
+         "Display over other apps" allowed for an app to open itself then: asked for only in Settings, never by itself. -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
@@ -77,6 +79,15 @@
             android:taskAffinity=""
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
             android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|smallestScreenSize" />
+
+        <!-- Settings → General → Start when the TV starts: the system's word that the TV has started. -->
+        <receiver
+            android:name=".BootStart"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
         <!-- A playlist added from a computer over adb, so a long login need not be typed on the remote:
              content insert - -uri content://com.gathin.homefieldtv.setup/xtream - -bind server:s:… (see Setup). Only the

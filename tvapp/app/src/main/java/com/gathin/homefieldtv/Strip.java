@@ -34,7 +34,7 @@ final class Strip extends View {
         c.drawRect(Ui.f(W) - Math.max(1f, Ui.f(2)), 0, Ui.f(W), h, edge);
         float mid = Ui.f(W / 2);
         c.drawText("Homefield", mid - word.measureText("Homefield") / 2, Ui.f(104), word);
-        String t = Ui.clock(System.currentTimeMillis());
+        String t = Ui.cornerClock(System.currentTimeMillis());
         c.drawText(t, mid - time.measureText(t) / 2, Ui.f(165), time);
         if (chevronY >= 0) Ui.chevron(c, mid + Ui.f(8), Ui.f(chevronY), Ui.f(16), Ui.LEFT, arrow);
     }

@@ -52,7 +52,9 @@ final class GuideGrid extends View {
     static final int AIRED = 0x59000000;
     // Where things go (design pixels).
     static final float X = SidePanel.X + SidePanel.W + 36f, RIGHT = 1888f, RULER_Y = 302f, ROWS_Y = 328f;
-    private static final float CHAN_W = 236f, PROG_X = X + CHAN_W, GAP = 6f, ROW_H = 80f, BOTTOM = 1064f;
+    private static final float CHAN_W = 236f, PROG_X = X + CHAN_W, GAP = 6f, BOTTOM = 1064f;
+    /** A row's height: Settings → Appearance → Rows in the guide (80 as it came). */
+    private final float ROW_H = com.gathin.homefieldtv.prefs.Look.rowHeight(com.gathin.homefieldtv.prefs.Look.rows);
     private static final float STRIP_H = 224f, PIC_W = 324f, PIC_H = 182f;
 
     private final Library lib;
@@ -432,7 +434,7 @@ final class GuideGrid extends View {
         // The channel: its number and logo, on a cell lighter for the row the remote is on.
         r.set(Ui.f(X), top, Ui.f(PROG_X - GAP), bottom);
         c.drawRoundRect(r, Ui.f(10), Ui.f(10), here ? cellLit : cell);
-        String num = String.valueOf(lib.number(ch));
+        String num = com.gathin.homefieldtv.prefs.Look.numbers ? String.valueOf(lib.number(ch)) : "";
         TextPaint np = here ? numLit : numP;
         c.drawText(num, Ui.f(X + 82) - np.measureText(num), mid + Ui.f(13), np);
         float lx = Ui.f(X + 96), lw = Ui.f(128);
@@ -460,11 +462,14 @@ final class GuideGrid extends View {
             float x0 = xAt(Math.max(s.start[i], winStart)), x1 = xAt(Math.min(s.stop[i], winEnd)) - gap;
             if (x1 - x0 < Ui.f(6)) continue;
             boolean focused = here && s.start[i] <= cursor && cursor < s.stop[i];
-            float airedTo = s.start[i] < now ? xAt(Math.min(now, s.stop[i])) : -1f;
+            // Settings → Appearance: progress bars (the part already shown), and times only in rows tall enough.
+            float airedTo = s.start[i] < now && com.gathin.homefieldtv.prefs.Look.progress ? xAt(Math.min(now, s.stop[i])) : -1f;
             boolean archived = s.stop[i] <= now && s.start[i] >= kept;
             boolean bell = reminders && s.start[i] > now && Reminders.has(getContext(), ch.key, s.start[i]);
-            drawBlock(c, x0, top, x1, bottom, LiveText.span(s.start[i], s.stop[i]), s.title[i], deep(s.title[i]), airedTo,
-                    focused, s.start[i] < winStart, archived, bell);
+            String span = com.gathin.homefieldtv.prefs.Look.rows == com.gathin.homefieldtv.prefs.Look.ROWS_MORE ? ""
+                    : LiveText.span(s.start[i], s.stop[i]);
+            drawBlock(c, x0, top, x1, bottom, span, s.title[i], deep(s.title[i]), airedTo, focused, s.start[i] < winStart,
+                    archived, bell);
             if (focused) drewFocus = true;
         }
         if (here && !drewFocus) {

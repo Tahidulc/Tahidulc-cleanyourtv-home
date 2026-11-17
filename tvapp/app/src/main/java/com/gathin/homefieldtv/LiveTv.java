@@ -588,9 +588,10 @@ final class LiveTv {
 
     private void ensure() {
         if (player != null) return;
-        // As Settings → Player and Sound say: the buffer (a channel starts as soon as a second is in, two after a stall,
-        // as Homefield came), the TV's own decoders first with FFmpeg for the sound it can't play (AC-3, E-AC-3, MP2).
-        // The sound goes on to the speaker as ever; automatic subtitles hear a copy while they listen (TAP).
+        // As Settings → Player and Sound say (PlayerSetup): the buffer (Normal starts a channel as soon as a second is
+        // in, two after a stall, as Homefield came), the TV's own decoders first with FFmpeg for the sound it can't play
+        // (AC-3, E-AC-3, MP2), the sound's way out. Automatic subtitles hear a copy while they listen (TAP, after the
+        // mixing down to two speakers when that's on).
         player = PlayerSetup.builder(app, true, TAP).build();
         player.setAudioAttributes(new AudioAttributes.Builder().setUsage(C.USAGE_MEDIA)
                 .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true);

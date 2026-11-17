@@ -109,7 +109,7 @@ final class Panel extends View {
         c.drawRect(Ui.f(58), 0, Ui.f(W), h, shade);
         c.drawRect(Ui.f(W) - Math.max(1f, Ui.f(2)), 0, Ui.f(W), h, edge);
         c.drawText("Homefield", Ui.f(92), Ui.f(110), word);
-        String t = Ui.clock(now);
+        String t = Ui.cornerClock(now);
         c.drawText(t, Ui.f(W - 22) - time.measureText(t), Ui.f(106), time);
 
         // The mini TV: the live picture covers this when a channel plays.
