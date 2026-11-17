@@ -131,19 +131,24 @@ public class SmoothTest {
     }
 
     @Test public void theMeterSaysOnceTwoRunsAgree() {
-        float[] said = {0f};
+        float[] said = {0f}, guess = {0f};
         int[] stream = {-1};
-        FpsMeter m = new FpsMeter((s, f) -> {
+        FpsMeter m = new FpsMeter((s, f, sure) -> {
+            if (!sure) {
+                guess[0] = f;
+                return;
+            }
             stream[0] = s;
             said[0] = f;
         });
         int s = m.reset();
         Format plain = new Format.Builder().build();
         long t = 0;
-        // One run of 50 a second: not yet.
+        // One run of 50 a second: a guess (for the TV's refresh rate), no chip yet.
         for (int i = 0; i < FpsMeter.WINDOW; i++) m.onVideoFrameAboutToBeRendered(t += 20_000L, 0, plain, null);
         shadowOf(Looper.getMainLooper()).idle();
         assertEquals(0f, said[0], 0f);
+        assertEquals(50f, guess[0], 0f);
         // A second that agrees: 50.
         for (int i = 0; i < FpsMeter.WINDOW; i++) m.onVideoFrameAboutToBeRendered(t += 20_000L, 0, plain, null);
         shadowOf(Looper.getMainLooper()).idle();

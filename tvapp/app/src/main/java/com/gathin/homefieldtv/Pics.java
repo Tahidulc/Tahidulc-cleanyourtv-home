@@ -83,8 +83,8 @@ final class Pics {
     static final int ART = 11;
     /**
      * LOGO_ART stands in for a programme's picture where there is none (ART's size, shape and fades): the channel's logo
-     * (made ready for a dark ground, as READY) on a deep ground tinted by the logo's own colour, a soft blurred glow of
-     * it behind, the logo itself towards the right. Asked for with the logo's address.
+     * (made ready for a dark ground, as READY) on a deep ground tinted by the logo's own colour, a soft round glow of that
+     * colour behind it, the logo itself low on the right, clear of most of the words. Asked for with the logo's address.
      */
     static final int LOGO_ART = 12;
 
@@ -505,7 +505,7 @@ final class Pics {
         if (darker) {
             Paint dim = new Paint();
             dim.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_ATOP));
-            dim.setColor(0x47000000);
+            dim.setColor(0x5C000000);
             c.drawRect(0, 0, w, h, dim);
         }
         Paint m = new Paint();
@@ -522,8 +522,8 @@ final class Pics {
     }
 
     /**
-     * The stand-in for a programme's picture (LOGO_ART): a deep ground tinted by the logo's own colour, the logo blurred
-     * into a soft glow over it, the logo itself towards the right, then ART's shape and fades.
+     * The stand-in for a programme's picture (LOGO_ART): a deep ground tinted by the logo's own colour, a soft round glow
+     * of it with no edge anywhere, the logo itself low on the right and a little faded, then ART's shape and fades.
      */
     private static Bitmap logoArt(Bitmap ready, int w, int h) {
         int tint = tintOf(ready);
@@ -533,20 +533,19 @@ final class Pics {
         p.setShader(new LinearGradient(0, 0, w, h, Theme.mix(0xFF000000, tint, 0.42f), Theme.mix(0xFF000000, tint, 0.18f),
                 Shader.TileMode.CLAMP));
         c.drawRect(0, 0, w, h, p);
+        // Where the logo sits: low on the right, clear of most of the words over it.
+        float cx = w * 0.80f, cy = h * 0.64f;
+        // Its soft glow: the logo's own colour, fading out all round (no edge anywhere).
+        p.setShader(new android.graphics.RadialGradient(cx, cy, h * 0.62f, Palette.alpha(Theme.mix(0xFF000000, tint, 0.85f), 0xB0),
+                Palette.alpha(tint, 0), Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, w, h, p);
         p.setShader(null);
-        // Where the logo sits: towards the right, a little above the middle.
-        float lh = h * 0.40f, lw = Math.min(w * 0.40f, lh * ready.getWidth() / (float) Math.max(1, ready.getHeight()));
+        float lh = h * 0.30f, lw = Math.min(w * 0.30f, lh * ready.getWidth() / (float) Math.max(1, ready.getHeight()));
         lh = Math.min(lh, lw * ready.getHeight() / (float) Math.max(1, ready.getWidth()));
-        float cx = w * 0.70f, cy = h * 0.45f;
-        // Its glow: the logo read tiny and drawn large, which blurs it softly.
-        Bitmap tiny = Bitmap.createScaledBitmap(ready, Math.max(2, ready.getWidth() / 12), Math.max(2, ready.getHeight() / 12), true);
-        p.setAlpha(0x70);
-        c.drawBitmap(tiny, null, new android.graphics.RectF(cx - lw * 1.4f, cy - lh * 1.7f, cx + lw * 1.4f, cy + lh * 1.7f), p);
-        tiny.recycle();
-        p.setAlpha(0xF0);
+        p.setAlpha(0xA6);
         c.drawBitmap(ready, null, new android.graphics.RectF(cx - lw / 2f, cy - lh / 2f, cx + lw / 2f, cy + lh / 2f), p);
         ready.recycle();
-        return art(ground, false);
+        return art(ground, true);
     }
 
     /** Pure: a logo's own colour, the average of its solid, coloured pixels (a grey for a white or black logo). */

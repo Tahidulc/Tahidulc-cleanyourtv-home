@@ -248,8 +248,15 @@ final class LiveTv {
     }
 
     /** The meter's answer for a stream (the main thread): kept for this stream and, live, for its channel (FrameRates). */
-    private void measured(int stream, float rate) {
+    private void measured(int stream, float rate, boolean sure) {
         if (stream != meter.stream() || player == null) return;
+        if (!sure) {
+            // A first run's guess: only the TV's refresh rate set early (full screen, Match frame rate), no chip yet.
+            if (precise <= 0f && full() && PlayerPrefs.matchFrameRate(app)) {
+                Afr.match(layer.getContext() instanceof android.app.Activity ? (android.app.Activity) layer.getContext() : null, rate);
+            }
+            return;
+        }
         fpsStream = stream;
         precise = rate;
         fps = FpsMeter.chip(rate);
@@ -354,24 +361,32 @@ final class LiveTv {
             w = p[2];
             hh = p[3];
         }
-        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) picture.getLayoutParams();
-        if (lp.width != w || lp.height != hh || lp.leftMargin != x || lp.topMargin != y) {
-            lp.width = w;
-            lp.height = hh;
-            lp.leftMargin = x;
-            lp.topMargin = y;
-            picture.setLayoutParams(lp);
-        }
-        FrameLayout.LayoutParams np = (FrameLayout.LayoutParams) note.getLayoutParams();
-        if (np.width != where.width() || np.height != where.height() || np.leftMargin != where.left || np.topMargin != where.top) {
-            np.width = where.width();
-            np.height = where.height();
-            np.leftMargin = where.left;
-            np.topMargin = where.top;
-            note.setLayoutParams(np);
-        }
+        place(picture, x, y, w, hh);
+        place(note, where.left, where.top, where.width(), where.height());
         note.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, Math.max(Ui.f(22), where.height() / 14f));
         subs.frame(where, x, y, w, hh);
+    }
+
+    /**
+     * A view put at (x, y), w by h: laid out again only for a new size; the same size somewhere else (the guide pushed
+     * right by its groups, frame by frame) is a move (its translation), with no layout pass, the video's surface
+     * following on the same frame.
+     */
+    private static void place(View v, int x, int y, int w, int h) {
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) v.getLayoutParams();
+        if (lp.width != w || lp.height != h) {
+            lp.width = w;
+            lp.height = h;
+            lp.leftMargin = x;
+            lp.topMargin = y;
+            v.setLayoutParams(lp);
+            v.setTranslationX(0f);
+            v.setTranslationY(0f);
+            return;
+        }
+        float tx = x - lp.leftMargin, ty = y - lp.topMargin;
+        if (v.getTranslationX() != tx) v.setTranslationX(tx);
+        if (v.getTranslationY() != ty) v.setTranslationY(ty);
     }
 
     Channel channel() {

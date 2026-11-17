@@ -24,12 +24,16 @@ import androidx.media3.exoplayer.video.VideoFrameMetadataListener;
 @OptIn(markerClass = UnstableApi.class)
 final class FpsMeter implements VideoFrameMetadataListener {
     interface Listener {
-        /** On the main thread: the stream started as stream (the reset's number) runs at precise frames a second. */
-        void measured(int stream, float precise);
+        /**
+         * On the main thread: the stream started as stream (the reset's number) runs at precise frames a second; sure once
+         * the stream said it or two runs agreed (the chip), else a first run's guess (only to set the TV's refresh rate
+         * early, Settings → Player → Match frame rate).
+         */
+        void measured(int stream, float precise, boolean sure);
     }
 
     /** The frames a run is measured over. */
-    static final int WINDOW = 64;
+    static final int WINDOW = 48;
     private static final float[] USUAL = {23.976f, 24f, 25f, 29.97f, 30f, 50f, 59.94f, 60f};
 
     private final Listener out;
@@ -37,9 +41,9 @@ final class FpsMeter implements VideoFrameMetadataListener {
     private final long[] times = new long[WINDOW], gaps = new long[WINDOW - 1];
     /** The stream measured (reset counts them); the player's thread's own copy of it. */
     private volatile int stream;
-    private int seen = -1, n, agreed;
+    private int seen = -1, n;
     private float last;
-    private boolean done;
+    private boolean done, guessed;
 
     FpsMeter(Listener out) {
         this.out = out;
@@ -60,14 +64,14 @@ final class FpsMeter implements VideoFrameMetadataListener {
         if (s != seen) {
             seen = s;
             n = 0;
-            agreed = 0;
             last = 0f;
             done = false;
+            guessed = false;
         }
         if (done) return;
         float said = usual(format.frameRate);
         if (said > 0f) {
-            publish(s, said);
+            publish(s, said, true);
             return;
         }
         // A jump back (a seek, the stream starting again): the run starts over.
@@ -77,16 +81,19 @@ final class FpsMeter implements VideoFrameMetadataListener {
         float f = rate(times, gaps);
         n = 0;
         if (f > 0f && f == last) {
-            publish(s, f);
+            publish(s, f, true);
         } else {
             last = f;
-            agreed = 0;
+            if (f > 0f && !guessed) {
+                guessed = true;
+                main.post(() -> out.measured(s, f, false));
+            }
         }
     }
 
-    private void publish(int s, float fps) {
+    private void publish(int s, float fps, boolean sure) {
         done = true;
-        main.post(() -> out.measured(s, fps));
+        main.post(() -> out.measured(s, fps, sure));
     }
 
     /** Pure: the usual rate f is within 1.5 % of (23.976 and 29.97 kept as they are), or 0 for none. */
