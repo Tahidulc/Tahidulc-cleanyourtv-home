@@ -18,6 +18,7 @@ import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.engine.Resume;
 import com.gathin.homefieldtv.prefs.Categories;
+import com.gathin.homefieldtv.prefs.RemoteKeys;
 
 import org.junit.After;
 import org.junit.Test;
@@ -38,8 +39,8 @@ import java.util.Map;
 /**
  * The family's playlist at its largest (BigPlaylist: 50,000 channels in 400 groups, a guide of 2,000 channels over 24
  * hours, 40,000 films and series), and how long the main thread takes over each screen and key that froze 1.10: the TV
- * guide opening, its categories, Home's rows, channel up and down, a number typed, Live TV's rows, films and TV shows,
- * search. Each is timed on the JVM (the first time, then the median of the rest) and printed; each must stay well under
+ * guide opening, its categories, Home's rows, channel up and down, a number typed, Live TV's rows (and since the player
+ * took TiviMate's ways, its overlay, channel lists and History), films and TV shows, search. Each is timed on the JVM (the first time, then the median of the rest) and printed; each must stay well under
  * the limit below, however many channels there are. What is worked out off the main thread (the lists, Home's rows, a
  * search) is timed too, for the record.
  */
@@ -80,6 +81,14 @@ public class BigPlaylistTest {
         long t = SystemClock.uptimeMillis();
         a.dispatchKeyEvent(new KeyEvent(t, t, KeyEvent.ACTION_DOWN, code, 0));
         a.dispatchKeyEvent(new KeyEvent(t, t + 40, KeyEvent.ACTION_UP, code, 0));
+    }
+
+    /** A key held: down, a repeat once the player's hold has gone by, up. */
+    private static void hold(TvActivity a, int code) {
+        long t = SystemClock.uptimeMillis();
+        a.dispatchKeyEvent(new KeyEvent(t, t, KeyEvent.ACTION_DOWN, code, 0));
+        a.dispatchKeyEvent(new KeyEvent(t, t + TvActivity.LONG_MS + 100, KeyEvent.ACTION_DOWN, code, 1));
+        a.dispatchKeyEvent(new KeyEvent(t, t + TvActivity.LONG_MS + 120, KeyEvent.ACTION_UP, code, 0));
     }
 
     /** The wall clock in ns (java.time's: Robolectric's own clock stands still under a paused looper). */
@@ -209,13 +218,25 @@ public class BigPlaylistTest {
         Exec.inline = true;
         a.watch(lib.all().get(10));
         idle();
-        time("Live: channel down, from the last channel", true, 9, () -> a.live.play(last), () -> press(a, KeyEvent.KEYCODE_CHANNEL_DOWN), null);
+        time("Live: CH- (the card of the channel before), from the last channel", true, 9, () -> a.live.play(last),
+                () -> press(a, KeyEvent.KEYCODE_CHANNEL_DOWN), null);
         time("Live: 9 9 9 9 typed (the fourth tunes)", true, 5, () -> {
             press(a, KeyEvent.KEYCODE_9);
             press(a, KeyEvent.KEYCODE_9);
             press(a, KeyEvent.KEYCODE_9);
         }, () -> press(a, KeyEvent.KEYCODE_9), null);
+        time("Live: Up (the next channel)", 5, () -> press(a, KeyEvent.KEYCODE_DPAD_UP), () -> press(a, KeyEvent.KEYCODE_BACK));
+        time("Live: OK (the overlay: the card and the tiles)", 5, () -> press(a, KeyEvent.KEYCODE_DPAD_CENTER),
+                () -> press(a, KeyEvent.KEYCODE_BACK));
+        time("Live: Left (the channel list over the picture)", 5, () -> press(a, KeyEvent.KEYCODE_DPAD_LEFT),
+                () -> press(a, KeyEvent.KEYCODE_BACK));
+        time("Live: Left held (the channel list, the picture in its window)", 5, () -> hold(a, KeyEvent.KEYCODE_DPAD_LEFT),
+                () -> press(a, KeyEvent.KEYCODE_BACK));
+        time("Live: Up held (History)", 5, () -> hold(a, KeyEvent.KEYCODE_DPAD_UP), () -> press(a, KeyEvent.KEYCODE_BACK));
+        // Settings → Remote → Up and Down: the category rows (as Homefield TV came).
+        RemoteKeys.setUpDown(app, 0);
         time("Live: Up (the category rows)", 5, () -> press(a, KeyEvent.KEYCODE_DPAD_UP), () -> press(a, KeyEvent.KEYCODE_BACK));
+        RemoteKeys.setUpDown(app, 1);
         Exec.inline = false;
         home(a);
 

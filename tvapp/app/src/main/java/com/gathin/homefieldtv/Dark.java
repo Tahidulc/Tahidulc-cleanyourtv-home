@@ -161,6 +161,15 @@ final class Dark {
     /** The menu's: a TV with a play shape (the guide), a clapperboard (Movies), stacked screens (TV shows), record, a
      *  bookmark (My list), a cogwheel (Settings); and a tick and an outline star. */
     static final int TV = 17, CLAPPER = 18, STACK = 19, RECORD = 20, BOOKMARK = 21, CHECK = 22, STAR_LINE = 23, GEAR = 24;
+    /**
+     * The player's: a clock with an arrow round it (History, a programme from the archive), a camera (the picture), a
+     * speaker (the sound), the sound's offset (◀ • ▶), CC, the picture's shape, the sleep timer (struck through while
+     * off), a TV with a cog (the channel's options), the way out, a bin, the TV guide's sheet, and the transport's skips,
+     * rewind, pause and fast forward.
+     */
+    static final int HISTORY = 25, VIDEO = 26, SPEAKER = 27, OFFSET = 28, CAPTIONS = 29, SHAPE = 30, TIMER = 31,
+            TIMER_OFF = 32, OPTIONS = 33, EXIT = 34, BIN = 35, SHEET = 36, SKIP_BACK = 37, REWIND = 38, PAUSE = 39,
+            FORWARD = 40, SKIP_NEXT = 41;
 
     private static final Path P = new Path();
     private static final RectF ARC = new RectF();
@@ -372,6 +381,164 @@ final class Dark {
                 c.drawCircle(cx, cy, h * 0.28f, stroke);
                 break;
             }
+            default:
+                player(c, kind, cx, cy, h, p, stroke, solid);
+                break;
+        }
+    }
+
+    /** The player's icons (HISTORY … SKIP_NEXT), in the same box and strokes as the rest. */
+    private static void player(Canvas c, int kind, float cx, float cy, float h, Path p, Paint stroke, Paint solid) {
+        switch (kind) {
+            case HISTORY: {
+                // A clock face, an arrow running back round it from the left.
+                ARC.set(cx - h * 0.72f, cy - h * 0.72f, cx + h * 0.72f, cy + h * 0.72f);
+                c.drawArc(ARC, 150, 300, false, stroke);
+                float ax = cx + (float) Math.cos(Math.toRadians(150)) * h * 0.72f, ay = cy + (float) Math.sin(Math.toRadians(150)) * h * 0.72f;
+                p.moveTo(ax - h * 0.3f, ay - h * 0.18f);
+                p.lineTo(ax, ay + h * 0.02f);
+                p.lineTo(ax + h * 0.2f, ay - h * 0.28f);
+                c.drawPath(p, stroke);
+                c.drawLine(cx, cy - h * 0.38f, cx, cy, stroke);
+                c.drawLine(cx, cy, cx + h * 0.28f, cy + h * 0.2f, stroke);
+                break;
+            }
+            case VIDEO:
+                c.drawRoundRect(cx - h * 0.85f, cy - h * 0.5f, cx + h * 0.32f, cy + h * 0.5f, h * 0.1f, h * 0.1f, stroke);
+                p.moveTo(cx + h * 0.32f, cy - h * 0.12f);
+                p.lineTo(cx + h * 0.82f, cy - h * 0.42f);
+                p.lineTo(cx + h * 0.82f, cy + h * 0.42f);
+                p.lineTo(cx + h * 0.32f, cy + h * 0.12f);
+                p.close();
+                c.drawPath(p, solid);
+                break;
+            case SPEAKER:
+                p.moveTo(cx - h * 0.82f, cy - h * 0.26f);
+                p.lineTo(cx - h * 0.46f, cy - h * 0.26f);
+                p.lineTo(cx - h * 0.02f, cy - h * 0.66f);
+                p.lineTo(cx - h * 0.02f, cy + h * 0.66f);
+                p.lineTo(cx - h * 0.46f, cy + h * 0.26f);
+                p.lineTo(cx - h * 0.82f, cy + h * 0.26f);
+                p.close();
+                c.drawPath(p, stroke);
+                ARC.set(cx - h * 0.2f, cy - h * 0.36f, cx + h * 0.36f, cy + h * 0.36f);
+                c.drawArc(ARC, -55, 110, false, stroke);
+                ARC.set(cx - h * 0.3f, cy - h * 0.72f, cx + h * 0.78f, cy + h * 0.72f);
+                c.drawArc(ARC, -55, 110, false, stroke);
+                break;
+            case OFFSET:
+                // ◀ • ▶
+                p.moveTo(cx - h * 0.88f, cy);
+                p.lineTo(cx - h * 0.42f, cy - h * 0.36f);
+                p.lineTo(cx - h * 0.42f, cy + h * 0.36f);
+                p.close();
+                p.moveTo(cx + h * 0.88f, cy);
+                p.lineTo(cx + h * 0.42f, cy - h * 0.36f);
+                p.lineTo(cx + h * 0.42f, cy + h * 0.36f);
+                p.close();
+                c.drawPath(p, solid);
+                c.drawCircle(cx, cy, h * 0.16f, solid);
+                break;
+            case CAPTIONS: {
+                c.drawRoundRect(cx - h * 0.86f, cy - h * 0.62f, cx + h * 0.86f, cy + h * 0.62f, h * 0.14f, h * 0.14f, stroke);
+                // Two Cs.
+                for (int i = -1; i <= 1; i += 2) {
+                    float ox = cx + i * h * 0.34f;
+                    ARC.set(ox - h * 0.26f, cy - h * 0.26f, ox + h * 0.26f, cy + h * 0.26f);
+                    c.drawArc(ARC, 45, 270, false, stroke);
+                }
+                break;
+            }
+            case SHAPE: {
+                c.drawRoundRect(cx - h * 0.86f, cy - h * 0.66f, cx + h * 0.86f, cy + h * 0.66f, h * 0.12f, h * 0.12f, stroke);
+                float k = h * 0.3f, x0 = cx - h * 0.56f, y0 = cy - h * 0.36f, x1 = cx + h * 0.56f, y1 = cy + h * 0.36f;
+                c.drawLine(x0, y0, x0 + k, y0, stroke);
+                c.drawLine(x0, y0, x0, y0 + k, stroke);
+                c.drawLine(x1, y1, x1 - k, y1, stroke);
+                c.drawLine(x1, y1, x1, y1 - k, stroke);
+                break;
+            }
+            case TIMER:
+            case TIMER_OFF:
+                c.drawCircle(cx, cy + h * 0.1f, h * 0.68f, stroke);
+                c.drawLine(cx - h * 0.2f, cy - h * 0.82f, cx + h * 0.2f, cy - h * 0.82f, stroke);
+                c.drawLine(cx, cy - h * 0.82f, cx, cy - h * 0.58f, stroke);
+                c.drawLine(cx, cy + h * 0.1f, cx, cy - h * 0.3f, stroke);
+                if (kind == TIMER_OFF) c.drawLine(cx - h * 0.78f, cy - h * 0.62f, cx + h * 0.78f, cy + h * 0.86f, stroke);
+                break;
+            case OPTIONS: {
+                c.drawRoundRect(cx - h * 0.88f, cy - h * 0.66f, cx + h * 0.88f, cy + h * 0.56f, h * 0.12f, h * 0.12f, stroke);
+                c.drawLine(cx - h * 0.4f, cy + h * 0.84f, cx + h * 0.4f, cy + h * 0.84f, stroke);
+                // A small cog in the screen.
+                float r = h * 0.26f;
+                c.drawCircle(cx, cy - h * 0.05f, r, stroke);
+                for (int i = 0; i < 6; i++) {
+                    double a = Math.PI * i / 3;
+                    float x0 = cx + (float) Math.cos(a) * r, y0 = cy - h * 0.05f + (float) Math.sin(a) * r;
+                    float x1 = cx + (float) Math.cos(a) * r * 1.5f, y1 = cy - h * 0.05f + (float) Math.sin(a) * r * 1.5f;
+                    c.drawLine(x0, y0, x1, y1, stroke);
+                }
+                break;
+            }
+            case EXIT:
+                p.moveTo(cx + h * 0.2f, cy - h * 0.82f);
+                p.lineTo(cx - h * 0.78f, cy - h * 0.82f);
+                p.lineTo(cx - h * 0.78f, cy + h * 0.82f);
+                p.lineTo(cx + h * 0.2f, cy + h * 0.82f);
+                c.drawPath(p, stroke);
+                c.drawLine(cx - h * 0.3f, cy, cx + h * 0.86f, cy, stroke);
+                p.reset();
+                p.moveTo(cx + h * 0.52f, cy - h * 0.34f);
+                p.lineTo(cx + h * 0.86f, cy);
+                p.lineTo(cx + h * 0.52f, cy + h * 0.34f);
+                c.drawPath(p, stroke);
+                break;
+            case BIN:
+                c.drawLine(cx - h * 0.78f, cy - h * 0.6f, cx + h * 0.78f, cy - h * 0.6f, stroke);
+                c.drawLine(cx - h * 0.24f, cy - h * 0.6f, cx - h * 0.24f, cy - h * 0.84f, stroke);
+                c.drawLine(cx - h * 0.24f, cy - h * 0.84f, cx + h * 0.24f, cy - h * 0.84f, stroke);
+                c.drawLine(cx + h * 0.24f, cy - h * 0.84f, cx + h * 0.24f, cy - h * 0.6f, stroke);
+                c.drawRoundRect(cx - h * 0.6f, cy - h * 0.6f, cx + h * 0.6f, cy + h * 0.86f, h * 0.1f, h * 0.1f, stroke);
+                c.drawLine(cx - h * 0.2f, cy - h * 0.28f, cx - h * 0.2f, cy + h * 0.56f, stroke);
+                c.drawLine(cx + h * 0.2f, cy - h * 0.28f, cx + h * 0.2f, cy + h * 0.56f, stroke);
+                break;
+            case SHEET:
+                // The guide's tile: a sheet with lines of programmes.
+                c.drawRoundRect(cx - h * 0.8f, cy - h * 0.8f, cx + h * 0.8f, cy + h * 0.8f, h * 0.14f, h * 0.14f, stroke);
+                c.drawLine(cx - h * 0.42f, cy - h * 0.32f, cx + h * 0.42f, cy - h * 0.32f, stroke);
+                c.drawLine(cx - h * 0.42f, cy + h * 0.04f, cx + h * 0.16f, cy + h * 0.04f, stroke);
+                c.drawLine(cx - h * 0.42f, cy + h * 0.4f, cx + h * 0.02f, cy + h * 0.4f, stroke);
+                break;
+            case SKIP_BACK:
+            case SKIP_NEXT: {
+                int d = kind == SKIP_NEXT ? 1 : -1;
+                p.moveTo(cx - d * h * 0.42f, cy - h * 0.56f);
+                p.lineTo(cx + d * h * 0.42f, cy);
+                p.lineTo(cx - d * h * 0.42f, cy + h * 0.56f);
+                p.close();
+                c.drawPath(p, solid);
+                c.drawLine(cx + d * h * 0.56f, cy - h * 0.56f, cx + d * h * 0.56f, cy + h * 0.56f, stroke);
+                break;
+            }
+            case REWIND:
+            case FORWARD: {
+                // Two triangles side by side, pointing the way it goes.
+                int d = kind == FORWARD ? 1 : -1;
+                p.moveTo(cx - d * h * 0.58f, cy - h * 0.5f);
+                p.lineTo(cx, cy);
+                p.lineTo(cx - d * h * 0.58f, cy + h * 0.5f);
+                p.close();
+                p.moveTo(cx, cy - h * 0.5f);
+                p.lineTo(cx + d * h * 0.58f, cy);
+                p.lineTo(cx, cy + h * 0.5f);
+                p.close();
+                c.drawPath(p, solid);
+                break;
+            }
+            case PAUSE:
+                c.drawRect(cx - h * 0.44f, cy - h * 0.6f, cx - h * 0.14f, cy + h * 0.6f, solid);
+                c.drawRect(cx + h * 0.14f, cy - h * 0.6f, cx + h * 0.44f, cy + h * 0.6f, solid);
+                break;
             default:
                 break;
         }

@@ -32,6 +32,7 @@ import com.gathin.homefieldtv.engine.Catchup;
 import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Guide;
+import com.gathin.homefieldtv.engine.History;
 import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.engine.Names;
 import com.gathin.homefieldtv.engine.Streams;
@@ -240,6 +241,57 @@ final class LiveTv {
         layout();
     }
 
+    // ---- what the player's bar and banner say of the picture and the sound -------------------------------------------
+
+    /** The picture's size as the player has it, as the player's bar writes it: "1920 × 1080" ("" when not known). */
+    String sizeWords() {
+        String[] f = chips();
+        String w = f[0];
+        return w.isEmpty() ? "" : w.replace("×", " × ");
+    }
+
+    /** The sound playing (its language and channels), null when nothing does or it isn't known yet. */
+    Format audioFormat() {
+        if (Exec.inline) return cur == null ? null : new Format.Builder().setLanguage("en").setChannelCount(2).build();
+        return player == null ? null : player.getAudioFormat();
+    }
+
+    /** Settings' or the bar's picture quality changed: the channel's versions chosen again, at once. */
+    void requality() {
+        if (cur == null || arc != null || inWindow) return;
+        tryAgain();
+    }
+
+    // ---- History: a programme on screen ADD_MS is kept (engine.History) -------------------------------------------
+
+    private String historyKey;
+    private long historyStart, historySince;
+    private boolean historyKept;
+    private final Runnable historyTick = this::historyTick;
+
+    private void historyTick() {
+        h.removeCallbacks(historyTick);
+        if (cur == null || state != PLAYING || !full()) {
+            historyKey = null;
+            return;
+        }
+        long at = shownAt(), now = SystemClock.elapsedRealtime();
+        Guide.Schedule s = Library.get(app).schedule(cur.key);
+        int i = s == null ? -1 : s.at(at);
+        long start = i >= 0 ? s.start[i] : 0L;
+        if (!cur.key.equals(historyKey) || start != historyStart) {
+            historyKey = cur.key;
+            historyStart = start;
+            historySince = now;
+            historyKept = false;
+        } else if (!historyKept && now - historySince >= History.ADD_MS) {
+            historyKept = true;
+            String title = i >= 0 ? s.title[i] : cur.name;
+            History.add(app, new History.Entry(cur.key, title, start, i >= 0 ? s.stop[i] : 0L, System.currentTimeMillis(), behind()));
+        }
+        h.postDelayed(historyTick, 2_000L);
+    }
+
     /** The player now, for the player's menu (its sound tracks); null when nothing plays. */
     ExoPlayer player() {
         return player;
@@ -359,6 +411,7 @@ final class LiveTv {
         held = false;
         if (!same) subs.channelChanged();
         cur = c;
+        PlayerPrefs.useDelay(app, c.key);
         retries = 0;
         versions(c);
         hlsRefused = false;
@@ -395,6 +448,10 @@ final class LiveTv {
         }
         inWindow = false;
         subs.detach();
+        h.removeCallbacks(historyTick);
+        historyKey = null;
+        // Films play with every channel's sound offset.
+        PlayerPrefs.useDelay(app, null);
         if (player != null) {
             player.removeListener(listener);
             player.release();
@@ -545,6 +602,7 @@ final class LiveTv {
             ladder = null;
             retries = 0;
             Library.get(app).watched(c);
+            PlayerPrefs.useDelay(app, c.key);
         }
         inWindow = false;
         asHls = false;
@@ -900,6 +958,10 @@ final class LiveTv {
 
     private void set(int s) {
         state = s;
+        if (s == PLAYING) {
+            h.removeCallbacks(historyTick);
+            h.post(historyTick);
+        }
         showNote();
         for (Listener l : new ArrayList<>(listeners)) l.liveChanged();
     }

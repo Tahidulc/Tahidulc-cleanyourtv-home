@@ -3,10 +3,8 @@ package com.gathin.homefieldtv;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
-import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.RectF;
-import android.graphics.Shader;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Handler;
 import android.os.Looper;
@@ -16,6 +14,8 @@ import android.text.TextPaint;
 import android.view.KeyEvent;
 import android.view.View;
 import android.widget.FrameLayout;
+
+import androidx.media3.common.Format;
 
 import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Exec;
@@ -30,56 +30,61 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * A channel full screen, with two things over it in Homefield's dark look.
+ * A channel full screen, as the family's TiviMate plays one, in Homefield's own channels and settings.
  *
- * OK brings up the channel banner over a dark scrim: the channel's group and small logo at the top; its large logo,
- * what's on (its times, how far through, what's left, the channel and the picture the player has: its size and frames
- * a second), what's next, a thin amber line across for how far through it is, and a row of the channels last watched
- * on this TV, each with what's on and how far through. Left and Right go along the row; OK changes to one at once.
- *
- * Up and Down go through the channels without leaving this one, in the live screen's look: the picture of what's on
- * the channel the remote is on fills the screen behind, darkened; along the top what's on after it, then its logo, the
- * programme's title, the channel, the times and three lines of what it's about; under that its category's row of
- * channels, each tile its logo over a picture of what's on with the title, a line of what it's about and how far
- * through it is, and the next category's row below. Left and Right go along the row too; OK changes to the channel.
- *
- * The channel keys and the number keys change at once. Back, or a few seconds with no key, hides it all.
- *
- * Catch-up: where the provider keeps the programme on now in its archive (or the stream's own window reaches back to
- * its start), the banner has "Watch from the start" over the logo (Left goes to it; the rewind key too), and the live
- * screen tags it. OK held brings up a small menu for the channel: watch it, from the start, add it to the favourites;
- * and, for the channel playing, Subtitles: Off, From the channel or Automatic (LiveSubs), which ask before fetching the
- * speech model where the TV needs it. MENU (or the remote's settings key) brings up the player's menu instead
- * (PlayerMenu: the picture's shape, the sound's delay and track); while either is up it has the remote to itself.
+ * <p>Plain playback shows the picture alone. Its keys, as TiviMate's remote has them (Settings → Remote control):
+ * <pre>
+ *   INFO               the info card at the foot (InfoCard: the channel, its programme, the date and clock, the
+ *                      picture's and sound's chips, what's next), for the panels' 10 seconds
+ *   CH+ / CH−          the card for the next / previous channel, without changing channel (OK then changes to it)
+ *   Up / Down          the next / previous channel in the list (the card comes up on it; Settings → Remote can make
+ *                      them open the live screen's rows of channels instead, as Homefield TV came)
+ *   Right              the channel watched last (again: back to this one)
+ *   OK                 the overlay: the card at the top, the seek line and the row of tiles (PlayerTiles: TV guide,
+ *                      History, the channels watched last); Down from it, the bar (PlayerBar)
+ *   OK held, MENU      the bar alone: Search … Exit, the picture and sound's pickers, Add to favourites, the scoreboard
+ *                      (over a match), Channel options (from the start, lock): what OK held gave here before
+ *   Left               the channel list over the picture (ChannelList.OVERLAY); held, the opaque one with the picture
+ *                      in a window (ChannelListScreen)
+ *   Up held            History (HistoryScreen); Right held: the programme's description; Down held: Search
+ *   Back               the TV guide with this channel in its picture; held, the picture stops (Home, no mini TV)
+ *   0–9                a channel by its number; the colour keys and Last as Settings → Remote say; rewind: from the
+ *                      start, where the provider keeps the programme
+ * </pre>
+ * Pressed and held are told apart for Left, Right, Up, Down and Back in plain playback only (TvActivity), so every
+ * list and row moves at once. The scoreboard over a match (BoardLayer) has the remote first while its card or menu is
+ * up, and its OK at kick-off. Catch-up plays over this screen (CatchupScreen).
  */
-final class LiveScreen extends Screen implements LiveTv.Listener {
-    private static final long BANNER_MS = 6000, CHOOSING_MS = 9000, BROWSE_MS = 12000;
-    private static final int NONE = 0, BANNER = 1, BROWSE = 2;
-    /** The banner's "Watch from the start", where the remote can be as on a recent channel. */
-    private static final int START_OVER = -2;
+final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Host {
+    /** TiviMate's "Panels timeout, sec": 10; the list, the description and the rows a little longer. */
+    static final long PANELS_MS = 10_000L, LIST_MS = 15_000L, DESC_MS = 30_000L, BROWSE_MS = 12_000L;
+    static final int NONE = 0, BANNER = 1, OVERLAY = 2, BAR = 3, LIST = 4, DESC = 5, BROWSE = 6;
     private static final float LIFT = 1.07f;
 
     private Channel start;
     /** From the guide: a programme to show from the archive as this screen opens (-1: none), and its end. */
     private long catchupFrom = -1, catchupEnd;
-    private int mode = BANNER;
-    /** The recent channel the remote is on in the banner's row, -1 for none, START_OVER for "Watch from the start". */
-    private int pick = -1;
-    private PopMenu menu;
-    private List<Channel> recent = new ArrayList<>();
+    private int mode = NONE;
+    /** The card's channel on CH+ and CH− (not the one playing); null: the one playing. */
+    private Channel peek;
+    /** The bar came down from the overlay (Up goes back to its tiles), not by itself. */
+    private boolean barWithCard;
+    /** Shown before (a screen over this one closed): no card coming up for it. */
+    private boolean seen;
     private String digits = "";
+    private Panels panels;
+    private PlayerTiles tiles;
+    private PlayerBar bar;
+    private ChannelList list;
+    private DialogCard dialog;
     private FrameLayout browse;
-    private Banner banner;
     private Backdrop browseBack;
     private BrowseInfo info;
     private BrowseRows rows;
-    /** The player's menu (MENU or the settings key): the picture's shape for this channel, the sound's delay and track. */
-    private PlayerMenu playerMenu;
     /** The scoreboard over a match (BoardLayer): it takes the remote first while its menu or its card is up. */
     private BoardLayer board;
     /** The live screen's rows (the playlist's groups) and where the remote is in them. */
     private final List<Row> groups = new ArrayList<>();
-    /** Each group's row, by the group's own name. */
     private final Map<String, Integer> rowOf = new HashMap<>();
     private int row, col;
     private final Handler h = new Handler(Looper.getMainLooper());
@@ -115,6 +120,17 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
     /** The channel before (-1) or after (1) the one playing, played live when this screen is next shown. */
     void next(int dir) {
         start = step(tv.live.channel(), dir);
+        seen = false;
+    }
+
+    /** A channel from a list over this screen (History): played when this screen is next shown, its card up. */
+    void tuneFromList(Channel c) {
+        if (c == null) return;
+        PinScreen.forChannel(tv, c, () -> {
+            start = c;
+            seen = false;
+            if (tv.isTop(this)) shown();
+        });
     }
 
     @Override boolean overVideo() {
@@ -123,16 +139,18 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
 
     @Override View build() {
         FrameLayout root = new FrameLayout(tv);
+        board = new BoardLayer(tv);
         browse = new FrameLayout(tv);
         View shade = new View(tv);
-        shade.setBackgroundColor(Dark.alpha(Dark.GROUND, 0xE0));
+        shade.setBackgroundColor(Palette.alpha(Palette.GROUND, 0xE0));
         browseBack = new Backdrop(tv, 0f, 0f, 1920f, 1080f, Pics.DARK_FULL, 0.5f);
         info = new BrowseInfo(tv);
         rows = new BrowseRows(tv);
-        // Over the picture, darker at the left (for the words) and at the foot (for the rows).
         View left = new View(tv), foot = new View(tv);
-        left.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{Dark.alpha(Dark.GROUND, 0xD9), Dark.alpha(Dark.GROUND, 0x80), Dark.alpha(Dark.GROUND, 0)}));
-        foot.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{Dark.alpha(Dark.GROUND, 0), Dark.alpha(Dark.GROUND, 0x33), Dark.alpha(Dark.GROUND, 0xE6)}));
+        left.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{Palette.alpha(Palette.GROUND, 0xD9),
+                Palette.alpha(Palette.GROUND, 0x80), Palette.alpha(Palette.GROUND, 0)}));
+        foot.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{Palette.alpha(Palette.GROUND, 0),
+                Palette.alpha(Palette.GROUND, 0x33), Palette.alpha(Palette.GROUND, 0xE6)}));
         browse.addView(shade, new FrameLayout.LayoutParams(-1, -1));
         browse.addView(browseBack, new FrameLayout.LayoutParams(-1, -1));
         browse.addView(left, new FrameLayout.LayoutParams(-1, -1));
@@ -140,31 +158,22 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
         browse.addView(info, new FrameLayout.LayoutParams(-1, -1));
         browse.addView(rows, new FrameLayout.LayoutParams(-1, -1));
         browse.setVisibility(View.GONE);
-        banner = new Banner(tv);
-        menu = new PopMenu(tv);
-        board = new BoardLayer(tv);
+        tiles = new PlayerTiles(tv, tilesHost);
+        tiles.setVisibility(View.GONE);
+        panels = new Panels(tv);
+        panels.setVisibility(View.GONE);
+        list = new ChannelList(tv, ChannelList.OVERLAY, listHost);
+        list.setVisibility(View.GONE);
+        bar = new PlayerBar(tv, barHost);
+        dialog = new DialogCard(tv);
+        dialog.setHost(this);
         root.addView(board, new FrameLayout.LayoutParams(-1, -1));
         root.addView(browse, new FrameLayout.LayoutParams(-1, -1));
-        root.addView(banner, new FrameLayout.LayoutParams(-1, -1));
-        playerMenu = new PlayerMenu(tv, new PlayerMenu.Target() {
-            @Override public androidx.media3.common.Player player() {
-                return tv.live.player();
-            }
-
-            @Override public int aspect() {
-                Channel c = tv.live.channel();
-                return com.gathin.homefieldtv.prefs.PlayerPrefs.aspectFor(tv, c == null ? null : c.key);
-            }
-
-            @Override public void aspect(int mode) {
-                Channel c = tv.live.channel();
-                if (c == null) return;
-                com.gathin.homefieldtv.prefs.PlayerPrefs.setAspectFor(tv, c.key, mode);
-                tv.live.refit();
-            }
-        });
-        root.addView(menu, new FrameLayout.LayoutParams(-1, -1));
-        root.addView(playerMenu, new FrameLayout.LayoutParams(-1, -1));
+        root.addView(tiles, new FrameLayout.LayoutParams(-1, -1));
+        root.addView(panels, new FrameLayout.LayoutParams(-1, -1));
+        root.addView(list, new FrameLayout.LayoutParams(-1, -1));
+        root.addView(bar, new FrameLayout.LayoutParams(-1, -1));
+        root.addView(dialog, new FrameLayout.LayoutParams(-1, -1));
         return root;
     }
 
@@ -181,33 +190,45 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
         tv.live.addListener(this);
         tv.live.subs.asker = asker;
         tv.live.place(tv.fullScreen());
+        boolean fresh = start != null || !seen;
         if (start != null) {
             tv.live.play(start);
             start = null;
         } else if (tv.live.channel() != null) {
             tv.live.play(tv.live.channel());
         }
-        setMode(BANNER);
+        seen = true;
+        // The card comes up on a channel changed to (TiviMate's "Show info panel at the bottom when switching
+        // channels"), not when a screen over this one closes.
+        if (fresh) switched();
+        else setMode(NONE);
         board.start();
     }
 
     @Override void hidden() {
-        if (playerMenu != null) playerMenu.close();
+        bar.close();
         board.stop();
         if (tv.live.subs.asker == asker) tv.live.subs.asker = null;
         tv.live.removeListener(this);
         h.removeCallbacks(hide);
         h.removeCallbacks(digitsDone);
         h.removeCallbacks(askPicture);
-        if (menu != null && menu.isOpen()) menu.close();
+        mode = NONE;
+        peek = null;
+        Fade.show(panels, false, 0);
+        tiles.setVisibility(View.GONE);
+        list.setVisibility(View.GONE);
+        browse.setVisibility(View.GONE);
     }
 
     @Override public void liveChanged() {
-        banner.invalidate();
+        panels.invalidate();
     }
 
     @Override void tick() {
-        banner.invalidate();
+        panels.invalidate();
+        tiles.invalidate();
+        list.refresh();
         info.invalidate();
         rows.invalidate();
     }
@@ -220,52 +241,124 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
             rows.moved(-1, 0);
             info.show(browseChannel());
         }
-        recent = Library.get(tv).recent(tv.live.channel());
-        if (pick >= recent.size()) pick = recent.size() - 1;
-        banner.invalidate();
+        if (mode == OVERLAY) tiles.set(Library.get(tv).recent(tv.live.channel()), tiles.focus());
+        panels.invalidate();
     }
 
-    /** What shows: nothing, the banner, or the live screen's rows; each fades in and out. */
+    // ---- what shows -------------------------------------------------------------------------------------------------
+
+    /** What shows: nothing, the card at the foot, the overlay, the bar, the list, the description, or the rows. */
     private void setMode(int m) {
+        int was = mode;
         mode = m;
         h.removeCallbacks(hide);
-        if (m == BANNER) {
-            recent = Library.get(tv).recent(tv.live.channel());
-            if (pick >= recent.size()) pick = recent.size() - 1;
-            if (pick == START_OVER && fromTheStart(tv.live.channel()) == null) pick = -1;
-            // How long it stays: Settings → Player → Channel banner.
-            h.postDelayed(hide, pick != -1 ? CHOOSING_MS : com.gathin.homefieldtv.prefs.PlayerPrefs.bannerMs(tv, BANNER_MS));
-        } else {
-            pick = -1;
-        }
-        if (m == BROWSE) h.postDelayed(hide, BROWSE_MS);
-        else h.removeCallbacks(askPicture);
-        Fade.show(banner, m == BANNER, 180);
+        if (m != BANNER) peek = null;
+        if (m != BROWSE) h.removeCallbacks(askPicture);
+        if (was == BAR && m != BAR) bar.close();
+        boolean card = m == BANNER || m == OVERLAY || m == DESC || m == BAR && barWithCard;
+        Fade.show(panels, card || !digits.isEmpty(), card ? 130 : 110);
+        Fade.show(tiles, m == OVERLAY, m == OVERLAY ? 0 : 110);
+        Fade.show(list, m == LIST, m == LIST ? 0 : 110);
         Fade.show(browse, m == BROWSE, 220);
-        // Subtitles: above the banner while it is up (its row of recent channels, or not), gone under the rows.
-        tv.live.subs.room(m != BROWSE, m == BANNER ? (recent.isEmpty() ? 690f : 500f) : -1f);
-        banner.invalidate();
+        switch (m) {
+            case BANNER:
+            case OVERLAY:
+            case BAR:
+                h.postDelayed(hide, PANELS_MS);
+                break;
+            case LIST:
+                h.postDelayed(hide, LIST_MS);
+                break;
+            case DESC:
+                h.postDelayed(hide, DESC_MS);
+                break;
+            case BROWSE:
+                h.postDelayed(hide, BROWSE_MS);
+                break;
+            default:
+                break;
+        }
+        // Subtitles: above the card or the bar while they are up, gone under the lists and rows.
+        float above = m == BANNER ? InfoCard.FOOT_Y - 16f : m == OVERLAY || m == BAR ? PlayerTiles.SCRIM_Y + 40f : -1f;
+        tv.live.subs.room(m != LIST && m != BROWSE, above);
+        panels.invalidate();
+    }
+
+    /** The panels' wait starts again (a key in them). */
+    private void poke() {
+        h.removeCallbacks(hide);
+        h.postDelayed(hide, mode == LIST ? LIST_MS : mode == DESC ? DESC_MS : mode == BROWSE ? BROWSE_MS : PANELS_MS);
+    }
+
+    /** A channel changed to: the card at the foot for Settings → Player → Channel banner's seconds (none when Off). */
+    private void switched() {
+        int s = com.gathin.homefieldtv.prefs.PlayerPrefs.bannerSeconds(tv);
+        if (s <= 0) {
+            setMode(NONE);
+            return;
+        }
+        setMode(BANNER);
+        h.removeCallbacks(hide);
+        h.postDelayed(hide, s * 1000L);
     }
 
     private Channel step(Channel from, int dir) {
         Library lib = Library.get(tv);
         if (from == null || lib.all().isEmpty()) return from;
-        // Settings → Categories and Parental control: past hidden categories, and past locked channels (they play
-        // when chosen from a list, after the PIN). Found at once from the lists the library made (Shown.step's way).
+        // Settings → Categories and Parental control: past hidden categories and locked channels, at once.
         return lib.step(from, dir);
     }
 
-    /** A channel now: the banner comes up on it (unless Settings → Player → Channel banner is off). */
+    /** A channel now (after its PIN where it is locked): its card comes up. */
     private void tune(Channel c) {
         if (c == null) return;
-        // Settings → Parental control: a locked channel after its PIN.
         if (com.gathin.homefieldtv.prefs.Parental.blocks(tv, c)) {
             PinScreen.forChannel(tv, c, () -> tune(c));
             return;
         }
-        pick = -1;
         tv.live.play(c);
-        setMode(com.gathin.homefieldtv.prefs.PlayerPrefs.bannerSeconds(tv) <= 0 ? NONE : BANNER);
+        switched();
+    }
+
+    /** The OK overlay: the card at the top, the seek line, the tiles. */
+    private void openOverlay() {
+        tiles.set(Library.get(tv).recent(tv.live.channel()), PlayerTiles.GUIDE);
+        setMode(OVERLAY);
+    }
+
+    /** The bar: down from the overlay (with its card), or by itself (OK held, MENU). */
+    private void openBar(boolean withCard) {
+        barWithCard = withCard;
+        bar.open();
+        setMode(BAR);
+    }
+
+    private void openList() {
+        list.open(tv.live.channel());
+        setMode(LIST);
+    }
+
+    private void openPreviewList() {
+        setMode(NONE);
+        tv.push(new ChannelListScreen(tv));
+    }
+
+    private void openHistory() {
+        setMode(NONE);
+        tv.push(new HistoryScreen(tv));
+    }
+
+    /** CH+ or CH−: the card for the channel after or before the one shown, the one playing playing on. */
+    private void peekStep(int dir) {
+        Channel from = mode == BANNER && peek != null ? peek : tv.live.channel();
+        Channel to = step(from, dir);
+        if (to == null) return;
+        Channel playing = tv.live.channel();
+        peek = playing != null && playing.key.equals(to.key) ? null : to;
+        Channel keep = peek;
+        setMode(BANNER);
+        peek = keep;
+        panels.invalidate();
     }
 
     /**
@@ -285,102 +378,38 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
     private void startOver(Channel c) {
         long[] p = fromTheStart(c);
         if (p == null) return;
-        pick = -1;
-        h.removeCallbacks(hide);
-        mode = NONE;
-        Fade.show(banner, false, 120);
-        Fade.show(browse, false, 120);
-        tv.push(new CatchupScreen(tv, c, p[0], p[1]));
-    }
-
-    /** OK held: a small menu for a channel (watch it, from the start, the favourites). */
-    private void openMenu(Channel c) {
-        if (c == null || menu == null) return;
-        boolean playing = tv.live.channel() != null && tv.live.channel().key.equals(c.key);
-        List<String[]> items = new ArrayList<>();
-        if (!playing) items.add(new String[]{"watch", "Watch " + c.name});
-        if (fromTheStart(c) != null) items.add(new String[]{"start", "Watch from the start"});
-        boolean fav = Library.get(tv).isFavourite(c);
-        items.add(new String[]{"fav", fav ? "Remove from favourites" : "Add to favourites"});
-        if (playing) items.add(new String[]{"subs", "Subtitles: " + LiveSubs.MODES[LiveSubs.mode(tv)]});
-        // Settings → Parental control: with a PIN set, the channel locked or unlocked (unlocking asks for the PIN).
-        boolean lockedHere = com.gathin.homefieldtv.prefs.Parental.lockedChannels(tv).contains(c.key);
-        if (com.gathin.homefieldtv.prefs.Parental.hasPin(tv)) items.add(new String[]{"lock", lockedHere ? "Unlock this channel" : "Lock this channel"});
-        long now = System.currentTimeMillis();
-        Guide.Schedule s = Library.get(tv).schedule(c.key);
-        int i = s == null ? -1 : s.at(now);
-        String line = i >= 0 ? LiveText.span(s.start[i], s.stop[i]) + "  " + s.title[i] : "";
-        h.removeCallbacks(hide);
-        menu.open(c.name, line, items, 680f, 360f, key -> {
-            switch (key) {
-                case "watch":
-                    tune(c);
-                    break;
-                case "start":
-                    PinScreen.forChannel(tv, c, () -> startOver(c));
-                    break;
-                case "subs":
-                    openSubs();
-                    break;
-                case "lock":
-                    if (lockedHere) {
-                        PinScreen.check(tv, "Unlock " + c.name, () -> {
-                            com.gathin.homefieldtv.prefs.Parental.lockChannel(tv, c.key, false);
-                            android.widget.Toast.makeText(tv, c.name + " unlocked", android.widget.Toast.LENGTH_SHORT).show();
-                        });
-                    } else {
-                        com.gathin.homefieldtv.prefs.Parental.lockChannel(tv, c.key, true);
-                        android.widget.Toast.makeText(tv, c.name + " locked: the PIN is asked before it plays",
-                                android.widget.Toast.LENGTH_SHORT).show();
-                    }
-                    if (mode != NONE) setMode(mode);
-                    break;
-                default: {
-                    boolean on = Library.get(tv).toggleFavourite(c);
-                    android.widget.Toast.makeText(tv, on ? c.name + " added to your favourites" : c.name + " taken off your favourites",
-                            android.widget.Toast.LENGTH_SHORT).show();
-                    if (mode != NONE) setMode(mode);
-                    break;
-                }
-            }
-        });
-    }
-
-    /** The menu's Subtitles: Off, From the channel or Automatic, for every channel; the one chosen ticked. */
-    private void openSubs() {
-        int now = LiveSubs.mode(tv);
-        List<String[]> items = new ArrayList<>();
-        for (int i = 0; i < LiveSubs.MODES.length; i++) {
-            items.add(new String[]{"mode:" + i, LiveSubs.MODES[i], i == now ? PopMenu.CHOSEN : ""});
-        }
-        h.removeCallbacks(hide);
-        menu.open("Subtitles", tv.live.subs.about(), items, 680f, 360f, key -> {
-            tv.live.subs.setMode(key.charAt(key.length() - 1) - '0');
-            if (mode != NONE && !menu.isOpen()) setMode(mode);
+        PinScreen.forChannel(tv, c, () -> {
+            setMode(NONE);
+            tv.push(new CatchupScreen(tv, c, p[0], p[1]));
         });
     }
 
     /** Automatic subtitles where the TV has no speech recognition of its own: the speech model fetched only on a yes. */
     private void askModel() {
-        if (menu == null || menu.isOpen() || playerMenu != null && playerMenu.isOpen()) {
-            // A menu is up (this one or the player's): asked next time, so the two never share the remote.
+        if (dialog.showing() || bar.isOpen()) {
+            // Something else has the remote: asked next time.
             tv.live.subs.askLater();
             return;
         }
-        List<String[]> items = new ArrayList<>();
-        items.add(new String[]{"get", "Download it"});
-        items.add(new String[]{"no", "Not now"});
+        List<RowList.Row> answers = new ArrayList<>();
+        answers.add(RowList.Row.item("get", "Download it", null));
+        answers.add(RowList.Row.item("no", "Not now", null));
         h.removeCallbacks(hide);
-        menu.ask("Automatic subtitles", LiveSubs.askLine(), items, key -> {
-            if (key.equals("get")) tv.live.subs.fetch();
-            if (mode != NONE) setMode(mode);
-        });
+        dialog.show("Automatic subtitles", LiveSubs.askLine(), answers, 0);
+    }
+
+    @Override public void answered(DialogCard d, RowList.Row answer) {
+        d.hide(null);
+        if ("get".equals(answer.tag)) tv.live.subs.fetch();
+        if (mode != NONE) poke();
     }
 
     private void tuneDigits() {
         h.removeCallbacks(digitsDone);
         String d = digits;
         digits = "";
+        panels.invalidate();
+        if (mode == NONE) Fade.show(panels, false, 110);
         if (d.isEmpty()) return;
         // Settings → Remote → The channel before: 0 on its own, if chosen.
         if (d.equals("0") && RemoteKeys.previous(tv) == RemoteKeys.PREV_ZERO) {
@@ -393,16 +422,491 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
         } catch (NumberFormatException e) {
             return;
         }
-        // The first listed channel with that number, found at once (the library keeps them by number).
         Channel c = Library.get(tv).numbered(n);
-        if (c != null) {
-            tune(c);
-            return;
-        }
-        banner.invalidate();
+        if (c != null) tune(c);
     }
 
-    // ---- the live screen's rows -------------------------------------------------------------------------------------
+    // ---- the remote ---------------------------------------------------------------------------------------------
+
+    @Override boolean holds(int code) {
+        if (mode != NONE && mode != BANNER || dialog.showing() || board.takesKeys() || !digits.isEmpty()) return false;
+        switch (code) {
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
+            case KeyEvent.KEYCODE_DPAD_UP:
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+            case KeyEvent.KEYCODE_BACK:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    @Override boolean keyLong(int code) {
+        switch (code) {
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+                openPreviewList();
+                return true;
+            case KeyEvent.KEYCODE_DPAD_UP:
+                openHistory();
+                return true;
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
+                setMode(DESC);
+                return true;
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+                setMode(NONE);
+                tv.openSearch();
+                return true;
+            case KeyEvent.KEYCODE_BACK:
+                tv.stopPlayback();
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    @Override boolean key(int code, KeyEvent e) {
+        if (dialog.showing()) return dialog.key(code);
+        if (mode == BAR) {
+            if (code == KeyEvent.KEYCODE_MENU || code == KeyEvent.KEYCODE_SETTINGS) {
+                setMode(NONE);
+                return true;
+            }
+            poke();
+            return bar.key(code);
+        }
+        if (mode == LIST) return list.key(code);
+        if (code == KeyEvent.KEYCODE_MENU || code == KeyEvent.KEYCODE_SETTINGS) {
+            openBar(false);
+            return true;
+        }
+        if (board.key(code)) return true;
+        // Settings → Remote: the colour keys and the Last key.
+        int keyAct = RemoteKeys.action(tv, code);
+        if (keyAct != RemoteKeys.NOTHING && e.getRepeatCount() == 0) return act(keyAct);
+        if (code >= KeyEvent.KEYCODE_0 && code <= KeyEvent.KEYCODE_9) {
+            digits += (char) ('0' + code - KeyEvent.KEYCODE_0);
+            h.removeCallbacks(digitsDone);
+            if (digits.length() >= 4) tuneDigits();
+            else h.postDelayed(digitsDone, RemoteKeys.waitMs(tv));
+            Fade.show(panels, true, 110);
+            panels.invalidate();
+            return true;
+        }
+        boolean reversed = RemoteKeys.reversed(tv);
+        switch (code) {
+            case KeyEvent.KEYCODE_CHANNEL_UP:
+            case KeyEvent.KEYCODE_CHANNEL_DOWN:
+                // TiviMate: the card for the next or previous channel, without changing channel.
+                if (mode == BROWSE) browseStep(code == KeyEvent.KEYCODE_CHANNEL_UP ? -1 : 1);
+                else peekStep(RemoteKeys.zapDir(code == KeyEvent.KEYCODE_CHANNEL_UP ? -1 : 1, reversed));
+                return true;
+            case KeyEvent.KEYCODE_DPAD_UP:
+            case KeyEvent.KEYCODE_DPAD_DOWN: {
+                int dir = code == KeyEvent.KEYCODE_DPAD_UP ? -1 : 1;
+                if (mode == OVERLAY) {
+                    poke();
+                    return tiles.key(code);
+                }
+                if (mode == BROWSE) browseStep(dir);
+                else if (mode == DESC) setMode(NONE);
+                // Settings → Remote → Up and Down: change channel (as TiviMate), or the live screen's rows.
+                else if (RemoteKeys.upDown(tv) == 1) tune(step(tv.live.channel(), RemoteKeys.zapDir(dir, reversed)));
+                else openBrowse(dir);
+                return true;
+            }
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
+                if (mode == OVERLAY) {
+                    poke();
+                    return tiles.key(code);
+                }
+                if (mode == BROWSE) browseAlong(1);
+                else if (mode == DESC) setMode(NONE);
+                else act(RemoteKeys.PREVIOUS);
+                return true;
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+                if (mode == OVERLAY) {
+                    poke();
+                    return tiles.key(code);
+                }
+                if (mode == BROWSE) browseAlong(-1);
+                else if (mode == DESC) setMode(NONE);
+                else openList();
+                return true;
+            case KeyEvent.KEYCODE_MEDIA_REWIND:
+            case KeyEvent.KEYCODE_MEDIA_PREVIOUS:
+                // Homefield's: the programme on now from its start, where the provider keeps it.
+                if (e.getRepeatCount() == 0) {
+                    Channel c = mode == BROWSE ? browseChannel() : tv.live.channel();
+                    if (fromTheStart(c) != null) startOver(c);
+                    else setMode(BANNER);
+                }
+                return true;
+            case KeyEvent.KEYCODE_INFO:
+                if (mode == BANNER && peek == null) setMode(NONE);
+                else setMode(BANNER);
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    @Override void ok() {
+        if (dialog.showing()) {
+            dialog.ok();
+            return;
+        }
+        if (mode == BAR) {
+            poke();
+            bar.ok();
+            return;
+        }
+        if (mode == LIST) {
+            list.ok();
+            return;
+        }
+        if (board.ok()) return;
+        if (!digits.isEmpty()) {
+            tuneDigits();
+            return;
+        }
+        switch (mode) {
+            case OVERLAY:
+                tiles.ok();
+                return;
+            case BROWSE:
+                tune(browseChannel());
+                return;
+            case DESC:
+                setMode(NONE);
+                return;
+            case BANNER:
+                if (peek != null) {
+                    // The channel shown on CH+ or CH−: changed to.
+                    tune(peek);
+                    return;
+                }
+                // fall through: as in plain playback
+            default:
+                if (tv.live.state() == LiveTv.FAILED) {
+                    tv.live.tryAgain();
+                    setMode(BANNER);
+                    return;
+                }
+                // Settings → Remote → OK: the overlay (as TiviMate), the channel list, the guide or the bar.
+                act(RemoteKeys.ok(tv));
+        }
+    }
+
+    @Override void okLong() {
+        if (dialog.showing() || mode == BAR || mode == LIST) return;
+        // TiviMate: OK held is the bar (its menu); Settings → Remote → OK held may give another.
+        int a = RemoteKeys.okLong(tv);
+        if (a == RemoteKeys.CHANNEL_MENU || a == RemoteKeys.PLAYER_MENU) openBar(false);
+        else act(a);
+    }
+
+    /** What Settings → Remote gave a key or OK, on the channel playing; true when it did something. */
+    private boolean act(int action) {
+        Channel c = tv.live.channel();
+        switch (action) {
+            case RemoteKeys.GUIDE:
+                setMode(NONE);
+                tv.toGuide();
+                return true;
+            case RemoteKeys.LIST:
+                openList();
+                return true;
+            case RemoteKeys.PREVIOUS: {
+                // The channel watched last: Right, as TiviMate's ("Turn on most recent channel").
+                List<Channel> was = Library.get(tv).recent(c);
+                if (!was.isEmpty()) tune(was.get(0));
+                return true;
+            }
+            case RemoteKeys.FAVOURITE: {
+                if (c == null) return true;
+                boolean on = Library.get(tv).toggleFavourite(c);
+                android.widget.Toast.makeText(tv, on ? c.name + " added to your favourites" : c.name + " taken off your favourites",
+                        android.widget.Toast.LENGTH_SHORT).show();
+                return true;
+            }
+            case RemoteKeys.PLAYER_MENU:
+            case RemoteKeys.CHANNEL_MENU:
+                openBar(false);
+                return true;
+            case RemoteKeys.SUBTITLES:
+                barWithCard = false;
+                bar.openPicker(PlayerBar.CAPTIONS);
+                setMode(BAR);
+                return true;
+            case RemoteKeys.START_OVER:
+                if (fromTheStart(c) != null) startOver(c);
+                else setMode(BANNER);
+                return true;
+            case RemoteKeys.SEARCH:
+                setMode(NONE);
+                tv.openSearch();
+                return true;
+            case RemoteKeys.SETTINGS:
+                setMode(NONE);
+                tv.openSettings();
+                return true;
+            case RemoteKeys.BANNER:
+                openOverlay();
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    @Override boolean back() {
+        if (dialog.showing()) {
+            dialog.hide(null);
+            return true;
+        }
+        if (mode == BAR) {
+            bar.back();
+            return true;
+        }
+        if (mode == LIST) return list.back();
+        if (board.back()) return true;
+        if (!digits.isEmpty()) {
+            digits = "";
+            h.removeCallbacks(digitsDone);
+            setMode(mode);
+            return true;
+        }
+        if (mode != NONE) {
+            setMode(NONE);
+            return true;
+        }
+        // TiviMate: Back from the picture is the TV guide, this channel in its picture.
+        tv.toGuide();
+        return true;
+    }
+
+    // ---- what the bar, the tiles and the list ask ----------------------------------------------------------------
+
+    /** The bar's own: what its buttons do here. */
+    private final PlayerBar.Host barHost = new PlayerBar.Host() {
+        @Override public Channel channel() {
+            return tv.live.channel();
+        }
+
+        @Override public void act(int item) {
+            switch (item) {
+                case PlayerBar.SEARCH:
+                    tv.openSearch();
+                    break;
+                case PlayerBar.CHANNELS:
+                    openPreviewList();
+                    break;
+                case PlayerBar.HISTORY:
+                    openHistory();
+                    break;
+                case PlayerBar.MOVIES:
+                    Rail.go(tv, Rail.FILMS, -1);
+                    break;
+                case PlayerBar.SHOWS:
+                    Rail.go(tv, Rail.SHOWS, -1);
+                    break;
+                case PlayerBar.RECORDINGS:
+                    Rail.go(tv, Rail.RECORDINGS, -1);
+                    break;
+                case PlayerBar.MY_LIST:
+                    Rail.go(tv, Rail.MY_LIST, -1);
+                    break;
+                case PlayerBar.SCOREBOARD:
+                    board.okLong();
+                    break;
+                case PlayerBar.SETTINGS:
+                    tv.openSettings();
+                    break;
+                case PlayerBar.EXIT:
+                    // TiviMate's Exit: out of the app (the picture stops as it goes).
+                    tv.moveTaskToBack(true);
+                    break;
+                case PlayerBar.START_OVER:
+                    startOver(tv.live.channel());
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        @Override public boolean hasBoard() {
+            return board.hasGame();
+        }
+
+        @Override public boolean canStartOver() {
+            return fromTheStart(tv.live.channel()) != null;
+        }
+
+        @Override public boolean barUp() {
+            if (!barWithCard) return false;
+            openOverlay();
+            return true;
+        }
+
+        @Override public void closed() {
+            if (mode == BAR) setMode(NONE);
+        }
+    };
+
+    /** The overlay's tiles: the guide, History, a channel watched last. */
+    private final PlayerTiles.Host tilesHost = new PlayerTiles.Host() {
+        @Override public void openGuide() {
+            setMode(NONE);
+            tv.toGuide();
+        }
+
+        @Override public void openHistory() {
+            LiveScreen.this.openHistory();
+        }
+
+        @Override public void tune(Channel c) {
+            LiveScreen.this.tune(c);
+        }
+
+        @Override public boolean edge(int dir) {
+            // Down: the bar, the card staying.
+            if (dir == Ui.DOWN) openBar(true);
+            return true;
+        }
+
+        @Override public float[] seek() {
+            Channel c = tv.live.channel();
+            Guide.Schedule s = c == null ? null : Library.get(tv).schedule(c.key);
+            long now = System.currentTimeMillis();
+            int i = s == null ? -1 : s.at(now);
+            float p = i < 0 ? 0f : LiveText.progress(now, s.start[i], s.stop[i]);
+            return new float[]{p, p, 1f};
+        }
+    };
+
+    /** The channel list over the picture. */
+    private final ChannelList.Host listHost = new ChannelList.Host() {
+        @Override public void tune(Channel c) {
+            // It plays and the list stays (TiviMate's "Stay on list when switching channels").
+            PinScreen.forChannel(tv, c, () -> {
+                tv.live.play(c);
+                list.refresh();
+            });
+        }
+
+        @Override public void full() {
+            setMode(NONE);
+        }
+
+        @Override public void closed() {
+            setMode(NONE);
+        }
+
+        @Override public void poke() {
+            LiveScreen.this.poke();
+        }
+    };
+
+    /** The chips for the channel playing: the picture's quality, its frames a second, the sound (FHD, 50 FPS, STEREO). */
+    static List<String> chips(LiveTv live) {
+        List<String> out = new ArrayList<>(3);
+        String[] f = live.format();
+        if (!f[0].isEmpty()) out.add(f[0]);
+        if (f.length > 2 && !f[2].isEmpty()) out.add(f[2].toUpperCase(Locale.ROOT));
+        Format a = live.audioFormat();
+        if (a != null) {
+            String[] w = PlayerBar.audioWords(a.language, null, a.channelCount);
+            if (w[1] != null) out.add(w[1].toUpperCase(Locale.ROOT));
+        }
+        return out;
+    }
+
+    // ---- the cards: at the foot, at the top, the description, the number typed ----------------------------------------
+
+    private final class Panels extends View {
+        private final InfoCard card;
+        private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint titleP = Type.paint(36f, Type.MEDIUM, Palette.TEXT1), lineP = Type.paint(Type.ROW, Type.REGULAR, Palette.TEXT2);
+        private final TextPaint descP = Type.paint(26f, Type.REGULAR, Palette.TEXT2), digitP = Type.paint(Type.HERO, Type.MEDIUM, Palette.TEXT1);
+        private final TextPaint nameP = Type.paint(Type.ROW, Type.REGULAR, Palette.TEXT2);
+        private final RectF r = new RectF();
+        private String descKey = "";
+        private StaticLayout descTitle, descText;
+
+        Panels(Context c) {
+            super(c);
+            card = new InfoCard(this);
+        }
+
+        @Override protected void onDraw(Canvas c) {
+            Channel playing = tv.live.channel();
+            long now = System.currentTimeMillis();
+            if (mode == BANNER) {
+                Channel ch = peek != null ? peek : playing;
+                card.draw(c, InfoCard.FOOT_Y, ch, now, false, ch == playing ? chips(tv.live) : null);
+            } else if (mode == OVERLAY || mode == BAR && barWithCard) {
+                card.draw(c, InfoCard.TOP_Y, playing, now, false, chips(tv.live));
+            } else if (mode == DESC && playing != null) {
+                drawDescription(c, playing, now);
+            }
+            if (!digits.isEmpty()) drawDigits(c);
+        }
+
+        /** Right held: the programme's card at the top right, its whole description. */
+        private void drawDescription(Canvas c, Channel ch, long now) {
+            Guide.Schedule s = Library.get(getContext()).schedule(ch.key);
+            int i = s == null ? -1 : s.at(now);
+            String title = i >= 0 ? s.title[i] : ch.name, desc = i >= 0 ? s.desc[i] : "";
+            String k = ch.key + "|" + (i >= 0 ? s.start[i] : 0);
+            float x0 = 1152f, y0 = 48f, x1 = 1872f, inner = x1 - x0 - 64f;
+            if (!k.equals(descKey)) {
+                descKey = k;
+                descTitle = InfoCard.lines(title, titleP, Ui.px(inner), 2, 42f / 36f);
+                descText = desc.isEmpty() ? null : InfoCard.lines(desc, descP, Ui.px(inner), 5, 33f / 26f);
+            }
+            float th = descTitle.getHeight() / Ui.s, dh = descText == null ? 0f : descText.getHeight() / Ui.s + 16f;
+            float hgt = 32f + th + 18f + (i >= 0 ? 40f : 0f) + dh + 28f;
+            r.set(Ui.f(x0), Ui.f(y0), Ui.f(x1), Ui.f(y0 + hgt));
+            fill.setColor(Palette.PLAYBACK);
+            c.drawRoundRect(r, Ui.f(16f), Ui.f(16f), fill);
+            float tx = Ui.f(x0 + 32f), y = y0 + 32f;
+            titleP.setColor(Palette.TEXT1);
+            Ui.draw(c, descTitle, tx, Ui.f(y));
+            y += th + 18f;
+            if (i >= 0) {
+                lineP.setColor(Palette.TEXT2);
+                String sp = LiveText.span(s.start[i], s.stop[i]);
+                float base = Ui.f(y + 28f);
+                c.drawText(sp, tx, base, lineP);
+                float bx = tx + lineP.measureText(sp) + Ui.f(25);
+                Bars.thin(c, bx, base - Ui.f(10), Ui.f(80), Ui.f(6), LiveText.progress(now, s.start[i], s.stop[i]));
+                if (s.stop[i] > now) c.drawText(InfoCard.minutes(s.stop[i] - now), bx + Ui.f(104), base, lineP);
+                y += 40f + 16f;
+            }
+            if (descText != null) Ui.draw(c, descText, tx, Ui.f(y));
+        }
+
+        /** The number being typed, at the top right, and the channel it is so far. */
+        private void drawDigits(Canvas c) {
+            r.set(Ui.f(1552f), Ui.f(48f), Ui.f(1872f), Ui.f(168f));
+            fill.setColor(Palette.PLAYBACK);
+            c.drawRoundRect(r, Ui.f(16f), Ui.f(16f), fill);
+            String d = digits.length() >= 3 ? digits : (digits + "---").substring(0, 3);
+            digitP.setColor(Palette.TEXT1);
+            c.drawText(d, Ui.f(1584f), Ui.f(106f), digitP);
+            int n;
+            try {
+                n = Integer.parseInt(digits);
+            } catch (NumberFormatException e) {
+                return;
+            }
+            Channel ch = Library.get(getContext()).numbered(n);
+            nameP.setColor(Palette.TEXT2);
+            if (ch != null) c.drawText(Ui.fit(ch.name, nameP, Ui.f(256f)), Ui.f(1584f), Ui.f(148f), nameP);
+        }
+    }
+
+    // ---- the live screen's rows (Settings → Remote → Up and Down: the rows, as Homefield TV came) ------------------------
 
     /**
      * The playlist's groups as rows: in the family's order and names, hidden ones left out (Settings → Categories). Each
@@ -437,7 +941,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
         return col >= 0 && col < l.size() ? l.get(col) : null;
     }
 
-    /** Up or Down while watching: the live screen, on the channel before or after the one playing. */
+    /** Up or Down while watching (Settings → Remote): the live screen, on the channel before or after the one playing. */
     private void openBrowse(int dir) {
         buildRows();
         if (groups.isEmpty()) return;
@@ -466,8 +970,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
         if (groups.isEmpty()) return;
         int k = col + dir;
         if (k < 0 || k >= groups.get(row).channels.size()) {
-            h.removeCallbacks(hide);
-            h.postDelayed(hide, BROWSE_MS);
+            poke();
             return;
         }
         moveTo(row, k, 0);
@@ -480,14 +983,12 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
         rows.moved(was, rowDir);
         Channel c = browseChannel();
         info.show(c);
-        // The picture behind: the one known now, else none until the remote rests and it is found.
         Guide.Schedule s = c == null ? null : Library.get(tv).schedule(c.key);
         browseBack.set(ProgrammePictures.peek(c, s, s == null ? -1 : s.at(System.currentTimeMillis())));
         h.removeCallbacks(askPicture);
         if (Exec.inline) askPicture();
         else h.postDelayed(askPicture, ProgrammePictures.REST_MS);
-        h.removeCallbacks(hide);
-        h.postDelayed(hide, BROWSE_MS);
+        poke();
     }
 
     private void askPicture() {
@@ -506,474 +1007,14 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
         if (url != null) browseBack.set(url);
     }
 
-    // ---- the remote ---------------------------------------------------------------------------------------------
-
-    @Override boolean key(int code, KeyEvent e) {
-        // The player's menu takes the D-pad while it is open; MENU or the settings key opens it.
-        if (playerMenu != null && playerMenu.isOpen()) return playerMenu.key(code);
-        if (menu != null && menu.isOpen()) return menu.key(code);
-        if (code == KeyEvent.KEYCODE_MENU || code == KeyEvent.KEYCODE_SETTINGS) {
-            setMode(NONE);
-            playerMenu.open();
-            return true;
-        }
-        if (board.key(code)) return true;
-        // Settings → Remote: the colour keys and the Last key.
-        int keyAct = RemoteKeys.action(tv, code);
-        if (keyAct != RemoteKeys.NOTHING && e.getRepeatCount() == 0) return act(keyAct);
-        if (code >= KeyEvent.KEYCODE_0 && code <= KeyEvent.KEYCODE_9) {
-            digits += (char) ('0' + code - KeyEvent.KEYCODE_0);
-            h.removeCallbacks(digitsDone);
-            if (digits.length() >= 4) tuneDigits();
-            else h.postDelayed(digitsDone, RemoteKeys.waitMs(tv));
-            setMode(BANNER);
-            return true;
-        }
-        boolean reversed = RemoteKeys.reversed(tv);
-        switch (code) {
-            case KeyEvent.KEYCODE_CHANNEL_UP:
-                tune(step(tv.live.channel(), RemoteKeys.zapDir(-1, reversed)));
-                return true;
-            case KeyEvent.KEYCODE_CHANNEL_DOWN:
-                tune(step(tv.live.channel(), RemoteKeys.zapDir(1, reversed)));
-                return true;
-            case KeyEvent.KEYCODE_DPAD_UP:
-            case KeyEvent.KEYCODE_DPAD_DOWN: {
-                int dir = code == KeyEvent.KEYCODE_DPAD_UP ? -1 : 1;
-                if (mode == BROWSE) browseStep(dir);
-                // Settings → Remote → Up and Down: change channel, as the channel keys do.
-                else if (mode == NONE && RemoteKeys.upDown(tv) == 1) tune(step(tv.live.channel(), RemoteKeys.zapDir(dir, reversed)));
-                else openBrowse(dir);
-                return true;
-            }
-            case KeyEvent.KEYCODE_DPAD_RIGHT:
-                if (mode == BROWSE) {
-                    browseAlong(1);
-                    return true;
-                }
-                if (mode == BANNER && pick == START_OVER) pick = -1;
-                else if (mode == BANNER && pick < recent.size() - 1) pick++;
-                setMode(BANNER);
-                return true;
-            case KeyEvent.KEYCODE_DPAD_LEFT:
-                if (mode == BROWSE) {
-                    browseAlong(-1);
-                    return true;
-                }
-                if (mode == NONE) {
-                    // Settings → Remote → The channel before: Left, if chosen; else "‹ Menu", as before.
-                    if (RemoteKeys.previous(tv) == RemoteKeys.PREV_LEFT) return act(RemoteKeys.PREVIOUS);
-                    tv.pop();
-                    return true;
-                }
-                if (pick >= 0) pick--;
-                // Left of the row: "Watch from the start", where the programme on now can be.
-                else if (pick == -1 && fromTheStart(tv.live.channel()) != null) pick = START_OVER;
-                setMode(BANNER);
-                return true;
-            case KeyEvent.KEYCODE_MEDIA_REWIND:
-            case KeyEvent.KEYCODE_MEDIA_PREVIOUS:
-                if (e.getRepeatCount() == 0) {
-                    Channel c = mode == BROWSE ? browseChannel() : tv.live.channel();
-                    if (fromTheStart(c) != null) startOver(c);
-                    else setMode(BANNER);
-                }
-                return true;
-            case KeyEvent.KEYCODE_INFO:
-                setMode(mode == BANNER ? NONE : BANNER);
-                return true;
-            default:
-                return false;
-        }
-    }
-
-    @Override void ok() {
-        if (playerMenu != null && playerMenu.isOpen()) {
-            playerMenu.close();
-            return;
-        }
-        if (menu != null && menu.isOpen()) {
-            menu.ok();
-            return;
-        }
-        if (board.ok()) return;
-        switch (mode) {
-            case BROWSE:
-                tune(browseChannel());
-                return;
-            case BANNER:
-                if (pick == START_OVER) {
-                    startOver(tv.live.channel());
-                    return;
-                }
-                if (pick >= 0 && pick < recent.size()) {
-                    tune(recent.get(pick));
-                    return;
-                }
-                if (tv.live.state() == LiveTv.FAILED) {
-                    tv.live.tryAgain();
-                    setMode(BANNER);
-                    return;
-                }
-                setMode(NONE);
-                return;
-            default:
-                // Settings → Remote → OK: the banner (as it came), the channel list, the guide or the player's menu.
-                act(RemoteKeys.ok(tv));
-        }
-    }
-
-    @Override void okLong() {
-        if (menu != null && menu.isOpen() || playerMenu != null && playerMenu.isOpen()) return;
-        // Over a match with nothing else up: the scoreboard's menu, as OK held over TiviMate on the launcher.
-        if (mode == NONE && board.okLong()) return;
-        // Settings → Remote → OK held, full screen: the channel's menu (as it came) or what was chosen.
-        if (mode == NONE && RemoteKeys.okLong(tv) != RemoteKeys.CHANNEL_MENU && act(RemoteKeys.okLong(tv))) return;
-        Channel c = mode == BROWSE ? browseChannel() : mode == BANNER && pick >= 0 && pick < recent.size() ? recent.get(pick) : tv.live.channel();
-        openMenu(c);
-    }
-
-    /** What Settings → Remote gave a key or OK, on the channel playing; true when it did something. */
-    private boolean act(int action) {
-        Channel c = tv.live.channel();
-        switch (action) {
-            case RemoteKeys.GUIDE:
-                tv.openGuide(null);
-                return true;
-            case RemoteKeys.LIST:
-                openBrowse(0);
-                return true;
-            case RemoteKeys.PREVIOUS: {
-                List<Channel> was = Library.get(tv).recent(c);
-                if (!was.isEmpty()) tune(was.get(0));
-                return true;
-            }
-            case RemoteKeys.FAVOURITE: {
-                if (c == null) return true;
-                boolean on = Library.get(tv).toggleFavourite(c);
-                android.widget.Toast.makeText(tv, on ? c.name + " added to your favourites" : c.name + " taken off your favourites",
-                        android.widget.Toast.LENGTH_SHORT).show();
-                return true;
-            }
-            case RemoteKeys.PLAYER_MENU:
-                setMode(NONE);
-                playerMenu.open();
-                return true;
-            case RemoteKeys.SUBTITLES:
-                openSubs();
-                return true;
-            case RemoteKeys.START_OVER:
-                if (fromTheStart(c) != null) startOver(c);
-                else setMode(BANNER);
-                return true;
-            case RemoteKeys.SEARCH:
-                tv.openSearch();
-                return true;
-            case RemoteKeys.SETTINGS:
-                tv.openSettings();
-                return true;
-            case RemoteKeys.BANNER:
-                setMode(BANNER);
-                return true;
-            case RemoteKeys.CHANNEL_MENU:
-                openMenu(c);
-                return true;
-            default:
-                return false;
-        }
-    }
-
-    @Override boolean back() {
-        if (playerMenu != null && playerMenu.isOpen()) {
-            playerMenu.close();
-            return true;
-        }
-        if (menu != null && menu.isOpen()) {
-            menu.close();
-            if (mode != NONE) setMode(mode);
-            return true;
-        }
-        if (board.back()) return true;
-        if (mode != NONE) {
-            setMode(NONE);
-            return true;
-        }
-        return false;
-    }
-
-    // ---- the banner -------------------------------------------------------------------------------------------------
-
-    /** The channel banner, and the channel number being typed. */
-    private final class Banner extends View {
-        private final Fade fade = new Fade();
-        private final Lift lift = new Lift();
-        private final Paint top = new Paint(), foot = new Paint(), bmp = new Paint(Paint.FILTER_BITMAP_FLAG), logoPaint = new Paint(Paint.FILTER_BITMAP_FLAG);
-        private final Paint track = Dark.fill(0x4DFFFFFF), white = Dark.fill(0xFFFFFFFF), line = Dark.fill(0x40FFFFFF), lineAccent = Dark.fill(Dark.ACCENT);
-        private final Paint chip = Dark.line(0x8CFFFFFF, 1.6f), thin = Dark.fill(0x40FFFFFF), accent = Dark.fill(Dark.ACCENT);
-        private final Paint tileBack = Dark.fill(0xFF000000), ring = Dark.line(Dark.alpha(Dark.RING, 0xE6), 3f), pillBack = Dark.fill(Dark.alpha(Dark.RAIL, 0xE6));
-        private final TextPaint groupP = Dark.text(26, 600, Dark.SOFT), titleP = Dark.text(58, 600, Dark.TEXT);
-        private final TextPaint lineP = Dark.text(30, 500, Dark.SOFT), numP = Dark.text(30, 400, Dark.MUTED), nameP = Dark.text(30, 700, Dark.TEXT);
-        private final TextPaint chipP = Dark.text(22, 600, Dark.SOFT), nextLabel = Dark.text(24, 700, Dark.MUTED), nextP = Dark.text(28, 500, Dark.SOFT);
-        private final TextPaint logoName = Dark.text(40, 700, Dark.TEXT), noneP = Dark.text(28, 500, Dark.MUTED);
-        private final TextPaint tileP = Dark.text(24, 500, Dark.SOFT), tileOn = Dark.text(24, 600, Dark.TEXT), tileName = Dark.text(24, 700, Dark.TEXT);
-        private final TextPaint hintP = Dark.text(26, 600, Dark.TEXT), digitP = Dark.text(64, 600, Dark.TEXT);
-        private final Paint startLit = Dark.fill(Dark.ACCENT), startBack = Dark.fill(Dark.alpha(Dark.RAIL, 0xD9)), startEdge = Dark.line(0x66FFFFFF, 1.5f);
-        private final Paint startRing = Dark.line(Dark.alpha(Dark.RING, 0xE6), 3f), iconLine = Dark.line(Dark.TEXT, 2.4f), iconFill = Dark.fill(Dark.TEXT);
-        private final Paint inkLine = Dark.line(Dark.ACCENT_INK, 2.4f), inkFill = Dark.fill(Dark.ACCENT_INK);
-        private final TextPaint startP = Dark.text(26, 600, Dark.TEXT), startInk = Dark.text(26, 700, Dark.ACCENT_INK);
-        private final RectF r = new RectF();
-        private float topFor = -1f, footFor = -1f, scroll;
-        private long last;
-        private final Runnable redraw = this::invalidate;
-
-        Banner(Context c) {
-            super(c);
-            groupP.setLetterSpacing(0.06f);
-        }
-
-        @Override protected void onDraw(Canvas c) {
-            int w = getWidth(), hh = getHeight();
-            boolean moving = false;
-            Channel ch = tv.live.channel();
-            if (ch != null && mode == BANNER) moving = drawBanner(c, ch, w, hh);
-            if (!digits.isEmpty()) drawDigits(c, w);
-            if (moving) postInvalidateOnAnimation();
-        }
-
-        /** The banner; true while anything in it still moves. */
-        private boolean drawBanner(Canvas c, Channel ch, int w, int hh) {
-            Library lib = Library.get(tv);
-            long now = System.currentTimeMillis();
-            boolean row = !recent.isEmpty();
-            float base = row ? 0f : 190f;
-            shades(hh, base);
-            c.drawRect(0, 0, w, Ui.f(260), top);
-            c.drawRect(0, Ui.f(470 + base), w, hh, foot);
-
-            // The channel's words fade and rise in again when it changes.
-            fade.focus(ch.key);
-            int a = Math.round(255 * fade.text());
-            float rise = fade.rise();
-            alpha(a);
-
-            // At the top: its group, its small logo under it.
-            String group = ch.group.toUpperCase(Locale.ROOT);
-            if (!group.isEmpty()) c.drawText(Ui.fit(group, groupP, Ui.f(900)), Ui.f(96), Ui.f(92) + rise, groupP);
-            int logoMode = Pics.tiles ? Pics.READY : Pics.FIT;
-            Bitmap small = Pics.get(ch.logo, Ui.px(150), Ui.px(60), logoMode, redraw);
-            if (small != null) c.drawBitmap(small, Ui.f(96), Ui.f(group.isEmpty() ? 60 : 110) + rise, logoPaint);
-
-            // Its large logo, what's on, the channel and the picture the player has.
-            float lx = Ui.f(96), ly = Ui.f(600 + base) + rise, lw = Ui.f(280), lh = Ui.f(150);
-            Bitmap big = Pics.get(ch.logo, Ui.px(280), Ui.px(150), logoMode, redraw);
-            if (big != null) c.drawBitmap(big, lx, ly + (lh - big.getHeight()) / 2f, logoPaint);
-            else c.drawText(Ui.fit(ch.name, logoName, lw), lx, ly + lh / 2f + Ui.f(14), logoName);
-
-            Guide.Schedule s = lib.schedule(ch.key);
-            int i = s == null ? -1 : s.at(now);
-            int n = s == null ? -1 : i >= 0 ? (i + 1 < s.start.length ? i + 1 : -1) : s.after(now);
-            float x0 = Ui.f(420), right = w - Ui.f(96);
-            String title = i >= 0 ? s.title[i] : ch.name;
-            c.drawText(Ui.fit(title, titleP, right - x0), x0, Ui.f(662 + base) + rise, titleP);
-            float y = Ui.f(718 + base) + rise, x = x0;
-            if (i >= 0) {
-                String span = LiveText.span(s.start[i], s.stop[i]);
-                c.drawText(span, x, y, lineP);
-                x += lineP.measureText(span) + Ui.f(22);
-                // Settings → Appearance → Progress bars.
-                if (com.gathin.homefieldtv.prefs.Look.progress) {
-                    float p = LiveText.progress(now, s.start[i], s.stop[i]), bw = Ui.f(120), by = y - Ui.f(11);
-                    r.set(x, by, x + bw, by + Ui.f(5));
-                    c.drawRoundRect(r, Ui.f(3), Ui.f(3), track);
-                    r.set(x, by, x + bw * p, by + Ui.f(5));
-                    c.drawRoundRect(r, Ui.f(3), Ui.f(3), white);
-                    x += bw + Ui.f(18);
-                }
-                String left = LiveText.left(now, s.stop[i]);
-                c.drawText(left, x, y, lineP);
-                x += lineP.measureText(left) + Ui.f(30);
-            } else {
-                String none = s == null ? "No programme information" : "Nothing in the guide now";
-                c.drawText(none, x, y, noneP);
-                x += noneP.measureText(none) + Ui.f(30);
-            }
-            // Settings → Appearance → Channel numbers.
-            if (com.gathin.homefieldtv.prefs.Look.numbers) {
-                String num = String.valueOf(lib.number(ch));
-                c.drawText(num, x, y, numP);
-                x += numP.measureText(num) + Ui.f(10);
-            }
-            String name = Ui.fit(ch.name, nameP, Math.max(Ui.f(120), right - x - Ui.f(280)));
-            c.drawText(name, x, y, nameP);
-            x += nameP.measureText(name) + Ui.f(24);
-            // The chips: only what the player itself knows of the picture.
-            for (String f : tv.live.format()) {
-                if (f.isEmpty()) continue;
-                float cw = chipP.measureText(f) + Ui.f(24);
-                if (x + cw > right) break;
-                r.set(x, y - Ui.f(28), x + cw, y + Ui.f(8));
-                c.drawRoundRect(r, Ui.f(8), Ui.f(8), chip);
-                c.drawText(f, x + Ui.f(12), y - Ui.f(2), chipP);
-                x += cw + Ui.f(12);
-            }
-            if (n >= 0) {
-                float ny = Ui.f(770 + base) + rise;
-                c.drawText("Next", x0, ny, nextLabel);
-                float nx = x0 + nextLabel.measureText("Next") + Ui.f(16);
-                String sp = LiveText.span(s.start[n], s.stop[n]);
-                c.drawText(sp, nx, ny, nextP);
-                nx += nextP.measureText(sp) + Ui.f(18);
-                c.drawText(Ui.fit(s.title[n], nextP, right - nx), nx, ny, nextP);
-            }
-            // A thin line across for how far through it is (Settings → Appearance → Progress bars).
-            if (i >= 0 && com.gathin.homefieldtv.prefs.Look.progress) {
-                float ax0 = Ui.f(96), ax1 = w - Ui.f(96), ay = Ui.f(816 + base);
-                float px = ax0 + (ax1 - ax0) * LiveText.progress(now, s.start[i], s.stop[i]);
-                c.drawRect(ax0, ay - Ui.f(1.5f), ax1, ay + Ui.f(1.5f), line);
-                c.drawRect(ax0, ay - Ui.f(2), px, ay + Ui.f(2), lineAccent);
-                c.drawCircle(px, ay, Ui.f(9), lineAccent);
-            }
-            if (tv.live.state() == LiveTv.FAILED) hint(c, "OK to try again", right, Ui.f(560 + base));
-            else if (fromTheStart(ch) != null) startPill(c, Ui.f(96), Ui.f(560 + base), pick == START_OVER);
-            alpha(255);
-            boolean moving = fade.busy();
-            if (row) moving |= drawRecent(c, w, now, lib);
-            return moving;
-        }
-
-        /** The channel's words' opacity (the recent row keeps its own). */
-        private void alpha(int a) {
-            groupP.setAlpha(a);
-            titleP.setAlpha(a);
-            lineP.setAlpha(a);
-            numP.setAlpha(a);
-            nameP.setAlpha(a);
-            chipP.setAlpha(a);
-            nextLabel.setAlpha(a);
-            nextP.setAlpha(a);
-            logoName.setAlpha(a);
-            noneP.setAlpha(a);
-            logoPaint.setAlpha(a);
-            track.setAlpha(a * 0x4D / 255);
-            white.setAlpha(a);
-            chip.setAlpha(a * 0x8C / 255);
-            line.setAlpha(a * 0x40 / 255);
-            lineAccent.setAlpha(a);
-        }
-
-        private void shades(int hh, float base) {
-            if (topFor != hh) {
-                top.setShader(new LinearGradient(0, 0, 0, Ui.f(260), 0xB3000000, 0x00000000, Shader.TileMode.CLAMP));
-                topFor = hh;
-            }
-            float from = Ui.f(470 + base);
-            if (footFor != from + hh) {
-                foot.setShader(new LinearGradient(0, from, 0, hh, new int[]{0x00000000, 0xC7000000, 0xF2000000},
-                        new float[]{0f, 0.38f, 1f}, Shader.TileMode.CLAMP));
-                footFor = from + hh;
-            }
-        }
-
-        /** The channels last watched: each its logo on its tile, what's on and how far through; true while moving. */
-        private boolean drawRecent(Canvas c, int w, long now, Library lib) {
-            long t = SystemClock.uptimeMillis();
-            float dt = last == 0 ? 16f : Math.min(48f, t - last);
-            last = t;
-            float tw = Ui.f(232), th = Ui.f(130), gap = Ui.f(28), y0 = Ui.f(852), x0 = Ui.f(96), pitch = tw + gap;
-            int fit = Math.max(1, (int) ((w - Ui.f(192) + gap) / pitch));
-            float to = pick < fit ? 0f : (pick - fit + 1) * pitch;
-            boolean moving = false;
-            if (Math.abs(to - scroll) > 0.5f) {
-                scroll += (to - scroll) * (Exec.inline ? 1f : 1f - (float) Math.exp(-dt / 70.0));
-                moving = true;
-            } else {
-                scroll = to;
-            }
-            moving |= lift.step(pick >= 0 && pick < recent.size() ? recent.get(pick) : null);
-            if (!moving) last = 0;
-            for (int k = 0; k < recent.size(); k++) {
-                float tx = x0 + k * pitch - scroll;
-                if (tx > w) break;
-                if (tx + tw < 0) continue;
-                Channel rc = recent.get(k);
-                float l = lift.of(rc);
-                c.save();
-                if (l > 0f) {
-                    float sc = 1f + (LIFT - 1f) * l;
-                    c.scale(sc, sc, tx + tw / 2f, y0 + th / 2f);
-                }
-                r.set(tx, y0, tx + tw, y0 + th);
-                Bitmap tile = Pics.tiles ? Pics.get(rc.logo, Ui.px(232), Ui.px(130), Pics.TILE, redraw) : null;
-                if (tile != null) {
-                    c.drawBitmap(tile, tx, y0, bmp);
-                } else {
-                    c.drawRoundRect(r, Ui.f(16), Ui.f(16), tileBack);
-                    Bitmap f = Pics.tiles ? null : Pics.get(rc.logo, Ui.px(172), Ui.px(80), Pics.FIT, redraw);
-                    if (f != null) c.drawBitmap(f, tx + (tw - f.getWidth()) / 2f, y0 + (th - f.getHeight()) / 2f, bmp);
-                    else {
-                        String nm = Ui.fit(rc.name, tileName, tw - Ui.f(24));
-                        c.drawText(nm, tx + (tw - tileName.measureText(nm)) / 2f, y0 + th / 2f + Ui.f(9), tileName);
-                    }
-                }
-                if (l > 0f) {
-                    ring.setAlpha(Math.round(0xE6 * l));
-                    Dark.ring(c, r, Ui.f(16), ring);
-                }
-                c.restore();
-                // What's on, and how far through.
-                Guide.Schedule s = lib.schedule(rc.key);
-                int i = s == null ? -1 : s.at(now);
-                float under = (LIFT - 1f) * th / 2f * l;
-                TextPaint p = l > 0.5f ? tileOn : tileP;
-                c.drawText(Ui.fit(i >= 0 ? s.title[i] : rc.name, p, tw), tx, y0 + th + Ui.f(36) + under, p);
-                float by = y0 + th + Ui.f(50) + under;
-                c.drawRect(tx, by, tx + tw, by + Ui.f(3), thin);
-                if (i >= 0) c.drawRect(tx, by, tx + tw * LiveText.progress(now, s.start[i], s.stop[i]), by + Ui.f(3), l > 0.5f ? accent : white);
-            }
-            return moving;
-        }
-
-        /** "Watch from the start" over the logo: amber inside a ring where the remote is (Left from the row goes to it). */
-        private void startPill(Canvas c, float x, float base, boolean lit) {
-            String t = "Watch from the start";
-            TextPaint p = lit ? startInk : startP;
-            float icon = Ui.f(36), ph = Ui.f(54), pw = Ui.f(20) + icon + p.measureText(t) + Ui.f(26);
-            r.set(x, base - Ui.f(38), x + pw, base - Ui.f(38) + ph);
-            c.drawRoundRect(r, ph / 2f, ph / 2f, lit ? startLit : startBack);
-            if (lit) Dark.ring(c, r, ph / 2f, startRing);
-            else c.drawRoundRect(r, ph / 2f, ph / 2f, startEdge);
-            Dark.replay(c, x + Ui.f(20) + icon / 2f - Ui.f(4), r.centerY(), Ui.f(10), lit ? inkLine : iconLine, lit ? inkFill : iconFill);
-            c.drawText(t, x + Ui.f(20) + icon, r.centerY() + Ui.f(9), p);
-        }
-
-        private void hint(Canvas c, String t, float right, float y) {
-            float tw = hintP.measureText(t);
-            r.set(right - tw - Ui.f(44), y - Ui.f(40), right, y + Ui.f(10));
-            c.drawRoundRect(r, Ui.f(25), Ui.f(25), pillBack);
-            c.drawText(t, right - tw - Ui.f(22), y - Ui.f(6), hintP);
-        }
-
-        private void drawDigits(Canvas c, int w) {
-            r.set(w - Ui.f(340), Ui.f(60), w - Ui.f(96), Ui.f(170));
-            c.drawRoundRect(r, Ui.f(18), Ui.f(18), pillBack);
-            String d = digits.length() >= 3 ? digits : (digits + "---").substring(0, 3);
-            c.drawText(d, r.centerX() - digitP.measureText(d) / 2f, r.centerY() + Ui.f(22), digitP);
-        }
-    }
-
-    // ---- the live screen: what's on the channel the remote is on ----------------------------------------------------
-
     /** Along the top what's on after, then the channel's logo, the programme's title, the channel, times and story. */
     private final class BrowseInfo extends View {
         private Channel ch;
-        private final Paint bmp = new Paint(Paint.FILTER_BITMAP_FLAG), sep = Dark.fill(0x4DFFFFFF);
-        private final Paint track = Dark.fill(0x40FFFFFF), accent = Dark.fill(Dark.ACCENT);
-        private final TextPaint atP = Dark.text(22, 600, Dark.MUTED), laterP = Dark.text(22, 500, Dark.SOFT);
-        private final TextPaint titleP = Dark.text(60, 600, Dark.TEXT), chanP = Dark.text(24, 500, Dark.MUTED);
-        private final TextPaint timeP = Dark.text(24, 500, Dark.SOFT), descP = Dark.text(26, 400, Dark.SOFT);
-        private final TextPaint logoName = Dark.text(34, 700, Dark.TEXT), tagP = Dark.text(20, 600, Dark.SOFT);
-        private final Paint tagLine = Dark.line(0x80FFFFFF, 1.5f), iconLine = Dark.line(Dark.SOFT, 2f), iconFill = Dark.fill(Dark.SOFT);
-        private final RectF r = new RectF();
+        private final Paint bmp = new Paint(Paint.FILTER_BITMAP_FLAG), sep = new Paint();
+        private final TextPaint atP = Type.paint(Type.CHIP, Type.MEDIUM, Palette.TEXT2), laterP = Type.paint(Type.CHIP, Type.REGULAR, Palette.TEXT2);
+        private final TextPaint titleP = Type.paint(56f, Type.MEDIUM, Palette.TEXT1), chanP = Type.paint(Type.SMALL, Type.REGULAR, Palette.TEXT2);
+        private final TextPaint timeP = Type.paint(Type.SMALL, Type.REGULAR, Palette.TEXT2), descP = Type.paint(26f, Type.REGULAR, Palette.TEXT2);
+        private final TextPaint logoName = Type.paint(34f, Type.BOLD, Palette.TEXT1);
         private String descKey = "";
         private StaticLayout descL;
         private final Runnable redraw = this::invalidate;
@@ -996,8 +1037,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
             Guide.Schedule s = lib.schedule(ch.key);
             int i = s == null ? -1 : s.at(now);
             float x0 = Ui.f(96), right = getWidth() - Ui.f(96);
-
-            // Along the top: what's on after it.
+            sep.setColor(Palette.DIVIDER);
             int from = s == null ? -1 : i >= 0 ? i + 1 : s.after(now);
             float x = x0, y = Ui.f(64);
             for (int k = from; s != null && k >= 0 && k < s.start.length && k < from + 6; k++) {
@@ -1009,11 +1049,9 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
                 String t = Ui.fit(s.title[k], laterP, Math.min(Ui.f(330), right - x));
                 c.drawText(t, x, y, laterP);
                 x += laterP.measureText(t) + Ui.f(22);
-                c.drawRect(x, y - Ui.f(18), x + Math.max(1f, Ui.f(1.5f)), y + Ui.f(4), sep);
+                c.drawRect(x, y - Ui.f(18), x + Math.max(1f, Ui.f(2f)), y + Ui.f(4), sep);
                 x += Ui.f(22);
             }
-
-            // The channel's logo, the programme's title, the channel, the times and the story.
             Bitmap logo = Pics.get(ch.logo, Ui.px(200), Ui.px(72), Pics.tiles ? Pics.READY : Pics.FIT, redraw);
             if (logo != null) c.drawBitmap(logo, x0, Ui.f(100) + (Ui.f(72) - logo.getHeight()) / 2f, bmp);
             else c.drawText(Ui.fit(ch.name, logoName, Ui.f(600)), x0, Ui.f(150), logoName);
@@ -1022,22 +1060,10 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
             String chan = lib.number(ch) + "  " + ch.name + (ch.group.isEmpty() ? "" : "  ·  " + ch.group);
             c.drawText(Ui.fit(chan, chanP, Ui.f(1400)), x0, Ui.f(294), chanP);
             if (i >= 0) {
-                String t = LiveText.span(s.start[i], s.stop[i]) + "  ·  " + LiveText.left(now, s.stop[i]);
+                String t = LiveText.span(s.start[i], s.stop[i]) + "  ·  " + InfoCard.minutes(Math.max(0, s.stop[i] - now));
                 c.drawText(t, x0, Ui.f(334), timeP);
-                float bx = x0 + timeP.measureText(t) + Ui.f(20), by = Ui.f(326), bw = Ui.f(120);
-                r.set(bx, by, bx + bw, by + Ui.f(5));
-                c.drawRoundRect(r, Ui.f(3), Ui.f(3), track);
-                r.set(bx, by, bx + bw * LiveText.progress(now, s.start[i], s.stop[i]), by + Ui.f(5));
-                c.drawRoundRect(r, Ui.f(3), Ui.f(3), accent);
-                if (fromTheStart(ch) != null) {
-                    // It can be watched from its start: how.
-                    String how = "From the start: hold OK";
-                    float tx = bx + bw + Ui.f(24), tw = Ui.f(40) + tagP.measureText(how) + Ui.f(14), th = Ui.f(34);
-                    r.set(tx, Ui.f(334) - Ui.f(25), tx + tw, Ui.f(334) - Ui.f(25) + th);
-                    c.drawRoundRect(r, th / 2f, th / 2f, tagLine);
-                    Dark.replay(c, tx + Ui.f(20), r.centerY(), Ui.f(8), iconLine, iconFill);
-                    c.drawText(how, tx + Ui.f(38), Ui.f(334) - Ui.f(1), tagP);
-                }
+                float bx = x0 + timeP.measureText(t) + Ui.f(20);
+                Bars.thin(c, bx, Ui.f(326), Ui.f(120), Ui.f(6), LiveText.progress(now, s.start[i], s.stop[i]));
                 if (!s.desc[i].isEmpty()) {
                     String key = ch.key + "|" + s.start[i];
                     if (!key.equals(descKey) || descL == null) {
@@ -1060,12 +1086,12 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
         private int first, leftRow = -1;
         private boolean settled;
         private long last;
-        private final Paint bmp = new Paint(Paint.FILTER_BITMAP_FLAG), tileBack = Dark.fill(0xFF000000);
-        private final Paint track = Dark.fill(0x40FFFFFF), bar = Dark.fill(Dark.ACCENT), ring = Dark.line(Dark.alpha(Dark.RING, 0xE6), 3f);
-        private final TextPaint headP = Dark.text(26, 700, Dark.TEXT), headNext = Dark.text(24, 700, Dark.MUTED);
-        private final TextPaint nameP = Dark.text(20, 500, Dark.MUTED), nameOn = Dark.text(20, 600, Dark.SOFT);
-        private final TextPaint tTitle = Dark.text(23, 600, Dark.TEXT), tDesc = Dark.text(18, 400, Dark.SOFT);
-        private final TextPaint logoName = Dark.text(26, 700, Dark.TEXT);
+        private final Paint bmp = new Paint(Paint.FILTER_BITMAP_FLAG), tileBack = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint ring = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint headP = Type.paint(26f, Type.MEDIUM, Palette.TEXT1), headNext = Type.paint(Type.SMALL, Type.MEDIUM, Palette.TEXT2);
+        private final TextPaint nameP = Type.paint(20f, Type.REGULAR, Palette.TEXT2), nameOn = Type.paint(20f, Type.MEDIUM, Palette.TEXT1);
+        private final TextPaint tTitle = Type.paint(Type.CHIP, Type.MEDIUM, Palette.TEXT1), tDesc = Type.paint(18f, Type.REGULAR, Palette.TEXT2);
+        private final TextPaint logoName = Type.paint(26f, Type.BOLD, Palette.TEXT1);
         private final RectF r = new RectF();
         private final Runnable redraw = this::invalidate;
         private final Runnable rest = () -> {
@@ -1075,8 +1101,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
 
         BrowseRows(Context c) {
             super(c);
-            headP.setLetterSpacing(0.04f);
-            headNext.setLetterSpacing(0.04f);
+            ring.setStyle(Paint.Style.STROKE);
         }
 
         /** The remote moved (from row was; rowDir +1 down into the next row, -1 up, 0 along the same one). */
@@ -1144,7 +1169,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
 
         private void drawRow(Canvas c, Row g, float y, float sc, boolean mine, long now, Library lib) {
             TextPaint hp = mine ? headP : headNext;
-            c.drawText(Ui.fit(g.name.toUpperCase(Locale.ROOT), hp, Ui.f(1500)), Ui.f(X0), Ui.f(y), hp);
+            c.drawText(Ui.fit(g.name, hp, Ui.f(1500)), Ui.f(X0), Ui.f(y), hp);
             float pitch = TILE_W + GAP_X;
             int from = Math.max(0, (int) Math.floor(sc / pitch));
             for (int k = from; k < g.channels.size(); k++) {
@@ -1175,7 +1200,8 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
                 Bitmap logo = Pics.get(ch.logo, Ui.px(120), Ui.px(46), logoMode, redraw);
                 if (logo != null) c.drawBitmap(logo, x + Ui.f(16), y + Ui.f(14), bmp);
             } else {
-                c.drawRoundRect(r, Ui.f(16), Ui.f(16), tileBack);
+                tileBack.setColor(Palette.PANEL);
+                c.drawRoundRect(r, Ui.f(12), Ui.f(12), tileBack);
                 Bitmap logo = Pics.get(ch.logo, Ui.px(170), Ui.px(62), logoMode, redraw);
                 if (logo != null) c.drawBitmap(logo, x + (w - logo.getWidth()) / 2f, y + Ui.f(58) - logo.getHeight() / 2f, bmp);
                 else {
@@ -1183,23 +1209,21 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
                     c.drawText(nm, x + (w - logoName.measureText(nm)) / 2f, y + Ui.f(66), logoName);
                 }
             }
-            // On the tile: what's on, a line of what it's about, how far through.
             float room = w - Ui.f(32);
             String title = i >= 0 ? s.title[i] : ch.name;
             c.drawText(Ui.fit(title, tTitle, room), x + Ui.f(16), y + hgt - Ui.f(46), tTitle);
             String about = i < 0 ? "No programme information" : s.desc[i].isEmpty() ? LiveText.span(s.start[i], s.stop[i]) : s.desc[i];
             c.drawText(Ui.fit(about, tDesc, room), x + Ui.f(16), y + hgt - Ui.f(22), tDesc);
             if (i >= 0 && com.gathin.homefieldtv.prefs.Look.progress) {
-                float bx = x + Ui.f(16), by = y + hgt - Ui.f(10);
-                c.drawRect(bx, by, bx + room, by + Ui.f(3), track);
-                c.drawRect(bx, by, bx + room * LiveText.progress(now, s.start[i], s.stop[i]), by + Ui.f(3), bar);
+                Bars.thin(c, x + Ui.f(16), y + hgt - Ui.f(9), room, Ui.f(4), LiveText.progress(now, s.start[i], s.stop[i]));
             }
             if (l > 0f) {
-                ring.setAlpha(Math.round(0xE6 * l));
-                Dark.ring(c, r, Ui.f(16), ring);
+                // The remote's tile: its edge in the light accent, as the player's tiles.
+                ring.setColor(Palette.alpha(Palette.ACCENT_LIGHT, Math.round(0xFF * l)));
+                ring.setStrokeWidth(Math.max(1f, Ui.f(2f)));
+                c.drawRoundRect(r, Ui.f(12), Ui.f(12), ring);
             }
             c.restore();
-            // Under it: the channel's number and name.
             TextPaint np = l > 0.5f ? nameOn : nameP;
             String nm = Ui.fit((com.gathin.homefieldtv.prefs.Look.numbers ? lib.number(ch) + "  " : "") + ch.name, np, w);
             c.drawText(nm, x, y + hgt + Ui.f(32) + (LIFT - 1f) * hgt / 2f * l, np);

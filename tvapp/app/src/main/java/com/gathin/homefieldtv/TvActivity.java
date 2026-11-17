@@ -443,6 +443,69 @@ public final class TvActivity extends Activity {
 
     // ---- the remote ---------------------------------------------------------------------------------------------
 
+    /** A key held this long is held (OK's too). */
+    static final long LONG_MS = 600;
+    /** The key down now that the screen tells apart pressed and held, whether its hold has been given, to whom. */
+    private int holdCode;
+    private boolean holdFired;
+    private Screen holdScreen;
+    private KeyEvent holdDown;
+
+    /** A press of a key held apart (holds): Back as Back, any other as a key. */
+    private void press(Screen s, KeyEvent down) {
+        int code = down.getKeyCode();
+        if (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_ESCAPE || code == KeyEvent.KEYCODE_BUTTON_B) {
+            if (!s.back()) pop();
+        } else {
+            s.key(code, down);
+        }
+    }
+
+    // ---- the player's sleep timer, and leaving the player ------------------------------------------------------
+
+    /** When the sleep timer stops the picture (elapsedRealtime; 0: off), and the minutes chosen. */
+    private long sleepAt;
+    private int sleepChosen;
+    private final Runnable sleep = this::sleepNow;
+
+    /** The player's Sleep timer: the picture stops after minutes (0: off). */
+    void sleep(int minutes) {
+        h.removeCallbacks(sleep);
+        sleepChosen = Math.max(0, minutes);
+        sleepAt = sleepChosen == 0 ? 0 : android.os.SystemClock.elapsedRealtime() + sleepChosen * 60_000L;
+        if (sleepChosen > 0) h.postDelayed(sleep, sleepChosen * 60_000L);
+    }
+
+    /** The minutes chosen on the sleep timer (0: off). */
+    int sleepChosen() {
+        return sleepAt == 0 ? 0 : sleepChosen;
+    }
+
+    /** What is left on the sleep timer in ms (0: off). */
+    long sleepLeft() {
+        return sleepAt == 0 ? 0 : Math.max(0, sleepAt - android.os.SystemClock.elapsedRealtime());
+    }
+
+    private void sleepNow() {
+        sleepAt = 0;
+        sleepChosen = 0;
+        if (live.channel() == null) return;
+        stopPlayback();
+        android.widget.Toast.makeText(this, "Sleep timer: the picture has stopped", android.widget.Toast.LENGTH_LONG).show();
+    }
+
+    /** Back from the player, as TiviMate's: the TV guide, the channel in its picture (the guide decides what plays). */
+    void toGuide() {
+        fromHome(new GuideScreen(this, null));
+    }
+
+    /** The picture stopped (Back held, Exit, the sleep timer): Home, its mini TV not started again. */
+    void stopPlayback() {
+        miniTvHeld = true;
+        live.stop();
+        home();
+    }
+
     private static boolean isOk(int code) {
         return code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_NUMPAD_ENTER
                 || code == KeyEvent.KEYCODE_BUTTON_A;
@@ -464,6 +527,28 @@ public final class TvActivity extends Activity {
             } else if (e.getAction() == KeyEvent.ACTION_UP) {
                 if (okDown && !okLong) s.ok();
                 okDown = false;
+            }
+            return true;
+        }
+        // A key the screen tells apart pressed and held (the player's, as TiviMate's remote has them): a press when it is
+        // let go, held once LONG_MS have gone by with it down.
+        if (code == holdCode || e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0 && s.holds(code)) {
+            if (e.getAction() == KeyEvent.ACTION_DOWN) {
+                if (e.getRepeatCount() == 0) {
+                    holdCode = code;
+                    holdFired = false;
+                    holdScreen = s;
+                    holdDown = new KeyEvent(e);
+                } else if (!holdFired && (e.getEventTime() - e.getDownTime() >= LONG_MS
+                        || (e.getFlags() & KeyEvent.FLAG_LONG_PRESS) != 0)) {
+                    holdFired = true;
+                    if (holdScreen == top() && !holdScreen.keyLong(code)) press(holdScreen, holdDown);
+                }
+            } else if (e.getAction() == KeyEvent.ACTION_UP) {
+                if (!holdFired && holdScreen == top() && holdDown != null) press(holdScreen, holdDown);
+                holdCode = 0;
+                holdScreen = null;
+                holdDown = null;
             }
             return true;
         }
