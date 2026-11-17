@@ -18,6 +18,7 @@ import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.engine.Lineup;
 import com.gathin.homefieldtv.engine.Sources;
 import com.gathin.homefieldtv.prefs.Categories;
+import com.gathin.homefieldtv.prefs.ChannelEdits;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -82,6 +83,12 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
     private final Handler h = new Handler(Looper.getMainLooper());
     private final Runnable digitsDone = this::jump;
     private final RectF tmp = new RectF();
+    /** The family's edits from the guide (ChannelMenu, GroupMenu): a row being moved, the hint for it, the channel the
+     *  remote stays on once the lists are made again, the group (or list) a group menu is open for. */
+    private MoveMode.Move moving;
+    private MoveMode.Hint hint;
+    private Channel keepOn;
+    private String menuGroup;
 
     /** The list shown last forgotten: the next guide opens on all the channels (a test's own channels gone). */
     static void forgetList() {
@@ -111,9 +118,11 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
         menu.setHost(this);
         dialog = new DialogCard(tv);
         dialog.setHost(this);
+        hint = new MoveMode.Hint(tv);
         f.addView(content, new FrameLayout.LayoutParams(-1, -1));
         f.addView(groups, new FrameLayout.LayoutParams(-1, -1));
         f.addView(rail, new FrameLayout.LayoutParams(-1, -1));
+        f.addView(hint, new FrameLayout.LayoutParams(-1, -1));
         f.addView(menu, new FrameLayout.LayoutParams(-1, -1));
         f.addView(dialog, new FrameLayout.LayoutParams(-1, -1));
         shown = startCategory == null ? lastShown : GENRE + startCategory;
@@ -240,6 +249,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
         tv.live.removeListener(this);
         h.removeCallbacks(digitsDone);
         if (menu.isOpen()) menu.close();
+        if (moving != null) moving.cancel();
     }
 
     @Override public void liveChanged() {
@@ -254,7 +264,10 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
     }
 
     @Override void channelsChanged() {
-        Channel on = grid.channel();
+        // A row being moved is put back: the lists changed under it.
+        if (moving != null) moving.cancel();
+        Channel on = keepOn != null ? keepOn : grid.channel();
+        keepOn = null;
         fillGroups();
         load(shown, on);
         // Opened with nothing to show (the groups, then): the rows once the channels are in, the remote untouched since.
@@ -381,7 +394,8 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
 
     /** The family's TV's guide keys held: Back (back to the player) and Menu (Search); not while a menu is up. */
     @Override boolean holds(int code) {
-        return (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_MENU) && !menu.isOpen() && !asking() && digits.isEmpty();
+        return (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_MENU) && !menu.isOpen() && !asking() && digits.isEmpty()
+                && moving == null;
     }
 
     @Override boolean keyLong(int code) {
@@ -408,6 +422,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
         waiting = false;
         if (asking()) return dialog.key(code);
         if (menu.isOpen()) return menu.key(code);
+        if (moving != null) return moving.key(code);
         if (code >= KeyEvent.KEYCODE_0 && code <= KeyEvent.KEYCODE_9) {
             digits += (char) ('0' + code - KeyEvent.KEYCODE_0);
             band.typed(digits);
@@ -490,6 +505,10 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
             menu.ok();
             return;
         }
+        if (moving != null) {
+            moving.drop();
+            return;
+        }
         switch (area) {
             case DRAWER:
                 if (rail.focus == Rail.GUIDE) toGroups();
@@ -536,7 +555,12 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
 
     /** OK held: the whole menu, for the programme the remote is on (or anything else, as OK). */
     @Override void okLong() {
-        if (asking() || menu.isOpen()) return;
+        if (asking() || menu.isOpen() || moving != null) return;
+        if (area == GROUPS) {
+            // A group's menu (GroupMenu): rename, hide, move, sort its channels; show or hide them all.
+            openGroupMenu();
+            return;
+        }
         if (area != GRID) {
             ok();
             return;
@@ -552,6 +576,10 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
         }
         if (menu.isOpen()) {
             closeMenu();
+            return true;
+        }
+        if (moving != null) {
+            moving.cancel();
             return true;
         }
         if (!digits.isEmpty()) {
@@ -598,7 +626,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
         remember();
         if (menuChannel == null) return;
         Guide.Schedule s = Library.get(tv).schedule(menuChannel.key);
-        menu.openCard(GuideActions.card(tv, menuChannel, s, menuIndex, true), 0, rowRect());
+        menu.openCard(GuideActions.card(tv, menuChannel, s, menuIndex, true, !RECENT.equals(shown)), 0, rowRect());
         placePreview();
     }
 
@@ -627,8 +655,19 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
     }
 
     @Override public void chosen(GuideMenu m, String tag) {
+        if (GroupMenu.handles(tag)) {
+            groupChosen(tag);
+            return;
+        }
         Channel c = menuChannel;
         if (c == null) return;
+        if (ChannelMenu.MOVE.equals(tag)) {
+            closeMenu();
+            startMove(c);
+            return;
+        }
+        // Hidden: the remote stays where it was, on the channel after it.
+        if (ChannelMenu.HIDE.equals(tag)) keepOn = neighbour(c);
         long[] p = menuTimes;
         Guide.Schedule s = Library.get(tv).schedule(c.key);
         boolean has = s != null && menuIndex >= 0 && menuIndex < s.title.length;
@@ -641,6 +680,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
         boolean ask = GuideActions.act(tv, tag, c, title, desc, p);
         // In Favourites: the list made again with the channel in or out.
         if (GuideActions.FAVOURITE.equals(tag) && FAV.equals(shown)) load(FAV, c);
+        if (ChannelMenu.handles(tag)) edited(ChannelMenu.HIDE.equals(tag) ? keepOn : c);
         moved();
         grid.invalidate();
         if (ask && tv.isTop(this)) {
@@ -652,6 +692,116 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
     @Override public void answered(DialogCard d, RowList.Row answer) {
         d.hide(this::placePreview);
         GuideActions.answered(tv, answer);
+    }
+
+    // ---- the family's edits: a channel's and a group's menus, moving a row (ChannelMenu, GroupMenu, MoveMode) --------
+
+    /** The channel the remote goes to when this one leaves the list (Hide channel): the one after it, else before. */
+    private Channel neighbour(Channel c) {
+        List<Channel> l = channelsOf(shown).channels;
+        int i = channelsOf(shown).indexOf(c);
+        if (i < 0) return c;
+        return i + 1 < l.size() ? l.get(i + 1) : i > 0 ? l.get(i - 1) : c;
+    }
+
+    /** An edit made: the lists are made again (off the main thread, then channelsChanged), the remote kept on focusOn. */
+    private void edited(Channel focusOn) {
+        keepOn = focusOn;
+        // Previews and tests make the lists at once and nobody says: shown now.
+        if (Exec.inline) channelsChanged();
+    }
+
+    /**
+     * Move channel: in the group on screen (or Favourites), else in its own group (shown first): its row lifts, Up and
+     * Down move it, OK puts it down (its group then in its own order: Manual), Back leaves it.
+     */
+    private void startMove(Channel c) {
+        String group = null;
+        if (!FAV.equals(shown)) {
+            if (c.group.isEmpty() || !listed.contains(GROUP + c.group)) {
+                android.widget.Toast.makeText(tv, "This channel's group isn't in the guide's groups to move it in", android.widget.Toast.LENGTH_LONG).show();
+                return;
+            }
+            group = c.group;
+            if (!(GROUP + group).equals(shown)) {
+                load(GROUP + group, c);
+                groups.choose(shown);
+            }
+        }
+        List<Channel> list = channelsOf(shown).channels;
+        if (list.size() < 2) return;
+        Library lib = Library.get(tv);
+        moving = new MoveMode.Channels(tv, new MoveMode.ChannelsHost() {
+            @Override public void show(List<Channel> now, Channel lifted) {
+                grid.setChannels(lib.lineup(now), lifted);
+            }
+
+            @Override public void done(Channel lifted, boolean moved) {
+                moving = null;
+                grid.lifted = null;
+                hint.hide();
+                if (moved) edited(lifted);
+                else load(shown, lifted);
+                moved();
+            }
+
+            @Override public int page() {
+                return GuideGrid.visible();
+            }
+        }, list, c, group);
+        grid.lifted = c.key;
+        grid.invalidate();
+        hint.show(ChannelEdits.name(c));
+    }
+
+    /** OK held on the groups column: the menu for the group the remote is on (or the other entries' Groups lines). */
+    private void openGroupMenu() {
+        GroupsPanel.Entry e = groups.focused();
+        if (e == null || e.kind == GroupsPanel.HEADING && !(PLAYLIST.equals(e.tag) || KINDS.equals(e.tag))) return;
+        menuGroup = e.tag instanceof String ? (String) e.tag : null;
+        menu.openCard(GroupMenu.items(tv, groupOf(menuGroup)), 0, groups.focusedRow(new RectF()));
+        placePreview();
+    }
+
+    /** The playlist's group a groups-column tag is ("group:UK | Sport"), or null. */
+    private static String groupOf(String tag) {
+        return tag != null && tag.startsWith(GROUP) ? tag.substring(GROUP.length()) : null;
+    }
+
+    private void groupChosen(String tag) {
+        String g = groupOf(menuGroup);
+        if (GroupMenu.SORT.equals(tag)) {
+            if (g != null) menu.openCard(GroupMenu.sortItems(tv, g), GroupMenu.sortFocus(tv, g), groups.focusedRow(new RectF()));
+            return;
+        }
+        menu.close();
+        placePreview();
+        if (GroupMenu.MOVE.equals(tag)) {
+            if (g != null) startGroupMove();
+            return;
+        }
+        GroupMenu.act(tv, tag, g);
+        edited(grid.channel());
+    }
+
+    /** Move group: the playlist's groups' rows, the remote's lifted among them. */
+    private void startGroupMove() {
+        int lo = -1, hi = -1;
+        for (int i = 0; i < groups.count(); i++) {
+            GroupsPanel.Entry e = groups.entry(i);
+            if (e.kind == GroupsPanel.GROUP && e.tag instanceof String && ((String) e.tag).startsWith(GROUP)) {
+                if (lo < 0) lo = i;
+                hi = i;
+            }
+        }
+        if (lo < 0 || lo == hi) return;
+        GroupsPanel.Entry e = groups.focused();
+        moving = new MoveMode.Groups(tv, groups, lo, hi, GROUP, moved -> {
+            moving = null;
+            hint.hide();
+            if (moved) edited(grid.channel());
+        });
+        hint.show(e == null ? "" : e.name);
     }
 
     // ---- what the tests look at -------------------------------------------------------------------------------------

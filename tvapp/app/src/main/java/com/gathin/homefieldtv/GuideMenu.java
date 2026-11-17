@@ -43,6 +43,8 @@ final class GuideMenu extends View {
     static final class Item {
         final int kind, icon;
         final String tag, title;
+        /** A choice's line with a tick at its right, the one in use (Sort channels). */
+        boolean checked;
 
         private Item(int kind, String tag, int icon, String title) {
             this.kind = kind;
@@ -57,6 +59,13 @@ final class GuideMenu extends View {
 
         static Item item(String tag, String title) {
             return new Item(ITEM, tag, -1, title);
+        }
+
+        /** One of a few choices, ticked when it is the one in use. */
+        static Item choice(String tag, String title, boolean checked) {
+            Item it = new Item(ITEM, tag, -1, title);
+            it.checked = checked;
+            return it;
         }
 
         /** A section's name in the accent over its lines (the programme's, the channel's), after a rule. */
@@ -376,7 +385,12 @@ final class GuideMenu extends View {
                         RoundButton.glyph(c, it.icon, left + Ui.f(textX + 20f), cy, Ui.f(36f), Palette.TEXT1);
                         tx = left + Ui.f(104f);
                     }
-                    c.drawText(Ui.fit(it.title, lineP, right - tx - Ui.f(textX)), tx, Type.centred(lineP, cy), lineP);
+                    float room = right - tx - Ui.f(textX);
+                    if (it.checked) {
+                        RoundButton.glyph(c, Dark.CHECK, right - Ui.f(textX + 16f), cy, Ui.f(32f), Palette.ACCENT_LIGHT);
+                        room -= Ui.f(48f);
+                    }
+                    c.drawText(Ui.fit(it.title, lineP, room), tx, Type.centred(lineP, cy), lineP);
                 }
             }
             rowY += ih;

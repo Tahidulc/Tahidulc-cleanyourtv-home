@@ -1,5 +1,6 @@
 package com.gathin.homefieldtv.engine;
 
+import com.gathin.homefieldtv.prefs.ChannelEdits;
 import com.gathin.homefieldtv.prefs.Shown;
 
 import java.util.ArrayList;
@@ -13,10 +14,11 @@ import java.util.Map;
 
 /**
  * The lists of live channels the screens show (Library's), worked out off the main thread so that no screen and no key
- * goes through tens of thousands of channels: Settings → Categories and Parental control applied (prefs.Shown), for
- * one load and one version of what is hidden or locked; with each channel's place in them, in its group and in its guide
- * category, the channels by number, and channel up and down past those that need the PIN. Made again (by Library)
- * whenever what is hidden or locked changes; read at once.
+ * goes through tens of thousands of channels: Settings → Categories, Parental control and the channels the family hid
+ * applied (prefs.Shown), for one load and one version of what is hidden or locked; in the order Channels sorting says
+ * (and each group's own Sort channels: ChannelEdits), with each channel's place in them, in its group and in its guide
+ * category, the channels by number, channel up and down past those that need the PIN, and the family's own names for
+ * search. Made again (by Library) whenever what is hidden, locked, named, placed or sorted changes; read at once.
  */
 final class Lists {
     static final Lists EMPTY = new Lists(Index.EMPTY, null);
@@ -119,6 +121,10 @@ final class Lists {
     /** The first and last places in all that need no PIN (-1: every one does). */
     final int first, last;
 
+    /** The channels the family named themselves (by place in index.channels, in order) and those names for search. */
+    private final int[] renamedAt;
+    private final String[] renamedLower;
+
     Lists(Index ix, Shown.Filter f) {
         index = ix;
         filter = f;
@@ -127,37 +133,73 @@ final class Lists {
         at = new int[n];
         inGroup = new int[n];
         inGenre = new int[n];
-        List<Channel> shown = new ArrayList<>(n);
-        LinkedHashMap<String, List<Channel>> byGroup = new LinkedHashMap<>();
-        List<List<Channel>> byGenre = new ArrayList<>(Genres.ORDER.size());
-        for (int g = 0; g < Genres.ORDER.size(); g++) byGenre.add(new ArrayList<>());
-        long[] nums = new long[n];
-        boolean blocked = false;
+        ChannelEdits.Snapshot edits = f == null ? null : f.edits;
+        // The listed channels in the playlist's order; their groups in the order they first come in it.
+        int[] listed = new int[n];
+        int size = 0;
+        LinkedHashMap<String, Ints> byGroup = new LinkedHashMap<>();
         for (int i = 0; i < n; i++) {
             Channel c = ch.get(i);
             if (f == null || !f.listed(c)) {
                 at[i] = inGroup[i] = inGenre[i] = -1;
                 continue;
             }
-            int p = shown.size();
+            listed[size++] = i;
+            if (!byGroup.containsKey(c.group)) byGroup.put(c.group, new Ints());
+        }
+        // All of them in the order Appearance › TV guide › Channels sorting says (the playlist's as it comes).
+        int mode = edits == null ? ChannelEdits.PLAYLIST : edits.sort;
+        int[] order = Arrays.copyOf(listed, size);
+        if (mode != ChannelEdits.PLAYLIST) order = sorted(order, mode, ix, edits, groupRanks(ix, edits));
+        List<Channel> shown = new ArrayList<>(size);
+        List<List<Channel>> byGenre = new ArrayList<>(Genres.ORDER.size());
+        for (int g = 0; g < Genres.ORDER.size(); g++) byGenre.add(new ArrayList<>());
+        long[] nums = new long[size];
+        boolean blocked = false;
+        for (int p = 0; p < size; p++) {
+            int i = order[p];
+            Channel c = ch.get(i);
             at[i] = p;
             shown.add(c);
-            List<Channel> g = byGroup.get(c.group);
-            if (g == null) byGroup.put(c.group, g = new ArrayList<>());
-            inGroup[i] = g.size();
-            g.add(c);
+            byGroup.get(c.group).add(i);
             List<Channel> k = byGenre.get(Math.max(0, ix.genre[i]));
             inGenre[i] = k.size();
             k.add(c);
             nums[p] = (long) (c.number > 0 ? c.number : i + 1) << 32 | p;
             blocked |= f.blocks(c);
         }
-        int size = shown.size();
-        all = size == n ? ch : Collections.unmodifiableList(shown);
+        all = size == n && mode == ChannelEdits.PLAYLIST ? ch : Collections.unmodifiableList(shown);
+        // Each group in its own order where it has one (Sort channels in its menu), else as all of them.
         Map<String, List<Channel>> gm = new LinkedHashMap<>();
-        for (Map.Entry<String, List<Channel>> e : byGroup.entrySet()) gm.put(e.getKey(), Collections.unmodifiableList(e.getValue()));
+        for (Map.Entry<String, Ints> e : byGroup.entrySet()) {
+            int[] idx = e.getValue().toArray();
+            int own = edits == null ? mode : edits.sortOf(e.getKey());
+            if (own != mode) idx = sorted(idx, own, ix, edits, null);
+            List<Channel> l = new ArrayList<>(idx.length);
+            for (int q = 0; q < idx.length; q++) {
+                inGroup[idx[q]] = q;
+                l.add(ch.get(idx[q]));
+            }
+            gm.put(e.getKey(), Collections.unmodifiableList(l));
+        }
         groups = Collections.unmodifiableMap(gm);
         groupOrder = Collections.unmodifiableList(new ArrayList<>(byGroup.keySet()));
+        // Search finds a channel by the name the family gave it too.
+        Map<Integer, String> names = new java.util.TreeMap<>();
+        if (edits != null && edits.anyRenamed()) {
+            for (Map.Entry<String, ChannelEdits.Rec> e : edits.recs.entrySet()) {
+                if (e.getValue().name.isEmpty()) continue;
+                Integer i = ix.byKey.get(e.getKey());
+                if (i != null) names.put(i, Names.plain(e.getValue().name).toLowerCase(Locale.ROOT));
+            }
+        }
+        renamedAt = new int[names.size()];
+        renamedLower = new String[names.size()];
+        int r = 0;
+        for (Map.Entry<Integer, String> e : names.entrySet()) {
+            renamedAt[r] = e.getKey();
+            renamedLower[r++] = e.getValue();
+        }
         List<List<Channel>> gl = new ArrayList<>(byGenre.size());
         for (List<Channel> l : byGenre) gl.add(Collections.unmodifiableList(l));
         genres = Collections.unmodifiableList(gl);
@@ -195,6 +237,98 @@ final class Lists {
     /** Whether it still says what is hidden and locked now. */
     boolean fresh() {
         return filter != null && filter.current();
+    }
+
+    /** Whether the channel at place i in index.channels has a name of the family's own with q in it. */
+    boolean renamedHas(int i, String q) {
+        int k = Arrays.binarySearch(renamedAt, i);
+        return k >= 0 && renamedLower[k].contains(q);
+    }
+
+    // ---- the sorting (ChannelEdits: by order in playlist, by name, by number, manual) ---------------------------------
+
+    /** A growing list of places. */
+    private static final class Ints {
+        int[] a = new int[8];
+        int n;
+
+        void add(int v) {
+            if (n == a.length) a = Arrays.copyOf(a, n * 2);
+            a[n++] = v;
+        }
+
+        int[] toArray() {
+            return Arrays.copyOf(a, n);
+        }
+    }
+
+    /** Each group's place in the family's order of the groups (Categories), for Manual over all the channels. */
+    private static Map<String, Integer> groupRanks(Index ix, ChannelEdits.Snapshot e) {
+        if (e == null || e.sort != ChannelEdits.MANUAL) return null;
+        Map<String, Integer> rank = new HashMap<>();
+        for (String g : e.groupOrder) if (!rank.containsKey(g)) rank.put(g, rank.size());
+        for (String g : ix.groups) if (!rank.containsKey(g)) rank.put(g, rank.size());
+        return rank;
+    }
+
+    /**
+     * Pure: places in index.channels in a sorting's order (a new array): the playlist's, by the name shown (the family's
+     * own where given), by number (the playlist's, else its place), or manual (each one's place in its group as Move
+     * channel left it, the others after in the playlist's order; over all the channels, the groups in the family's order
+     * first). Ties keep the playlist's order.
+     */
+    static int[] sorted(int[] places, int mode, Index ix, ChannelEdits.Snapshot e, Map<String, Integer> groupRank) {
+        int m = places.length;
+        int[] out = new int[m];
+        switch (mode) {
+            case ChannelEdits.NAME: {
+                String[] key = new String[m];
+                Integer[] at = new Integer[m];
+                for (int q = 0; q < m; q++) {
+                    int i = places[q];
+                    String own = e == null ? null : e.name(ix.channels.get(i).key);
+                    key[q] = own != null ? Names.plain(own).toLowerCase(Locale.ROOT) : ix.lower[i];
+                    at[q] = q;
+                }
+                Arrays.sort(at, (a, b) -> {
+                    int c = key[a].compareTo(key[b]);
+                    return c != 0 ? c : Integer.compare(places[a], places[b]);
+                });
+                for (int q = 0; q < m; q++) out[q] = places[at[q]];
+                return out;
+            }
+            case ChannelEdits.NUMBER: {
+                long[] k = new long[m];
+                for (int q = 0; q < m; q++) {
+                    int i = places[q];
+                    Channel c = ix.channels.get(i);
+                    k[q] = (long) (c.number > 0 ? c.number : i + 1) << 32 | i;
+                }
+                Arrays.sort(k);
+                for (int q = 0; q < m; q++) out[q] = (int) k[q];
+                return out;
+            }
+            case ChannelEdits.MANUAL: {
+                long[] k = new long[m];
+                for (int q = 0; q < m; q++) {
+                    int i = places[q];
+                    Channel c = ix.channels.get(i);
+                    Integer r = groupRank == null ? null : groupRank.get(c.group);
+                    long rank = groupRank == null ? 0 : r == null ? 0x1FFFFF : Math.min(r, 0x1FFFFE);
+                    int place = e == null ? -1 : e.place(c.key);
+                    long p = place < 0 ? 0x1FFFFF : Math.min(place, 0x1FFFFE);
+                    k[q] = rank << 42 | p << 21 | i;
+                }
+                Arrays.sort(k);
+                for (int q = 0; q < m; q++) out[q] = (int) (k[q] & 0x1FFFFF);
+                return out;
+            }
+            default: {
+                System.arraycopy(places, 0, out, 0, m);
+                Arrays.sort(out);
+                return out;
+            }
+        }
     }
 
     /** The first place in numbers with this number, or -1. */

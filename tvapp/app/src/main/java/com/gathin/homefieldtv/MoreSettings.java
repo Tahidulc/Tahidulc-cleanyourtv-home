@@ -24,9 +24,8 @@ import java.util.Locale;
  * <pre>
  *   general              Auto start app on boot · Start on · Back up data · Restore data › · Sync › · Remove everything
  *   appearance           TV guide › · Player › · Groups › · Logos › · Font size · Color theme › · Posters · Programme times
- *   appearance.guide     Show channel numbers · Rows in the guide · Progress bars
+ *                        (TV guide, Groups and Logos are EditSettings' pages)
  *   appearance.player    Clock · Panels timeout, sec · Live TV's channel tiles
- *   appearance.logos     Channel logos (on black tiles, or as the playlist gives them)
  *   playback             Buffer size · Decoder · Auto frame rate (AFR) · Audio passthrough · Tunneled playback; Picture;
  *                        Sound (Sound languages ›); Subtitles ›; Stream problems
  *   remote.player        OK · Long OK · Up / Down · Channel up and down · Number keys wait · The channel before; Color keys
@@ -68,9 +67,7 @@ final class MoreSettings implements SettingsScreen.Pages {
             case "general": return "General";
             case "general.sync": return "Sync";
             case "appearance": return "Appearance";
-            case "appearance.guide": return "TV guide";
             case "appearance.player": return "Player";
-            case "appearance.logos": return "Logos";
             case "theme": return "Color theme";
             case "playback": return "Playback";
             case "playback.subtitles": return "Subtitles";
@@ -107,9 +104,9 @@ final class MoreSettings implements SettingsScreen.Pages {
         switch (key) {
             case "start": return "general";
             case "text": case "posters": case "times": return "appearance";
-            case "rows": return "appearance.guide";
+            case "rows": case "csort": case "editor": return "appearance.guide";
             case "clock": case "banner": case "tiles": return "appearance.player";
-            case "logos": return "appearance.logos";
+            case "logos": case "lpriority": return "appearance.logos";
             case "subs.look": case "subs.size": return "playback.subtitles";
             case "updown": case "direction": case "ok": case "oklong": case "wait": case "previous": return "remote.player";
             case "rec.before": case "rec.after": return "other.recording";
@@ -118,6 +115,7 @@ final class MoreSettings implements SettingsScreen.Pages {
             case "x.mode": return "parental";
             case "x.sorting": return "appearance.groups";
             default:
+                if (key.startsWith("gsort:")) return "group:" + key.substring(6);
                 return key.startsWith("colour.") ? "remote.player" : "playback";
         }
     }
@@ -128,19 +126,11 @@ final class MoreSettings implements SettingsScreen.Pages {
             case "general": general(out); break;
             case "general.sync": SyncSettings.rows(tv, out); break;
             case "appearance": appearance(out); break;
-            case "appearance.guide":
-                out.add(tog("numbers", "Show channel numbers", "", Look.numbers));
-                out.add(pick("rows", "Rows in the guide", Look.ROWS_NAMES[Look.rows]));
-                out.add(tog("progress", "Progress bars", "How far through each programme is, in the guide and on live TV", Look.progress));
-                break;
+            // Appearance › TV guide and › Logos: EditSettings' (with Hidden channels, Manage groups and the new logos).
             case "appearance.player":
                 out.add(pick("clock", "Clock", Look.CLOCK_NAMES[Look.clock]));
                 out.add(pick("banner", "Panels timeout, sec", TIMEOUT_NAMES[bannerIndex()]));
                 out.add(pick("tiles", "Live TV's channel tiles", Look.TILES_NAMES[Look.logos ? 1 : 0]));
-                break;
-            case "appearance.logos":
-                out.add(pick("logos", "Channel logos", LOGO_NAMES[Pics.tiles ? 0 : 1]));
-                out.add(RowList.Row.note("In the TV guide, the channel banner, search and on Home."));
                 break;
             case "theme": return ThemeSettings.rows();
             case "playback": playback(out); break;

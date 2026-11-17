@@ -21,10 +21,10 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 
 /**
- * Settings' Playlists, EPG, Appearance › Groups, Parental controls and General › Restore data pages:
+ * Settings' Playlists, EPG, Parental controls and General › Restore data pages (the groups' are EditSettings', in
+ * Appearance › TV guide › Manage groups), and Groups sorting's choices:
  *
  * <pre>
  *   playlists               each playlist › · TorBox › · Add playlist › · Use all playlists together · Update options:
@@ -35,14 +35,13 @@ import java.util.Map;
  *   playlists.torbox        TorBoxSettings
  *   epg                     EPG sources › · Guide time shift · Update options: Update interval, hours · Update on app
  *                           start · Update EPG · Clear EPG · Latest update status
- *   appearance.groups       Groups sorting · each group › (shown or hidden, moved, renamed: Categories)
  *   parental                the switch · Change PIN · Locked channels · Require PIN for: Settings · locked groups and
  *                           channels (all greyed while it is off, as the other app has them)
  *   general.restore         this TV's last backup, the file chosen, Choose a backup file
  * </pre>
  *
  * Its settings' choices are "x." ones (x.guide.hours…), its fields "f:" (a playlist being added), "ua:" (a playlist's
- * user agent), "x.guide", "x.cat" and TorBoxSettings.FIELD. A backup is made on this TV and in Downloads, never sent
+ * user agent), "x.guide" and TorBoxSettings.FIELD. A backup is made on this TV and in Downloads, never sent
  * anywhere (BackupStore).
  */
 final class ExtraSettings implements SettingsScreen.Pages {
@@ -67,8 +66,7 @@ final class ExtraSettings implements SettingsScreen.Pages {
 
     @Override public boolean owns(String page) {
         return page.equals("playlists") || page.startsWith("playlists.") || page.startsWith("playlist:") || page.equals("epg")
-                || page.startsWith("epg.") || page.equals("appearance.groups") || page.startsWith("group:") || page.equals("parental")
-                || page.equals("general.restore");
+                || page.startsWith("epg.") || page.equals("parental") || page.equals("general.restore");
     }
 
     @Override public String title(String page) {
@@ -76,7 +74,6 @@ final class ExtraSettings implements SettingsScreen.Pages {
             Sources.Entry e = Sources.get(tv, page.substring(9));
             return e == null ? "Playlist" : e.name;
         }
-        if (page.startsWith("group:")) return Categories.label(tv, page.substring(6));
         switch (page) {
             case "playlists": return "Playlists";
             case "playlists.add": return "Add playlist";
@@ -85,7 +82,6 @@ final class ExtraSettings implements SettingsScreen.Pages {
             case "playlists.torbox": return "TorBox";
             case "epg": return "EPG";
             case "epg.sources": return "EPG sources";
-            case "appearance.groups": return "Groups";
             case "parental": return "Parental controls";
             case "general.restore": return "Restore data";
             default: return "";
@@ -98,10 +94,6 @@ final class ExtraSettings implements SettingsScreen.Pages {
         List<RowList.Row> out = new ArrayList<>();
         if (page.startsWith("playlist:")) {
             playlist(page.substring(9), out);
-            return out;
-        }
-        if (page.startsWith("group:")) {
-            group(page.substring(6), out);
             return out;
         }
         switch (page) {
@@ -129,7 +121,6 @@ final class ExtraSettings implements SettingsScreen.Pages {
             case "playlists.torbox": TorBoxSettings.rows(tv, out); break;
             case "epg": epg(out); break;
             case "epg.sources": sources(out); break;
-            case "appearance.groups": groups(out); break;
             case "parental": parental(out); break;
             case "general.restore": restore(out); break;
             default: break;
@@ -231,52 +222,6 @@ final class ExtraSettings implements SettingsScreen.Pages {
         out.add(RowList.Row.note("These fill in what your playlists' own guides leave out. A change reads your playlists and guide again."));
     }
 
-    private void groups(List<RowList.Row> out) {
-        Library lib = Library.get(tv);
-        List<String> every = Categories.every(tv, lib.groups());
-        if (every.isEmpty()) {
-            out.add(RowList.Row.note("Your playlists' groups show here once their channels are in."));
-            return;
-        }
-        out.add(MoreSettings.pick("x.sorting", "Groups sorting", SORTING[Categories.ordered(tv) ? 1 : 0]));
-        boolean anyHidden = false;
-        for (String g : every) anyHidden |= Categories.isHidden(tv, g);
-        if (anyHidden) out.add(RowList.Row.item("do:cat.showall", "Show every group", "The hidden ones back in the lists"));
-        out.add(RowList.Row.header("Your playlists' groups"));
-        Map<String, Integer> counts = lib.groupSizes();
-        for (String g : every) {
-            boolean hidden = Categories.isHidden(tv, g);
-            Integer n = counts.get(g);
-            int k = n == null ? 0 : n;
-            String sub = (hidden ? "Hidden" : "Shown") + "  ·  " + k + (k == 1 ? " channel" : " channels")
-                    + (Categories.renamed(tv, g) ? "  ·  the playlist calls it " + (g.isEmpty() ? Categories.UNNAMED : g) : "");
-            out.add(MoreSettings.page("group:" + g, Categories.label(tv, g), sub));
-        }
-        out.add(RowList.Row.note("Hidden: out of the guide, Live TV, channel up and down and search; favourites stay."));
-    }
-
-    /** A group's page: shown or hidden, moved, named. */
-    private void group(String g, List<RowList.Row> out) {
-        Library lib = Library.get(tv);
-        List<String> every = Categories.every(tv, lib.groups());
-        int at = every.indexOf(g);
-        if (at < 0) {
-            out.add(RowList.Row.note("This group isn't in your playlists now."));
-            return;
-        }
-        boolean hidden = Categories.isHidden(tv, g);
-        out.add(MoreSettings.tog("cat.shown", "Show this group", "In the guide, Live TV, channel up and down and search", !hidden));
-        out.add(RowList.Row.header("Position  ·  " + MoreSettings.ordinal(at + 1) + " of " + every.size()));
-        if (at > 0) out.add(RowList.Row.item("do:cat.up", "Move up", ""));
-        if (at < every.size() - 1) out.add(RowList.Row.item("do:cat.down", "Move down", ""));
-        if (at > 0) out.add(RowList.Row.item("do:cat.top", "Move to the top", ""));
-        out.add(RowList.Row.header("Name"));
-        out.add(RowList.Row.item("type:x.cat", "Rename", Categories.label(tv, g)));
-        if (Categories.renamed(tv, g)) {
-            out.add(RowList.Row.item("do:cat.unname", "Its playlist's name again", g.isEmpty() ? Categories.UNNAMED : g));
-        }
-    }
-
     /** Parental controls: the other app's lines, greyed while it is off; then Homefield's locked groups and channels. */
     private void parental(List<RowList.Row> out) {
         boolean on = Parental.hasPin(tv);
@@ -337,10 +282,7 @@ final class ExtraSettings implements SettingsScreen.Pages {
             s.type("f:" + f, row.title, f.equals("pass") ? "" : value("f:" + f), f.equals("pass"));
         } else if (t.startsWith("type:")) {
             String f = t.substring(5);
-            if (f.equals("x.cat") && page.startsWith("group:")) {
-                String g = page.substring(6);
-                s.type("x.cat:" + g, "A name for " + Categories.label(tv, g), Categories.label(tv, g), false);
-            } else if (f.equals("x.guide")) {
+            if (f.equals("x.guide")) {
                 s.type("x.guide", "An EPG address (XMLTV)", "http://", false);
             } else if (f.startsWith("ua:")) {
                 s.type(f, "User-Agent", PlayerPrefs.agentFor(tv, f.substring(3)), false);
@@ -394,12 +336,6 @@ final class ExtraSettings implements SettingsScreen.Pages {
                 Parental.clearPin(tv);
                 s.toast("Parental controls are off");
                 break;
-            case "cat.shown":
-                if (page.startsWith("group:")) {
-                    String g = page.substring(6);
-                    Categories.setHidden(tv, g, !Categories.isHidden(tv, g));
-                }
-                break;
             default:
                 break;
         }
@@ -408,7 +344,6 @@ final class ExtraSettings implements SettingsScreen.Pages {
 
     private void act(String page, String what) {
         Library lib = Library.get(tv);
-        String g = page.startsWith("group:") ? page.substring(6) : null;
         switch (what) {
             case "all":
                 Sources.setActive(tv, Sources.ALL);
@@ -457,22 +392,6 @@ final class ExtraSettings implements SettingsScreen.Pages {
             case "epg.clear":
                 lib.clearGuideNow();
                 s.toast("The guide is cleared until it is read again (Update EPG)");
-                s.refresh();
-                break;
-            case "cat.up":
-            case "cat.down":
-            case "cat.top":
-                if (g == null) return;
-                Categories.move(tv, lib.groups(), g, what.equals("cat.up") ? -1 : what.equals("cat.down") ? 1 : 0);
-                // The remote stays on the same move where it is still offered, to move it again.
-                s.refreshOn("do:" + what);
-                break;
-            case "cat.unname":
-                if (g != null) Categories.rename(tv, g, "");
-                s.refresh();
-                break;
-            case "cat.showall":
-                Categories.showAll(tv);
                 s.refresh();
                 break;
             case "pin.change":
@@ -566,7 +485,8 @@ final class ExtraSettings implements SettingsScreen.Pages {
                 return new SettingsScreen.Picker("Locked channels", Parental.MODE_NAMES, m, Parental.MODE_ABOUT[m]);
             }
             case "x.sorting": return new SettingsScreen.Picker("Groups sorting", SORTING, Categories.ordered(tv) ? 1 : 0,
-                    "Your own order: the groups moved on their own pages (OK on a group).");
+                    "Your own order: the groups moved in TV guide › Manage groups, or with Move group (hold OK on a group in "
+                            + "the TV guide).");
             default: return null;
         }
     }
@@ -629,10 +549,6 @@ final class ExtraSettings implements SettingsScreen.Pages {
             if (v.isEmpty() || v.equals("http://") || v.equals("https://")) return;
             if (GuidePrefs.addExtra(tv, v)) readAgain();
             else s.toast("That isn't a guide's address to read: it starts http:// or https://, once");
-            return;
-        }
-        if (field.startsWith("x.cat:")) {
-            Categories.rename(tv, field.substring(6), v);
             return;
         }
         switch (field) {

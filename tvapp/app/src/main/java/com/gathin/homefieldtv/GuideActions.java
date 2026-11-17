@@ -7,7 +7,9 @@ import com.gathin.homefieldtv.engine.Catchup;
 import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.Library;
+import com.gathin.homefieldtv.engine.LogoPack;
 import com.gathin.homefieldtv.engine.Reminders;
+import com.gathin.homefieldtv.prefs.ChannelEdits;
 import com.gathin.homefieldtv.prefs.Parental;
 
 import java.util.ArrayList;
@@ -47,14 +49,21 @@ final class GuideActions {
         return GuideMenu.Item.item(MY_LIST, MyListScreen.hasProgram(c, title) ? "Remove from My list" : "Add to My list");
     }
 
+    /** The card without Move channel (the archive's). */
+    static List<GuideMenu.Item> card(Context c, Channel ch, Guide.Schedule s, int i, boolean archiveLink) {
+        return card(c, ch, s, i, archiveLink, false);
+    }
+
     /**
      * OK held: Search and Settings; under the programme's name what can be done with it (to come: Remind; on now: Watch
      * from start where the archive has its start; shown: Watch, from the archive; and Record wherever the channel's
-     * catch-up can keep it), Add to (or Remove from) My list and Programme description; under the channel's name Add to
-     * (or Remove from) Favourites, Catch-up (the archive's programmes by day, where the provider keeps them; not from the
-     * archive view itself) and Block channel.
+     * catch-up can keep it), Add to (or Remove from) My list and Programme description; under the channel's name (the
+     * family's own, where given) TiviMate's Add to (or Remove from) Favourites, Block channel and Hide channel, then
+     * Rename channel, Change logo, Move channel (movable: the guide's lists but Recently watched) and Homefield's
+     * Catch-up (the archive's programmes by day, where the provider keeps them; not from the archive view itself):
+     * ChannelMenu.
      */
-    static List<GuideMenu.Item> card(Context c, Channel ch, Guide.Schedule s, int i, boolean archiveLink) {
+    static List<GuideMenu.Item> card(Context c, Channel ch, Guide.Schedule s, int i, boolean archiveLink, boolean movable) {
         long now = System.currentTimeMillis();
         List<GuideMenu.Item> out = new ArrayList<>();
         out.add(GuideMenu.Item.icon(SEARCH, Dark.SEARCH, "Search"));
@@ -76,10 +85,8 @@ final class GuideActions {
             out.add(myListItem(c, s.title[i]));
             out.add(GuideMenu.Item.item(ABOUT, "Programme description"));
         }
-        out.add(GuideMenu.Item.section(ch.name));
-        out.add(GuideMenu.Item.item(FAVOURITE, Library.get(c).isFavourite(ch) ? "Remove from Favourites" : "Add to Favourites"));
-        if (archiveLink && Catchup.source(ch) != null) out.add(GuideMenu.Item.item(ARCHIVE, "Catch-up"));
-        out.add(GuideMenu.Item.item(BLOCK, Parental.lockedChannels(c).contains(ch.key) ? "Unblock channel" : "Block channel"));
+        out.add(GuideMenu.Item.section(ChannelEdits.name(ch)));
+        ChannelMenu.items(c, ch, archiveLink, movable, out);
         return out;
     }
 
@@ -125,6 +132,8 @@ final class GuideActions {
                 block(tv, c);
                 return false;
             default:
+                // Hide, Rename, Change logo: the channel's edits (Move channel is the guide's own).
+                if (ChannelMenu.handles(tag)) ChannelMenu.act(tv, tag, c);
                 return false;
         }
     }
@@ -157,7 +166,7 @@ final class GuideActions {
 
     /** A reminder a minute before it starts (its card over whatever is on); true when the over-apps question is due. */
     static boolean remind(TvActivity tv, Channel c, String title, long start, long end) {
-        Reminders.add(tv, new Reminders.Reminder(c.key, c.name, c.logo, title, start, end));
+        Reminders.add(tv, new Reminders.Reminder(c.key, ChannelEdits.name(c), LogoPack.url(c), title, start, end));
         ReminderAlarm.schedule(tv);
         Toast.makeText(tv, "Reminder set: " + title + ", " + Ui.day(start, System.currentTimeMillis()) + " " + LiveText.hm(start),
                 Toast.LENGTH_SHORT).show();
@@ -179,7 +188,7 @@ final class GuideActions {
 
     static void favourite(TvActivity tv, Channel c) {
         boolean on = Library.get(tv).toggleFavourite(c);
-        Toast.makeText(tv, on ? c.name + " added to Favourites" : c.name + " removed from Favourites", Toast.LENGTH_SHORT).show();
+        Toast.makeText(tv, on ? ChannelEdits.name(c) + " added to Favourites" : ChannelEdits.name(c) + " removed from Favourites", Toast.LENGTH_SHORT).show();
     }
 
     /** Block channel: Settings → Parental control's lock (the PIN asked before it plays); unblocking asks for the PIN. */
@@ -189,13 +198,13 @@ final class GuideActions {
             return;
         }
         if (Parental.lockedChannels(tv).contains(c.key)) {
-            PinScreen.check(tv, "Unblock " + c.name, () -> {
+            PinScreen.check(tv, "Unblock " + ChannelEdits.name(c), () -> {
                 Parental.lockChannel(tv, c.key, false);
-                Toast.makeText(tv, c.name + " unblocked", Toast.LENGTH_SHORT).show();
+                Toast.makeText(tv, ChannelEdits.name(c) + " unblocked", Toast.LENGTH_SHORT).show();
             });
         } else {
             Parental.lockChannel(tv, c.key, true);
-            Toast.makeText(tv, c.name + " blocked: the PIN is asked before it plays", Toast.LENGTH_SHORT).show();
+            Toast.makeText(tv, ChannelEdits.name(c) + " blocked: the PIN is asked before it plays", Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -213,7 +222,7 @@ final class GuideActions {
 
     /** What a programme's description card says: {title, times, minutes left (on now) or ""}, and how far through (-1: not on). */
     static String[] about(Channel ch, Guide.Schedule s, int i, long now) {
-        if (s == null || i < 0 || i >= s.start.length) return new String[]{ch.name, "", "", ""};
+        if (s == null || i < 0 || i >= s.start.length) return new String[]{ChannelEdits.name(ch), "", "", ""};
         String day = Ui.day(s.start[i], now), span = LiveText.span(s.start[i], s.stop[i]);
         if (!"Today".equals(day)) span = day + ", " + span;
         boolean on = s.start[i] <= now && now < s.stop[i];

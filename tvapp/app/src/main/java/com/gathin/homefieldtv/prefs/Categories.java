@@ -27,13 +27,15 @@ import java.util.Set;
 public final class Categories {
     private Categories() {}
 
-    static final String PREFS = "live_groups", HIDDEN = "hidden", ORDER = "order", NAMES = "names";
+    static final String PREFS = "live_groups", HIDDEN = "hidden", ORDER = "order", NAMES = "names", SORTS = "sorts";
     /** What a group with no name of its own shows as (the playlist gave none). */
     public static final String UNNAMED = "Channels";
 
     private static volatile Set<String> hidden;
     private static volatile List<String> order;
     private static volatile Map<String, String> names;
+    /** Each group's own Sort channels (ChannelEdits' kinds), where it has one. */
+    private static volatile Map<String, Integer> sorts;
 
     private static SharedPreferences prefs(Context c) {
         return c.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
@@ -44,11 +46,12 @@ public final class Categories {
         hidden = null;
         order = null;
         names = null;
+        sorts = null;
         Shown.changed();
     }
 
     private static synchronized void load(Context c) {
-        if (hidden != null && order != null && names != null) return;
+        if (hidden != null && order != null && names != null && sorts != null) return;
         SharedPreferences p = prefs(c);
         hidden = Collections.unmodifiableSet(new HashSet<>(p.getStringSet(HIDDEN, Collections.emptySet())));
         List<String> o = new ArrayList<>();
@@ -71,6 +74,47 @@ public final class Categories {
             // their own names
         }
         names = Collections.unmodifiableMap(n);
+        Map<String, Integer> s = new HashMap<>();
+        try {
+            JSONObject j = new JSONObject(p.getString(SORTS, "{}"));
+            for (Iterator<String> it = j.keys(); it.hasNext(); ) {
+                String k = it.next();
+                int v = j.optInt(k, -1);
+                if (v >= ChannelEdits.PLAYLIST && v <= ChannelEdits.MANUAL) s.put(k, v);
+            }
+        } catch (JSONException ignored) {
+            // as all the channels are sorted
+        }
+        sorts = Collections.unmodifiableMap(s);
+    }
+
+    // ---- a group's own channels sorting (Sort channels in its menu) -------------------------------------------------
+
+    /** Each group's own Sort channels, where it has one (read-only). */
+    public static Map<String, Integer> sorts(Context c) {
+        Map<String, Integer> s = sorts;
+        if (s == null) {
+            load(c);
+            s = sorts;
+        }
+        return s;
+    }
+
+    /** A group's own Sort channels, or -1: as Appearance › TV guide › Channels sorting says. */
+    public static int sortOf(Context c, String group) {
+        Integer s = group == null ? null : sorts(c).get(group);
+        return s == null ? -1 : s;
+    }
+
+    /** A group's channels sorted its own way (ChannelEdits' kinds), or as all the channels are (-1). */
+    public static synchronized void setSort(Context c, String group, int sort) {
+        if (group == null) return;
+        Map<String, Integer> s = new HashMap<>(sorts(c));
+        if (sort < ChannelEdits.PLAYLIST || sort > ChannelEdits.MANUAL) s.remove(group);
+        else s.put(group, sort);
+        prefs(c).edit().putString(SORTS, new JSONObject(s).toString()).apply();
+        sorts = Collections.unmodifiableMap(s);
+        Shown.changed();
     }
 
     // ---- hidden ---------------------------------------------------------------------------------------------------
@@ -102,6 +146,15 @@ public final class Categories {
     public static synchronized void showAll(Context c) {
         prefs(c).edit().remove(HIDDEN).apply();
         hidden = Collections.emptySet();
+        Shown.changed();
+    }
+
+    /** Every one of these groups hidden (TiviMate's Hide all, in Manage groups). */
+    public static synchronized void hideAll(Context c, List<String> groups) {
+        Set<String> s = new HashSet<>(hidden(c));
+        s.addAll(groups);
+        prefs(c).edit().putStringSet(HIDDEN, s).apply();
+        hidden = Collections.unmodifiableSet(s);
         Shown.changed();
     }
 
@@ -171,6 +224,17 @@ public final class Categories {
         Shown.changed();
     }
 
+    /**
+     * The groups shown put in a new order (Move group in the TV guide): the hidden ones keep their places among them,
+     * and that whole order is kept.
+     */
+    public static synchronized void placeShown(Context c, List<String> groups, List<String> shownNow) {
+        List<String> now = placed(arrange(groups, order(c), Collections.emptySet()), shownNow);
+        prefs(c).edit().putString(ORDER, new JSONArray(now).toString()).apply();
+        order = Collections.unmodifiableList(now);
+        Shown.changed();
+    }
+
     /** The groups the lists show, in the family's order, hidden ones left out. */
     public static List<String> arranged(Context c, List<String> groups) {
         return arrange(groups, order(c), hidden(c));
@@ -197,6 +261,24 @@ public final class Categories {
         for (String g : there) {
             if (!placed.contains(g) && !hidden.contains(g)) out.add(g);
         }
+        return out;
+    }
+
+    /**
+     * Pure: every group in order (hidden ones too) with the ones in shownNow put in shownNow's order, each in one of the
+     * places those took, so the others (hidden) keep theirs: [A, h, B, C] with C, A, B shown → [C, h, A, B].
+     */
+    static List<String> placed(List<String> every, List<String> shownNow) {
+        Set<String> moving = new HashSet<>(shownNow);
+        List<String> next = new ArrayList<>();
+        for (String g : shownNow) if (every.contains(g)) next.add(g);
+        List<String> out = new ArrayList<>(every.size());
+        int k = 0;
+        for (String g : every) {
+            if (moving.contains(g) && k < next.size()) out.add(next.get(k++));
+            else if (!moving.contains(g)) out.add(g);
+        }
+        while (k < next.size()) out.add(next.get(k++));
         return out;
     }
 
