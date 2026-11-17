@@ -86,6 +86,7 @@ public final class TvActivity extends Activity {
         root.addView(over, full());
         setContentView(root);
         live = new LiveTv(this, video);
+        live.addListener(awake);
         Library lib = Library.get(this);
         lib.addListener(channels);
         lib.ensure();
@@ -187,6 +188,19 @@ public final class TvActivity extends Activity {
 
     private static FrameLayout.LayoutParams full() {
         return new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+    }
+
+    /**
+     * While a channel or a programme from the archive plays (or is starting, or reconnecting), the screen is kept on, so
+     * the TV's screensaver never comes over what is being watched; stopped, failed or paused, the TV may sleep as usual.
+     */
+    private final LiveTv.Listener awake = this::keepAwake;
+
+    private void keepAwake() {
+        int s = live.state();
+        boolean on = !live.held() && (s == LiveTv.LOADING || s == LiveTv.PLAYING || s == LiveTv.RETRYING);
+        if (on) getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        else getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     }
 
     @Override protected void onResume() {
