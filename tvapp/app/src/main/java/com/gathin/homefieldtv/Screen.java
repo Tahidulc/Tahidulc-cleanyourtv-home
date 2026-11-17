@@ -32,6 +32,22 @@ abstract class Screen {
         return false;
     }
 
+    /**
+     * Drawn over the screen under it, which stays on screen dimmed (Settings' panel, a side menu: RightPanel): it is put
+     * on top without the fade between screens, and takes itself in and out (opening, closing).
+     */
+    boolean overlay() {
+        return false;
+    }
+
+    /** An overlay put on top: its own way in (the panel sliding in). */
+    void opening() {}
+
+    /** An overlay closed: its own way out, then done (true); false for the usual fade. */
+    boolean closing(Runnable done) {
+        return false;
+    }
+
     /** On top: the first time, or again after the screen over it closed (or a film ended). */
     void shown() {}
 

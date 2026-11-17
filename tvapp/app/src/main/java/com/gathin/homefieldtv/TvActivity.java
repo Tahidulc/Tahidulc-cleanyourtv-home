@@ -99,11 +99,9 @@ public final class TvActivity extends Activity {
         Updates.check(this, null);
         String[] news = Updates.whatsNew(this);
         if (news != null && reopenSettings < 0) push(new WhatsNewScreen(this, news[0], news[1]));
-        // Started again for a new theme: back on Settings where it was chosen.
+        // Started again for a new theme: back on Settings where it was chosen, its panel there at once.
         if (reopenSettings >= 0) {
-            SettingsScreen s = new SettingsScreen(this);
-            push(s);
-            s.openAt(reopenSettings);
+            push(new SettingsScreen(this, reopenSettings));
             reopenSettings = -1;
         }
         handleCast(getIntent());
@@ -260,18 +258,31 @@ public final class TvActivity extends Activity {
         return i > 0 ? stack.get(i - 1) : null;
     }
 
-    /** A screen opened over the one on top: it fades in over it, and the one under goes when it has. */
+    /**
+     * A screen opened over the one on top: it fades in over it, and the one under goes when it has. An overlay (Settings'
+     * panel) is put over it instead, the one under staying on screen, and takes itself in.
+     */
     void push(Screen s) {
         Screen was = top();
         if (was != null && resumed) was.hidden();
         stack.add(s);
         View v = s.view();
         (s.overVideo() ? over : screens).addView(v, full());
-        crossFade(v, was == null ? null : was.view(), false);
+        if (s.overlay()) {
+            v.animate().cancel();
+            v.setAlpha(1f);
+            v.setVisibility(View.VISIBLE);
+            s.opening();
+        } else {
+            crossFade(v, was == null ? null : was.view(), false);
+        }
         if (resumed) s.shown();
     }
 
-    /** The top screen closed (at Home: the app goes to the background): it fades away over the one under it. */
+    /**
+     * The top screen closed (at Home: the app goes to the background): it fades away over the one under it, or (an
+     * overlay) takes itself out.
+     */
     void pop() {
         if (stack.size() <= 1) {
             moveTaskToBack(true);
@@ -288,6 +299,10 @@ public final class TvActivity extends Activity {
         gone.animate().cancel();
         if (Exec.inline) {
             detach(gone);
+        } else if (s.overlay() && s.closing(() -> detach(gone))) {
+            // The overlay goes its own way (its panel sliding out), then is taken away.
+            if (resumed) t.shown();
+            return;
         } else {
             gone.animate().alpha(0f).setStartDelay(0).setDuration(PAGE_MS).setInterpolator(Fade.EASE).withLayer()
                     .withEndAction(() -> {

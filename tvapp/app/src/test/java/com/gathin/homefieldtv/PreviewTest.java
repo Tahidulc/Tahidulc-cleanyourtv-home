@@ -159,13 +159,12 @@ public class PreviewTest {
         press(a, KeyEvent.KEYCODE_BACK);
         press(a, KeyEvent.KEYCODE_BACK);
 
-        // Settings: the playlists, then a login being typed in.
+        // Settings: its panel over Home, then a login being typed in.
         a.home();
         a.openSettings();
         idle();
         shot(a, "16-settings");
         ((SettingsScreen) a.top()).preview(2, "Home", "http://provider.example:8080", "family");
-        press(a, KeyEvent.KEYCODE_DPAD_RIGHT);
         press(a, KeyEvent.KEYCODE_DPAD_DOWN, 2);
         shot(a, "17-settings-xtream");
         press(a, KeyEvent.KEYCODE_DPAD_CENTER);
