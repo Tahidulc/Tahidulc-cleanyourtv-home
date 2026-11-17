@@ -1,19 +1,23 @@
 # Homefield TV
 
-An IPTV app for Android TV only, in Homefield's own dark look from the first open: Home, the TV guide, live TV, films
-and TV shows, Search, Settings and the player all have its near-black ground, its rail down the left, Outfit for the
-writing, amber for what is chosen and white rings and cards for where the remote is, in the colour theme chosen. It plays the family's own playlists (an M3U address or an Xtream Codes login): their live
+An IPTV app for Android TV only. From the first open it has the colour theme's ground and panels (Indigo • Blue as it
+comes), the TV's own Roboto for the writing, the accent where the remote is and for what plays, and the menu down the
+left that opens into a drawer; Settings and the side menus open in a panel down the right over the screen. It plays the family's own playlists (an M3U address or an Xtream Codes login): their live
 channels and guide, and their own films and TV shows, browsed by the playlist's categories. It ships with no
 playlists or sources of its own, and films and series come only from the playlists added to it. The app's name and
 wordmark are Homefield; it carries no Sky logo or name.
 
 ## Screens
 
-- **Home:** the rail (Homefield's mark and the time, then Home, the TV guide, Films, TV shows, Sports, Search and
-  Settings), where the remote starts, as on a menu: Up and Down along it, OK goes there, Right goes into the rows, Back
-  from the rows comes back to it and Back from it goes back to the TV. The big picture of what the remote is on, as
-  Films' is (its backdrop fading into the dark, its title, the amber star and its facts, its story), and the mini TV at
-  the top right playing the last channel, on a dark card with LIVE, the channel and what's on. Then rows laid out as
+- **The menu:** the rail down the left of every screen (Homefield's mark, then Search, Home, the TV guide, Movies, TV
+  shows, Sports, Recordings and My list, with Settings at the foot; the screen's own section in white). When the remote
+  goes on to it, it opens into the drawer with each section's name, the remote's item lit in the accent and the screen's
+  own in a quieter grey; Up and Down along it, OK goes there, Right or Back closes it.
+- **Home:** the remote starts in the rows (on the menu while there are none yet); Left from the rows, or Back, opens the
+  menu, and Back from the menu goes back to the TV. The date and the time at the top left, the big picture of what the
+  remote is on (its backdrop fading into the ground, its title, its rating in a grey chip and its facts, its story), and
+  the mini TV at the top right playing the last channel, on a card with LIVE, the channel, and what's on with how far it
+  is and the minutes left. Then rows, each with how far along it the remote is ("3 / 25") at its right, laid out as
   Films' are: On now (each channel's tile as the live screen draws it: a picture of what's on with the channel's logo,
   the title, a line about it and how far through in amber, its number and name and what's left), Continue watching,
   Your TorBox (the family's own TorBox films and shows that no playlist has, newest first, each with TorBox's cloud),
@@ -148,16 +152,21 @@ wordmark are Homefield; it carries no Sky logo or name.
   requests, and in a file's address as it starts.
 - **Search:** the rail, the letters beside it (the key the remote is on in amber), and the channels, films and TV
   shows whose names have what is typed, on the right. Left from the letters goes on to the rail.
-- **Settings:** the sections down a side panel beside the rail, each one's page to the right under its name, a field
-  typed in on a dark sheet rising from the foot: the playlists (all of them together or one, their expiry dates, and catch-up: "Catch-up: 120 channels
+- **Recordings and My list:** from the menu; for now their empty pages (Recordings' message, and My list's four lists
+  down a column, each with its message).
+- **Settings:** a panel down the right over the screen it was opened from, that screen dimmed: the sections as rows, OK
+  opening one as a page that slides in from the right with its name in the panel's band (Back goes back a page, then
+  closes the panel), a field typed in on a sheet rising from the foot: the playlists (all of them together or one, their expiry dates, and catch-up: "Catch-up: 120 channels
   keep programmes for up to 7 days", or "Your provider keeps no catch-up for these channels"), adding an M3U playlist
   or an Xtream Codes login, TorBox (on or off, its copies first or last, the API key typed as dots, Check with TorBox:
   how many films and episodes it has ready, or TorBox's word why not, and Forget), reading them again, removing
   everything (from this TV only), and the channel logos: on black tiles (each logo trimmed and set in the middle of a
   black tile, a dark one turned light) or as the playlist gives them.
-  Theme: Homefield (as it came), Midnight blue, Emerald, Crimson or Graphite, each with its own ground, panels, cards,
-  accent, focus rings, guide colours and badges on every screen; a picture of the app under the list takes each theme's colours
-  as the remote moves through them, and OK keeps one (the screens start again in it, back on Settings). Posters:
+  Colour theme: a primary colour (Indigo as it comes, Blue, Deep purple, Purple, Teal, Green, Red, Brown, Blue grey,
+  Grey or Black) with an accent (Blue as it comes, Red, Pink, Purple, Indigo, Cyan, Teal, Green, Lime, Yellow, Amber,
+  Orange or Deep orange), each a disc, the pair in use ticked and named under the section ("Indigo • Blue"); OK keeps
+  one (the screens start again in it, back on Settings). The themes from before are gone: a TV that had one comes up in
+  Indigo • Blue. Posters:
   Portrait / Landscape. Live TV: subtitles on live TV (Off, From the channel or Automatic), their look and size, and
   where the TV needs it the English speech model (downloaded from there on OK, with how far it has come, or "On this
   TV"). Reminders: the ones set, soonest first (OK cancels one), and whether their card may pop up over other apps (OK

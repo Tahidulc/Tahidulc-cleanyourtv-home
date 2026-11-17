@@ -1,49 +1,74 @@
 package com.gathin.homefieldtv;
 
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.LinearGradient;
 import android.graphics.Paint;
+import android.graphics.RectF;
+import android.graphics.Shader;
 import android.text.TextPaint;
 import android.view.KeyEvent;
 import android.view.View;
 
+import com.gathin.homefieldtv.engine.Exec;
+
 /**
- * The slim rail down the left of the dark screens (Films, TV shows, a title's page, the TV guide): Homefield's mark
- * and the time at the top, then Home, the TV guide, Films, TV shows and Search as icons, the page it is on in amber,
- * Settings at the foot. When the remote comes on to it, the icon it is on sits in a white circle with its name beside
- * it; OK goes there.
+ * The main menu down the left of every screen. Closed, it is the rail: 112 px of the panel's colour with Homefield's
+ * mark at the top, then an icon (40 px, 36 px in) for each section at 96 px steps (Search, Home, the TV guide, Movies,
+ * TV shows, Sports, Recordings, My list) and Settings at the foot. The section on screen is white, the others grey
+ * (Palette.ICON_OFF).
+ *
+ * When the remote comes on to it (setActive(true)) it opens into the drawer: 440 px, Homefield's name at the top, each
+ * icon's name beside it (ITEM size, 120 px in), the remote's item in the focus pill (32 px in from both sides, 80 high,
+ * radius 12), and the section on screen in the selected pill while the remote is on another. It opens over the screen
+ * in DRAWER_MS, its names fading in, with a soft shadow down its edge, and closes the same way. Up and Down jump
+ * between the items with no wrap-around; OK opens one (go); Right and Back close it (the screen's call). A newer
+ * Homefield TV waiting puts the accent dot on Settings.
+ *
+ * The screens use it as before: new Rail(context, page), setActive, active(), key(code), focus, page, keep, go().
  */
 final class Rail extends View {
-    static final float W = 112f;
-    static final int HOME = 0, GUIDE = 1, FILMS = 2, SHOWS = 3, SPORTS = 4, SEARCH = 5, SETTINGS = 6;
-    /** The icons in order; Sports' (-1) is a ball drawn by SportsIcon. */
-    private static final int[] ICONS = {Dark.HOME, Dark.GUIDE, Dark.FILMS, Dark.SHOWS, -1, Dark.SEARCH, Dark.SETTINGS};
-    private static final String[] NAMES = {"Home", "TV guide", "Films", "TV shows", "Sports", "Search", "Settings"};
+    static final float W = 112f, DRAWER = 440f;
+    static final long DRAWER_MS = 150;
+    static final int HOME = 0, GUIDE = 1, FILMS = 2, SHOWS = 3, SPORTS = 4, SEARCH = 5, SETTINGS = 6, RECORDINGS = 7, MY_LIST = 8;
+    /** The items from the top; Settings is at the foot. */
+    static final int[] ORDER = {SEARCH, HOME, GUIDE, FILMS, SHOWS, SPORTS, RECORDINGS, MY_LIST, SETTINGS};
+    static final String[] NAMES = {"Home", "TV guide", "Movies", "TV shows", "Sports", "Search", "Settings", "Recordings", "My list"};
+    private static final int[] ICONS = {Dark.HOME, Dark.TV, Dark.CLAPPER, Dark.STACK, RoundButton.SPORTS, Dark.SEARCH, Dark.GEAR,
+            Dark.RECORD, Dark.BOOKMARK};
+    /** The first item's middle, the items' pitch, Settings' middle, an item's height, the icons' and names' places. */
+    static final float FIRST = 224f, PITCH = 96f, FOOT = 1008f, ITEM_H = 80f, ICON = 40f, ICON_X = 56f, ICON_X_OPEN = 76f,
+            LABEL_X = 120f, INSET = Focus.INSET_DRAWER;
 
-    /** The page it is on (one of HOME…SETTINGS, or -1). */
+    /** The section on screen (one of the ids above, or -1). */
     final int page;
+    /** The item the remote is on (an id). */
     int focus;
     private boolean active;
-    /** Home's menu: the remote comes back to the icon it was on (every other page's rail starts on its own icon). */
+    /** Home's menu: the remote comes back to the item it was on (every other screen's starts on its own). */
     boolean keep;
+    private float open;
+    private ValueAnimator anim;
 
-    private final Paint back = Dark.fill(Dark.RAIL), edge = Dark.fill(Dark.LINE), amber = Dark.fill(Dark.ACCENT);
-    private final Paint ink = Dark.fill(Dark.ACCENT_INK), on = Dark.fill(0xFFFFFFFF), tag = Dark.fill(0xF2FFFFFF);
-    private final Paint stroke = Dark.line(Dark.MUTED, 2.6f), strokeDark = Dark.line(0xFF111114, 2.6f);
-    private final Paint solid = Dark.fill(Dark.MUTED), solidDark = Dark.fill(0xFF111114);
-    private final Paint strokeAmber = Dark.line(Dark.ACCENT, 2.6f), solidAmber = Dark.fill(Dark.ACCENT), dot = Dark.fill(Dark.ACCENT);
-    private final Paint dotEdge = Dark.line(Dark.RAIL, 3f);
-    private final TextPaint time = Dark.text(22, 500, Dark.SOFT), label = Dark.text(26, 600, 0xFF111114);
+    private final Paint back = new Paint(), shadow = new Paint(), amber = Dark.fill(0xFFFFB547), ink = Dark.fill(0xFF1E1606);
+    private final Paint dot = Dark.fill(Palette.ACCENT), dotEdge = Dark.line(Palette.PANEL, 3f);
+    private final TextPaint label = Type.paint(Type.ITEM, Type.REGULAR, Palette.TEXT1);
+    private final TextPaint name = Type.paint(36f, Type.MEDIUM, Palette.TEXT1), tv = Type.paint(Type.SMALL, Type.REGULAR, Palette.TEXT2);
+    private final RectF r = new RectF();
 
     Rail(Context c, int page) {
         super(c);
         this.page = page;
-        focus = Math.max(0, page);
+        focus = page >= 0 ? page : HOME;
+        shadow.setShader(new LinearGradient(0, 0, Ui.f(12), 0, Palette.SHADOW, 0, Shader.TileMode.CLAMP));
     }
 
     void setActive(boolean a) {
+        boolean was = active;
         active = a;
-        if (a && !keep) focus = Math.max(0, page);
+        if (a && !keep) focus = page >= 0 ? page : HOME;
+        if (a != was || Exec.inline) animateTo(a ? 1f : 0f);
         invalidate();
     }
 
@@ -51,27 +76,29 @@ final class Rail extends View {
         return active;
     }
 
-    /** Up and Down along the icons; true when used. */
+    /** Up and Down along the items (no wrap-around); true for either, used or not. */
     boolean key(int code) {
-        if (code == KeyEvent.KEYCODE_DPAD_UP && focus > 0) focus--;
-        else if (code == KeyEvent.KEYCODE_DPAD_DOWN && focus < ICONS.length - 1) focus++;
-        else return code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN;
-        invalidate();
+        if (code != KeyEvent.KEYCODE_DPAD_UP && code != KeyEvent.KEYCODE_DPAD_DOWN) return false;
+        int i = indexOf(focus), n = i + (code == KeyEvent.KEYCODE_DPAD_UP ? -1 : 1);
+        if (n >= 0 && n < ORDER.length) {
+            focus = ORDER[n];
+            invalidate();
+        }
         return true;
     }
 
-    /** An icon: Dark's, or Sports' ball. */
-    private static void icon(Canvas c, int i, float cx, float cy, float s, Paint stroke, Paint solid) {
-        if (i == SPORTS) SportsIcon.draw(c, cx, cy, s, stroke, solid);
-        else Dark.icon(c, ICONS[i], cx, cy, s, stroke, solid);
+    /** Pure: an item's place from the top (its index in ORDER), or -1. */
+    static int indexOf(int id) {
+        for (int i = 0; i < ORDER.length; i++) if (ORDER[i] == id) return i;
+        return -1;
     }
 
-    /** Where an icon's middle is (design pixels). */
-    private static float y(int i) {
-        return i == SETTINGS ? 1010f : 400f + i * 92f;
+    /** Pure: where an item's middle is (design pixels). */
+    static float y(int id) {
+        return id == SETTINGS ? FOOT : FIRST + Math.max(0, indexOf(id)) * PITCH;
     }
 
-    /** OK on the rail: to the page the remote is on. */
+    /** OK on an item: to its screen. */
     static void go(TvActivity tv, int which, int from) {
         if (which == from && which != SEARCH) return;
         switch (which) {
@@ -93,42 +120,95 @@ final class Rail extends View {
             case SEARCH:
                 tv.openSearch();
                 break;
+            case RECORDINGS:
+                tv.fromHome(new RecordingsScreen(tv));
+                break;
+            case MY_LIST:
+                tv.fromHome(new MyListScreen(tv));
+                break;
             default:
                 tv.openSettings();
                 break;
         }
     }
 
+    private void animateTo(float to) {
+        if (anim != null) anim.cancel();
+        if (Exec.inline) {
+            open = to;
+            invalidate();
+            return;
+        }
+        ValueAnimator a = ValueAnimator.ofFloat(open, to);
+        a.setDuration(DRAWER_MS);
+        a.setInterpolator(Fade.EASE);
+        a.addUpdateListener(v -> {
+            open = (Float) v.getAnimatedValue();
+            invalidate();
+        });
+        anim = a;
+        a.start();
+    }
+
+    /** The menu's right edge now (screen pixels): 112 closed, 440 open. */
+    float edge() {
+        return Ui.f(W + (DRAWER - W) * open);
+    }
+
     @Override protected void onDraw(Canvas c) {
         int h = getHeight();
-        c.drawRect(0, 0, Ui.f(W), h, back);
-        c.drawRect(Ui.f(W) - Math.max(1f, Ui.f(1.5f)), 0, Ui.f(W), h, edge);
-        float s = Ui.f(52), x = (Ui.f(W) - s) / 2f;
-        Dark.mark(c, x, Ui.f(46), s, amber, ink);
-        String t = Ui.cornerClock(System.currentTimeMillis());
-        c.drawText(t, (Ui.f(W) - time.measureText(t)) / 2f, Ui.f(136), time);
-        float cx = Ui.f(W / 2f);
-        for (int i = 0; i < ICONS.length; i++) {
-            float cy = Ui.f(y(i));
-            boolean here = active && i == focus;
-            if (here) {
-                // The icon in a white circle, its name in a white tag beside it (over the page).
-                float tw = label.measureText(NAMES[i]);
-                c.drawRoundRect(cx - Ui.f(30), cy - Ui.f(30), cx + Ui.f(46) + tw + Ui.f(24), cy + Ui.f(30), Ui.f(30), Ui.f(30), tag);
-                c.drawCircle(cx, cy, Ui.f(30), on);
-                icon(c, i, cx, cy, Ui.f(30), strokeDark, solidDark);
-                c.drawText(NAMES[i], cx + Ui.f(42), cy + Ui.f(9), label);
-            } else if (i == page) {
-                icon(c, i, cx, cy, Ui.f(30), strokeAmber, solidAmber);
-            } else {
-                icon(c, i, cx, cy, Ui.f(30), stroke, solid);
+        float right = edge();
+        if (open > 0f) {
+            // The drawer's soft edge over the screen.
+            shadow.setAlpha(Math.round(255 * open));
+            c.save();
+            c.translate(right, 0);
+            c.drawRect(0, 0, Ui.f(12), h, shadow);
+            c.restore();
+        }
+        back.setColor(Palette.PANEL);
+        c.drawRect(0, 0, right, h, back);
+
+        // Homefield's mark; in the drawer, its name beside it.
+        float s = Ui.f(48 + 8 * open), mx = Ui.f(32 + 16 * open), my = Ui.f(46 - 2 * open);
+        Dark.mark(c, mx, my, s, amber, ink);
+        if (open > 0.01f) {
+            name.setColor(Palette.alpha(Palette.TEXT1, Math.round(((Palette.TEXT1 >>> 24) & 0xFF) * open)));
+            tv.setColor(Palette.alpha(Palette.TEXT2, Math.round(((Palette.TEXT2 >>> 24) & 0xFF) * open)));
+            c.save();
+            c.clipRect(0, 0, right, h);
+            c.drawText("Homefield", Ui.f(LABEL_X), Ui.f(84), name);
+            c.drawText("TV", Ui.f(LABEL_X + 1), Ui.f(120), tv);
+            c.restore();
+        }
+
+        float iconX = Ui.f(ICON_X + (ICON_X_OPEN - ICON_X) * open);
+        for (int id : ORDER) {
+            float cy = Ui.f(y(id));
+            r.set(Ui.f(INSET), cy - Ui.f(ITEM_H / 2f), right - Ui.f(INSET), cy + Ui.f(ITEM_H / 2f));
+            boolean here = active && id == focus;
+            if (open > 0.01f && r.width() > Ui.f(ITEM_H)) {
+                if (here) Focus.pill(c, r);
+                else if (active && id == page) Focus.selected(c, r);
+            }
+            int colour = here || id == page ? Palette.TEXT1 : Palette.ICON_OFF;
+            RoundButton.glyph(c, ICONS[id], iconX, cy, Ui.f(ICON), colour);
+            if (open > 0.01f) {
+                label.setColor(Palette.alpha(Palette.TEXT1, Math.round(((Palette.TEXT1 >>> 24) & 0xFF) * open)));
+                c.save();
+                c.clipRect(0, 0, right - Ui.f(INSET), h);
+                c.drawText(NAMES[id], Ui.f(LABEL_X), Type.centred(label, cy), label);
+                c.restore();
             }
         }
         // A newer Homefield TV waiting (Settings, Updates): a dot on Settings.
         if (Updates.waiting(getContext())) {
-            float sx = cx + Ui.f(19), sy = Ui.f(y(SETTINGS)) - Ui.f(19);
+            float sx = iconX + Ui.f(17), sy = Ui.f(FOOT) - Ui.f(17);
+            dotEdge.setColor(Palette.PANEL);
+            dot.setColor(Palette.ACCENT);
             c.drawCircle(sx, sy, Ui.f(8), dotEdge);
             c.drawCircle(sx, sy, Ui.f(7), dot);
         }
+        if (anim != null && anim.isRunning()) postInvalidateOnAnimation();
     }
 }

@@ -16,18 +16,21 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Home, in the dark look of Films, TV shows and the guide: the rail down the left (Homefield's mark and the time, then
- * Home, the TV guide, Films, TV shows, Sports, Search and Settings, where the remote starts), the big picture of whatever
- * the remote is on, the mini TV at the top right playing the channel last watched, and rows under them: what's on now,
- * Continue watching, the family's own TorBox titles, the newest films and TV shows from the playlists, sport on now and
- * the favourite channels.
+ * Home, in the colour theme's look: the menu's rail down the left (Rail: Left from the rows, or Back, opens it into the
+ * drawer), the date and the clock at the top left in the light accent, the big picture of whatever the remote is on,
+ * the mini TV at the top right playing the channel last watched, and rows under them: what's on now, Continue
+ * watching, the family's own TorBox titles, the newest films and TV shows from the playlists, sport on now and the
+ * favourite channels. The remote starts in the rows; with no rows yet (no playlist, or still loading) on the menu.
  */
 final class HomeScreen extends Screen implements Rows.Host, LiveTv.Listener {
     private Rail rail;
     private MiniTv mini;
     private Hero hero;
     private Rows rows;
+    private DateLine date;
     private boolean inMenu = true;
+    /** A key pressed since Home was made: until then the remote goes into the rows as soon as there are some. */
+    private boolean touched;
     private final Handler h = new Handler(Looper.getMainLooper());
     private Catalog.Title pending;
     private Rows.Tile heroTile;
@@ -39,26 +42,41 @@ final class HomeScreen extends Screen implements Rows.Host, LiveTv.Listener {
 
     @Override View build() {
         FrameLayout f = new FrameLayout(tv);
-        f.setBackgroundColor(Dark.GROUND);
+        f.setBackgroundColor(Palette.GROUND);
         rail = new Rail(tv, Rail.HOME);
-        // The remote starts on the rail, as on the old menu, and comes back to the icon it was on.
+        // The menu comes back to the item it was on.
         rail.keep = true;
-        rail.setActive(true);
         mini = new MiniTv(tv);
         hero = new Hero(tv);
         hero.titleLines = 2;
         hero.plotLines = 3;
-        hero.setTitleSize(72f);
+        hero.textY = 136f;
+        hero.setTitleSize(56f);
         rows = new Rows(tv);
         rows.setHost(this);
         rows.setActive(false);
+        date = new DateLine(tv);
         f.addView(hero.picture, new FrameLayout.LayoutParams(-1, -1));
         f.addView(hero, new FrameLayout.LayoutParams(-1, -1));
+        f.addView(date, new FrameLayout.LayoutParams(-1, -1));
         f.addView(rows, new FrameLayout.LayoutParams(-1, -1));
         f.addView(mini, new FrameLayout.LayoutParams(-1, -1));
         f.addView(rail, new FrameLayout.LayoutParams(-1, -1));
         fill();
         return f;
+    }
+
+    /** The date and the clock at the top left, as the guide shows them: "Tue, 17 Nov, 10.45am" in the light accent. */
+    private static final class DateLine extends android.view.View {
+        private final android.text.TextPaint p = Type.paint(Type.ROW, Type.MEDIUM, Palette.ACCENT_LIGHT);
+
+        DateLine(android.content.Context c) {
+            super(c);
+        }
+
+        @Override protected void onDraw(android.graphics.Canvas c) {
+            c.drawText(Ui.dateClock(System.currentTimeMillis()), Ui.f(Billboard.TEXT_X), Ui.f(72), p);
+        }
     }
 
     @Override void shown() {
@@ -97,6 +115,7 @@ final class HomeScreen extends Screen implements Rows.Host, LiveTv.Listener {
     @Override void tick() {
         rail.invalidate();
         mini.invalidate();
+        date.invalidate();
         fill();
     }
 
@@ -178,6 +197,13 @@ final class HomeScreen extends Screen implements Rows.Host, LiveTv.Listener {
             inMenu = true;
             rail.setActive(true);
             rows.setActive(false);
+        } else if (!list.isEmpty() && inMenu && !touched) {
+            // The remote starts in the rows as soon as there are some.
+            enterRows();
+            return;
+        } else if (list.isEmpty() && !rail.active()) {
+            // Nothing to show yet: the menu open, to Settings or a section.
+            rail.setActive(true);
         }
         showHero();
     }
@@ -305,6 +331,7 @@ final class HomeScreen extends Screen implements Rows.Host, LiveTv.Listener {
     // ---- the remote ---------------------------------------------------------------------------------------------
 
     @Override boolean key(int code, KeyEvent e) {
+        touched = true;
         if (code == KeyEvent.KEYCODE_CHANNEL_UP || code == KeyEvent.KEYCODE_CHANNEL_DOWN) {
             zap(code == KeyEvent.KEYCODE_CHANNEL_UP ? -1 : 1);
             return true;
@@ -334,6 +361,7 @@ final class HomeScreen extends Screen implements Rows.Host, LiveTv.Listener {
     }
 
     @Override void ok() {
+        touched = true;
         if (!inMenu) {
             rows.ok(false);
             return;
@@ -352,6 +380,7 @@ final class HomeScreen extends Screen implements Rows.Host, LiveTv.Listener {
     }
 
     @Override boolean back() {
+        touched = true;
         if (!inMenu) {
             inMenu = true;
             rail.setActive(true);
