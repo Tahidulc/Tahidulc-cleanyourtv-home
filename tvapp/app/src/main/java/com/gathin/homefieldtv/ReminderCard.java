@@ -1,6 +1,7 @@
 package com.gathin.homefieldtv;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -47,6 +48,8 @@ final class ReminderCard {
     private static final String CHANNEL = "reminders", PREFS = "reminders_ui";
     /** Cards due while one is up, shown after it. */
     private static final ArrayDeque<Reminders.Reminder> waiting = new ArrayDeque<>();
+    /** The card up now: made on the application's context, never an activity's, and let go when it closes. */
+    @SuppressLint("StaticFieldLeak")
     private static Window up;
 
     /** Pure: the card's line about the start: "Starts in 1 min", "Starting now". */
@@ -158,7 +161,7 @@ final class ReminderCard {
                 PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         long now = System.currentTimeMillis();
         Notification n = new Notification.Builder(app, CHANNEL)
-                .setSmallIcon(R.drawable.ic_app)
+                .setSmallIcon(R.drawable.ic_reminder)
                 .setContentTitle(when(now, r.start) + ": " + r.title)
                 .setContentText(r.channel + "  ·  " + LiveText.hm(r.start))
                 .setCategory(Notification.CATEGORY_REMINDER)
