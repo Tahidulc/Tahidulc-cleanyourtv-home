@@ -126,6 +126,15 @@ public class PanelsTest {
         assertEquals("The guide is being read…", ExtraSettings.epgStatus(true, 10, 1));
     }
 
+    @Test public void thePicturesShapesAreListedAsThePlayersDisplayModeListsThem() {
+        assertEquals(Arrays.asList("Normal", "Full", "Zoom", "Zoom - 2.35:1", "Reduced", "4:3", "16:9", "2.35:1"),
+                Arrays.asList(MoreSettings.shapeNames()));
+        assertEquals(0, MoreSettings.shapeAt(com.gathin.homefieldtv.prefs.PlayerPrefs.FIT));
+        assertEquals(5, MoreSettings.shapeAt(com.gathin.homefieldtv.prefs.PlayerPrefs.STANDARD));
+        assertEquals(6, MoreSettings.shapeAt(com.gathin.homefieldtv.prefs.PlayerPrefs.WIDE));
+        assertEquals(0, MoreSettings.shapeAt(99));
+    }
+
     @Test public void lightDiscsGetADarkTick() {
         assertTrue(RowList.luminance(0xFFFFEB3B) > 0.5f);
         assertTrue(RowList.luminance(0xFF3F51B5) < 0.5f);

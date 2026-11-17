@@ -89,6 +89,19 @@ final class MoreSettings implements SettingsScreen.Pages {
         }
     }
 
+    /** Pure: the picture's shapes' names in the order the player's Display mode lists them (PlayerPrefs.DISPLAY_ORDER). */
+    static String[] shapeNames() {
+        String[] n = new String[PlayerPrefs.DISPLAY_ORDER.length];
+        for (int i = 0; i < n.length; i++) n[i] = PlayerPrefs.ASPECT_NAMES[PlayerPrefs.DISPLAY_ORDER[i]];
+        return n;
+    }
+
+    /** Pure: a shape's line in that order (the first for one not in it). */
+    static int shapeAt(int mode) {
+        for (int i = 0; i < PlayerPrefs.DISPLAY_ORDER.length; i++) if (PlayerPrefs.DISPLAY_ORDER[i] == mode) return i;
+        return 0;
+    }
+
     /** Pure: the page a setting's choices are opened from. */
     static String pageOf(String key) {
         switch (key) {
@@ -215,8 +228,8 @@ final class MoreSettings implements SettingsScreen.Pages {
                 PlayerPrefs.retries(tv))]));
         out.add(tog("hls", "The provider's adaptive stream", "HLS tried first for a channel given as MPEG-TS, kept only where it plays",
                 PlayerPrefs.hlsFirst(tv)));
-        out.add(RowList.Row.note("While watching, MENU opens the player's menu: each channel's own picture, the sound's delay and track. "
-                + "Changes start with the next channel or film."));
+        out.add(RowList.Row.note("While watching, MENU (or OK held) brings up the player's bar: Display mode, Audio offset and Audio "
+                + "tracks there are each channel's own. Changes here start with the next channel or film."));
     }
 
     /** The sound's languages, each with its switch, the order they were switched on in under them. */
@@ -259,7 +272,8 @@ final class MoreSettings implements SettingsScreen.Pages {
         out.add(RowList.Row.note("adb shell content insert --uri content://com.gathin.homefieldtv.setup/xtream "
                 + "--bind server:s:… --bind user:s:… --bind pass:s:…"));
         out.add(RowList.Row.header("The remote"));
-        out.add(RowList.Row.note("Hold OK on a channel to add it to your favourites. Type a channel's number to go straight to it."));
+        out.add(RowList.Row.note("Add a channel to your favourites from the player's bar (OK held, or MENU). Type a channel's number "
+                + "to go straight to it."));
         out.add(RowList.Row.note("Scoreboard lettering: Outfit (SIL Open Font License)."));
     }
 
@@ -466,10 +480,10 @@ final class MoreSettings implements SettingsScreen.Pages {
                 int q = PlayerPrefs.indexOf(PlayerPrefs.QUALITY_CHOICES, PlayerPrefs.quality(tv));
                 return new SettingsScreen.Picker("Picture quality", PlayerPrefs.QUALITY_NAMES, q, PlayerPrefs.QUALITY_ABOUT[Math.max(0, q)]);
             }
-            case "aspect": return new SettingsScreen.Picker("Picture for channels", PlayerPrefs.ASPECT_NAMES, PlayerPrefs.aspect(tv),
-                    "Each channel can keep its own, from the player's menu.");
-            case "aspect.vod": return new SettingsScreen.Picker("Picture for movies and episodes", PlayerPrefs.ASPECT_NAMES,
-                    PlayerPrefs.vodAspect(tv), null);
+            case "aspect": return new SettingsScreen.Picker("Picture for channels", shapeNames(), shapeAt(PlayerPrefs.aspect(tv)),
+                    "Each channel can keep its own, from the player's Display mode.");
+            case "aspect.vod": return new SettingsScreen.Picker("Picture for movies and episodes", shapeNames(),
+                    shapeAt(PlayerPrefs.vodAspect(tv)), null);
             case "delay": {
                 String[] n = new String[DELAYS.length];
                 int chosen = -1, d = PlayerPrefs.delayMs(tv);
@@ -477,7 +491,8 @@ final class MoreSettings implements SettingsScreen.Pages {
                     n[i] = PlayerPrefs.delayWords(DELAYS[i]);
                     if (DELAYS[i] == d) chosen = i;
                 }
-                return new SettingsScreen.Picker("Sound delay", n, chosen, "Fine-tune it while watching, in the player's menu.");
+                return new SettingsScreen.Picker("Sound delay", n, chosen,
+                        "Every channel's; one can keep its own, from the player's Audio offset.");
             }
             case "retries": return new SettingsScreen.Picker("When a channel drops", PlayerPrefs.RETRY_NAMES,
                     PlayerPrefs.indexOf(PlayerPrefs.RETRY_COUNTS, PlayerPrefs.retries(tv)), "Connected again 1, 2, 4, 8, then 10 seconds apart.");
@@ -534,8 +549,8 @@ final class MoreSettings implements SettingsScreen.Pages {
             case "decoder": PlayerPrefs.setDecoder(tv, i); break;
             case "afr": PlayerPrefs.setMatchFrameRate(tv, i == 1); break;
             case "quality": PlayerPrefs.setQuality(tv, PlayerPrefs.QUALITY_CHOICES[i]); break;
-            case "aspect": PlayerPrefs.setAspect(tv, i); break;
-            case "aspect.vod": PlayerPrefs.setVodAspect(tv, i); break;
+            case "aspect": PlayerPrefs.setAspect(tv, PlayerPrefs.DISPLAY_ORDER[i]); break;
+            case "aspect.vod": PlayerPrefs.setVodAspect(tv, PlayerPrefs.DISPLAY_ORDER[i]); break;
             case "delay": PlayerPrefs.setDelayMs(tv, DELAYS[i]); break;
             case "retries": PlayerPrefs.setRetries(tv, PlayerPrefs.RETRY_COUNTS[i]); break;
             case "subs.look": tv.live.subs.setLook(i); break;
