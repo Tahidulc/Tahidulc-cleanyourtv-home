@@ -18,7 +18,7 @@ import java.util.Locale;
  * Posters say) along it, Continue watching's wide tiles with their red bars, and at a long row's end a tile to see all
  * of it ("All 1,234"). The row the remote is on sits just under the picture with the remote's tile first, grown; the
  * rows above slide up out of sight, the next one shows below. Up and Down go from row to row (each keeps its place), Left
- * and Right along it; rows and tiles glide there (Smooth, carrying on from where they are when a key is held down).
+ * and Right along it; rows and tiles glide there (Glide, carrying on from where they are when a key is held down).
  * Only what is in sight is drawn.
  */
 final class CineRows extends View {
@@ -60,7 +60,7 @@ final class CineRows extends View {
         final Object tag;
         final String allWords;
         int focus;
-        final Smooth x = new Smooth(100f, 0.4f);
+        final Glide x = new Glide(ROW_MS);
 
         Row(String title, int kind, List<Tile> tiles, int total, Object tag) {
             this.title = title;
@@ -86,7 +86,9 @@ final class CineRows extends View {
 
     private final List<Row> rows = new ArrayList<>();
     private int row;
-    private final Smooth y = new Smooth(130f, 0.4f);
+    private final Glide y = new Glide(DOWN_MS);
+    /** How long a row takes to glide along, and the rows up or down. */
+    static final long ROW_MS = 260, DOWN_MS = 320;
     private Host host;
     private boolean active = true;
     private final Lift lift = new Lift();
@@ -236,7 +238,7 @@ final class CineRows extends View {
         Row on = current();
         Object focusKey = on == null || !active ? null : on.focus < on.tiles.size() ? on.tiles.get(on.focus) : on;
         moving |= lift.step(focusKey);
-        float top = Ui.f(ROW_Y) - Ui.f(y.value);
+        float top = Ui.f(ROW_Y) - Ui.f(y.value());
         for (int i = 0; i < rows.size(); i++) {
             Row rw = rows.get(i);
             float h = Ui.f(height(rw));
@@ -259,7 +261,7 @@ final class CineRows extends View {
         headP.setAlpha(alpha);
         c.drawText(rw.title, left, top + Ui.f(HEAD - 18f), headP);
         float tw = Ui.f(tileW(rw)), th = Ui.f(tileH(rw)), step = tw + Ui.f(GAP);
-        float x0 = left + Ui.f(rw.x.value);
+        float x0 = left + Ui.f(rw.x.value());
         int first = Math.max(0, (int) Math.floor((left - x0) / step) - 1);
         int last = Math.min(rw.stops() - 1, (int) Math.ceil((getWidth() - x0) / step));
         float tileTop = top + Ui.f(HEAD);

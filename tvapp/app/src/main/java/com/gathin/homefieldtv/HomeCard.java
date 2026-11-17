@@ -24,7 +24,7 @@ import java.util.List;
  * bold over it with a line of facts (Season 1 | 2019 | fantasy | 15+ | five stars), and along the card's foot a strip of
  * small pictures: a series' episodes, a channel's next programmes, a film's like ones. The whole page takes the
  * artwork's colour, a deeper block of it behind the card's lower half. Left and Right go from card to card: the card,
- * its name and the page's colour slide and fade into the next (one eased place, Smooth, so a held key glides through
+ * its name and the page's colour slide and fade into the next (one gliding place, Glide, so a held key glides through
  * them); the strip rises in under the new card once it has arrived. Down goes into the strip, its tile growing with
  * the episode's name; Up from the card goes to the sections along the top (On now, Continue watching, films, shows,
  * sport, favourites), and from them to Homefield's mark, which opens the menu.
@@ -115,7 +115,10 @@ final class HomeCard extends View {
     private final Host host;
     private final List<Section> sections = new ArrayList<>();
     private int section, area = CARD, tab;
-    private final Smooth pos = new Smooth(125f, 0.002f), swap = new Smooth(170f, 0.004f), stripX = new Smooth(110f, 0.4f);
+    /** The cards' place (in cards: one is about 545 design pixels of slide), the section's fade, the strip's place. */
+    private final Glide pos = new Glide(SLIDE_MS, W * 0.32f), swap = new Glide(FADE_MS, 200f), stripX = new Glide(CineRows.ROW_MS);
+    /** How long a card takes to slide in, and a section to fade in. */
+    static final long SLIDE_MS = 440, FADE_MS = 380;
     private final Lift lift = new Lift();
     private String note = "", noteHead = "";
 
@@ -194,7 +197,7 @@ final class HomeCard extends View {
         if (sections.isEmpty()) area = TABS;
         else if (area == TABS && was == null) area = CARD;
         Section s = current();
-        if (s != null && (changed || Math.abs(pos.value - s.at) > 1f)) pos.jump(s.at);
+        if (s != null && (changed || Math.abs(pos.value() - s.at) > 1f)) pos.jump(s.at);
         measureTabs();
         prepareNear();
         invalidate();
@@ -476,12 +479,12 @@ final class HomeCard extends View {
         // The page: the colour of the card the remote is on (between two as it slides), a deeper block of it behind.
         int tint = 0;
         if (s != null && !s.cards.isEmpty()) {
-            int a = Math.max(0, Math.min(s.cards.size() - 1, (int) Math.floor(pos.value)));
+            int a = Math.max(0, Math.min(s.cards.size() - 1, (int) Math.floor(pos.value())));
             int b = Math.min(s.cards.size() - 1, a + 1);
             int ta = s.cards.get(a).tint, tb = s.cards.get(b).tint;
             if (ta == 0) ta = 0xFF2C2F3D;
             if (tb == 0) tb = 0xFF2C2F3D;
-            tint = Cine.mix(ta, tb, pos.value - a);
+            tint = Cine.mix(ta, tb, pos.value() - a);
         }
         ground.setColor(Cine.shade(tint == 0 ? 0xFF2C2F3D : tint, 0.55f, 0.21f));
         c.drawRect(0, 0, w, h, ground);
@@ -497,16 +500,16 @@ final class HomeCard extends View {
             return;
         }
         // The cards either side of where the slide is: the old going, the new coming.
-        float k = swap.value;
-        int first = Math.max(0, (int) Math.floor(pos.value)), last = Math.min(s.cards.size() - 1, (int) Math.ceil(pos.value));
+        float k = swap.value();
+        int first = Math.max(0, (int) Math.floor(pos.value())), last = Math.min(s.cards.size() - 1, (int) Math.ceil(pos.value()));
         for (int i = first; i <= last; i++) {
-            float d = i - pos.value;
+            float d = i - pos.value();
             if (Math.abs(d) >= 1f) continue;
             drawCard(c, s.cards.get(i), d, k);
         }
         // The strip, rising in under the card once it has arrived.
         if (on != null && !on.strip.isEmpty()) {
-            float in = Math.max(0f, Math.min(1f, 1f - Math.abs(pos.value - s.at) * 5f)) * k;
+            float in = Math.max(0f, Math.min(1f, 1f - Math.abs(pos.value() - s.at) * 5f)) * k;
             if (in > 0.01f) {
                 c.save();
                 c.clipRect(Ui.f(L), 0, Ui.f(L + W), getHeight());
@@ -626,7 +629,7 @@ final class HomeCard extends View {
     /** The strip along the card's foot: its tiles small and dimmed, the remote's grown with its name, the rest moved over. */
     private void drawStrip(Canvas c, Card card, float in) {
         float tw = Ui.f(TILE_W), th = Ui.f(TILE_H), gap = Ui.f(TILE_GAP), bottom = Ui.f(T + H - 62f + TILE_H);
-        float x = Ui.f(L + NAME_X) - Ui.f(stripX.value);
+        float x = Ui.f(L + NAME_X) - Ui.f(stripX.value());
         float right = Ui.f(L + W) - Ui.f(24f);
         boolean inStrip = area == STRIP;
         for (int i = 0; i < card.strip.size(); i++) {
@@ -636,7 +639,7 @@ final class HomeCard extends View {
             float w = tw * k, hh = th * k;
             if (x > right) break;
             if (x + w >= Ui.f(L)) {
-                float stagger = Math.max(0f, Math.min(1f, in * 1.6f - Math.max(0, i - (int) (stripX.value / pitch())) * 0.12f));
+                float stagger = Math.max(0f, Math.min(1f, in * 1.6f - Math.max(0, i - (int) (stripX.value() / pitch())) * 0.12f));
                 int a = Math.round(255 * stagger * (inStrip && up < 0.5f ? 0.6f : inStrip ? 1f : 0.88f));
                 float rise = (1f - stagger) * Ui.f(26f);
                 drawTile(c, t, x, bottom - hh + rise, w, hh, up, a);

@@ -154,7 +154,7 @@ final class ListScreen extends Screen {
         int focus;
         boolean onPill, menuOpen;
         int menuAt;
-        private final Smooth y = new Smooth(120f, 0.4f);
+        private final Glide y = new Glide(CineRows.DOWN_MS);
         private final Lift lift = new Lift();
         private final TileArt art = new TileArt();
         private final Cine.Wash wash = new Cine.Wash();
@@ -292,7 +292,7 @@ final class ListScreen extends Screen {
             float left = Ui.f(TopBar.LEFT);
             int cols = columns();
             float tw = Ui.f(tileW()), th = Ui.f(tileH()), pitch = Ui.f(pitch()), ch = Ui.f(cellH());
-            float top = Ui.f(TOP) - Ui.f(y.value);
+            float top = Ui.f(TOP) - Ui.f(y.value());
             int firstRow = Math.max(0, (int) Math.floor((Ui.f(TOP) - top) / ch) - 1);
             int lastRow = (int) Math.ceil((getHeight() - top) / ch);
             int lifted = -1;

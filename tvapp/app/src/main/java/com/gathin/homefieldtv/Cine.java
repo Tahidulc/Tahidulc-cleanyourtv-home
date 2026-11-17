@@ -247,7 +247,7 @@ final class Cine {
         private final List<float[]> fades = new ArrayList<>();
         private Shader[] now = new Shader[0], was = new Shader[0];
         private int nowColour, wasColour;
-        private final Smooth mix = new Smooth(260f, 0.004f);
+        private final Glide mix = new Glide(520, 300f);
         private final Paint p = new Paint(Paint.DITHER_FLAG);
 
         /**
@@ -296,19 +296,19 @@ final class Cine {
         /** The colour now, as it fades. */
         int colour() {
             if (nowColour == 0) return GROUND;
-            return wasColour == 0 ? nowColour : mix(wasColour, nowColour, mix.value);
+            return wasColour == 0 ? nowColour : mix(wasColour, nowColour, mix.value());
         }
 
         /** One frame's step; true while it is still fading. */
         boolean step() {
             boolean moving = mix.step();
-            if (!moving && mix.value >= 1f) wasColour = 0;
+            if (!moving && mix.value() >= 1f) wasColour = 0;
             return moving;
         }
 
         /** The fades over the picture, as the colour is now. */
         void draw(Canvas c) {
-            float k = mix.value;
+            float k = mix.value();
             for (int i = 0; i < fades.size(); i++) {
                 float[] f = fades.get(i);
                 if (wasColour != 0 && k < 1f && i < was.length) {

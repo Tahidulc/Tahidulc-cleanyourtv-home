@@ -365,7 +365,7 @@ final class BrowseScreen extends Screen implements CineRows.Host {
         private Catalog.Title title, extrasTitle;
         private Tmdb.Extras shownExtras;
         private String picture = "", was = "", line = "", listName = "", listNote = "", why = "";
-        private final Smooth swap = new Smooth(170f, 0.004f), words = new Smooth(150f, 0.004f);
+        private final Glide swap = new Glide(HomeCard.FADE_MS, 200f), words = new Glide(340, 200f);
         private final Cine.Wash wash = new Cine.Wash();
         private final Lettering lettering = new Lettering();
         private final FactsLine facts = new FactsLine(26f);
@@ -466,7 +466,7 @@ final class BrowseScreen extends Screen implements CineRows.Host {
             ground.setColor(wash.colour());
             c.drawRect(0, 0, w, ht, ground);
             r.set(0, 0, w, Ui.f(1080f));
-            float k = swap.value;
+            float k = swap.value();
             if (k < 1f && !was.isEmpty()) {
                 Bitmap b = Pics.cached(was, 1280, 720, Pics.CROP);
                 if (b != null) {
@@ -485,8 +485,8 @@ final class BrowseScreen extends Screen implements CineRows.Host {
             // Below the picture, the page's own colour (under the rows).
             c.drawRect(0, Ui.f(760f), w, ht, ground);
 
-            int a = Math.round(255 * words.value);
-            float rise = Ui.f(16f) * (1f - words.value), x = Ui.f(TEXT_X);
+            int a = Math.round(255 * words.value());
+            float rise = Ui.f(16f) * (1f - words.value()), x = Ui.f(TEXT_X);
             if (title != null) {
                 lettering.draw(c, x, Ui.f(LOGO_TOP) + rise, a, redraw);
                 facts.draw(c, x, Ui.f(FACTS_Y) + rise, a);

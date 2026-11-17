@@ -30,7 +30,8 @@ import java.util.Locale;
  * the remote is in, following it, and under them one row of every episode of every season (its trailer first), the
  * one the remote is on grown and named. Further down, as the remote goes there, the page rises: What it's about and its
  * genres side by side, its cast as round faces with the parts they play, and More like this, the poster the remote is
- * on grown. Every move eases (Smooth): the page, each row, the season pill, the colour. Only what is on screen is drawn.
+ * on grown. Every move glides (Glide): the page, each row, the season pill; the colour fades. Only what is on screen is
+ * drawn.
  */
 final class TitlePage extends View {
     interface Host {
@@ -96,8 +97,10 @@ final class TitlePage extends View {
     private String resumeId = "", backdrop = "";
 
     private int part = BUTTONS, buttonAt, epAt, castAt, moreAt, seasonAt;
-    private final Smooth page = new Smooth(150f, 0.4f), epX = new Smooth(120f, 0.4f), castX = new Smooth(120f, 0.4f),
-            moreX = new Smooth(120f, 0.4f), pillL = new Smooth(110f, 0.4f), pillR = new Smooth(110f, 0.4f), pillsX = new Smooth(120f, 0.4f);
+    private final Glide page = new Glide(PAGE_MS), epX = new Glide(ROW_MS), castX = new Glide(ROW_MS), moreX = new Glide(ROW_MS),
+            pillL = new Glide(PILL_MS), pillR = new Glide(PILL_MS), pillsX = new Glide(ROW_MS);
+    /** How long the page, a row and the season pill take to glide to where the remote sends them. */
+    static final long PAGE_MS = 340, ROW_MS = 280, PILL_MS = 240;
     private final Lift lift = new Lift();
     private final Cine.Wash wash = new Cine.Wash(), curtain = new Cine.Wash();
     private int showTint;
@@ -558,7 +561,7 @@ final class TitlePage extends View {
 
     /** How far the page has risen (the top bar fills with its colour as it does). */
     float risen() {
-        return page.value;
+        return page.value();
     }
 
     int colour() {
@@ -601,9 +604,9 @@ final class TitlePage extends View {
         moving |= lift.step(focus);
 
         int w = getWidth();
-        float risen = Ui.f(page.value);
+        float risen = Ui.f(page.value());
         ground.setColor(wash.colour());
-        if (bar != null) bar.setBacking(wash.colour(), Math.min(1f, page.value / 260f));
+        if (bar != null) bar.setBacking(wash.colour(), Math.min(1f, page.value() / 260f));
         c.drawRect(0, 0, w, getHeight(), ground);
 
         // The picture, rising at half the page's speed, its left and foot in the page's colour.
@@ -614,7 +617,7 @@ final class TitlePage extends View {
             c.translate(0, heroY);
             if (b != null) {
                 // Going as the page rises, so what it's about and the cast sit on the page's colour.
-                hero.setAlpha(Math.round(255 * (0.16f + 0.84f * Math.max(0f, 1f - page.value / 520f))));
+                hero.setAlpha(Math.round(255 * (0.16f + 0.84f * Math.max(0f, 1f - page.value() / 520f))));
                 r.set(0, 0, w, Ui.f(1080f));
                 c.drawBitmap(b, null, r, hero);
             }
@@ -698,8 +701,8 @@ final class TitlePage extends View {
 
     /** The seasons, as the phone has them: the white pill behind the season the remote is in. */
     private void drawSeasons(Canvas c) {
-        float x0 = Ui.f(LEFT) - pillsX.value, cy = Ui.f(PILLS_Y), h = Ui.f(PILL_H);
-        r.set(x0 + pillL.value, cy - h / 2f, x0 + pillR.value, cy + h / 2f);
+        float x0 = Ui.f(LEFT) - pillsX.value(), cy = Ui.f(PILLS_Y), h = Ui.f(PILL_H);
+        r.set(x0 + pillL.value(), cy - h / 2f, x0 + pillR.value(), cy + h / 2f);
         c.drawRoundRect(r, h / 2f, h / 2f, white);
         if (part == SEASONS) {
             r.inset(-Ui.f(6f), -Ui.f(6f));
@@ -710,15 +713,15 @@ final class TitlePage extends View {
             float x = x0 + seasonX[i];
             if (x > getWidth() || x + seasonW[i] < 0) continue;
             // Ink where the pill is under the word, white elsewhere.
-            boolean under = x0 + pillL.value < x + seasonW[i] && x0 + pillR.value > x;
+            boolean under = x0 + pillL.value() < x + seasonW[i] && x0 + pillR.value() > x;
             c.drawText(seasonWords[i], x, base, under ? pillInk : pillP);
         }
     }
 
     private void drawEpisodes(Canvas c) {
         int n = rowSize();
-        float pitch = Ui.f(pitch()), w = Ui.f(EP_W), h = Ui.f(EP_H), top = Ui.f(EP_TOP), x0 = Ui.f(LEFT) - Ui.f(epX.value);
-        int first = Math.max(0, (int) Math.floor((Ui.f(epX.value) - Ui.f(LEFT)) / pitch) - 1);
+        float pitch = Ui.f(pitch()), w = Ui.f(EP_W), h = Ui.f(EP_H), top = Ui.f(EP_TOP), x0 = Ui.f(LEFT) - Ui.f(epX.value());
+        int first = Math.max(0, (int) Math.floor((Ui.f(epX.value()) - Ui.f(LEFT)) / pitch) - 1);
         int last = Math.min(n - 1, first + (int) Math.ceil(getWidth() / pitch) + 2);
         Object leaving = lift.leaving();
         int away = -1;
@@ -787,7 +790,7 @@ final class TitlePage extends View {
 
     private void drawAbout(Canvas c) {
         float top = Ui.f(overviewTop()), x = Ui.f(LEFT);
-        if (top - Ui.f(page.value) > getHeight()) return;
+        if (top - Ui.f(page.value()) > getHeight()) return;
         c.drawText("Overview", x, top + Ui.f(34f), headP);
         if (overview != null) Ui.draw(c, overview, x, top + Ui.f(HEAD));
         float gx = Ui.f(1340f);
@@ -802,8 +805,8 @@ final class TitlePage extends View {
     }
 
     private void drawCast(Canvas c) {
-        float top = Ui.f(castTop()), x0 = Ui.f(LEFT) - Ui.f(castX.value);
-        if (top - Ui.f(page.value) > getHeight()) return;
+        float top = Ui.f(castTop()), x0 = Ui.f(LEFT) - Ui.f(castX.value());
+        if (top - Ui.f(page.value()) > getHeight()) return;
         c.drawText("Cast", Ui.f(LEFT), top + Ui.f(34f), headP);
         float d = Ui.f(FACE), cy = top + Ui.f(HEAD) + d / 2f, cell = Ui.f(CELL);
         for (int i = 0; i < cast.size(); i++) {
@@ -850,9 +853,9 @@ final class TitlePage extends View {
 
     private void drawMore(Canvas c) {
         float top = Ui.f(moreTop());
-        if (top - Ui.f(page.value) > getHeight()) return;
+        if (top - Ui.f(page.value()) > getHeight()) return;
         c.drawText("More like this", Ui.f(LEFT), top + Ui.f(34f), headP);
-        float w = Ui.f(MORE_W), h = Ui.f(MORE_H), pitch = Ui.f(MORE_W + MORE_GAP), y = top + Ui.f(HEAD), x0 = Ui.f(LEFT) - Ui.f(moreX.value);
+        float w = Ui.f(MORE_W), h = Ui.f(MORE_H), pitch = Ui.f(MORE_W + MORE_GAP), y = top + Ui.f(HEAD), x0 = Ui.f(LEFT) - Ui.f(moreX.value());
         Object leaving = lift.leaving();
         int away = -1;
         for (int i = 0; i < more.size(); i++) {
