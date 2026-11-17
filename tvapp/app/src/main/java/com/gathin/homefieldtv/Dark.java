@@ -48,7 +48,8 @@ final class Dark {
     static TextPaint text(float size, int weight, int color) {
         TextPaint p = new TextPaint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
         p.setTypeface(outfit);
-        p.setTextSize(Ui.f(size));
+        // Settings → Appearance → Text size.
+        p.setTextSize(Ui.f(size) * com.gathin.homefieldtv.prefs.Look.text);
         p.setColor(color);
         try {
             p.setFontVariationSettings("'wght' " + weight);

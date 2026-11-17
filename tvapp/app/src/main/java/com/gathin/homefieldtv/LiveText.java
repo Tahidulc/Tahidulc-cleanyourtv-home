@@ -16,7 +16,8 @@ final class LiveText {
     /** "17:40". */
     static String hm(long t, ZoneId z) {
         ZonedDateTime d = Instant.ofEpochMilli(t).atZone(z);
-        return two(d.getHour()) + ":" + two(d.getMinute());
+        // "17:40", or "5.40pm" (Settings → Appearance → Programme times).
+        return com.gathin.homefieldtv.prefs.Look.hm(d.getHour(), d.getMinute(), com.gathin.homefieldtv.prefs.Look.times24);
     }
 
     static String hm(long t) {
@@ -25,7 +26,7 @@ final class LiveText {
 
     /** "17:40 – 18:45". */
     static String span(long a, long b, ZoneId z) {
-        return hm(a, z) + " – " + hm(b, z);
+        return com.gathin.homefieldtv.prefs.Look.span(hm(a, z), hm(b, z));
     }
 
     static String span(long a, long b) {

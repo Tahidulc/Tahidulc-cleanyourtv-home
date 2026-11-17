@@ -5,6 +5,10 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Settings, Updates: a newer Homefield TV put on this TV handed to Android's installer (it asks first). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Settings → General → Start when the TV starts (BootStart; off until chosen). Android 10 and later also want
+         "Display over other apps" allowed for an app to open itself then: asked for only in Settings, never by itself. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <!-- A TV app only: Android TV's launcher row, the remote, no touch screen. -->
     <uses-feature android:name="android.software.leanback" android:required="true" />
@@ -49,6 +53,15 @@
         <receiver
             android:name=".UpdateStatus"
             android:exported="false" />
+
+        <!-- Settings → General → Start when the TV starts: the system's word that the TV has started. -->
+        <receiver
+            android:name=".BootStart"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
         <!-- A playlist added from a computer over adb, so a long login need not be typed on the remote:
              content insert - -uri content://com.gathin.homefieldtv.setup/xtream - -bind server:s:… (see Setup). Only the

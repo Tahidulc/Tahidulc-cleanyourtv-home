@@ -62,6 +62,9 @@ public final class TvActivity extends Activity {
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         Ui.init(this);
+        // Settings → Appearance, read before any screen draws; and whether this start is a fresh one (General → Start on).
+        com.gathin.homefieldtv.prefs.Look.load(this);
+        boolean fresh = state == null && reopenSettings < 0;
         // The theme's colours before any screen is made; the blue screens' ground tinted to match.
         Theme.apply(this);
         getWindow().setBackgroundDrawable(new android.graphics.drawable.GradientDrawable(
@@ -100,6 +103,8 @@ public final class TvActivity extends Activity {
             reopenSettings = -1;
         }
         handleCast(getIntent());
+        // Settings → General → Start on: Live TV, the guide, films or TV shows over Home (not over What's new or a cast).
+        if (fresh && top() instanceof HomeScreen) StartUp.open(this);
     }
 
     /** The phone stopped what it sent: Home comes back without its mini TV playing, once. */
