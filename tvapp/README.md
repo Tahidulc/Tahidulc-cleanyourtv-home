@@ -22,20 +22,34 @@ wordmark are Homefield; it carries no Sky logo or name.
   the title, a line about it and how far through in amber, its number and name and what's left), Continue watching,
   Your TorBox (the family's own TorBox films and shows that no playlist has, newest first, each with TorBox's cloud),
   New films, New TV shows (the posters as everywhere), Sport on now and favourite channels.
-- **TV guide (dark):** the rail, then the categories down the side with how many channels each has (All channels,
-  Favourites, Recently watched, Entertainment, Sport, News, Movies, Kids, Documentaries, Music, then the playlist's own
-  groups). At the top, the channel the remote is on (its logo on its tile, its number and name, what's on now with how
-  far through it is and what's left, and what's next) over the picture of the programme the remote is on; the times
-  along a ruler (Today, 24-hour times, a mark at the time now); then a row a channel, its number and logo and its
-  programmes in their own deep colours (as the phone's guide has them) with their times over their titles and the part
-  already shown shaded, the programme the remote is on in amber. Under the channel's row a strip opens with the
-  programme's picture (from Sky's public UK guide, else the channel's logo on its tile), its title, its times, Live or
-  Starts in…, HD or 4K as the channel's name says, and two lines about it; the rows below move down to make room.
-  Left and Right move through time, Up and Down through the channels, OK watches, holding OK brings up a small menu
-  (watch it, from the start, add the channel to the favourites or take it off), the number keys go to a channel. On a
-  channel whose provider keeps an archive, Left goes on back into the programmes already shown, as far as the archive
-  goes (the guide keeps up to three days of them): each has a small circle arrow, its strip says Catch-up, OK plays it
-  from its start, and Back comes back to the time now. No mini TV here: the stream is let go until a channel is chosen.
+- **TV guide:** as the family's other app has it. At the top left the preview, 640 by 360, playing the channel last
+  watched (or the programme from the archive Back came from); to its right the programme the remote is on: its title, a
+  star for a favourite channel, its times ("10:00 — 11:00") with a bar and the minutes left for one on now ("16 min"),
+  the playlist and the group at the right, and all it says about it. Under it the date and the clock in the light
+  accent, the times every half hour and a dot at the time now; then a row a channel, 88 high: its number, its logo on its
+  tile and its name, a ▶ on the channel in the preview and the archive's mark on one whose provider keeps an archive; its
+  programmes in neutral cells, the part already shown a little lighter, the remote's row lighter still and its cell in
+  the accent, their titles in two lines; a bell on a programme with a reminder. Up and Down move a row, the rows sliding
+  so the remote's stays third from the top; Left and Right go along the programmes, the times paging so the remote's
+  starts at the left; the channel keys page the rows, rewind and fast forward the times (back into an archive too).
+  Left from the programme on now brings in the menu's rail and the groups beside it, pushing the guide right: the
+  playlist's Favourites, All channels and Recently watched, its groups in Settings, Categories' order and names (hidden
+  and locked-away ones left out), then the guide's own categories; the guide shows a group as soon as the remote is on
+  it. Left again opens the drawer. OK on a programme on now plays its channel in the preview, and OK on the channel
+  playing there goes full screen (Back from the player comes back to the guide); OK on a programme to come opens a small
+  menu under it (Remind, Record on a channel with catch-up, Add to My list, Programme description); on one already shown
+  that the archive keeps, OK plays it from its start. OK held (or MENU) opens the whole menu: Search (for the programme's
+  title) and Settings, the programme's lines (Remind, Watch from start, Watch, Record, My list, its description), then
+  the channel's (Add to or Remove from Favourites, Catch-up, Block channel). Play/pause shows the description, Stop
+  adds the channel to the favourites or takes it off, Back held goes back to the player and MENU held opens Search; the
+  number keys go to a channel. Back comes back to the programmes on now, then opens the groups, then the drawer, then
+  leaves the guide.
+- **Catch-up's archive:** from a channel's Catch-up in the guide's menu: the channel along the top, its programmes down
+  the left under each day's name, the remote's always at the same height with the list sliding under it (the one on now
+  in the light accent, those the archive no longer keeps greyed), the days beside them (today's in the light accent), and
+  the programme's picture (Sky's public UK guide, else the channel's logo) over a card with its day, times and what it is
+  about. Right goes to the days and Left back; OK plays a programme already shown from the archive, watches the one on
+  now, or opens the small menu for one to come; OK held opens the whole menu.
 - **Live TV:** full screen, the picture alone. A channel changed to brings up the info card at the foot for the channel banner's
   seconds (Settings, Player; 6 as it comes), and INFO brings it up too: a card in the playback panel's colour with the
   channel's logo and name, the programme's title, the date and the clock, its times with a bar and the minutes left,
@@ -81,8 +95,8 @@ wordmark are Homefield; it carries no Sky logo or name.
   ("a one-time download of about 40 MB, about 70 MB on the TV") and only then fetches Vosk's small English model into
   the app's own storage, its progress where the words go. The sound is heard on the TV, by a copy taken in the
   player's sound chain; nothing heard leaves the TV. A channel's own tracks stay off while nothing shows them.
-- **Reminders:** in the guide, OK held on a programme to come gives Remind me (Cancel reminder once one is set), and a
-  bell on its block and "Reminder set" under it. A minute before it starts, a card comes up at the top right over
+- **Reminders:** in the guide, OK (or OK held) on a programme to come gives Remind (Cancel reminder once one is set), and
+  a bell on its cell and "Reminder set" by its times. A minute before it starts, a card comes up at the top right over
   whatever is on the TV, other apps too: the channel's logo on its tile, "Starts in 1 min" (then "Starting now"), the
   title, the channel and its time, and what the keys do. It takes the remote after a second and a half; OK opens Homefield
   TV on the channel, Back puts it away, any other key lets it go, and it goes by itself after about 20 seconds. Over

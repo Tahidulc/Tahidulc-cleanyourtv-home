@@ -16,22 +16,25 @@ import java.util.List;
 /**
  * What the TV guide's and the archive's menus offer for a programme and its channel (GuideMenu's lines, as the family's
  * TiviMate lists them, DEVICE.md §2.8), and what each does. Homefield's own behind them: its reminders (a card a minute
- * before), its catch-up (CatchupScreen, from the provider's archive), its favourites and its parental lock.
+ * before), its catch-up (CatchupScreen, from the provider's archive), its recordings (kept from the channel's catch-up:
+ * RecordingsScreen.record), My list's programmes, its favourites and its parental lock.
  */
 final class GuideActions {
     private GuideActions() {}
 
     static final String SEARCH = "search", SETTINGS = "settings", WATCH = "watch", START = "start", REMIND = "remind",
-            UNREMIND = "unremind", RECORD = "record", CUSTOM = "custom", MY_LIST = "mylist", ABOUT = "about", FAVOURITE = "fav",
-            ARCHIVE = "archive", BLOCK = "block";
+            UNREMIND = "unremind", RECORD = "record", MY_LIST = "mylist", ABOUT = "about", FAVOURITE = "fav", ARCHIVE = "archive",
+            BLOCK = "block";
 
-    /** OK on a programme to come: Remind (Cancel reminder once set), Record, Custom recording, Add to My list, Programme description. */
-    static List<GuideMenu.Item> popup(Context c, Channel ch, long start) {
+    /**
+     * OK on a programme to come: Remind (Cancel reminder once set), Record (on a channel with catch-up: a recording
+     * plays from it), Add to (or Remove from) My list, Programme description.
+     */
+    static List<GuideMenu.Item> popup(Context c, Channel ch, long start, String title) {
         List<GuideMenu.Item> out = new ArrayList<>();
         out.add(remindItem(c, ch, start));
-        out.add(GuideMenu.Item.item(RECORD, "Record"));
-        out.add(GuideMenu.Item.item(CUSTOM, "Custom recording"));
-        out.add(GuideMenu.Item.item(MY_LIST, "Add to My list"));
+        if (Catchup.source(ch) != null) out.add(GuideMenu.Item.item(RECORD, "Record"));
+        out.add(myListItem(c, title));
         out.add(GuideMenu.Item.item(ABOUT, "Programme description"));
         return out;
     }
@@ -40,12 +43,16 @@ final class GuideActions {
         return Reminders.has(c, ch.key, start) ? GuideMenu.Item.item(UNREMIND, "Cancel reminder") : GuideMenu.Item.item(REMIND, "Remind");
     }
 
+    private static GuideMenu.Item myListItem(Context c, String title) {
+        return GuideMenu.Item.item(MY_LIST, MyListScreen.hasProgram(c, title) ? "Remove from My list" : "Add to My list");
+    }
+
     /**
-     * OK held: Search and Settings; under the programme's name what can be done with it (to come: Remind, Record, Custom
-     * recording; on now: Watch from start where the archive has its start, Record, Custom recording; shown: Watch, from
-     * the archive), Add to My list and Programme description; under the channel's name Add to (or Remove from)
-     * Favourites, Catch-up (the archive's programmes by day, where the provider keeps them; not from the archive view
-     * itself) and Block channel.
+     * OK held: Search and Settings; under the programme's name what can be done with it (to come: Remind; on now: Watch
+     * from start where the archive has its start; shown: Watch, from the archive; and Record wherever the channel's
+     * catch-up can keep it), Add to (or Remove from) My list and Programme description; under the channel's name Add to
+     * (or Remove from) Favourites, Catch-up (the archive's programmes by day, where the provider keeps them; not from the
+     * archive view itself) and Block channel.
      */
     static List<GuideMenu.Item> card(Context c, Channel ch, Guide.Schedule s, int i, boolean archiveLink) {
         long now = System.currentTimeMillis();
@@ -54,19 +61,19 @@ final class GuideActions {
         out.add(GuideMenu.Item.icon(SETTINGS, Dark.GEAR, "Settings"));
         if (s != null && i >= 0 && i < s.start.length) {
             long a = s.start[i], b = s.stop[i];
+            boolean kept = Catchup.source(ch) != null;
             out.add(GuideMenu.Item.section(s.title[i]));
             if (a > now) {
                 out.add(remindItem(c, ch, a));
-                out.add(GuideMenu.Item.item(RECORD, "Record"));
-                out.add(GuideMenu.Item.item(CUSTOM, "Custom recording"));
             } else if (b > now) {
                 if (Catchup.has(ch, a, now) && now - a >= LiveTv.LIVE_EDGE_MS) out.add(GuideMenu.Item.item(START, "Watch from start"));
-                out.add(GuideMenu.Item.item(RECORD, "Record"));
-                out.add(GuideMenu.Item.item(CUSTOM, "Custom recording"));
             } else if (Catchup.has(ch, a, now)) {
                 out.add(GuideMenu.Item.item(WATCH, "Watch"));
+            } else {
+                kept = false;
             }
-            out.add(GuideMenu.Item.item(MY_LIST, "Add to My list"));
+            if (kept) out.add(GuideMenu.Item.item(RECORD, "Record"));
+            out.add(myListItem(c, s.title[i]));
             out.add(GuideMenu.Item.item(ABOUT, "Programme description"));
         }
         out.add(GuideMenu.Item.section(ch.name));
@@ -79,10 +86,11 @@ final class GuideActions {
     // ---- what they do -----------------------------------------------------------------------------------------------
 
     /**
-     * What a menu's line does for programme p ({start, end}, null for none) on channel c (all but Programme description,
-     * which the screen shows itself); true when the over-apps question is due (the first reminder: ask()).
+     * What a menu's line does for programme p ({start, end}, null for none; its title and description) on channel c (all
+     * but Programme description, which the screen shows itself); true when the over-apps question is due (the first
+     * reminder: ask()).
      */
-    static boolean act(TvActivity tv, String tag, Channel c, String title, long[] p) {
+    static boolean act(TvActivity tv, String tag, Channel c, String title, String desc, long[] p) {
         long a = p == null ? 0 : p[0], b = p == null ? 0 : p[1];
         switch (tag) {
             case SEARCH:
@@ -101,11 +109,11 @@ final class GuideActions {
                 if (p != null) unremind(tv, c, title, a);
                 return false;
             case RECORD:
-            case CUSTOM:
-                record(tv, c, title, a, b);
+                // Kept from the channel's catch-up (Recordings), its toast saying so or why not.
+                if (p != null) RecordingsScreen.record(tv, c, title, desc, a, b);
                 return false;
             case MY_LIST:
-                myList(tv, c, title, a, b);
+                myList(tv, title);
                 return false;
             case FAVOURITE:
                 favourite(tv, c);
@@ -162,16 +170,11 @@ final class GuideActions {
         Toast.makeText(tv, "Reminder cancelled: " + title, Toast.LENGTH_SHORT).show();
     }
 
-    /** Record and Custom recording: Recordings' own call once it has one. */
-    static void record(TvActivity tv, Channel c, String title, long start, long end) {
-        // TODO(recordings): hand the programme to Recordings' static method (the settings agent's) once it exists.
-        Toast.makeText(tv, "Recording comes in a later update", Toast.LENGTH_SHORT).show();
-    }
-
-    /** Add to My list: My list's own call (My TV programmes) once it has one. */
-    static void myList(TvActivity tv, Channel c, String title, long start, long end) {
-        // TODO(my list): hand the programme to My list's static method (the settings agent's) once it exists.
-        Toast.makeText(tv, "My list's TV programmes come in a later update", Toast.LENGTH_SHORT).show();
+    /** Add to My list (My TV programmes, by its title), or taken off it. */
+    static void myList(TvActivity tv, String title) {
+        if (title == null || title.trim().isEmpty()) return;
+        boolean on = MyListScreen.toggleProgram(tv, title);
+        Toast.makeText(tv, on ? title + " added to My list" : title + " removed from My list", Toast.LENGTH_SHORT).show();
     }
 
     static void favourite(TvActivity tv, Channel c) {

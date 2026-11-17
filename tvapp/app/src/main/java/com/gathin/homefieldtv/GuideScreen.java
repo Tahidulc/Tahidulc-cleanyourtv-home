@@ -73,6 +73,8 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
     private final Map<String, String> playlists = new HashMap<>();
     private final List<String> listed = new ArrayList<>();
     private String digits = "";
+    /** Opened before there was anything to show (on the groups): goes to the rows when the channels come. */
+    private boolean waiting;
     /** What a menu is open for: the channel, its programme's index and {start, end}. */
     private Channel menuChannel;
     private int menuIndex = -1;
@@ -119,6 +121,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
         load(shown, null);
         // Nothing to show: the groups (and from them the menu, for Settings) rather than an empty grid.
         area = grid.count() == 0 ? GROUPS : GRID;
+        waiting = area == GROUPS;
         reveal = area == GRID ? 0f : 1f;
         groups.setActive(area == GROUPS);
         grid.setActive(area == GRID);
@@ -254,6 +257,9 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
         Channel on = grid.channel();
         fillGroups();
         load(shown, on);
+        // Opened with nothing to show (the groups, then): the rows once the channels are in, the remote untouched since.
+        if (waiting && area == GROUPS && grid.count() > 0) toGrid();
+        if (grid.count() > 0) waiting = false;
         // Not while another app is in front, nor under another screen.
         if (tv.showing(this)) playPreview();
     }
@@ -399,6 +405,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
     }
 
     @Override boolean key(int code, KeyEvent e) {
+        waiting = false;
         if (asking()) return dialog.key(code);
         if (menu.isOpen()) return menu.key(code);
         if (code >= KeyEvent.KEYCODE_0 && code <= KeyEvent.KEYCODE_9) {
@@ -474,6 +481,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
     }
 
     @Override void ok() {
+        waiting = false;
         if (asking()) {
             dialog.ok();
             return;
@@ -537,6 +545,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
     }
 
     @Override boolean back() {
+        waiting = false;
         if (asking()) {
             dialog.hide(this::placePreview);
             return true;
@@ -579,7 +588,9 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
         if (menuChannel == null || menuTimes == null) return;
         RectF cell = grid.focusedCell(new RectF());
         cell.offset(content.getTranslationX(), 0f);
-        menu.openPopup(GuideActions.popup(tv, menuChannel, menuTimes[0]), cell, GuideGrid.COLUMN + content.getTranslationX() / Ui.s);
+        Guide.Schedule s = Library.get(tv).schedule(menuChannel.key);
+        String title = s != null && menuIndex >= 0 && menuIndex < s.title.length ? s.title[menuIndex] : menuChannel.name;
+        menu.openPopup(GuideActions.popup(tv, menuChannel, menuTimes[0], title), cell, GuideGrid.COLUMN + content.getTranslationX() / Ui.s);
         placePreview();
     }
 
@@ -620,13 +631,14 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
         if (c == null) return;
         long[] p = menuTimes;
         Guide.Schedule s = Library.get(tv).schedule(c.key);
-        String title = s != null && menuIndex >= 0 && menuIndex < s.title.length ? s.title[menuIndex] : c.name;
+        boolean has = s != null && menuIndex >= 0 && menuIndex < s.title.length;
+        String title = has ? s.title[menuIndex] : c.name, desc = has ? s.desc[menuIndex] : "";
         if (GuideActions.ABOUT.equals(tag)) {
             openAbout();
             return;
         }
         closeMenu();
-        boolean ask = GuideActions.act(tv, tag, c, title, p);
+        boolean ask = GuideActions.act(tv, tag, c, title, desc, p);
         // In Favourites: the list made again with the channel in or out.
         if (GuideActions.FAVOURITE.equals(tag) && FAV.equals(shown)) load(FAV, c);
         moved();

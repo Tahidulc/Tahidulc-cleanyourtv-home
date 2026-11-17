@@ -339,7 +339,7 @@ final class ArchiveScreen extends Screen implements GuideMenu.Host, DialogCard.H
         if (p == null) return;
         RectF row = rowRect();
         row.left += Ui.f(3f);
-        menu.openPopup(GuideActions.popup(tv, ch, p[0]), row, 16f);
+        menu.openPopup(GuideActions.popup(tv, ch, p[0], s.title[programme()]), row, 16f);
     }
 
     private void openCard() {
@@ -360,9 +360,9 @@ final class ArchiveScreen extends Screen implements GuideMenu.Host, DialogCard.H
             return;
         }
         int i = programme();
-        String title = i >= 0 ? s.title[i] : ch.name;
+        String title = i >= 0 ? s.title[i] : ch.name, desc = i >= 0 ? s.desc[i] : "";
         menu.close();
-        boolean ask = GuideActions.act(tv, tag, ch, title, times());
+        boolean ask = GuideActions.act(tv, tag, ch, title, desc, times());
         page.invalidate();
         if (ask && tv.isTop(this)) GuideActions.ask(tv, dialog);
     }

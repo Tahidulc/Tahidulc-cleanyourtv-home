@@ -18,6 +18,7 @@ import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.engine.MadeUpGuide;
+import com.gathin.homefieldtv.engine.Recordings;
 import com.gathin.homefieldtv.engine.Reminders;
 
 import org.junit.After;
@@ -49,6 +50,7 @@ public class GuideScreenTest {
         if (tv != null) tv.pause().stop().destroy();
         if (made != null) MadeUpGuide.unload(made);
         Reminders.reset();
+        Recordings.reset();
         GuideScreen.forgetList();
         tv = null;
         made = null;
@@ -216,6 +218,17 @@ public class GuideScreenTest {
         GuideActions.archive(a, ch.get(0), now - 2 * 3600_000L);
         idle();
         assertTrue(a.top() instanceof ArchiveScreen);
+        Guide.Schedule shown = Library.get(app).schedule(ch.get(0).key);
+        int i = shown.at(now - 2 * 3600_000L);
+        // OK held on it: Search, Settings, then Watch, Record (kept from the channel's catch-up), Add to My list.
+        hold(a, KeyEvent.KEYCODE_DPAD_CENTER);
+        for (int k = 0; k < 3; k++) press(a, KeyEvent.KEYCODE_DPAD_DOWN);
+        press(a, KeyEvent.KEYCODE_DPAD_CENTER);
+        assertTrue(Recordings.has(app, ch.get(0).key, shown.start[i]));
+        hold(a, KeyEvent.KEYCODE_DPAD_CENTER);
+        for (int k = 0; k < 4; k++) press(a, KeyEvent.KEYCODE_DPAD_DOWN);
+        press(a, KeyEvent.KEYCODE_DPAD_CENTER);
+        assertTrue(MyListScreen.hasProgram(app, shown.title[i]));
         // Up and Down through the programmes, Right to the days and back.
         press(a, KeyEvent.KEYCODE_DPAD_UP);
         press(a, KeyEvent.KEYCODE_DPAD_DOWN);
