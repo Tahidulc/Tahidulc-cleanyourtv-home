@@ -45,6 +45,8 @@ import java.util.regex.Pattern;
  */
 public final class Catalog {
     static final long REFRESH_MS = 24 * 3600_000L;
+    /** The category the family's own TorBox titles that no playlist has are listed under (its row, its grid). */
+    public static final String TORBOX = "Your TorBox";
     private static Catalog instance;
 
     /** A film or a series from one of the family's playlists. */
@@ -99,6 +101,11 @@ public final class Catalog {
         /** The playlist it is from. */
         public String playlist() {
             return source;
+        }
+
+        /** One of the family's own TorBox titles that no playlist has (Catalog.TORBOX). */
+        public boolean torbox() {
+            return TorBox.SOURCE.equals(source);
         }
 
         /** The best picture this title has in any of the family's playlists (its copies' too). */
@@ -279,6 +286,8 @@ public final class Catalog {
         /** When it was first shown, as the provider gives it ("2022-10-09"); "" when not known. */
         public final String aired;
         final String ext, url, userAgent, referrer;
+        /** Only in the family's TorBox (no playlist has it): played from there alone, marked with its cloud. */
+        public boolean torbox;
 
         Episode(String id, int season, int number, String title, String plot, String still, int minutes, String ext, String url,
                 String userAgent, String referrer) {
@@ -359,7 +368,15 @@ public final class Catalog {
     }
 
     private final Context app;
+    /** What the screens read: the playlists' (base) with the family's own TorBox titles folded in. */
     private volatile Model model = Model.empty();
+    private volatile Model base = Model.empty();
+    private volatile List<Title> ownFilms = Collections.emptyList(), ownSeries = Collections.emptyList();
+    private final AtomicBoolean owning = new AtomicBoolean();
+    /** When the family's own TorBox titles were last read (ms); read again as the app comes back after OWN_MS. */
+    private volatile long ownAt;
+    private volatile int ownTries;
+    static final long OWN_MS = 15 * 60_000L;
     private volatile boolean read;
     private volatile String status = "";
     private final AtomicBoolean busy = new AtomicBoolean();
@@ -443,16 +460,19 @@ public final class Catalog {
     public void ensure() {
         if (read) {
             if (stale()) refresh();
+            // The family's TorBox read again now and then as the app comes back: new downloads into the rows.
+            else if (System.currentTimeMillis() - ownAt > OWN_MS) ownTitles();
             return;
         }
         Exec.io(() -> {
             synchronized (this) {
                 if (!read) {
-                    model = build(Sources.inUse(app));
+                    setBase(build(Sources.inUse(app)));
                     read = true;
                 }
             }
             changed();
+            ownTitles();
             if (stale()) refresh();
         });
     }
@@ -489,7 +509,7 @@ public final class Catalog {
                         problems.add(e.name + ": " + (x.getMessage() == null ? "films and series didn't load" : x.getMessage()));
                     }
                 }
-                model = build(in);
+                setBase(build(in));
                 read = true;
                 synchronized (details) {
                     details.clear();
@@ -501,6 +521,7 @@ public final class Catalog {
                 busy.set(false);
             }
             changed();
+            ownTitles();
         });
     }
 
@@ -511,12 +532,97 @@ public final class Catalog {
             //noinspection ResultOfMethodCallIgnored
             f.delete();
         }
-        model = Model.empty();
+        ownFilms = Collections.emptyList();
+        ownSeries = Collections.emptyList();
+        setBase(Model.empty());
         synchronized (details) {
             details.clear();
         }
         status = "";
         changed();
+    }
+
+    // ---- the family's own TorBox titles, folded in -----------------------------------------------------------------
+
+    /** The playlists' titles made anew: the family's own TorBox titles that no playlist has folded in again. */
+    private void setBase(Model m) {
+        base = m;
+        model = withOwn(m, ownFilms, ownSeries);
+    }
+
+    /**
+     * Pure: the playlists' titles with the family's own TorBox ones (those no playlist has): in the lists of all films
+     * and series, by their keys, and as the first category, Catalog.TORBOX.
+     */
+    static Model withOwn(Model m, List<Title> films, List<Title> series) {
+        if (films.isEmpty() && series.isEmpty()) return m;
+        List<Title> f = new ArrayList<>(m.films), s = new ArrayList<>(m.series);
+        f.addAll(films);
+        s.addAll(series);
+        List<Category> fc = new ArrayList<>(), sc = new ArrayList<>();
+        if (!films.isEmpty()) fc.add(new Category(TORBOX, new ArrayList<>(films)));
+        if (!series.isEmpty()) sc.add(new Category(TORBOX, new ArrayList<>(series)));
+        fc.addAll(m.filmCategories);
+        sc.addAll(m.seriesCategories);
+        Map<String, Title> byKey = new HashMap<>(m.byKey);
+        for (Title t : films) byKey.put(t.key, t);
+        for (Title t : series) byKey.put(t.key, t);
+        return new Model(f, s, fc, sc, byKey, m.episodes);
+    }
+
+    /** The family's own TorBox titles that no playlist has (films or series), newest first; empty without TorBox. */
+    public List<Title> own(boolean series) {
+        return series ? ownSeries : ownFilms;
+    }
+
+    /**
+     * The family's own TorBox titles read again, those no playlist has folded in (in the background): at once with what
+     * TMDB said of them before, then again once TMDB has been asked about the new ones (the launcher giving its key).
+     */
+    public void ownTitles() {
+        // Only once the playlists' titles are in: those they have aren't the family's own.
+        if (!read || !owning.compareAndSet(false, true)) return;
+        ownAt = System.currentTimeMillis();
+        Exec.io(() -> {
+            boolean told = false;
+            try {
+                for (int pass = 0; pass < 2; pass++) {
+                    Model b = base;
+                    List<List<Title>> own = TorBox.ownTitles(app, b.films, b.series, pass == 1);
+                    // TorBox not answering: the titles shown stay as they were.
+                    if (own == null) break;
+                    boolean had = !ownFilms.isEmpty() || !ownSeries.isEmpty();
+                    ownFilms = Collections.unmodifiableList(own.get(0));
+                    ownSeries = Collections.unmodifiableList(own.get(1));
+                    model = withOwn(base, ownFilms, ownSeries);
+                    if (had || !ownFilms.isEmpty() || !ownSeries.isEmpty() || TorBox.on(app)) {
+                        // Pages read before may lack TorBox's episodes (or have ones gone): read again when opened.
+                        synchronized (details) {
+                            details.clear();
+                        }
+                    }
+                    ownTries++;
+                    told = true;
+                    changed();
+                    if (pass == 0 && !TorBox.unasked(app, ownFilms) && !TorBox.unasked(app, ownSeries)) break;
+                }
+            } catch (RuntimeException e) {
+                // the titles shown stay as they were; never the key or an address
+                android.util.Log.w("HomefieldTv", "own titles not read: " + e.getClass().getSimpleName());
+            } finally {
+                if (!told) {
+                    // A player waiting on one of them is told TorBox was tried.
+                    ownTries++;
+                    changed();
+                }
+                owning.set(false);
+            }
+        });
+    }
+
+    /** How many times the family's TorBox has been read for its own titles (or tried): a player waiting on one gives up. */
+    public int ownTries() {
+        return ownTries;
     }
 
     // ---- the files: one a playlist --------------------------------------------------------------------------------
@@ -900,11 +1006,14 @@ public final class Catalog {
         Exec.io(() -> {
             Details d = null;
             try {
-                d = fetchDetails(t);
+                // One of the family's own TorBox titles: TMDB's page for it and its files' episodes.
+                d = t.torbox() ? TorBox.details(app, t) : fetchDetails(t);
             } catch (IOException | JSONException | RuntimeException e) {
                 // the page shows what the list gave; never the address
                 android.util.Log.w("HomefieldTv", "details not read: " + e.getClass().getSimpleName());
             }
+            // A playlist's series: its episodes that only the family's TorBox has, put in among the playlist's.
+            if (t.series && !t.torbox()) d = TorBox.withOwnEpisodes(app, t, d);
             if (d != null) synchronized (details) {
                 details.put(t.key, d);
             }
@@ -1006,6 +1115,26 @@ public final class Catalog {
                 seasons(eps, names));
     }
 
+    /** Pure: episodes put into their seasons (each "Series N"). */
+    static List<Season> seasonsOf(List<Episode> eps) {
+        return seasons(eps, null);
+    }
+
+    /** Pure: a page's details from the title alone (its story, year, pictures and rating), with the seasons given. */
+    static Details plainDetails(Title t, List<Season> seasons) {
+        return new Details(t.plot, "", "", "", t.year, t.backdrop, t.poster, "", t.rating, "", 0, seasons);
+    }
+
+    /** Pure: a page's details with its episodes as given: the seasons made again from them, named as they were. */
+    static Details withEpisodes(Details d, Title t, List<Episode> all) {
+        Map<Integer, String> names = new HashMap<>();
+        if (d != null) for (Season s : d.seasons) names.put(s.number, s.name);
+        List<Season> seasons = seasons(all, names);
+        if (d == null) return plainDetails(t, seasons);
+        return new Details(d.plot, d.genre, d.cast, d.director, d.released, d.backdrop, d.poster, d.trailer, d.rating, d.age, d.minutes,
+                seasons);
+    }
+
     private static List<Season> seasons(List<Episode> eps, Map<Integer, String> names) {
         List<Season> out = new ArrayList<>();
         if (eps == null) return out;
@@ -1068,7 +1197,8 @@ public final class Catalog {
     }
 
     private Play playOne(Title t, Episode e) {
-        if (t == null) return null;
+        // An episode only the family's TorBox has: played from there alone (TorBox.plays).
+        if (t == null || e != null && e.torbox) return null;
         Sources.Entry src = Sources.get(app, t.source);
         if (src == null) return null;
         Play p = address(src.source, t, e);
@@ -1222,12 +1352,24 @@ public final class Catalog {
         } catch (IOException ignored) {
             // nothing to show
         }
-        model = build(Sources.inUse(app));
+        setBase(build(Sources.inUse(app)));
         synchronized (details) {
             details.clear();
             details.putAll(pages);
         }
         read = true;
+        changed();
+    }
+
+    /** Previews only: the family's own TorBox titles given straight in, as if TorBox and TMDB had answered, with their pages. */
+    void useOwnForPreview(List<Title> films, List<Title> series, Map<String, Details> pages) {
+        ownFilms = Collections.unmodifiableList(new ArrayList<>(films));
+        ownSeries = Collections.unmodifiableList(new ArrayList<>(series));
+        model = withOwn(base, ownFilms, ownSeries);
+        synchronized (details) {
+            details.putAll(pages);
+        }
+        ownAt = System.currentTimeMillis();
         changed();
     }
 
