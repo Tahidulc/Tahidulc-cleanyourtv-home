@@ -55,6 +55,59 @@ public class DarkLookTest {
         assertEquals("Drama", PosterArt.firstGenre("Drama / Crime"));
     }
 
+    @Test public void genresWithoutARegularExpressionAsWithOne() {
+        String[] names = {"UK | Action Movies", "Sci-Fi & Fantasy", "sci fi", "EN - COMEDIES", "Netflix Originals", "|DE| Krimi Thrillers",
+                "Kids' Animation", "Documentaries 4K", "Romantic-Comedy", "WAR/WESTERN", "Ｃｏｍｅｄｙ", "Café Drama", "", "  ", "1990s",
+                "Mystery&Crime", "History+Sport"};
+        // 1.10's table and its way: the name split by a regular expression, the first word that names a genre.
+        String[][] table = {{"action", "Action"}, {"adventure", "Adventure"}, {"animation", "Animation"}, {"animated", "Animation"},
+                {"anime", "Anime"}, {"comedy", "Comedy"}, {"comedies", "Comedy"}, {"crime", "Crime"}, {"documentary", "Documentary"},
+                {"documentaries", "Documentary"}, {"drama", "Drama"}, {"family", "Family"}, {"fantasy", "Fantasy"},
+                {"history", "History"}, {"horror", "Horror"}, {"kids", "Kids"}, {"music", "Music"}, {"musical", "Musical"},
+                {"mystery", "Mystery"}, {"romance", "Romance"}, {"romantic", "Romance"}, {"scifi", "Sci-Fi"}, {"sci", "Sci-Fi"},
+                {"thriller", "Thriller"}, {"thrillers", "Thriller"}, {"war", "War"}, {"western", "Western"}, {"sport", "Sport"},
+                {"reality", "Reality"}, {"christmas", "Christmas"}};
+        for (String n : names) {
+            String want = "";
+            String low = n.toLowerCase(java.util.Locale.ROOT).replace("sci-fi", "scifi").replace("sci fi", "scifi");
+            outer:
+            for (String w : low.split("[^a-z]+")) {
+                for (String[] g : table) {
+                    if (g[0].equals(w)) {
+                        want = g[1];
+                        break outer;
+                    }
+                }
+            }
+            assertEquals(n, want, PosterArt.genreOf(n));
+            // Asked again: the same, from what was kept.
+            assertEquals(n, want, PosterArt.genreOf(n));
+        }
+        for (String g : new String[]{"Science Fiction, Action", "Drama / Crime", "Action|Adventure", "Kids & Family", "", ",Drama",
+                "An Exceptionally Long Genre Name", "Comedy"}) {
+            String[] parts = g.split("[,/|&]");
+            String want = parts.length == 0 ? "" : parts[0].trim();
+            assertEquals(g, want.length() > 18 ? "" : want, PosterArt.firstGenre(g));
+        }
+        // Only separators: none, where splitting them used to fail.
+        assertEquals("", PosterArt.firstGenre(",,/"));
+    }
+
+    @Test public void postersAreMadeOnlyAsTheyAreReached() {
+        java.util.List<com.gathin.homefieldtv.engine.Catalog.Title> titles = new java.util.ArrayList<>();
+        for (int i = 0; i < 1000; i++) titles.add(null);
+        int[] made = {0};
+        PosterArt.Items items = new PosterArt.Items(titles, t -> {
+            made[0]++;
+            return new PosterArt.Item(t);
+        });
+        assertEquals(1000, items.size());
+        assertEquals(0, made[0]);
+        PosterArt.Item third = items.get(3);
+        assertTrue(third == items.get(3));
+        assertEquals(1, made[0]);
+    }
+
     @Test public void theLineOverTheFoot() {
         assertEquals("Mystery • ★ 8.2", PosterArt.line("Mystery", "8.2"));
         assertEquals("★ 7.0", PosterArt.line("", "7"));

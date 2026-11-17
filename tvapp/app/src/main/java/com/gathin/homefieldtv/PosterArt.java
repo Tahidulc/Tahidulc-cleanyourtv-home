@@ -15,7 +15,12 @@ import android.text.TextUtils;
 
 import com.gathin.homefieldtv.engine.Catalog;
 
+import java.util.AbstractList;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 
 /**
  * A film's or a series' poster as the dark screens draw it, everywhere one shows (the category rows, the grid, the side
@@ -147,11 +152,30 @@ final class PosterArt {
             {"thriller", "Thriller"}, {"thrillers", "Thriller"}, {"war", "War"}, {"western", "Western"}, {"sport", "Sport"},
             {"reality", "Reality"}, {"christmas", "Christmas"}};
 
+    /** Each category's genre once worked out: a catalogue has a few hundred categories and tens of thousands of titles. */
+    private static final Map<String, String> CATEGORY_GENRE = new ConcurrentHashMap<>();
+
     /** Pure: the genre a category's name gives ("UK | Action Movies" → "Action"), else "". */
     static String genreOf(String category) {
         if (category == null) return "";
+        String had = CATEGORY_GENRE.get(category);
+        if (had != null) return had;
+        String g = genreFrom(category);
+        if (CATEGORY_GENRE.size() > 4096) CATEGORY_GENRE.clear();
+        CATEGORY_GENRE.put(category, g);
+        return g;
+    }
+
+    /** The first of a name's words (split at anything but a to z) that names a genre; no regular expression made. */
+    private static String genreFrom(String category) {
         String low = category.toLowerCase(Locale.ROOT).replace("sci-fi", "scifi").replace("sci fi", "scifi");
-        for (String w : low.split("[^a-z]+")) {
+        int n = low.length();
+        for (int i = 0; i < n; ) {
+            while (i < n && (low.charAt(i) < 'a' || low.charAt(i) > 'z')) i++;
+            int start = i;
+            while (i < n && low.charAt(i) >= 'a' && low.charAt(i) <= 'z') i++;
+            if (i == start) continue;
+            String w = low.substring(start, i);
             for (String[] g : GENRES) if (g[0].equals(w)) return g[1];
         }
         return "";
@@ -160,8 +184,42 @@ final class PosterArt {
     /** Pure: the first of a details page's genres ("Science Fiction, Action" → "Science Fiction"), else "". */
     static String firstGenre(String genres) {
         if (genres == null) return "";
-        String g = genres.split("[,/|&]")[0].trim();
+        int end = genres.length();
+        for (int i = 0; i < genres.length(); i++) {
+            char ch = genres.charAt(i);
+            if (ch == ',' || ch == '/' || ch == '|' || ch == '&') {
+                end = i;
+                break;
+            }
+        }
+        String g = genres.substring(0, end).trim();
         return g.length() > 18 ? "" : g;
+    }
+
+    /**
+     * A list's posters, each made the first time it is drawn or reached: a category or a grid of thousands of titles
+     * costs nothing to open, and a poster asks for its genre and its place in Continue watching only then.
+     */
+    static final class Items extends AbstractList<Item> {
+        private final List<Catalog.Title> titles;
+        private final Item[] made;
+        private final Function<Catalog.Title, Item> make;
+
+        Items(List<Catalog.Title> titles, Function<Catalog.Title, Item> make) {
+            this.titles = titles;
+            this.made = new Item[titles.size()];
+            this.make = make;
+        }
+
+        @Override public Item get(int i) {
+            Item it = made[i];
+            if (it == null) made[i] = it = make.apply(titles.get(i));
+            return it;
+        }
+
+        @Override public int size() {
+            return made.length;
+        }
     }
 
     /** Pure: the line over a poster's foot: "Mystery • ★ 8.2", either half alone, or "". */

@@ -343,6 +343,8 @@ public final class Catalog {
         final Map<String, Title> byKey;
         final Map<String, List<Episode>> episodes;
         final String[] filmNames, seriesNames;
+        /** The titles the provider dated, newest first: sorted once as the catalogue is read, never as a screen opens. */
+        final List<Title> datedFilms, datedSeries;
 
         Model(List<Title> films, List<Title> series, List<Category> fc, List<Category> sc, Map<String, Title> byKey,
               Map<String, List<Episode>> episodes) {
@@ -354,6 +356,15 @@ public final class Catalog {
             this.episodes = episodes;
             this.filmNames = lowered(films);
             this.seriesNames = lowered(series);
+            this.datedFilms = dated(films);
+            this.datedSeries = dated(series);
+        }
+
+        private static List<Title> dated(List<Title> all) {
+            List<Title> out = new ArrayList<>();
+            for (Title t : all) if (t.added > 0) out.add(t);
+            out.sort((a, b) -> Long.compare(b.added, a.added));
+            return Collections.unmodifiableList(out);
         }
 
         static Model empty() {
@@ -417,24 +428,27 @@ public final class Catalog {
     public List<Title> recent(boolean series, int max) {
         // The playlists' newest: the family's own TorBox titles have a row of their own.
         Model m = base;
-        return newest(series ? m.series : m.films, max);
+        return newest(series ? m.series : m.films, series ? m.datedSeries : m.datedFilms, max);
     }
 
     static List<Title> newest(List<Title> all, int max) {
         List<Title> dated = new ArrayList<>();
         for (Title t : all) if (t.added > 0) dated.add(t);
-        List<Title> out;
-        if (dated.size() >= Math.min(max, all.size()) / 2 && !dated.isEmpty()) {
-            dated.sort((a, b) -> Long.compare(b.added, a.added));
-            out = dated;
-        } else {
-            out = new ArrayList<>(all);
-            Collections.reverse(out);
-        }
-        return new ArrayList<>(out.subList(0, Math.min(max, out.size())));
+        dated.sort((a, b) -> Long.compare(b.added, a.added));
+        return newest(all, dated, max);
     }
 
-    /** Titles whose name has the words typed: those starting with them first. */
+    /** Pure: the newest max titles, dated being all's dated ones newest first: by date when enough are dated, else all's last. */
+    static List<Title> newest(List<Title> all, List<Title> dated, int max) {
+        if (dated.size() >= Math.min(max, all.size()) / 2 && !dated.isEmpty()) {
+            return new ArrayList<>(dated.subList(0, Math.min(max, dated.size())));
+        }
+        List<Title> out = new ArrayList<>(Math.max(0, Math.min(max, all.size())));
+        for (int i = all.size() - 1; i >= 0 && out.size() < max; i--) out.add(all.get(i));
+        return out;
+    }
+
+    /** Titles whose name has the words typed: those starting with them first. Goes through every title: off the main thread. */
     public List<Title> search(String query, boolean series, int max) {
         String q = searchable(query);
         List<Title> out = new ArrayList<>();
@@ -443,10 +457,12 @@ public final class Catalog {
         List<Title> all = series ? m.series : m.films;
         String[] names = series ? m.seriesNames : m.filmNames;
         List<Title> later = new ArrayList<>();
+        String the = "the " + q, word = " " + q;
+        boolean inside = q.length() > 2;
         for (int i = 0; i < names.length && out.size() < max; i++) {
             String n = names[i];
-            if (n.startsWith(q) || n.startsWith("the " + q)) out.add(all.get(i));
-            else if (later.size() < max && (n.contains(" " + q) || (q.length() > 2 && n.contains(q)))) later.add(all.get(i));
+            if (n.startsWith(q) || n.startsWith(the)) out.add(all.get(i));
+            else if (later.size() < max && (n.contains(word) || (inside && n.contains(q)))) later.add(all.get(i));
         }
         for (Title t : later) {
             if (out.size() >= max) break;
