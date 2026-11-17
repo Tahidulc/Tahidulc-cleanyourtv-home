@@ -177,7 +177,13 @@ final class LiveSubs implements Captioner.Screen {
     /** Where the picture is now (screen pixels; empty when it isn't shown) and, inside that, the picture itself. */
     void frame(Rect where, int x, int y, int w, int h) {
         boolean f = where != null && !where.isEmpty() && where.width() >= Ui.f(1700);
-        own.setFrame(x, y, w, h);
+        // The channel's pictures of words go on the picture, but never off the screen (a picture zoomed past its edges).
+        if (f) {
+            int l = Math.max(x, where.left), t = Math.max(y, where.top), r = Math.min(x + w, where.right), b = Math.min(y + h, where.bottom);
+            own.setFrame(l, t, Math.max(0, r - l), Math.max(0, b - t));
+        } else {
+            own.setFrame(x, y, w, h);
+        }
         if (f == full) return;
         full = f;
         update();

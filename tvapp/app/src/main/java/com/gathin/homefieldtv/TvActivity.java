@@ -38,7 +38,10 @@ public final class TvActivity extends Activity {
     };
     private final Runnable channels = () -> {
         for (Screen s : new ArrayList<>(stack)) s.channelsChanged();
+        watchReminder();
     };
+    /** A reminder's card answered with OK before the playlists were in: its channel, played once they are. */
+    private String reminderKey;
     private final Runnable catalog = () -> {
         for (Screen s : new ArrayList<>(stack)) s.catalogChanged();
     };
@@ -102,6 +105,9 @@ public final class TvActivity extends Activity {
             reopenSettings = -1;
         }
         handleCast(getIntent());
+        handleReminder(getIntent());
+        // Reminders' alarm made again (Android forgets it when the app is updated or stopped).
+        ReminderAlarm.schedule(this);
     }
 
     /** The phone stopped what it sent: Home comes back without its mini TV playing, once. */
@@ -126,6 +132,26 @@ public final class TvActivity extends Activity {
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         handleCast(intent);
+        handleReminder(intent);
+    }
+
+    /** OK on a reminder's card: its channel full screen (once the playlists are in); an old one is let go. */
+    private void handleReminder(Intent i) {
+        if (i == null || !i.hasExtra(ReminderCard.EXTRA_KEY)) return;
+        String key = i.getStringExtra(ReminderCard.EXTRA_KEY);
+        long at = i.getLongExtra(ReminderCard.EXTRA_AT, 0L);
+        i.removeExtra(ReminderCard.EXTRA_KEY);
+        if (key == null || key.isEmpty() || Math.abs(System.currentTimeMillis() - at) > 10 * 60_000L) return;
+        reminderKey = key;
+        watchReminder();
+    }
+
+    private void watchReminder() {
+        if (reminderKey == null) return;
+        Channel c = Library.get(this).byKey(reminderKey);
+        if (c == null) return;
+        reminderKey = null;
+        watch(c);
     }
 
     /** A channel sent from the family's phone (Cast): watched at once, a note of where it came from. */

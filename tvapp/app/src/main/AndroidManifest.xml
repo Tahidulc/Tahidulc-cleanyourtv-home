@@ -5,6 +5,14 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Settings, Updates: a newer Homefield TV put on this TV handed to Android's installer (it asks first). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Reminders: a card a minute before a programme, over other apps when Android allows it (asked for once), else a
+         notification; their alarm exact where Android allows, never one that wakes the TV, made again after a restart. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- A TV app only: Android TV's launcher row, the remote, no touch screen. -->
     <uses-feature android:name="android.software.leanback" android:required="true" />
@@ -51,6 +59,26 @@
         <receiver
             android:name=".UpdateStatus"
             android:exported="false" />
+
+        <!-- Reminders' alarm (its own PendingIntent), and Android's word that the TV started or the app was updated. -->
+        <receiver
+            android:name=".ReminderAlarm"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- A reminder's card brought up by its notification where it can't be shown over other apps. -->
+        <activity
+            android:name=".ReminderActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|smallestScreenSize" />
 
         <!-- A playlist added from a computer over adb, so a long login need not be typed on the remote:
              content insert - -uri content://com.gathin.homefieldtv.setup/xtream - -bind server:s:… (see Setup). Only the
