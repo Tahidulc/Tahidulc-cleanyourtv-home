@@ -115,9 +115,12 @@ public class PreviewTest {
         press(a, KeyEvent.KEYCODE_DPAD_RIGHT);
         press(a, KeyEvent.KEYCODE_DPAD_CENTER);
         shot(a, "07-live-banner");
-        press(a, KeyEvent.KEYCODE_DPAD_RIGHT);
+        // CH+: the next channel's card, the channel playing on.
+        press(a, KeyEvent.KEYCODE_CHANNEL_UP);
         shot(a, "08-live-next");
-        // Back hides the banner, Back again is Home (the menu still on TV guide).
+        // Back hides the card, Back again is the TV guide (as TiviMate's), and Back from it Home (the menu still on TV
+        // guide).
+        press(a, KeyEvent.KEYCODE_BACK);
         press(a, KeyEvent.KEYCODE_BACK);
         press(a, KeyEvent.KEYCODE_BACK);
 

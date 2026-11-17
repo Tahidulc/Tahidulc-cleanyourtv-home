@@ -1,11 +1,9 @@
 package com.gathin.homefieldtv;
 
 import android.content.Context;
-import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
-import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.Shader;
 import android.os.Handler;
@@ -21,32 +19,49 @@ import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.Library;
 
 /**
- * Catch-up over the picture: a programme from the provider's archive, or the channel moved back in its own stream.
- * Along the foot, over a dark fade, the channel's logo, the programme's title, its day and times, the channel, and
- * "Catch-up" (a programme that has ended) or how far behind live it is; then a bar across the programme from its start
- * to its end with the part shown filled, the live edge marked where the programme is on now (the part after it not
- * there yet) and the knob where the picture is, play or pause in it; the time over the knob in a bubble while the
- * remote moves it; what's next and the keys under it.
+ * Catch-up over the picture, as the family's TiviMate plays a programme from the archive: a programme from the
+ * provider's archive, or the channel moved back in its own stream.
  *
- * Left and Right move 10 seconds a press, more the longer they are held (30 seconds, a minute, three minutes), and the
- * archive is asked for from there a moment after the remote rests; OK plays or pauses (or goes there at once while
- * moving); Up goes live, as does Back. When a programme ends it goes on into the next; at the live edge it is live
- * again. Down shows or hides the bar, which fades after a few seconds while playing.
+ * <p>As it starts, the info card at the foot with the archive's mark and the programme's whole length (InfoCard).
+ * OK brings up the overlay: the card at the top; across the foot the seek line (80 to 1839 at y 861–866: the accent up
+ * to where the picture is, light grey on to what has been on so far, dark grey after, the white knob); "00:05 / 55:00"
+ * at the left; the transport in the middle (|◀ ◀◀ ⏸ ▶▶ ▶|, 72 px circles of white at 8 %, the remote's an 88 px focus
+ * circle); at the right, in a pill, ⟲ (from the start again), LIVE and the live dot; the row of tiles peeking in under
+ * it. Down brings the tiles up (TV guide, History, the channels last watched) in place of the transport; Up goes back.
+ *
+ * <p>Keys (TiviMate's "Use RW/FF/Pause for seeking/pause while watching catch-up"; Homefield's Left and Right too):
+ * Left and Right, rewind and fast forward move 10 seconds a press, more the longer they are held (30 seconds, a minute,
+ * three minutes), the archive asked for from there a moment after the remote rests; play/pause pauses; ◀◀ and ▶▶ in
+ * the overlay the same, |◀ the programme's start (or the one before), ▶| the next one (or live), ⟲ from the start,
+ * LIVE back to live. Up and Down change channel, live; CH+ and CH− show the next or previous channel's card (OK goes to
+ * it); OK held or MENU the player's bar. Back closes the overlay, then goes to the TV guide with the programme still in
+ * its picture; Back held stops the picture. When a programme ends it goes on into the next; at the live edge it is live
+ * again (the live screen under this one).
  */
 final class CatchupScreen extends Screen implements LiveTv.Listener {
-    private static final long BAR_MS = 5000, APPLY_MS = 700, HALF = 30 * 60_000L, HOUR = 3600_000L;
+    static final long PANELS_MS = 10_000L, APPLY_MS = 700, HALF = 30 * 60_000L, HOUR = 3600_000L;
+    static final int PLAIN = 0, BANNER = 1, OVERLAY = 2, TILES = 3, BAR = 4;
+    /** The transport and the right pill: their items, and where their middles are (design pixels). */
+    static final int SKIP_BACK = 0, REWIND = 1, PLAY = 2, FORWARD = 3, SKIP_NEXT = 4, RESTART = 5, LIVE = 6;
+    static final float[] ITEM_X = {760f, 856f, 960f, 1064f, 1160f, 1660f, 1732f};
+    static final float SEEK_Y = 863.5f, TRANSPORT_Y = 934f;
 
     private final Channel ch;
     /** Where it starts (a programme's start) and that programme's end; -1 once asked for. */
     private long startAt, startEnd;
-    /** Where the remote has moved the bar to and the picture hasn't gone yet (-1: not moving), which way, how many steps. */
+    /** Where the remote has moved the line to and the picture hasn't gone yet (-1: not moving), which way, how many steps. */
     private long target = -1;
     private int dir, steps;
-    private Bar bar;
+    private int mode = PLAIN, focus = PLAY;
+    /** The card's channel on CH+ and CH− (not the one playing); null: this one. */
+    private Channel peek;
+    private Overlay overlay;
+    private PlayerTiles tiles;
+    private PlayerBar bar;
     private final Handler h = new Handler(Looper.getMainLooper());
     private final Runnable apply = this::applyMove;
-    private final Runnable hideBar = () -> {
-        if (!tv.live.held() && target < 0 && tv.live.state() != LiveTv.FAILED) bar(false);
+    private final Runnable hide = () -> {
+        if (!tv.live.held() && target < 0 && tv.live.state() != LiveTv.FAILED) setMode(PLAIN);
     };
     private final Runnable leave = () -> {
         if (tv.isTop(this)) tv.pop();
@@ -65,7 +80,12 @@ final class CatchupScreen extends Screen implements LiveTv.Listener {
 
     @Override View build() {
         FrameLayout root = new FrameLayout(tv);
-        bar = new Bar(tv);
+        overlay = new Overlay(tv);
+        tiles = new PlayerTiles(tv, tilesHost);
+        tiles.setVisibility(View.GONE);
+        bar = new PlayerBar(tv, barHost);
+        root.addView(tiles, new FrameLayout.LayoutParams(-1, -1));
+        root.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
         root.addView(bar, new FrameLayout.LayoutParams(-1, -1));
         return root;
     }
@@ -77,6 +97,9 @@ final class CatchupScreen extends Screen implements LiveTv.Listener {
             long from = startAt;
             startAt = -1;
             tv.live.showAt(ch, from, startEnd, 0);
+            // As it starts: the card at the foot, the archive's mark in it.
+            setMode(BANNER);
+            return;
         } else if (tv.live.archived()) {
             // Back to the app: the archive asked for again from where it got to.
             tv.live.resumeBehind();
@@ -85,14 +108,15 @@ final class CatchupScreen extends Screen implements LiveTv.Listener {
             h.post(leave);
             return;
         }
-        showBar();
+        setMode(PLAIN);
     }
 
     @Override void hidden() {
         tv.live.removeListener(this);
         h.removeCallbacks(apply);
-        h.removeCallbacks(hideBar);
+        h.removeCallbacks(hide);
         h.removeCallbacks(leave);
+        bar.close();
     }
 
     @Override public void liveChanged() {
@@ -102,80 +126,274 @@ final class CatchupScreen extends Screen implements LiveTv.Listener {
             h.post(leave);
             return;
         }
-        if (tv.live.state() == LiveTv.FAILED) showBar();
-        bar.invalidate();
+        if (tv.live.state() == LiveTv.FAILED && mode != OVERLAY) setMode(OVERLAY);
+        overlay.invalidate();
     }
 
     @Override void tick() {
-        bar.invalidate();
+        overlay.invalidate();
+        tiles.invalidate();
+    }
+
+    // ---- what shows ---------------------------------------------------------------------------------------------------
+
+    private void setMode(int m) {
+        int was = mode;
+        mode = m;
+        h.removeCallbacks(hide);
+        if (m != BANNER) peek = null;
+        if (was == BAR && m != BAR) bar.close();
+        if (m == OVERLAY || m == TILES) {
+            tiles.set(Library.get(tv).recent(null), PlayerTiles.GUIDE);
+            // In the overlay the tiles only peek in under the transport; Down brings them up.
+            tiles.peek = m == OVERLAY;
+            tiles.seekLine = m == TILES;
+            tiles.setTranslationY(m == OVERLAY ? Ui.f(1022f - PlayerTiles.TILE_Y) : 0f);
+        }
+        Fade.show(tiles, m == OVERLAY || m == TILES, 110);
+        Fade.show(overlay, m != PLAIN && m != BAR, 130);
+        if (m != PLAIN) h.postDelayed(hide, PANELS_MS);
+        float above = m == BANNER ? InfoCard.FOOT_Y - 16f : m == OVERLAY ? SEEK_Y - 40f : m == TILES || m == BAR ? PlayerTiles.SCRIM_Y + 40f : -1f;
+        tv.live.subs.room(true, above);
+        overlay.invalidate();
+    }
+
+    private void poke() {
+        h.removeCallbacks(hide);
+        if (mode != PLAIN) h.postDelayed(hide, PANELS_MS);
     }
 
     // ---- the remote ---------------------------------------------------------------------------------------------
 
-    @Override boolean key(int code, KeyEvent e) {
+    @Override boolean holds(int code) {
+        if (mode != PLAIN && mode != BANNER) return false;
+        return code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN;
+    }
+
+    @Override boolean keyLong(int code) {
         switch (code) {
+            case KeyEvent.KEYCODE_BACK:
+                tv.stopPlayback();
+                return true;
+            case KeyEvent.KEYCODE_DPAD_UP:
+                setMode(PLAIN);
+                tv.push(new HistoryScreen(tv));
+                return true;
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+                setMode(PLAIN);
+                tv.openSearch();
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    @Override boolean key(int code, KeyEvent e) {
+        if (mode == BAR) {
+            if (code == KeyEvent.KEYCODE_MENU || code == KeyEvent.KEYCODE_SETTINGS) {
+                setMode(PLAIN);
+                return true;
+            }
+            return bar.key(code);
+        }
+        if (mode == TILES) {
+            poke();
+            if (code == KeyEvent.KEYCODE_DPAD_UP) {
+                setMode(OVERLAY);
+                return true;
+            }
+            if (tiles.key(code)) return true;
+        }
+        switch (code) {
+            case KeyEvent.KEYCODE_MENU:
+            case KeyEvent.KEYCODE_SETTINGS:
+                bar.open();
+                setMode(BAR);
+                return true;
             case KeyEvent.KEYCODE_DPAD_LEFT:
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
+                if (mode == OVERLAY) {
+                    // Along the transport and the pill.
+                    int n = focus + (code == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1);
+                    if (n >= SKIP_BACK && n <= LIVE) focus = n;
+                    poke();
+                    overlay.invalidate();
+                    return true;
+                }
+                move(code == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1);
+                return true;
             case KeyEvent.KEYCODE_MEDIA_REWIND:
                 move(-1);
                 return true;
-            case KeyEvent.KEYCODE_DPAD_RIGHT:
             case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
                 move(1);
                 return true;
             case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
-                if (e.getRepeatCount() == 0) ok();
+                if (e.getRepeatCount() == 0) playPause();
                 return true;
             case KeyEvent.KEYCODE_MEDIA_PLAY:
                 tv.live.hold(false);
-                showBar();
+                setMode(OVERLAY);
                 return true;
             case KeyEvent.KEYCODE_MEDIA_PAUSE:
                 tv.live.hold(true);
-                showBar();
+                setMode(OVERLAY);
                 return true;
-            case KeyEvent.KEYCODE_DPAD_UP:
             case KeyEvent.KEYCODE_MEDIA_STOP:
-                // Live: the live screen under this one plays the channel live again.
                 if (e.getRepeatCount() == 0) tv.pop();
                 return true;
             case KeyEvent.KEYCODE_DPAD_DOWN:
-            case KeyEvent.KEYCODE_INFO:
-                if (bar.getVisibility() == View.VISIBLE && !tv.live.held() && target < 0) {
-                    h.removeCallbacks(hideBar);
-                    bar(false);
-                } else {
-                    showBar();
+                if (mode == OVERLAY) {
+                    setMode(TILES);
+                    return true;
                 }
+                if (e.getRepeatCount() == 0) channel(1);
+                return true;
+            case KeyEvent.KEYCODE_DPAD_UP:
+                if (mode == OVERLAY) {
+                    poke();
+                    return true;
+                }
+                if (e.getRepeatCount() == 0) channel(-1);
                 return true;
             case KeyEvent.KEYCODE_CHANNEL_UP:
             case KeyEvent.KEYCODE_CHANNEL_DOWN: {
-                // Another channel, live.
-                Screen under = tv.below(this);
-                if (under instanceof LiveScreen) ((LiveScreen) under).next(code == KeyEvent.KEYCODE_CHANNEL_UP ? -1 : 1);
-                tv.pop();
+                // The next or previous channel's card, without leaving the programme.
+                int d = com.gathin.homefieldtv.prefs.RemoteKeys.zapDir(code == KeyEvent.KEYCODE_CHANNEL_UP ? -1 : 1,
+                        com.gathin.homefieldtv.prefs.RemoteKeys.reversed(tv));
+                Channel from = mode == BANNER && peek != null ? peek : ch;
+                Channel to = Library.get(tv).step(from, d);
+                Channel keep = to == null || to.key.equals(ch.key) ? null : to;
+                setMode(BANNER);
+                peek = keep;
+                overlay.invalidate();
                 return true;
             }
+            case KeyEvent.KEYCODE_INFO:
+                setMode(mode == BANNER && peek == null ? PLAIN : BANNER);
+                return true;
             default:
                 // The number keys change channel from live TV, not here.
                 return code >= KeyEvent.KEYCODE_0 && code <= KeyEvent.KEYCODE_9;
         }
     }
 
+    /** Up or Down: the next or previous channel, live (the live screen under this one plays it). */
+    private void channel(int d) {
+        boolean reversed = com.gathin.homefieldtv.prefs.RemoteKeys.reversed(tv);
+        Screen under = tv.below(this);
+        if (under instanceof LiveScreen) ((LiveScreen) under).next(com.gathin.homefieldtv.prefs.RemoteKeys.zapDir(d, reversed));
+        tv.pop();
+    }
+
     @Override void ok() {
+        if (mode == BAR) {
+            bar.ok();
+            return;
+        }
+        if (mode == TILES) {
+            tiles.ok();
+            return;
+        }
         if (target >= 0) {
             applyMove();
             return;
         }
-        if (tv.live.state() == LiveTv.FAILED) {
-            tv.live.tryAgain();
-            showBar();
+        if (mode == BANNER && peek != null) {
+            Screen under = tv.below(this);
+            Channel to = peek;
+            tv.pop();
+            if (under instanceof LiveScreen) ((LiveScreen) under).tuneFromList(to);
             return;
         }
-        tv.live.hold(!tv.live.held());
-        showBar();
+        if (mode != OVERLAY) {
+            focus = PLAY;
+            setMode(OVERLAY);
+            return;
+        }
+        poke();
+        switch (focus) {
+            case SKIP_BACK: {
+                long at = tv.live.shownAt();
+                long[] p = programme(at);
+                // To the programme's start; at its start already, the one before.
+                long to = at - p[0] > 10_000L ? p[0] : programme(p[0] - 1)[0];
+                go(to);
+                break;
+            }
+            case REWIND:
+                move(-1);
+                break;
+            case FORWARD:
+                move(1);
+                break;
+            case SKIP_NEXT: {
+                long next = programme(tv.live.shownAt())[1];
+                if (next >= System.currentTimeMillis() - LiveTv.LIVE_EDGE_MS) tv.pop();
+                else go(next);
+                break;
+            }
+            case RESTART:
+                go(programme(tv.live.shownAt())[0]);
+                break;
+            case LIVE:
+                tv.pop();
+                break;
+            default:
+                playPause();
+                break;
+        }
     }
 
-    /** The bar moved: 10 seconds a press, then 30, a minute and three minutes as the key stays down. */
+    @Override void okLong() {
+        if (mode == BAR) return;
+        bar.open();
+        setMode(BAR);
+    }
+
+    @Override boolean back() {
+        if (mode == BAR) {
+            bar.back();
+            return true;
+        }
+        if (mode != PLAIN) {
+            setMode(PLAIN);
+            return true;
+        }
+        // TiviMate: Back from the programme is the TV guide, the programme still in its picture.
+        tv.toGuide();
+        return true;
+    }
+
+    private void playPause() {
+        if (tv.live.state() == LiveTv.FAILED) {
+            tv.live.tryAgain();
+        } else {
+            tv.live.hold(!tv.live.held());
+        }
+        if (mode != OVERLAY) {
+            focus = PLAY;
+            setMode(OVERLAY);
+        }
+        overlay.invalidate();
+    }
+
+    /** The picture to time t now (live at the live edge). */
+    private void go(long t) {
+        h.removeCallbacks(apply);
+        target = -1;
+        steps = 0;
+        long earliest = tv.live.earliest(ch);
+        if (earliest != Long.MAX_VALUE && t < earliest) t = earliest;
+        if (t >= System.currentTimeMillis() - LiveTv.LIVE_EDGE_MS) {
+            tv.pop();
+            return;
+        }
+        tv.live.showAt(ch, t, programme(t)[1], 0);
+        overlay.invalidate();
+    }
+
+    /** The line moved: 10 seconds a press, then 30, a minute and three minutes as the key stays down. */
     private void move(int d) {
         long now = System.currentTimeMillis();
         long from = target >= 0 ? target : tv.live.shownAt();
@@ -190,10 +408,16 @@ final class CatchupScreen extends Screen implements LiveTv.Listener {
         dir = d;
         h.removeCallbacks(apply);
         if (!Exec.inline) h.postDelayed(apply, APPLY_MS);
-        showBar();
+        if (mode != OVERLAY && mode != TILES) {
+            focus = d < 0 ? REWIND : FORWARD;
+            setMode(OVERLAY);
+        } else {
+            poke();
+        }
+        overlay.invalidate();
     }
 
-    /** The picture to where the bar was moved: asked for from there (live at the live edge). */
+    /** The picture to where the line was moved: asked for from there (live at the live edge). */
     private void applyMove() {
         h.removeCallbacks(apply);
         if (target < 0) return;
@@ -206,20 +430,7 @@ final class CatchupScreen extends Screen implements LiveTv.Listener {
             return;
         }
         tv.live.showAt(ch, t, programme(t)[1], d);
-        showBar();
-    }
-
-    private void showBar() {
-        h.removeCallbacks(hideBar);
-        bar(true);
-        bar.invalidate();
-        if (!Exec.inline) h.postDelayed(hideBar, BAR_MS);
-    }
-
-    /** The bar in or out; subtitles over the picture kept above it while it is up. */
-    private void bar(boolean on) {
-        Fade.show(bar, on, on ? 160 : 220);
-        tv.live.subs.room(true, on ? 640f : -1f);
+        overlay.invalidate();
     }
 
     /** The programme on the channel at t: {start, end, its place in the guide (-1: none; then the hour round t)}. */
@@ -231,184 +442,201 @@ final class CatchupScreen extends Screen implements LiveTv.Listener {
         return new long[]{a, a + HOUR, -1};
     }
 
-    /** Previews: the bar as the remote moves it to t. */
+    /** Previews: the line as the remote moves it to t. */
     void previewMove(long t) {
         target = t;
         dir = -1;
-        showBar();
+        focus = REWIND;
+        setMode(OVERLAY);
     }
 
-    // ---- the bar ------------------------------------------------------------------------------------------------
+    /** Previews: the overlay with the remote on an item, or the tiles brought up (TILES). */
+    void previewMode(int m, int at) {
+        focus = at;
+        setMode(m);
+    }
 
-    private final class Bar extends View {
-        private final Paint scrim = new Paint(), bmp = new Paint(Paint.FILTER_BITMAP_FLAG);
-        private final Paint gone = Dark.fill(0x1FFFFFFF), track = Dark.fill(0x52FFFFFF), done = Dark.fill(0xF2FFFFFF);
-        private final Paint accent = Dark.fill(Dark.ACCENT), ink = Dark.fill(Dark.ACCENT_INK), knobEdge = Dark.line(0xB3FFFFFF, 2f);
-        private final Paint pillLine = Dark.line(0x99FFFFFF, 1.5f), keyBack = Dark.fill(0x2EFFFFFF), chev = Dark.line(Dark.TEXT, 2.5f);
-        private final TextPaint titleP = Dark.text(54, 600, Dark.TEXT), lineP = Dark.text(28, 500, Dark.SOFT);
-        private final TextPaint numP = Dark.text(28, 400, Dark.MUTED), nameP = Dark.text(28, 700, Dark.TEXT);
-        private final TextPaint pillInk = Dark.text(22, 700, Dark.ACCENT_INK), pillP = Dark.text(22, 600, Dark.TEXT);
-        private final TextPaint endP = Dark.text(26, 500, Dark.SOFT), liveP = Dark.text(18, 700, Dark.ACCENT);
-        private final TextPaint atP = Dark.text(24, 600, Dark.TEXT), bubbleP = Dark.text(28, 700, Dark.ACCENT_INK);
-        private final TextPaint nextLabel = Dark.text(24, 700, Dark.MUTED), nextP = Dark.text(24, 500, Dark.SOFT);
-        private final TextPaint keyP = Dark.text(22, 600, Dark.SOFT), capP = Dark.text(18, 700, Dark.TEXT);
-        private final TextPaint logoName = Dark.text(36, 700, Dark.TEXT), noteP = Dark.text(24, 500, Dark.MUTED);
+    /** Pure: a time in a programme as the overlay writes it: "00:05", "55:00", "1:02:03". */
+    static String clock(long ms) {
+        long s = Math.max(0L, ms / 1000);
+        long hh = s / 3600, m = s / 60 % 60, sec = s % 60;
+        String mm = (m < 10 ? "0" : "") + m, ss = (sec < 10 ? "0" : "") + sec;
+        return hh > 0 ? hh + ":" + mm + ":" + ss : mm + ":" + ss;
+    }
+
+    // ---- the bar's and the tiles' hosts -------------------------------------------------------------------------------
+
+    private final PlayerBar.Host barHost = new PlayerBar.Host() {
+        @Override public Channel channel() {
+            return ch;
+        }
+
+        @Override public void act(int item) {
+            switch (item) {
+                case PlayerBar.SEARCH:
+                    tv.openSearch();
+                    break;
+                case PlayerBar.CHANNELS:
+                    tv.push(new ChannelListScreen(tv));
+                    break;
+                case PlayerBar.HISTORY:
+                    tv.push(new HistoryScreen(tv));
+                    break;
+                case PlayerBar.MOVIES:
+                    Rail.go(tv, Rail.FILMS, -1);
+                    break;
+                case PlayerBar.SHOWS:
+                    Rail.go(tv, Rail.SHOWS, -1);
+                    break;
+                case PlayerBar.RECORDINGS:
+                    Rail.go(tv, Rail.RECORDINGS, -1);
+                    break;
+                case PlayerBar.MY_LIST:
+                    Rail.go(tv, Rail.MY_LIST, -1);
+                    break;
+                case PlayerBar.SETTINGS:
+                    tv.openSettings();
+                    break;
+                case PlayerBar.EXIT:
+                    tv.moveTaskToBack(true);
+                    break;
+                case PlayerBar.START_OVER:
+                    go(programme(tv.live.shownAt())[0]);
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        @Override public boolean hasBoard() {
+            return false;
+        }
+
+        @Override public boolean canStartOver() {
+            return true;
+        }
+
+        @Override public boolean barUp() {
+            return false;
+        }
+
+        @Override public void closed() {
+            if (mode == BAR) setMode(PLAIN);
+        }
+    };
+
+    private final PlayerTiles.Host tilesHost = new PlayerTiles.Host() {
+        @Override public void openGuide() {
+            tv.toGuide();
+        }
+
+        @Override public void openHistory() {
+            setMode(PLAIN);
+            tv.push(new HistoryScreen(tv));
+        }
+
+        @Override public void tune(Channel c) {
+            // Another channel, live: the live screen under this one plays it.
+            Screen under = tv.below(CatchupScreen.this);
+            tv.pop();
+            if (under instanceof LiveScreen) ((LiveScreen) under).tuneFromList(c);
+        }
+
+        @Override public boolean edge(int dir) {
+            if (dir == Ui.UP) setMode(OVERLAY);
+            return true;
+        }
+
+        @Override public float[] seek() {
+            return seekShares();
+        }
+    };
+
+    /** The seek line's shares of the programme: {where the picture is, what has been on so far, 0 (not live)}. */
+    private float[] seekShares() {
+        long now = System.currentTimeMillis();
+        long at = target >= 0 ? target : tv.live.shownAt();
+        long[] p = programme(at);
+        float len = Math.max(1L, p[1] - p[0]);
+        return new float[]{(at - p[0]) / len, (Math.min(now, p[1]) - p[0]) / len, 0f};
+    }
+
+    // ---- the overlay -------------------------------------------------------------------------------------------------
+
+    private final class Overlay extends View {
+        private final InfoCard card;
+        private final Paint scrim = new Paint(), fill = new Paint(Paint.ANTI_ALIAS_FLAG), line = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint timeP = Type.paint(32f, Type.REGULAR, Palette.TEXT1), totalP = Type.paint(32f, Type.REGULAR, Palette.TEXT2);
+        private final TextPaint liveP = Type.paint(18f, Type.BOLD, Palette.TEXT1), noteP = Type.paint(Type.ROW, Type.REGULAR, Palette.TEXT2);
         private final RectF r = new RectF();
-        private final Path tri = new Path();
         private float scrimFor = -1f;
-        private final Runnable redraw = this::invalidate;
 
-        Bar(Context c) {
+        Overlay(Context c) {
             super(c);
-            liveP.setLetterSpacing(0.08f);
+            card = new InfoCard(this);
+            line.setStyle(Paint.Style.STROKE);
         }
 
         @Override protected void onDraw(Canvas c) {
+            long at = target >= 0 ? target : tv.live.shownAt();
+            if (mode == BANNER) {
+                if (peek != null) card.draw(c, InfoCard.FOOT_Y, peek, System.currentTimeMillis(), false, null);
+                else card.draw(c, InfoCard.FOOT_Y, ch, at, true, null);
+                return;
+            }
+            if (mode != OVERLAY && mode != TILES) return;
+            card.draw(c, InfoCard.TOP_Y, ch, at, true, null);
+            if (mode == TILES) return;
             int w = getWidth(), hh = getHeight();
-            long now = System.currentTimeMillis();
-            boolean moving = target >= 0;
-            long at = moving ? target : tv.live.shownAt();
-            Library lib = Library.get(tv);
-            Guide.Schedule s = lib.schedule(ch.key);
-            long[] p = programme(at);
-            long ps = p[0], pe = p[1];
-            int i = (int) p[2];
-
             if (scrimFor != hh) {
-                scrim.setShader(new LinearGradient(0, hh * 0.5f, 0, hh, new int[]{0x00000000, 0xB8000000, 0xF2000000},
-                        new float[]{0f, 0.42f, 1f}, Shader.TileMode.CLAMP));
+                scrim.setShader(new LinearGradient(0, Ui.f(PlayerTiles.SCRIM_Y), 0, hh, 0x00000000, 0xE6000000, Shader.TileMode.CLAMP));
                 scrimFor = hh;
             }
-            c.drawRect(0, hh * 0.5f, w, hh, scrim);
-
-            // The channel's logo, the programme's title.
-            float lx = Ui.f(96), ly = Ui.f(684), lw = Ui.f(220), lh = Ui.f(110);
-            Bitmap logo = Pics.get(ch.logo, Ui.px(220), Ui.px(110), Pics.tiles ? Pics.READY : Pics.FIT, redraw);
-            if (logo != null) c.drawBitmap(logo, lx, ly + (lh - logo.getHeight()) / 2f, bmp);
-            else c.drawText(Ui.fit(ch.name, logoName, lw), lx, ly + lh / 2f + Ui.f(12), logoName);
-            float x0 = Ui.f(360), right = w - Ui.f(96);
-            String title = i >= 0 ? s.title[i] : ch.name;
-            c.drawText(Ui.fit(title, titleP, right - x0), x0, Ui.f(736), titleP);
-
-            // Its day and times, the channel, and Catch-up or how far behind live.
-            float y = Ui.f(788), x = x0;
-            String day = Ui.day(ps, now);
-            String when = i < 0 ? "No programme information" : ("Today".equals(day) ? "" : day + ", ") + LiveText.span(ps, pe);
-            c.drawText(when, x, y, lineP);
-            x += lineP.measureText(when) + Ui.f(28);
-            String num = String.valueOf(lib.number(ch));
-            c.drawText(num, x, y, numP);
-            x += numP.measureText(num) + Ui.f(10);
-            String name = Ui.fit(ch.name, nameP, Math.max(Ui.f(120), right - x - Ui.f(420)));
-            c.drawText(name, x, y, nameP);
-            x += nameP.measureText(name) + Ui.f(26);
-            boolean over = pe <= now;
-            x = pill(c, over ? "Catch-up" : LiveText.behind(now - at), x, y, over);
+            c.drawRect(0, Ui.f(PlayerTiles.SCRIM_Y), w, hh, scrim);
+            // The seek line, the time in the programme and its length.
+            float[] sh = seekShares();
+            Bars.seek(c, Ui.f(PlayerTiles.SEEK_X0), Ui.f(PlayerTiles.SEEK_X1), Ui.f(SEEK_Y), sh[0], sh[1], false);
+            long[] p = programme(at);
+            String t = clock(at - p[0]), total = " / " + clock(p[1] - p[0]);
+            float base = Ui.f(947f), tx = Ui.f(PlayerTiles.SEEK_X0);
+            timeP.setColor(Palette.TEXT1);
+            totalP.setColor(Palette.TEXT2);
+            c.drawText(t, tx, base, timeP);
+            float x = tx + timeP.measureText(t);
+            c.drawText(total, x, base, totalP);
+            x += totalP.measureText(total) + Ui.f(28);
             int st = tv.live.state();
             String note = st == LiveTv.LOADING ? "Loading…" : st == LiveTv.RETRYING ? "Reconnecting…"
-                    : st == LiveTv.FAILED ? "OK to try again" : tv.live.held() ? "Paused" : "";
-            if (!note.isEmpty()) c.drawText(note, x + Ui.f(4), y, noteP);
-
-            // The bar across the programme: what isn't there faint, the part shown filled, the live edge, the knob.
-            float bx0 = Ui.f(236), bx1 = w - Ui.f(236), by = Ui.f(916), half = Ui.f(3);
-            String a = LiveText.hm(ps), b = LiveText.hm(pe);
-            c.drawText(a, bx0 - Ui.f(24) - endP.measureText(a), by + Ui.f(9), endP);
-            c.drawText(b, bx1 + Ui.f(24), by + Ui.f(9), endP);
-            float kx = xAt(at, ps, pe, bx0, bx1), liveX = now < pe ? xAt(now, ps, pe, bx0, bx1) : bx1;
-            long earliest = tv.live.earliest(ch);
-            float ex = earliest == Long.MAX_VALUE ? bx0 : xAt(earliest, ps, pe, bx0, bx1);
-            c.drawRect(bx0, by - half, bx1, by + half, gone);
-            if (liveX > ex) c.drawRect(ex, by - half, liveX, by + half, track);
-            if (kx > bx0) c.drawRect(bx0, by - half, kx, by + half, done);
-            boolean onNow = ps <= now && now < pe;
-            if (onNow) {
-                c.drawRect(liveX - Ui.f(2), by - Ui.f(15), liveX + Ui.f(2), by + Ui.f(15), accent);
-                if (!moving || Math.abs(kx - liveX) > Ui.f(120)) c.drawText("LIVE", liveX - liveP.measureText("LIVE") / 2f, by - Ui.f(26), liveP);
+                    : st == LiveTv.FAILED ? "Couldn't play this · OK to try again" : "";
+            if (!note.isEmpty()) {
+                noteP.setColor(Palette.TEXT2);
+                c.drawText(note, x, base - Ui.f(4), noteP);
             }
-            c.drawCircle(kx, by, Ui.f(22), accent);
-            c.drawCircle(kx, by, Ui.f(22), knobEdge);
-            boolean playing = !moving && !tv.live.held() && st == LiveTv.PLAYING;
-            if (playing) {
-                c.drawRect(kx - Ui.f(7), by - Ui.f(9), kx - Ui.f(2), by + Ui.f(9), ink);
-                c.drawRect(kx + Ui.f(2), by - Ui.f(9), kx + Ui.f(7), by + Ui.f(9), ink);
-            } else {
-                tri.reset();
-                tri.moveTo(kx - Ui.f(5), by - Ui.f(10));
-                tri.lineTo(kx + Ui.f(10), by);
-                tri.lineTo(kx - Ui.f(5), by + Ui.f(10));
-                tri.close();
-                c.drawPath(tri, ink);
+            // The transport.
+            boolean playing = target < 0 && !tv.live.held() && st == LiveTv.PLAYING;
+            int[] icons = {Dark.SKIP_BACK, Dark.REWIND, playing ? Dark.PAUSE : Dark.PLAY, Dark.FORWARD, Dark.SKIP_NEXT};
+            for (int k = SKIP_BACK; k <= SKIP_NEXT; k++) {
+                RoundButton.transport(c, Ui.f(ITEM_X[k]), Ui.f(TRANSPORT_Y), icons[k], k == focus);
             }
-            // The time of the picture: in a bubble over the knob while the remote moves it, under it otherwise.
-            String t = LiveText.hms(at);
-            if (moving) {
-                float tw = bubbleP.measureText(t) + Ui.f(36), th = Ui.f(52);
-                float left = Math.max(Ui.f(40), Math.min(kx - tw / 2f, w - Ui.f(40) - tw));
-                r.set(left, by - Ui.f(90), left + tw, by - Ui.f(90) + th);
-                c.drawRoundRect(r, Ui.f(14), Ui.f(14), accent);
-                tri.reset();
-                tri.moveTo(kx - Ui.f(11), r.bottom - Ui.f(1));
-                tri.lineTo(kx + Ui.f(11), r.bottom - Ui.f(1));
-                tri.lineTo(kx, r.bottom + Ui.f(11));
-                tri.close();
-                c.drawPath(tri, accent);
-                c.drawText(t, r.left + Ui.f(18), r.bottom - Ui.f(16), bubbleP);
-            } else {
-                c.drawText(t, kx - atP.measureText(t) / 2f, by + Ui.f(56), atP);
-            }
-
-            // What's next, and the keys.
-            float hy = Ui.f(1016);
-            int n = s == null ? -1 : i >= 0 ? (i + 1 < s.start.length ? i + 1 : -1) : s.after(at);
-            if (n >= 0) {
-                c.drawText("Next", Ui.f(96), hy, nextLabel);
-                float nx = Ui.f(96) + nextLabel.measureText("Next") + Ui.f(14);
-                String sp = LiveText.hm(s.start[n]);
-                c.drawText(sp, nx, hy, nextP);
-                nx += nextP.measureText(sp) + Ui.f(14);
-                c.drawText(Ui.fit(s.title[n], nextP, Ui.f(720)), nx, hy, nextP);
-            }
-            float kr = right;
-            kr = key(c, kr, hy, "Live", Ui.UP, null);
-            kr = key(c, kr, hy, tv.live.held() || moving ? "Play" : "Pause", -1, "OK");
-            key(c, kr, hy, "Move", Ui.LEFT, null);
-            if (!Exec.inline && (moving || playing || st == LiveTv.LOADING)) postInvalidateDelayed(moving ? 120 : 500);
-        }
-
-        private float xAt(long t, long ps, long pe, float x0, float x1) {
-            float f = pe > ps ? (t - ps) / (float) (pe - ps) : 0f;
-            return x0 + (x1 - x0) * Math.max(0f, Math.min(1f, f));
-        }
-
-        /** "Catch-up" in amber, how far behind live outlined; returns where the line goes on. */
-        private float pill(Canvas c, String text, float x, float base, boolean filled) {
-            TextPaint p = filled ? pillInk : pillP;
-            float pw = p.measureText(text) + Ui.f(28), ph = Ui.f(36);
-            r.set(x, base - Ui.f(27), x + pw, base - Ui.f(27) + ph);
-            if (filled) c.drawRoundRect(r, ph / 2f, ph / 2f, accent);
-            else c.drawRoundRect(r, ph / 2f, ph / 2f, pillLine);
-            c.drawText(text, x + Ui.f(14), base - Ui.f(2), p);
-            return x + pw + Ui.f(16);
-        }
-
-        /** A key and what it does, drawn leftwards from right: its cap (a chevron or a word) and the word after it. */
-        private float key(Canvas c, float right, float base, String what, int arrow, String word) {
-            float ww = keyP.measureText(what);
-            c.drawText(what, right - ww, base, keyP);
-            float capW = word != null ? capP.measureText(word) + Ui.f(20) : arrow == Ui.LEFT ? Ui.f(62) : Ui.f(40);
-            float cx1 = right - ww - Ui.f(10), cx0 = cx1 - capW, top = base - Ui.f(27);
-            r.set(cx0, top, cx1, top + Ui.f(34));
-            c.drawRoundRect(r, Ui.f(8), Ui.f(8), keyBack);
-            float mid = top + Ui.f(17);
-            if (word != null) {
-                c.drawText(word, cx0 + Ui.f(10), base - Ui.f(4), capP);
-            } else if (arrow == Ui.LEFT) {
-                Ui.chevron(c, cx0 + capW * 0.32f, mid, Ui.f(8), Ui.LEFT, chev);
-                Ui.chevron(c, cx0 + capW * 0.68f, mid, Ui.f(8), Ui.RIGHT, chev);
-            } else {
-                Ui.chevron(c, (cx0 + cx1) / 2f, mid, Ui.f(8), arrow, chev);
-            }
-            return cx0 - Ui.f(30);
+            // At the right, in its pill: from the start again, LIVE, the live dot.
+            r.set(Ui.f(1625f), Ui.f(898f), Ui.f(1840f), Ui.f(970f));
+            fill.setColor(0x14FFFFFF);
+            c.drawRoundRect(r, r.height() / 2f, r.height() / 2f, fill);
+            float cy = Ui.f(TRANSPORT_Y);
+            if (focus == RESTART) Focus.circle(c, Ui.f(ITEM_X[RESTART]), cy, Ui.f(64f));
+            RoundButton.glyph(c, Dark.RESTART, Ui.f(ITEM_X[RESTART]), cy, Ui.f(34f), focus == RESTART ? Palette.TEXT1 : 0xFFB3B0AD);
+            if (focus == LIVE) Focus.circle(c, Ui.f(ITEM_X[LIVE]), cy, Ui.f(64f));
+            int liveInk = focus == LIVE ? Palette.TEXT1 : 0xFFB3B0AD;
+            liveP.setColor(liveInk);
+            float lw = liveP.measureText("LIVE") + Ui.f(14);
+            r.set(Ui.f(ITEM_X[LIVE]) - lw / 2f, cy - Ui.f(13), Ui.f(ITEM_X[LIVE]) + lw / 2f, cy + Ui.f(13));
+            line.setColor(liveInk);
+            line.setStrokeWidth(Math.max(1f, Ui.f(2f)));
+            c.drawRoundRect(r, Ui.f(4f), Ui.f(4f), line);
+            c.drawText("LIVE", r.centerX() - liveP.measureText("LIVE") / 2f, Type.centred(liveP, cy), liveP);
+            fill.setColor(tv.live.behind() ? 0xFFB3B0AD : Palette.ACCENT);
+            c.drawCircle(Ui.f(1804f), cy, Ui.f(11f), fill);
+            if (!Exec.inline && (target >= 0 || playing || st == LiveTv.LOADING)) postInvalidateDelayed(target >= 0 ? 120 : 500);
         }
     }
 }

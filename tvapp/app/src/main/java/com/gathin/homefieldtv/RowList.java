@@ -30,6 +30,9 @@ import java.util.List;
  *                                      a tick in it when chosen
  *   Row.icon(tag, icon, title)         a menu line, 80 high: an icon (40, Dark's kinds) 40 px in, its name 104 px in
  *   Row.divider()                      a 2 px rule between groups of lines (32 high)
+ *   Row.stepper(tag, value)            a value with a button each side (the player's audio offset): ‹ and › in boxes
+ *                                      128 x 96, 48 px in from either side, the value between them (PICKER); Left and
+ *                                      Right move between the two buttons (side 0 and 1), OK presses the one lit
  * </pre>
  *
  * Rows can be greyed (enabled = false: TEXT3, OK does nothing) and carry the accent dot after their title (dot).
@@ -44,12 +47,14 @@ import java.util.List;
  * refresh(), or give new rows with setRows() (the remote stays on the same line number when it can).
  */
 final class RowList extends View {
-    static final int ITEM = 0, HEADER = 1, NOTE = 2, RADIO = 3, ICON = 4, DIVIDER = 5;
+    static final int ITEM = 0, HEADER = 1, NOTE = 2, RADIO = 3, ICON = 4, DIVIDER = 5, STEPPER = 6;
     /** Heights and places (design pixels). */
     static final float ROW_1 = 90f, ROW_2 = 118f, TITLE_LINE = 34f, VALUE_LINE = 30f, HEADER_H = 72f, ICON_H = 80f,
             DIVIDER_H = 32f, INSET = Focus.INSET_PANEL, TEXT_X = 48f, ICON_TEXT_X = 104f;
     static final float SWITCH_W = 80f, SWITCH_H = 46f, SWITCH_RIGHT = 48f, RADIO_X = 70f, RADIO_D = 36f, RADIO_TEXT_X = 128f;
     static final long SCROLL_MS = 150, FLASH_MS = 180;
+    /** A stepper's row (its buttons at its top, the gap under them) and its buttons. */
+    static final float STEPPER_H = 145f, STEP_W = 128f, STEP_H = 96f;
 
     /** One line of the list. */
     static final class Row {
@@ -68,6 +73,8 @@ final class RowList extends View {
         int icon = -1;
         /** A radio row's colour disc in place of its circle (0: none). */
         int swatch;
+        /** A stepper's button the remote is on: 0 the left one (‹), 1 the right (›). */
+        int side;
         // Laid out for the list's width (setRows / refresh).
         StaticLayout titleL, valueL;
         float height;
@@ -119,8 +126,12 @@ final class RowList extends View {
             return new Row(DIVIDER, null, "", "");
         }
 
+        static Row stepper(Object tag, String value) {
+            return new Row(STEPPER, tag, "", value);
+        }
+
         boolean focusable() {
-            return kind == ITEM || kind == RADIO || kind == ICON;
+            return kind == ITEM || kind == RADIO || kind == ICON || kind == STEPPER;
         }
     }
 
@@ -253,6 +264,9 @@ final class RowList extends View {
                 case ICON:
                     row.height = ICON_H;
                     break;
+                case STEPPER:
+                    row.height = STEPPER_H;
+                    break;
                 case NOTE: {
                     row.titleL = Ui.layout(row.title, noteP, Ui.px(w - TEXT_X * 2), 8);
                     row.height = row.titleL.getHeight() / Ui.s + 24f;
@@ -347,9 +361,17 @@ final class RowList extends View {
                 return true;
             }
             case KeyEvent.KEYCODE_DPAD_LEFT:
-                return host != null && host.edge(this, Ui.LEFT);
-            case KeyEvent.KEYCODE_DPAD_RIGHT:
-                return host != null && host.edge(this, Ui.RIGHT);
+            case KeyEvent.KEYCODE_DPAD_RIGHT: {
+                int side = code == KeyEvent.KEYCODE_DPAD_LEFT ? 0 : 1;
+                Row row = focused();
+                // A stepper: Left and Right go between its two buttons.
+                if (row != null && row.kind == STEPPER && row.side != side) {
+                    row.side = side;
+                    invalidate();
+                    return true;
+                }
+                return host != null && host.edge(this, side == 0 ? Ui.LEFT : Ui.RIGHT);
+            }
             default:
                 return false;
         }
@@ -427,6 +449,10 @@ final class RowList extends View {
                 break;
         }
         boolean on = i == focus;
+        if (row.kind == STEPPER) {
+            stepper(c, row, left, right, top0, on && active);
+            return;
+        }
         r.set(left + Ui.f(INSET), top0, right - Ui.f(INSET), top0 + h);
         if (on && active) Focus.pill(c, r);
         else if (on) Focus.selected(c, r);
@@ -468,6 +494,25 @@ final class RowList extends View {
         if (row.valueL != null) Ui.draw(c, row.valueL, tx, ty + row.titleL.getHeight() + Ui.f(6));
         if (row.toggle != null) toggle(c, right - Ui.f(SWITCH_RIGHT + SWITCH_W), cy, row.toggle, on && active, row.enabled);
     }
+
+    /** A stepper: its two buttons at the row's top (the lit one in the focus pill), the value between them. */
+    private void stepper(Canvas c, Row row, float left, float right, float top0, boolean lit) {
+        float bw = Ui.f(STEP_W), bh = Ui.f(STEP_H), in = Ui.f(TEXT_X), cy = top0 + bh / 2f;
+        iconLine.setColor(Palette.TEXT1);
+        iconLine.setStrokeWidth(Math.max(1f, Ui.f(3f)));
+        for (int s = 0; s < 2; s++) {
+            float x0 = s == 0 ? left + in : right - in - bw;
+            r.set(x0, top0, x0 + bw, top0 + bh);
+            if (lit && row.side == s) Focus.pill(c, r);
+            Ui.chevron(c, r.centerX(), cy, Ui.f(10), s == 0 ? Ui.LEFT : Ui.RIGHT, iconLine);
+        }
+        if (stepP == null) stepP = Type.paint(Type.PICKER, Type.REGULAR, Palette.TEXT1);
+        stepP.setColor(Palette.TEXT1);
+        String v = Ui.fit(row.value, stepP, right - left - in * 2 - bw * 2 - Ui.f(32));
+        c.drawText(v, (left + right) / 2f - stepP.measureText(v) / 2f, Type.centred(stepP, cy), stepP);
+    }
+
+    private TextPaint stepP;
 
     /** A radio's circle (or a colour's disc) centred on (cx, cy): the accent ring and dot when chosen. */
     private void radio(Canvas c, Row row, float cx, float cy, int ink) {
