@@ -128,7 +128,7 @@ final class TitlePage extends View {
     private String[] moreNames = new String[0];
     private int[] seasonTint = new int[0];
     private final RectF r = new RectF();
-    private final Runnable redraw = this::invalidate, colours = this::colours;
+    private final Runnable redraw = this::invalidate, colours = this::colours, faceReady = this::makeFaces;
 
     TitlePage(Context c, Host host) {
         super(c);
@@ -237,6 +237,10 @@ final class TitlePage extends View {
             castColours[i] = Dark.face(cast.get(i)[0]);
         }
         castAt = Math.min(castAt, Math.max(0, cast.size() - 1));
+        // Their photos read after what is on screen, each made into a round face as it comes (never while drawing).
+        int fd = Math.round(Ui.f(FACE));
+        for (String[] who : cast) if (!who[2].isEmpty()) Pics.prefetch(who[2], fd, fd, Pics.CROP);
+        makeFaces();
 
         // About it, and its genres.
         String plot = d != null && !d.plot.isEmpty() ? d.plot : t.plot;
@@ -495,7 +499,27 @@ final class TitlePage extends View {
         nameFocused();
         wash.set(target());
         curtain.set(target());
+        readAhead();
         invalidate();
+    }
+
+    /**
+     * What a held key brings on next, read after what is on screen (Pics.prefetch): the episodes' stills or the posters
+     * just past either edge of the row the remote is in, at the size they are drawn.
+     */
+    private void readAhead() {
+        if (part == EPISODES || part == SEASONS) {
+            int w = Math.round(Ui.f(EP_W) * GROW), h = Math.round(Ui.f(EP_H) * GROW);
+            for (int i = Math.max(0, epAt - 2), end = Math.min(rowSize() - 1, epAt + 7); i <= end; i++) {
+                Catalog.Episode e = episode(i);
+                if (e != null && !e.still.isEmpty()) Pics.prefetch(e.still, w, h, Pics.CROP);
+            }
+        } else if (part == MORE) {
+            int w = Math.round(Ui.f(MORE_W) * GROW), h = Math.round(Ui.f(MORE_H) * GROW);
+            for (int i = Math.max(0, moreAt - 2), end = Math.min(more.size() - 1, moreAt + 9); i <= end; i++) {
+                Pics.prefetch(more.get(i).poster, w, h, Pics.CROP);
+            }
+        }
     }
 
     /** The name the episode the remote is on shows, cut to its tile (made once for each episode it comes to). */
@@ -814,7 +838,10 @@ final class TitlePage extends View {
             if (cx + cell < 0 || cx - d > getWidth()) continue;
             String[] who = cast.get(i);
             Paint face = faces[i];
-            if (face == null && !who[2].isEmpty()) face = face(i, who[2], Math.round(d));
+            // On screen and not yet a face: asked for now (made into one when read, or at once when it is here).
+            if (face == null && !who[2].isEmpty() && Pics.get(who[2], Math.round(d), Math.round(d), Pics.CROP, faceReady) != null) {
+                post(faceReady);
+            }
             if (face != null) {
                 c.save();
                 c.translate(cx - d / 2f, cy - d / 2f);
@@ -837,18 +864,25 @@ final class TitlePage extends View {
         nameP.setColor(Cine.TEXT);
     }
 
-    /** A cast member's photo as a round face: its shader made once, when the photo has been read. */
-    private Paint face(int i, String url, int d) {
-        Bitmap b = Pics.get(url, d, d, Pics.CROP, redraw);
-        if (b == null) return null;
-        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
-        BitmapShader s = new BitmapShader(b, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
-        Matrix m = new Matrix();
-        m.setScale(d / (float) b.getWidth(), d / (float) b.getHeight());
-        s.setLocalMatrix(m);
-        p.setShader(s);
-        faces[i] = p;
-        return p;
+    /** The cast's photos that have been read, as round faces: each shader made once, outside the draw. */
+    private void makeFaces() {
+        int d = Math.round(Ui.f(FACE));
+        boolean made = false;
+        for (int i = 0; i < cast.size() && i < faces.length; i++) {
+            String url = cast.get(i)[2];
+            if (faces[i] != null || url.isEmpty()) continue;
+            Bitmap b = Pics.cached(url, d, d, Pics.CROP);
+            if (b == null) continue;
+            Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+            BitmapShader sh = new BitmapShader(b, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
+            Matrix m = new Matrix();
+            m.setScale(d / (float) b.getWidth(), d / (float) b.getHeight());
+            sh.setLocalMatrix(m);
+            p.setShader(sh);
+            faces[i] = p;
+            made = true;
+        }
+        if (made) invalidate();
     }
 
     private void drawMore(Canvas c) {

@@ -229,6 +229,33 @@ final class BrowseScreen extends Screen implements CineRows.Host {
         Tmdb.Extras kept = Tmdb.keptExtras(tv, t.title);
         if (kept != null) hero.extras(t.title, kept);
         else h.postDelayed(extras, 700);
+        readAhead();
+    }
+
+    /**
+     * The big pictures (and their colours) a key away, along the row and in the rows above and below, read after what
+     * is on screen (Pics.prefetch), so a held key finds each there.
+     */
+    private void readAhead() {
+        Catalog cat = Catalog.get(tv);
+        ahead(cat, rows.near(0, 1));
+        ahead(cat, rows.near(0, 2));
+        ahead(cat, rows.near(0, -1));
+        ahead(cat, rows.near(1, 0));
+        ahead(cat, rows.near(-1, 0));
+    }
+
+    private static void ahead(Catalog cat, CineRows.Tile t) {
+        if (t == null) return;
+        String pic = heroPicture(t.title, cat.cachedDetails(t.title));
+        if (pic.isEmpty()) return;
+        Pics.prefetch(pic, 1280, 720, Pics.CROP);
+        if (Tint.known(pic) == 0) Pics.prefetch(pic, Tint.W, Tint.H, Pics.CROP);
+    }
+
+    /** Pure: the big picture for a title (its details' backdrop, else its own, else its poster). */
+    static String heroPicture(Catalog.Title t, Catalog.Details d) {
+        return d != null && !d.backdrop.isEmpty() ? d.backdrop : !t.backdrop.isEmpty() ? t.backdrop : t.poster;
     }
 
     private String emptyWhy() {
@@ -386,7 +413,7 @@ final class BrowseScreen extends Screen implements CineRows.Host {
             listName = "";
             why = "";
             line = resume == null ? "" : resume;
-            String pic = d != null && !d.backdrop.isEmpty() ? d.backdrop : !t.backdrop.isEmpty() ? t.backdrop : t.poster;
+            String pic = heroPicture(t, d);
             if (!pic.equals(picture)) {
                 was = picture;
                 picture = pic;

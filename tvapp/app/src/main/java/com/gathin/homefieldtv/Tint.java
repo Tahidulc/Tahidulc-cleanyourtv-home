@@ -11,7 +11,8 @@ import android.util.LruCache;
 final class Tint {
     private Tint() {}
 
-    private static final int W = 24, H = 14;
+    /** The size the picture is read at for its colour (a screen reading ahead asks for the same). */
+    static final int W = 24, H = 14;
     private static final LruCache<String, Integer> COLOURS = new LruCache<>(600);
 
     /** The picture's colour, or 0 while it is read (then ready runs, on the main thread) or when it can't be read. */

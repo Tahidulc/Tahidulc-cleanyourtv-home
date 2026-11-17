@@ -148,6 +148,18 @@ final class CineRows extends View {
         return rw == null || rw.focus >= rw.tiles.size() ? null : rw.tiles.get(rw.focus);
     }
 
+    /**
+     * The tile a key or two from the remote's (down rows away, then along places from where that row's remote rests), or
+     * null: for reading its pictures ahead.
+     */
+    Tile near(int down, int along) {
+        int ri = row + down;
+        if (ri < 0 || ri >= rows.size()) return null;
+        Row rw = rows.get(ri);
+        int i = rw.focus + along;
+        return i < 0 || i >= rw.tiles.size() ? null : rw.tiles.get(i);
+    }
+
     private float tileW(Row rw) {
         return rw.kind == WIDE || PosterArt.landscape ? WIDE_W : POSTER_W;
     }

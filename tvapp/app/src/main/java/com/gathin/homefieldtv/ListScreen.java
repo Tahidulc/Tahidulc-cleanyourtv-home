@@ -171,6 +171,9 @@ final class ListScreen extends Screen {
             super(c);
         }
 
+        /** The rows read ahead, from the remote's: the two below the screen's foot first, then the one above its top. */
+        private final int[] aheadRows = {2, 3, -2};
+
         int columns() {
             return PosterArt.landscape ? 4 : 6;
         }
@@ -206,6 +209,23 @@ final class ListScreen extends Screen {
             if (now) y.jump(want);
             else y.to(want);
             recolour();
+            readAhead();
+        }
+
+        /**
+         * The posters of the rows a key or two below the screen's foot, then the row above its top, read after what is
+         * on screen (Pics.prefetch) at the size they are drawn, so a held key finds them there.
+         */
+        private void readAhead() {
+            int cols = columns(), at = focus / cols;
+            int w = Math.round(Ui.f(tileW()) * TileArt.GROW), h = Math.round(Ui.f(tileH()) * TileArt.GROW);
+            for (int r : aheadRows) {
+                int row = at + r;
+                if (row < 0) continue;
+                for (int i = row * cols, end = Math.min(shown.size(), i + cols); i < end; i++) {
+                    Pics.prefetch(picture(shown.get(i)), w, h, Pics.CROP);
+                }
+            }
         }
 
         private void recolour() {

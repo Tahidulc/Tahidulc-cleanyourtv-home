@@ -23,9 +23,10 @@ import java.util.List;
  * card of whatever the remote is on, its artwork filling it (a channel's: its logo on its own colour), its name big and
  * bold over it with a line of facts (Season 1 | 2019 | fantasy | 15+ | five stars), and along the card's foot a strip of
  * small pictures: a series' episodes, a channel's next programmes, a film's like ones. The whole page takes the
- * artwork's colour, a deeper block of it behind the card's lower half. Left and Right go from card to card: the card,
- * its name and the page's colour slide and fade into the next (one gliding place, Glide, so a held key glides through
- * them); the strip rises in under the new card once it has arrived. Down goes into the strip, its tile growing with
+ * artwork's colour, a deeper block of it behind the card's lower half. Left and Right go from card to card: the card
+ * stays where it is and the next picture cross-fades into it, the names slide out and in one at a time and the page's
+ * colour fades to the next (one gliding place, Glide, so a held key glides through them); the strip rises in under the
+ * new card once it has arrived. Down goes into the strip, its tile growing with
  * the episode's name; Up from the card goes to the sections along the top (On now, Continue watching, films, shows,
  * sport, favourites), and from them to Homefield's mark, which opens the menu.
  */
@@ -251,6 +252,22 @@ final class HomeCard extends View {
         Section s = current();
         if (s == null) return;
         for (int k = Math.max(0, s.at - 1); k <= Math.min(s.cards.size() - 1, s.at + 1); k++) prepare(s.cards.get(k));
+        // Two along, and the cards the neighbouring tabs rest on: read after what is on screen (Pics.prefetch), so a
+        // held key or a new tab finds its picture there.
+        ahead(s, s.at - 2);
+        ahead(s, s.at + 2);
+        if (section > 0) ahead(sections.get(section - 1), sections.get(section - 1).at);
+        if (section < sections.size() - 1) ahead(sections.get(section + 1), sections.get(section + 1).at);
+    }
+
+    private static void ahead(Section s, int i) {
+        if (i < 0 || i >= s.cards.size()) return;
+        Card c = s.cards.get(i);
+        String pic = c.picture.isEmpty() ? c.logo : c.picture;
+        if (pic.isEmpty()) return;
+        if (c.picture.isEmpty()) Pics.prefetch(pic, Ui.px(LOGO_W), Ui.px(LOGO_H), Pics.FIT);
+        else Pics.prefetch(pic, 1280, 720, Pics.CROP);
+        if (Tint.known(pic) == 0) Pics.prefetch(pic, Tint.W, Tint.H, Pics.CROP);
     }
 
     private void prepare(Card c) {
@@ -408,7 +425,7 @@ final class HomeCard extends View {
         return false;
     }
 
-    /** Previews and tests: the remote on a section, a card, and where (the strip at a tile). */
+    /** Previews and tests: the remote on a section, a card, and where (the strip at a tile; -1 where the strip starts). */
     void focus(int sectionIndex, int cardIndex, int where, int stripIndex) {
         if (sectionIndex < 0 || sectionIndex >= sections.size()) return;
         section = sectionIndex;
@@ -417,10 +434,17 @@ final class HomeCard extends View {
         s.at = Math.max(0, Math.min(cardIndex, s.cards.size() - 1));
         pos.jump(s.at);
         swap.jump(1f);
+        // The card told first, on the card, so its strip is made starting where it should (host.focused); then the
+        // remote goes where asked (along the strip to stripIndex, -1 where the strip starts).
+        area = CARD;
+        told();
         area = where;
         Card c = card();
-        if (c != null && where == STRIP) c.stripAt = Math.max(0, Math.min(stripIndex, c.strip.size() - 1));
-        told();
+        if (c != null && where == STRIP) {
+            if (stripIndex >= 0) c.stripAt = Math.max(0, Math.min(stripIndex, c.strip.size() - 1));
+            stripX.jump(stripTarget(c));
+        }
+        invalidate();
     }
 
     /** Previews: the slide from one card to the next caught part way (at: between two cards' places). */
@@ -499,14 +523,22 @@ final class HomeCard extends View {
             if (moving) postInvalidateOnAnimation();
             return;
         }
-        // The cards either side of where the slide is: the old going, the new coming.
-        float k = swap.value();
-        int first = Math.max(0, (int) Math.floor(pos.value())), last = Math.min(s.cards.size() - 1, (int) Math.ceil(pos.value()));
+        // The cards either side of where the slide is, in the one frame: the one further from its place underneath and
+        // whole, the nearer over it fading in, so one picture cross-fades into the next (the ground never shows through).
+        float k = swap.value(), p = pos.value();
+        int first = Math.max(0, (int) Math.floor(p)), last = Math.min(s.cards.size() - 1, (int) Math.ceil(p));
+        int under = -1, over = -1;
         for (int i = first; i <= last; i++) {
-            float d = i - pos.value();
-            if (Math.abs(d) >= 1f) continue;
-            drawCard(c, s.cards.get(i), d, k);
+            if (Math.abs(i - p) >= 1f) continue;
+            if (over < 0 || Math.abs(i - p) < Math.abs(over - p)) {
+                under = over;
+                over = i;
+            } else {
+                under = i;
+            }
         }
+        if (under >= 0) drawCard(c, s.cards.get(under), under - p, k, k);
+        if (over >= 0) drawCard(c, s.cards.get(over), over - p, under >= 0 ? (1f - Math.abs(over - p)) * k : k, k);
         // The strip, rising in under the card once it has arrived.
         if (on != null && !on.strip.isEmpty()) {
             float in = Math.max(0f, Math.min(1f, 1f - Math.abs(pos.value() - s.at) * 5f)) * k;
@@ -545,13 +577,16 @@ final class HomeCard extends View {
         if (!note.isEmpty()) c.drawText(note, x, Ui.f(T + H * 0.5f + 70f), noteP);
     }
 
-    /** A card at d (0: in place; -1 gone left, 1 waiting right), at the section's fade k. */
-    private void drawCard(Canvas c, Card card, float d, float k) {
+    /**
+     * A card at d (0: in place; -1 gone left, 1 waiting right) in the card's frame: its picture at alpha (the section's
+     * fade k, and the cross-fade), its name and facts sliding with d and only while it is the nearer (one at a time).
+     */
+    private void drawCard(Canvas c, Card card, float d, float alpha, float k) {
         float cw = Ui.f(W), ch = Ui.f(H), radius = Ui.f(R);
-        float alpha = (1f - Math.abs(d)) * k;
         if (alpha <= 0.01f) return;
         int a = Math.round(255 * alpha);
-        float x = Ui.f(L) + d * cw * 0.32f, y = Ui.f(T) + (1f - k) * Ui.f(36f);
+        int words = Math.round(255 * Math.max(0f, 1f - 2f * Math.abs(d)) * k);
+        float x = Ui.f(L), y = Ui.f(T) + (1f - k) * Ui.f(36f);
         c.save();
         c.translate(x, y);
         r.set(0, 0, cw, ch);
@@ -571,13 +606,15 @@ final class HomeCard extends View {
         shadeFoot.setAlpha(a);
         c.drawRoundRect(r, radius, radius, shadeLeft);
         c.drawRoundRect(r, radius, radius, shadeFoot);
-        // Its name and facts, sliding a little further than the card, kept within it.
-        c.clipRect(0, 0, cw, ch);
-        float tx = Ui.f(NAME_X) + d * cw * 0.18f, base = ch * NAME_Y;
-        nameP.setTextSize(card.size > 0 ? card.size : Ui.f(118f));
-        nameP.setAlpha(a);
-        c.drawText(card.name, tx, base, nameP);
-        drawFacts(c, card, tx, base + Ui.f(58f), a);
+        // Its name and facts, sliding in from the side it comes from as the picture changes, kept within the card.
+        if (words > 2) {
+            c.clipRect(0, 0, cw, ch);
+            float tx = Ui.f(NAME_X) + d * cw * 0.16f, base = ch * NAME_Y;
+            nameP.setTextSize(card.size > 0 ? card.size : Ui.f(118f));
+            nameP.setAlpha(words);
+            c.drawText(card.name, tx, base, nameP);
+            drawFacts(c, card, tx, base + Ui.f(58f), words);
+        }
         c.restore();
     }
 
