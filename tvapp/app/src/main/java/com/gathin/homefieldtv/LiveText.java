@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 /**
  * Live TV's words as the dark guide and the channel banner write them: 24-hour times ("17:40 – 18:45"), how far
@@ -94,11 +95,14 @@ final class LiveText {
         return s + " fps";
     }
 
+    /** What isn't a letter or a number: made once, as the guide's strip and band ask on every frame. */
+    private static final Pattern NOT_WORDS = Pattern.compile("[^\\p{L}\\p{N}]+");
+
     /** The picture a channel's name promises: "4K" (UHD, 4K, 2160p), "HD" (HD, FHD, 1080p, 720p), or "". */
     static String quality(String name) {
         if (name == null) return "";
         String best = "";
-        for (String w : name.toLowerCase(Locale.ROOT).split("[^\\p{L}\\p{N}]+")) {
+        for (String w : NOT_WORDS.split(name.toLowerCase(Locale.ROOT))) {
             switch (w) {
                 case "uhd":
                 case "4k":
