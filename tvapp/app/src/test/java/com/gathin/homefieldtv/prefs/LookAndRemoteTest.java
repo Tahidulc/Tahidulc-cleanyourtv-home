@@ -56,9 +56,9 @@ public class LookAndRemoteTest {
 
     @Test public void theRemotesKeys() {
         Context c = RuntimeEnvironment.getApplication();
-        // As it came: Up and Down open the channel list, channel up is the one above, OK the banner, held the menu.
-        assertEquals(0, RemoteKeys.upDown(c));
-        assertFalse(RemoteKeys.reversed(c));
+        // As TiviMate's remote: Up and Down change channel, Up to the next number; OK the overlay (BANNER), held the bar.
+        assertEquals(1, RemoteKeys.upDown(c));
+        assertTrue(RemoteKeys.reversed(c));
         assertEquals(RemoteKeys.BANNER, RemoteKeys.ok(c));
         assertEquals(RemoteKeys.CHANNEL_MENU, RemoteKeys.okLong(c));
         assertEquals(1600, RemoteKeys.waitMs(c));

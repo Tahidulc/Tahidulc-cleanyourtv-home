@@ -41,18 +41,24 @@ public final class RemoteKeys {
         return c.getApplicationContext().getSharedPreferences("remote", Context.MODE_PRIVATE);
     }
 
-    /** Up and Down on live TV full screen: 0 open the channel list (as it came), 1 change channel. */
+    /**
+     * Up and Down on live TV full screen: 1 change channel (as TiviMate's remote has them, and Homefield TV since), 0 open
+     * the live screen's rows of channels (as Homefield TV came).
+     */
     public static int upDown(Context c) {
-        return PlayerPrefs.clamp(prefs(c).getInt("updown", 0), 0, 1);
+        return PlayerPrefs.clamp(prefs(c).getInt("updown", 1), 0, 1);
     }
 
     public static void setUpDown(Context c, int v) {
         prefs(c).edit().putInt("updown", v).apply();
     }
 
-    /** Channel up and down turned round: up goes to the next number (as it came: the channel above in the list). */
+    /**
+     * Channel up and down turned round: Up goes to the next number, the channel below in the list (as TiviMate's remote,
+     * and Homefield TV since); off, Up goes to the channel above (as Homefield TV came).
+     */
     public static boolean reversed(Context c) {
-        return prefs(c).getBoolean("reversed", false);
+        return prefs(c).getBoolean("reversed", true);
     }
 
     public static void setReversed(Context c, boolean on) {
