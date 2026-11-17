@@ -23,13 +23,13 @@ import java.util.Map;
 /**
  * Settings' Guide, Categories, Parental control and Backup sections (MoreSettings hands them over): how often the
  * guide and playlists are read again and guides of the family's own (GuidePrefs); the playlists' categories hidden,
- * moved and named (Categories); the PIN and what it locks (Parental, PinScreen); and backups made, sent to the phone and
- * put back (Backup, BackupStore, BackupLink). Lines are tagged as MoreSettings' are: "set:" opens a setting's choices,
- * "opt:" picks one, "tog:" flips a switch, "do:" acts, "type:" opens the keyboard.
+ * moved and named (Categories); the PIN and what it locks (Parental, PinScreen); and backups made on this TV and put
+ * back from it or from a file chosen (Backup, BackupStore; nothing over the network). Lines are tagged as MoreSettings'
+ * are: "set:" opens a setting's choices, "opt:" picks one, "tog:" flips a switch, "do:" acts, "type:" opens the keyboard.
  */
 final class ExtraSettings {
     static final int STAY = MoreSettings.STAY;
-    private static final String[] RESTORES = {BackupStore.LAST, BackupStore.PHONE, BackupStore.PICKED};
+    private static final String[] RESTORES = {BackupStore.LAST, BackupStore.PICKED};
     /** Opened next time Backup fills: a file just chosen with Android's chooser, to confirm. */
     private static volatile String openNext;
     /** Where the last backup made here was put, for Settings to say. */
@@ -196,13 +196,6 @@ final class ExtraSettings {
         String made = last == null ? "Settings, playlists, favourites, recent channels, reminders and My List, to a file"
                 : "Last: " + when(last.contents.made) + (savedWhere.isEmpty() ? "" : "  ·  " + savedWhere);
         out.add(new ListPanel.Item("do:backup", ListPanel.TEXT, "Back up now", made));
-        if (BackupLink.phoneSeen(tv)) {
-            long left = BackupLink.offerLeftMs();
-            long sent = BackupLink.sentAt(tv);
-            String sub = left > 0 ? String.format(Locale.UK, "Ready for your phone's Homefield to take  ·  %d min left", (left + 59_999) / 60_000)
-                    : sent > 0 ? "Your phone took one " + when(sent) : "Your phone's Homefield keeps a copy, over the home network";
-            out.add(new ListPanel.Item("do:send", ListPanel.TEXT, "Send to your phone", sub));
-        }
         out.add(new ListPanel.Item(null, ListPanel.HEADING, "Restore", ""));
         for (String which : RESTORES) {
             BackupStore.Kept k = BackupStore.kept(tv, which);
@@ -210,7 +203,8 @@ final class ExtraSettings {
             out.add(new ListPanel.Item("restore:" + which, ListPanel.TEXT, restoreName(which), "Made " + when(k.contents.made) + "  ·  " + sizes(k)));
         }
         out.add(new ListPanel.Item("do:pick", ListPanel.TEXT, "Choose a backup file", "From Downloads or a USB stick, where this TV has a file chooser"));
-        out.add(new ListPanel.Item(null, ListPanel.NOTE, "A backup holds your playlists' logins and TorBox key: keep its file to yourself.", ""));
+        out.add(new ListPanel.Item(null, ListPanel.NOTE, "A backup holds your playlists' logins: keep its file to yourself.", ""));
+        out.add(new ListPanel.Item(null, ListPanel.NOTE, "Not the TorBox key: on a new TV, type that in again in Settings → TorBox.", ""));
         out.add(new ListPanel.Item(null, ListPanel.NOTE, "Restoring puts everything back as it was in the backup, then starts the screens again.", ""));
     }
 
@@ -428,13 +422,9 @@ final class ExtraSettings {
             case "backup":
                 backUpNow();
                 return indexOfTag(before, "do:backup");
-            case "send":
-                BackupLink.offer(Backup.make(tv, appVersion(), System.currentTimeMillis()));
-                toast("Ready for 5 minutes: open Homefield on your phone, on the same Wi-Fi");
-                return indexOfTag(before, "do:send");
             case "pick":
                 if (!BackupStore.pick(tv)) {
-                    toast("This TV has no file chooser. Use this TV's last backup or your phone's copy.");
+                    toast("This TV has no file chooser. Use this TV's last backup instead.");
                 }
                 return STAY;
             case "restore": {
@@ -531,7 +521,6 @@ final class ExtraSettings {
 
     private static String restoreName(String which) {
         switch (which) {
-            case BackupStore.PHONE: return "The copy from your phone";
             case BackupStore.PICKED: return "The file you chose";
             default: return "This TV's last backup";
         }

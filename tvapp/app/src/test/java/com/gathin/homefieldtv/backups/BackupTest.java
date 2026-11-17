@@ -109,14 +109,46 @@ public class BackupTest {
         assertFalse(p("look").contains("short"));
     }
 
-    @Test public void keptCopies() {
-        assertNull(BackupStore.kept(c, BackupStore.PHONE));
-        assertFalse(BackupStore.keepFromPhone(c, "{\"app\":\"nope\"}", "a phone"));
-        String text = Backup.make(c, "1.8", 42L);
-        assertTrue(BackupStore.keepFromPhone(c, text, "a phone"));
-        BackupStore.Kept k = BackupStore.kept(c, BackupStore.PHONE);
+    @Test public void keptOnThisTv() throws Exception {
+        assertNull(BackupStore.kept(c, BackupStore.LAST));
+        assertNull(BackupStore.kept(c, BackupStore.PICKED));
+        p("player").edit().putInt("buffer_live", 2).commit();
+        long before = System.currentTimeMillis();
+        BackupStore.backUp(c, "1.8");
+        BackupStore.Kept k = BackupStore.kept(c, BackupStore.LAST);
         assertNotNull(k);
-        assertEquals(42L, k.contents.made);
-        assertEquals("a phone", k.contents.from);
+        assertTrue(k.contents.made >= before);
+        assertEquals("1.8", k.contents.appVersion);
+    }
+
+    /** The family's rule: the TorBox key goes nowhere but TorBox, so never into a backup. */
+    @Test public void theTorBoxKeyIsNeverBackedUp() {
+        assertFalse(Backup.FILES.contains("torbox"));
+        p("torbox").edit().putString("key", "made-up-torbox-key").putBoolean("on", true).commit();
+        p("live_tv").edit().putString("favourites", "[\"x:1\"]").commit();
+        String text = Backup.make(c, "1.8", 7L);
+        assertFalse(text.contains("torbox"));
+        assertFalse(text.contains("made-up-torbox-key"));
+        assertTrue(text.contains("favourites"));
+    }
+
+    /** Nor put back from one: a backup made before the key was left out still never writes it. */
+    @Test public void theTorBoxKeyIsNeverRestored() {
+        String old = "{\"app\":\"homefieldtv\",\"kind\":\"backup\",\"v\":1,\"made\":5,\"version\":\"1.9\",\"prefs\":{"
+                + "\"torbox\":{\"key\":[\"s\",\"made-up-old-key\"],\"on\":[\"b\",false]},"
+                + "\"player\":{\"buffer_live\":[\"i\",3]}}}";
+        Backup.Contents b = Backup.read(old);
+        assertNotNull(b);
+        // A key typed in on this TV stays as it is.
+        p("torbox").edit().putString("key", "made-up-current-key").putBoolean("on", true).commit();
+        assertEquals(1, Backup.restore(c, b));
+        assertEquals("made-up-current-key", p("torbox").getString("key", ""));
+        assertTrue(p("torbox").getBoolean("on", false));
+        assertEquals(3, p("player").getInt("buffer_live", 0));
+        // A TV with no key yet gets none from it.
+        p("torbox").edit().clear().commit();
+        BackupStore.restore(c, new BackupStore.Kept(BackupStore.LAST, b));
+        assertFalse(p("torbox").contains("key"));
+        assertFalse(p("torbox").contains("on"));
     }
 }

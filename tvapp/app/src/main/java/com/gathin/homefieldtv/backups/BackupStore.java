@@ -30,9 +30,9 @@ import java.util.Locale;
 /**
  * Where Settings → Backup keeps its backups and finds them again. Each "Back up now" is kept on this TV (the last one,
  * in the app's own files) and as a file in Downloads/Homefield TV, where a file manager, a USB stick or a computer can
- * reach it (on Android 8 and 9, in the app's own folder on the TV's storage instead, which goes with the app). A
- * copy the family's phone sends back over the home network (BackupLink) is kept beside it, and so is a file chosen with
- * Android's file chooser, where the TV has one. Restoring puts one back and lets go of what other parts keep in memory.
+ * reach it (on Android 8 and 9, in the app's own folder on the TV's storage instead, which goes with the app). A file
+ * chosen with Android's file chooser, where the TV has one, is kept beside it until it is put back. Nothing here goes
+ * over the network. Restoring puts one back and lets go of what other parts keep in memory.
  */
 public final class BackupStore {
     private BackupStore() {}
@@ -41,9 +41,9 @@ public final class BackupStore {
     public static final int PICK = 0x4842;
     static final int MAX_BYTES = 8 << 20;
     public static final String FOLDER = "Homefield TV";
-    public static final String LAST = "last", PHONE = "phone", PICKED = "picked";
+    public static final String LAST = "last", PICKED = "picked";
 
-    /** A backup that can be put back: which one (LAST, PHONE, PICKED), and what it holds. */
+    /** A backup that can be put back: which one (LAST or PICKED), and what it holds. */
     public static final class Kept {
         public final String which;
         public final Backup.Contents contents;
@@ -61,7 +61,7 @@ public final class BackupStore {
         return new File(dir, which + ".json");
     }
 
-    /** One kept (LAST, PHONE or PICKED), or null when there isn't one that can be read. */
+    /** One kept (LAST or PICKED), or null when there isn't one that can be read. */
     public static Kept kept(Context c, String which) {
         File f = file(c, which);
         if (!f.isFile()) return null;
@@ -116,18 +116,7 @@ public final class BackupStore {
         return "Android/data/" + c.getPackageName() + "/files/" + Environment.DIRECTORY_DOWNLOADS + "/" + name;
     }
 
-    // ---- a copy from the phone, or a file chosen ----------------------------------------------------------------
-
-    /** A backup the phone sent back kept (who: the phone's name, for Settings to say); false when it isn't one. */
-    public static boolean keepFromPhone(Context c, String text, String who) {
-        if (Backup.read(text) == null) return false;
-        try {
-            write(file(c, PHONE), Backup.from(text, who));
-            return true;
-        } catch (IOException e) {
-            return false;
-        }
-    }
+    // ---- a file chosen ----------------------------------------------------------------------------------------------
 
     /** Android's file chooser, for a backup file; false where the TV has none. */
     public static boolean pick(Activity a) {

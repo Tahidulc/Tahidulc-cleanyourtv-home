@@ -17,11 +17,13 @@ import java.util.Set;
 
 /**
  * Settings → Backup's file: everything the family set on this TV, as one JSON document. The playlists (with their
- * logins) and the TorBox key, favourites, recent and last channels, reminders, My List and where films were left off, and every setting:
+ * logins), favourites, recent and last channels, reminders, My List and where films were left off, and every setting:
  * player, sound, stream problems, general, appearance, remote, guide, categories, parental control (the PIN as its
  * hash), live subtitles, the scoreboard, sports competitions and their timing. Not the channels, the guide or the
- * pictures: those are read again from the providers. Each settings file is kept whole, with each value's type, so a
- * restore puts back exactly what was there (a file the backup has, emptied first; one it doesn't mention, left alone).
+ * pictures: those are read again from the providers. Never the TorBox key: it goes nowhere but TorBox, and is typed in
+ * again on a new TV (its file isn't in FILES, so it is neither written into a backup nor put back from one, even one
+ * that has it). Each settings file is kept whole, with each value's type, so a restore puts back exactly what was there
+ * (a file the backup has, emptied first; one it doesn't mention, left alone).
  */
 public final class Backup {
     private Backup() {}
@@ -29,22 +31,21 @@ public final class Backup {
     public static final String APP = "homefieldtv", KIND = "backup";
     public static final int VERSION = 1;
 
-    /** The settings files a backup carries (SharedPreferences names), and nothing else. */
+    /** The settings files a backup carries (SharedPreferences names), and nothing else: never "torbox". */
     static final List<String> FILES = Collections.unmodifiableList(Arrays.asList(
-            "live_sources", "live_source", "torbox", "live_tv", "reminders", "reminders_ui", "my_list", "resume",
+            "live_sources", "live_source", "live_tv", "reminders", "reminders_ui", "my_list", "resume",
             "player", "look", "general", "remote", "guide", "live_groups", "parental",
             "live_subs", "scoreboard", "sports_competitions", "in_step"));
 
     /** A backup read back: when it was made, by which version, and its settings files. */
     public static final class Contents {
         public final long made;
-        public final String appVersion, from;
+        public final String appVersion;
         final JSONObject prefs;
 
-        Contents(long made, String appVersion, String from, JSONObject prefs) {
+        Contents(long made, String appVersion, JSONObject prefs) {
             this.made = made;
             this.appVersion = appVersion;
-            this.from = from;
             this.prefs = prefs;
         }
     }
@@ -103,24 +104,16 @@ public final class Backup {
             if (v < 1 || v > VERSION) return null;
             JSONObject prefs = o.optJSONObject("prefs");
             if (prefs == null) return null;
-            return new Contents(o.optLong("made", 0), o.optString("version"), o.optString("from"), prefs);
+            return new Contents(o.optLong("made", 0), o.optString("version"), prefs);
         } catch (JSONException e) {
             return null;
         }
     }
 
-    /** A backup's text with a word of where it came from ("from": the phone that kept it), for Settings to say. */
-    static String from(String text, String who) {
-        try {
-            return new JSONObject(text).put("from", who == null ? "" : who).toString();
-        } catch (JSONException e) {
-            return text;
-        }
-    }
-
     /**
-     * A backup put back: each settings file it has, emptied and written as it was (at once, so nothing is lost if the
-     * app is stopped straight after). What other parts keep in memory is forgotten by the caller (Restore).
+     * A backup put back: each settings file it has that FILES names, emptied and written as it was (at once, so nothing
+     * is lost if the app is stopped straight after); any other file in it (the TorBox key's, from a backup made before it
+     * was left out) is never written. What other parts keep in memory is forgotten by the caller (BackupStore.restore).
      */
     public static int restore(Context c, Contents b) {
         int files = 0;
