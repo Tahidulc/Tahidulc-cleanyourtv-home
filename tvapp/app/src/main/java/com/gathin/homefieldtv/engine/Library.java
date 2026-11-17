@@ -201,6 +201,22 @@ public final class Library {
     /** Catch-up: {how many channels keep programmes, for up to how many days}. */
     public int[] archive() { return archive; }
     public boolean hasGuide() { return !guide.isEmpty(); }
+    /** Settings → EPG: when the guide was last read (0: not yet), for how many channels, and whether it is being read. */
+    public long guideAt() { return guideAt; }
+    public int guideChannels() { return guide.size(); }
+    public boolean guideBusy() { return guideBusy.get(); }
+
+    /** Settings → EPG → Update EPG: the guide read again now (the channels as they are). */
+    public void updateGuide() {
+        refreshGuide();
+        changed();
+    }
+
+    /** Settings → EPG → Clear EPG: the guide kept on this TV let go, until it is read again. */
+    public void clearGuideNow() {
+        clearGuide();
+        changed();
+    }
     /** The playlist's own groups, in first-seen order. */
     public List<String> groups() { return current.index.groups; }
     /** How many channels each group has, hidden ones too (Settings → Categories), counted as they were read. */

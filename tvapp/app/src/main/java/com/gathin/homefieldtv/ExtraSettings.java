@@ -4,8 +4,12 @@ import android.widget.Toast;
 
 import com.gathin.homefieldtv.backups.Backup;
 import com.gathin.homefieldtv.backups.BackupStore;
+import com.gathin.homefieldtv.engine.Catalog;
+import com.gathin.homefieldtv.engine.Catchup;
 import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Library;
+import com.gathin.homefieldtv.engine.Source;
+import com.gathin.homefieldtv.engine.Sources;
 import com.gathin.homefieldtv.prefs.Categories;
 import com.gathin.homefieldtv.prefs.GuidePrefs;
 import com.gathin.homefieldtv.prefs.Parental;
@@ -20,505 +24,698 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Settings' Guide, Categories, Parental control and Backup sections (MoreSettings hands them over): how often the
- * guide and playlists are read again and guides of the family's own (GuidePrefs); the playlists' categories hidden,
- * moved and named (Categories); the PIN and what it locks (Parental, PinScreen); and backups made on this TV and put
- * back from it or from a file chosen (Backup, BackupStore; nothing over the network). Lines are tagged as MoreSettings'
- * are: "set:" opens a setting's choices, "opt:" picks one, "tog:" flips a switch, "do:" acts, "type:" opens the keyboard.
+ * Settings' Playlists, EPG, Appearance › Groups, Parental controls and General › Restore data pages:
+ *
+ * <pre>
+ *   playlists               each playlist › · TorBox › · Add playlist › · Use all playlists together · Update options:
+ *                           Update all playlists · Update the playlists (how often); its counts and its catch-up
+ *   playlist:ID             the playlist's own details as Homefield has them (its kind and server, when it runs out, its
+ *                           connections), Use only this playlist, User-Agent, Remove playlist
+ *   playlists.add(.m3u|.xtream)  M3U playlist or Xtream Codes, their fields typed in (a password as dots), Add playlist
+ *   playlists.torbox        TorBoxSettings
+ *   epg                     EPG sources › · Guide time shift · Update options: Update interval, hours · Update on app
+ *                           start · Update EPG · Clear EPG · Latest update status
+ *   appearance.groups       Groups sorting · each group › (shown or hidden, moved, renamed: Categories)
+ *   parental                the switch · Change PIN · Locked channels · Require PIN for: Settings · locked groups and
+ *                           channels (all greyed while it is off, as the other app has them)
+ *   general.restore         this TV's last backup, the file chosen, Choose a backup file
+ * </pre>
+ *
+ * Its settings' choices are "x." ones (x.guide.hours…), its fields "f:" (a playlist being added), "ua:" (a playlist's
+ * user agent), "x.guide", "x.cat" and TorBoxSettings.FIELD. A backup is made on this TV and in Downloads, never sent
+ * anywhere (BackupStore).
  */
-final class ExtraSettings {
-    static final int STAY = MoreSettings.STAY;
+final class ExtraSettings implements SettingsScreen.Pages {
     private static final String[] RESTORES = {BackupStore.LAST, BackupStore.PICKED};
-    /** Opened next time Backup fills: a file just chosen with Android's chooser, to confirm. */
-    private static volatile String openNext;
+    static final String[] SORTING = {"By order in playlist", "Your own order"};
+    /** Android's file chooser picked a backup: it is offered to be put back when Settings shows next. */
+    private static volatile boolean askPicked;
     /** Where the last backup made here was put, for Settings to say. */
     private static volatile String savedWhere = "";
 
     private final TvActivity tv;
-    private final MoreSettings.Host host;
-    /** What is open in the section: "" for its own lines, else a setting's choices, a category's, or a restore to confirm. */
-    private String open = "";
-    /** The line to keep the remote on once the lines are filled again (a category moved a place, and again). */
-    private String keep;
+    private final SettingsScreen s;
+    /** What is being typed for a playlist to add: kept on this screen only until it is added. */
+    private String name = "", url = "", guide = "", server = "", user = "", pass = "", status = "";
+    /** Update all playlists: its last word. */
+    private String refreshed = "";
 
-    ExtraSettings(TvActivity tv, MoreSettings.Host host) {
+    ExtraSettings(TvActivity tv, SettingsScreen s) {
         this.tv = tv;
-        this.host = host;
+        this.s = s;
     }
 
-    void reset() {
-        open = "";
+    @Override public boolean owns(String page) {
+        return page.equals("playlists") || page.startsWith("playlists.") || page.startsWith("playlist:") || page.equals("epg")
+                || page.startsWith("epg.") || page.equals("appearance.groups") || page.startsWith("group:") || page.equals("parental")
+                || page.equals("general.restore");
     }
 
-    boolean isOpen() {
-        return !open.isEmpty();
-    }
-
-    /** Back in a section: what was open closed, the remote on its line; STAY when nothing was. */
-    int back(int section) {
-        if (open.isEmpty()) return STAY;
-        String was = open;
-        open = "";
-        return lineOf(section, was);
-    }
-
-    /**
-     * Where the remote goes in what was opened: the line just pressed when it is still there, the choice in use, else
-     * its first line to press.
-     */
-    int focus(List<ListPanel.Item> items) {
-        String k = keep;
-        keep = null;
-        if (k != null) {
-            int at = indexOfTag(items, k);
-            if (at >= 0) return at;
+    @Override public String title(String page) {
+        if (page.startsWith("playlist:")) {
+            Sources.Entry e = Sources.get(tv, page.substring(9));
+            return e == null ? "Playlist" : e.name;
         }
-        for (int i = 0; i < items.size(); i++) {
-            String sub = items.get(i).subtitle;
-            if (sub != null && sub.startsWith("Chosen")) return i;
-        }
-        for (int i = 0; i < items.size(); i++) if (items.get(i).kind == ListPanel.TEXT) return i;
-        return 0;
-    }
-
-    // ---- the lines ------------------------------------------------------------------------------------------------
-
-    void fill(int section, List<ListPanel.Item> out) {
-        if (section == MoreSettings.BACKUP && openNext != null) {
-            open = openNext;
-            openNext = null;
-        }
-        if (!open.isEmpty() && opened(out)) return;
-        open = "";
-        switch (section) {
-            case MoreSettings.GUIDE:
-                guide(out);
-                break;
-            case MoreSettings.CATEGORIES:
-                categories(out);
-                break;
-            case MoreSettings.PARENTAL:
-                parental(out);
-                break;
-            default:
-                backup(out);
-                break;
-        }
-    }
-
-    private void guide(List<ListPanel.Item> out) {
-        int g = PlayerPrefs.indexOf(GuidePrefs.GUIDE_HOURS, GuidePrefs.guideHours(tv));
-        out.add(line("guide.hours", "Update the guide", GuidePrefs.GUIDE_NAMES[g] + "  ·  It holds the next 12 hours"));
-        int l = PlayerPrefs.indexOf(GuidePrefs.LISTS_HOURS, GuidePrefs.listsHours(tv));
-        out.add(line("lists.hours", "Update the playlists", GuidePrefs.LISTS_NAMES[l] + "  ·  Channels, films and series read again"));
-        out.add(toggle("atstart", "Update when Homefield TV starts", GuidePrefs.atStart(tv),
-                "Playlists and guide read again each time it starts afresh"));
-        out.add(line("shift", "Guide time shift", GuidePrefs.shiftWords(GuidePrefs.shiftMin(tv))
-                + "  ·  For a guide whose times are out by a fixed amount"));
-        out.add(new ListPanel.Item(null, ListPanel.HEADING, "More guides (XMLTV)", ""));
-        List<String> extra = GuidePrefs.extra(tv);
-        for (int i = 0; i < extra.size(); i++) {
-            out.add(new ListPanel.Item("guide:" + i, ListPanel.TEXT, GuidePrefs.host(extra.get(i)),
-                    "Read after your playlists' own  ·  OK to remove it"));
-        }
-        if (extra.size() < GuidePrefs.MAX_EXTRA) {
-            out.add(new ListPanel.Item("type:guide", ListPanel.TEXT, "Add a guide's address",
-                    "An XMLTV address (.xml or .xml.gz), typed with the remote"));
-        }
-        out.add(new ListPanel.Item(null, ListPanel.NOTE, "Your playlists' own guides come first; these fill in what they leave out.", ""));
-        out.add(new ListPanel.Item(null, ListPanel.NOTE, "A change here reads your playlists and guide again.", ""));
-    }
-
-    private void categories(List<ListPanel.Item> out) {
-        Library lib = Library.get(tv);
-        List<String> every = Categories.every(tv, lib.groups());
-        if (every.isEmpty()) {
-            out.add(new ListPanel.Item(null, ListPanel.NOTE, "Your playlists' categories show here once their channels are in.", ""));
-            return;
-        }
-        Map<String, Integer> counts = counts(lib);
-        out.add(new ListPanel.Item(null, ListPanel.HEADING, "Your playlists' categories, in order", ""));
-        boolean anyHidden = false;
-        for (String g : every) {
-            boolean hidden = Categories.isHidden(tv, g);
-            anyHidden |= hidden;
-            Integer n = counts.get(g);
-            String sub = (hidden ? "Hidden" : "Shown") + "  ·  " + (n == null ? 0 : n) + (n != null && n == 1 ? " channel" : " channels")
-                    + (Categories.renamed(tv, g) ? "  ·  the playlist calls it " + (g.isEmpty() ? Categories.UNNAMED : g) : "");
-            out.add(new ListPanel.Item("cat:" + g, ListPanel.TEXT, Categories.label(tv, g), sub));
-        }
-        if (anyHidden) out.add(new ListPanel.Item("do:cat.showall", ListPanel.TEXT, "Show every category", ""));
-        if (Categories.ordered(tv)) out.add(new ListPanel.Item("do:cat.reorder", ListPanel.TEXT, "The playlists' order again", ""));
-        out.add(new ListPanel.Item(null, ListPanel.NOTE, "OK on one to hide it, move it or give it a name of your own.", ""));
-        out.add(new ListPanel.Item(null, ListPanel.NOTE, "Hidden: out of the guide, Live TV, channel up and down and search; favourites stay.", ""));
-    }
-
-    private void parental(List<ListPanel.Item> out) {
-        if (!Parental.hasPin(tv)) {
-            out.add(new ListPanel.Item("do:pin.set", ListPanel.TEXT, "Set a PIN", "Four numbers, asked before a locked channel plays"));
-            out.add(new ListPanel.Item(null, ListPanel.NOTE, "With a PIN set, lock categories here, and channels from their menu in Live TV.", ""));
-            out.add(new ListPanel.Item(null, ListPanel.NOTE, "Settings can be locked with it too.", ""));
-            return;
-        }
-        if (!Parental.open()) {
-            out.add(new ListPanel.Item("do:pin.enter", ListPanel.TEXT, "Enter the PIN to change these", "Parental control is on"));
-            return;
-        }
-        int mode = Parental.hides(tv) ? 1 : 0;
-        out.add(line("mode", "Locked channels", Parental.MODE_NAMES[mode] + "  ·  " + Parental.MODE_ABOUT[mode]));
-        out.add(toggle("settings", "Lock Settings", Parental.locksSettings(tv), "The PIN asked before Settings opens"));
-        out.add(new ListPanel.Item("do:pin.change", ListPanel.TEXT, "Change the PIN", ""));
-        out.add(new ListPanel.Item("do:pin.off", ListPanel.TEXT, "Turn parental control off", "The PIN taken away: nothing is locked without one"));
-        Library lib = Library.get(tv);
-        List<String> every = Categories.every(tv, lib.groups());
-        if (!every.isEmpty()) out.add(new ListPanel.Item(null, ListPanel.HEADING, "Locked categories", ""));
-        for (String g : every) {
-            boolean on = Parental.lockedGroups(tv).contains(g);
-            out.add(new ListPanel.Item("lockcat:" + g, ListPanel.TEXT, Categories.label(tv, g), on ? "Locked  ·  OK to unlock" : "Not locked"));
-        }
-        out.add(new ListPanel.Item(null, ListPanel.HEADING, "Locked channels", ""));
-        List<String> keys = new ArrayList<>(Parental.lockedChannels(tv));
-        java.util.Collections.sort(keys);
-        for (String k : keys) {
-            Channel c = lib.byKey(k);
-            out.add(new ListPanel.Item("unlockch:" + k, ListPanel.TEXT, c == null ? "A channel not in your playlists now" : c.name,
-                    "Locked  ·  OK to unlock"));
-        }
-        out.add(new ListPanel.Item(null, ListPanel.NOTE, keys.isEmpty() ? "None yet: hold OK on a channel in Live TV and choose Lock this channel."
-                : "Lock more from a channel's menu: hold OK on it in Live TV.", ""));
-        out.add(new ListPanel.Item(null, ListPanel.NOTE, "Once the PIN is entered, locked channels play until you leave Homefield TV.", ""));
-    }
-
-    private void backup(List<ListPanel.Item> out) {
-        BackupStore.Kept last = BackupStore.kept(tv, BackupStore.LAST);
-        out.add(new ListPanel.Item(null, ListPanel.HEADING, "Back up", ""));
-        String made = last == null ? "Settings, playlists, favourites, recent channels, reminders and My List, to a file"
-                : "Last: " + when(last.contents.made) + (savedWhere.isEmpty() ? "" : "  ·  " + savedWhere);
-        out.add(new ListPanel.Item("do:backup", ListPanel.TEXT, "Back up now", made));
-        out.add(new ListPanel.Item(null, ListPanel.HEADING, "Restore", ""));
-        for (String which : RESTORES) {
-            BackupStore.Kept k = BackupStore.kept(tv, which);
-            if (k == null) continue;
-            out.add(new ListPanel.Item("restore:" + which, ListPanel.TEXT, restoreName(which), "Made " + when(k.contents.made) + "  ·  " + sizes(k)));
-        }
-        out.add(new ListPanel.Item("do:pick", ListPanel.TEXT, "Choose a backup file", "From Downloads or a USB stick, where this TV has a file chooser"));
-        out.add(new ListPanel.Item(null, ListPanel.NOTE, "A backup holds your playlists' logins: keep its file to yourself.", ""));
-        out.add(new ListPanel.Item(null, ListPanel.NOTE, "Not the TorBox key: on a new TV, type that in again in Settings → TorBox.", ""));
-        out.add(new ListPanel.Item(null, ListPanel.NOTE, "Restoring puts everything back as it was in the backup, then starts the screens again.", ""));
-    }
-
-    /** What is open, filled in: false when it is gone (a category or guide no longer there). */
-    private boolean opened(List<ListPanel.Item> out) {
-        if (open.startsWith("cat:")) {
-            String g = open.substring(4);
-            Library lib = Library.get(tv);
-            List<String> every = Categories.every(tv, lib.groups());
-            int at = every.indexOf(g);
-            if (at < 0) return false;
-            out.add(new ListPanel.Item(null, ListPanel.HEADING, Categories.label(tv, g) + "  ·  " + ordinal(at + 1) + " of " + every.size(), ""));
-            boolean hidden = Categories.isHidden(tv, g);
-            out.add(new ListPanel.Item(hidden ? "do:cat.show" : "do:cat.hide", ListPanel.TEXT, hidden ? "Show it" : "Hide it",
-                    hidden ? "Hidden now" : "Its channels out of the lists, the guide and search"));
-            if (at > 0) out.add(new ListPanel.Item("do:cat.up", ListPanel.TEXT, "Move up", ""));
-            if (at < every.size() - 1) out.add(new ListPanel.Item("do:cat.down", ListPanel.TEXT, "Move down", ""));
-            if (at > 0) out.add(new ListPanel.Item("do:cat.top", ListPanel.TEXT, "Move to the top", ""));
-            out.add(new ListPanel.Item("type:cat", ListPanel.TEXT, "Give it a name", "Shown instead of the playlist's"));
-            if (Categories.renamed(tv, g)) {
-                out.add(new ListPanel.Item("do:cat.unname", ListPanel.TEXT, "Its playlist's name again", g.isEmpty() ? Categories.UNNAMED : g));
-            }
-            out.add(new ListPanel.Item("done", ListPanel.TEXT, "Done", ""));
-            return true;
-        }
-        if (open.startsWith("guide:")) {
-            int i = number(open.substring(6));
-            List<String> extra = GuidePrefs.extra(tv);
-            if (i < 0 || i >= extra.size()) return false;
-            out.add(new ListPanel.Item(null, ListPanel.HEADING, GuidePrefs.host(extra.get(i)), ""));
-            out.add(new ListPanel.Item("do:guide.remove", ListPanel.TEXT, "Remove this guide", ""));
-            out.add(new ListPanel.Item("done", ListPanel.TEXT, "Keep it", ""));
-            return true;
-        }
-        if (open.startsWith("restore:")) {
-            BackupStore.Kept k = BackupStore.kept(tv, open.substring(8));
-            if (k == null) return false;
-            out.add(new ListPanel.Item(null, ListPanel.HEADING, "Put back the backup made " + when(k.contents.made) + "?", ""));
-            out.add(new ListPanel.Item(null, ListPanel.NOTE, "It has " + sizes(k) + ", and every setting.", ""));
-            out.add(new ListPanel.Item(null, ListPanel.NOTE, "What's set on this TV now is replaced by it.", ""));
-            out.add(new ListPanel.Item("do:restore", ListPanel.TEXT, "Restore it", Parental.hasPin(tv) && !Parental.open() ? "The PIN is asked first" : ""));
-            out.add(new ListPanel.Item("done", ListPanel.TEXT, "Not now", ""));
-            return true;
-        }
-        String[] names;
-        String[] about = null;
-        int chosen;
-        switch (open) {
-            case "guide.hours":
-                names = GuidePrefs.GUIDE_NAMES;
-                chosen = PlayerPrefs.indexOf(GuidePrefs.GUIDE_HOURS, GuidePrefs.guideHours(tv));
-                break;
-            case "lists.hours":
-                names = GuidePrefs.LISTS_NAMES;
-                chosen = PlayerPrefs.indexOf(GuidePrefs.LISTS_HOURS, GuidePrefs.listsHours(tv));
-                break;
-            case "shift":
-                names = new String[GuidePrefs.SHIFTS.length];
-                for (int i = 0; i < names.length; i++) names[i] = GuidePrefs.shiftWords(GuidePrefs.SHIFTS[i]);
-                chosen = PlayerPrefs.indexOf(GuidePrefs.SHIFTS, GuidePrefs.shiftMin(tv));
-                break;
-            case "mode":
-                names = Parental.MODE_NAMES;
-                about = Parental.MODE_ABOUT;
-                chosen = Parental.hides(tv) ? 1 : 0;
-                break;
-            default:
-                return false;
-        }
-        out.add(new ListPanel.Item(null, ListPanel.HEADING, title(open), ""));
-        for (int i = 0; i < names.length; i++) {
-            String sub = (i == chosen ? "Chosen" : "") + (about != null ? (i == chosen ? "  ·  " : "") + about[i] : "");
-            out.add(new ListPanel.Item("opt:" + open + ":" + i, ListPanel.TEXT, names[i], sub));
-        }
-        return true;
-    }
-
-    private static String title(String key) {
-        switch (key) {
-            case "guide.hours": return "Update the guide";
-            case "lists.hours": return "Update the playlists";
-            case "shift": return "Guide time shift";
-            case "mode": return "Locked channels";
+        if (page.startsWith("group:")) return Categories.label(tv, page.substring(6));
+        switch (page) {
+            case "playlists": return "Playlists";
+            case "playlists.add": return "Add playlist";
+            case "playlists.add.m3u": return "M3U playlist";
+            case "playlists.add.xtream": return "Xtream Codes";
+            case "playlists.torbox": return "TorBox";
+            case "epg": return "EPG";
+            case "epg.sources": return "EPG sources";
+            case "appearance.groups": return "Groups";
+            case "parental": return "Parental controls";
+            case "general.restore": return "Restore data";
             default: return "";
         }
     }
 
-    // ---- OK on a line ---------------------------------------------------------------------------------------------
+    // ---- the pages ------------------------------------------------------------------------------------------------
 
-    int chosen(int section, String tag, List<ListPanel.Item> before) {
-        if (tag.startsWith("set:")) {
-            open = tag.substring(4);
-            return 0;
+    @Override public List<RowList.Row> rows(String page) {
+        List<RowList.Row> out = new ArrayList<>();
+        if (page.startsWith("playlist:")) {
+            playlist(page.substring(9), out);
+            return out;
         }
-        if (tag.startsWith("cat:") || tag.startsWith("guide:") || tag.startsWith("restore:")) {
-            open = tag;
-            return 0;
+        if (page.startsWith("group:")) {
+            group(page.substring(6), out);
+            return out;
         }
-        if (tag.equals("done")) {
-            String was = open;
-            open = "";
-            return lineOf(section, was);
+        switch (page) {
+            case "playlists": playlists(out); break;
+            case "playlists.add":
+                out.add(MoreSettings.page("playlists.add.m3u", "M3U playlist", "A playlist's address"));
+                out.add(MoreSettings.page("playlists.add.xtream", "Xtream Codes", "A server, a username and a password"));
+                out.add(RowList.Row.note("A playlist is kept only if it gives live channels."));
+                break;
+            case "playlists.add.m3u":
+                out.add(field("name", "Name", name, "Optional, such as Home"));
+                out.add(field("url", "Playlist address", host(url), "http://…/get.php?username=…  or  …/playlist.m3u"));
+                out.add(field("guide", "EPG address (XMLTV)", host(guide), "Optional: the playlist's own is used"));
+                out.add(RowList.Row.item("do:add", "Add playlist", "It is kept only if it gives live channels"));
+                if (!status.isEmpty()) out.add(RowList.Row.note(status));
+                break;
+            case "playlists.add.xtream":
+                out.add(field("name", "Name", name, "Optional, such as Home"));
+                out.add(field("server", "Server address", host(server), "Such as http://example.com:8080"));
+                out.add(field("user", "Username", user, ""));
+                out.add(field("pass", "Password", pass.isEmpty() ? "" : dots(pass.length()), ""));
+                out.add(RowList.Row.item("do:add", "Add playlist", "It is kept only if it gives live channels"));
+                if (!status.isEmpty()) out.add(RowList.Row.note(status));
+                break;
+            case "playlists.torbox": TorBoxSettings.rows(tv, out); break;
+            case "epg": epg(out); break;
+            case "epg.sources": sources(out); break;
+            case "appearance.groups": groups(out); break;
+            case "parental": parental(out); break;
+            case "general.restore": restore(out); break;
+            default: break;
         }
-        if (tag.startsWith("opt:")) {
-            int colon = tag.lastIndexOf(':');
-            String key = tag.substring(4, colon);
-            apply(key, number(tag.substring(colon + 1)));
-            open = "";
-            return lineOf(section, key);
-        }
-        if (tag.startsWith("tog:")) {
-            switch (tag.substring(4)) {
-                case "atstart": GuidePrefs.setAtStart(tv, !GuidePrefs.atStart(tv)); break;
-                case "settings": Parental.setLocksSettings(tv, !Parental.locksSettings(tv)); break;
-                default: break;
-            }
-            return indexOfTag(before, tag);
-        }
-        if (tag.startsWith("type:")) {
-            if (tag.equals("type:guide")) host.type("m:x.guide", "A guide's address (XMLTV)", "http://", false);
-            else if (tag.equals("type:cat") && open.startsWith("cat:")) {
-                String g = open.substring(4);
-                host.type("m:x.cat", "A name for " + Categories.label(tv, g), Categories.label(tv, g), false);
-            }
-            return STAY;
-        }
-        if (tag.startsWith("lockcat:")) {
-            String g = tag.substring(8);
-            Parental.lockGroup(tv, g, !Parental.lockedGroups(tv).contains(g));
-            return indexOfTag(before, tag);
-        }
-        if (tag.startsWith("unlockch:")) {
-            Parental.lockChannel(tv, tag.substring(9), false);
-            return Math.max(0, Math.min(indexOfTag(before, tag), before.size() - 2));
-        }
-        if (tag.startsWith("do:")) return act(section, tag.substring(3), before);
-        return STAY;
+        return out;
     }
 
-    private void apply(String key, int i) {
+    private void playlists(List<RowList.Row> out) {
+        List<Sources.Entry> all = Sources.list(tv);
+        String active = Sources.active(tv);
+        long now = System.currentTimeMillis();
+        for (Sources.Entry e : all) {
+            String exp = Sources.expiry(Sources.info(tv, e.id), now);
+            boolean used = active.isEmpty() || active.equals(e.id);
+            out.add(MoreSettings.page("playlist:" + e.id, e.name + (used ? "" : "  (not in use)"),
+                    e.source.describe() + (exp.isEmpty() ? "" : "  ·  " + exp)));
+        }
+        out.add(MoreSettings.page("playlists.torbox", "TorBox", com.gathin.homefieldtv.engine.TorBox.wanted(tv) ? "On" : "Off"));
+        out.add(MoreSettings.page("playlists.add", "Add playlist", all.isEmpty() ? "An M3U address or an Xtream Codes login" : ""));
+        if (all.size() > 1 && !active.isEmpty()) out.add(RowList.Row.item("do:all", "Use all playlists together", ""));
+        if (all.isEmpty()) {
+            out.add(RowList.Row.note("No playlist yet: add an M3U address or an Xtream Codes login."));
+            return;
+        }
+        out.add(RowList.Row.header("Update options"));
+        Library lib = Library.get(tv);
+        String state = lib.busy() || Catalog.get(tv).busy() ? "Reading your playlists…" : !refreshed.isEmpty() ? refreshed : counts();
+        out.add(RowList.Row.item("do:refresh", "Update all playlists", state));
+        out.add(MoreSettings.pick("x.lists.hours", "Update the playlists",
+                GuidePrefs.LISTS_NAMES[PlayerPrefs.indexOf(GuidePrefs.LISTS_HOURS, GuidePrefs.listsHours(tv))]));
+        String archive = archiveLine();
+        if (!archive.isEmpty()) out.add(RowList.Row.note(archive));
+    }
+
+    /** A playlist's own page: what Homefield knows of it (never its login), and what can be done with it. */
+    private void playlist(String id, List<RowList.Row> out) {
+        Sources.Entry e = Sources.get(tv, id);
+        if (e == null) {
+            out.add(RowList.Row.note("This playlist has gone from this TV."));
+            return;
+        }
+        out.add(RowList.Row.item("info:kind", "Type", e.source.describe()));
+        Sources.Info info = Sources.info(tv, id);
+        String exp = Sources.expiry(info, System.currentTimeMillis());
+        if (!exp.isEmpty()) out.add(RowList.Row.item("info:expiry", "Expiration date", exp));
+        if (info != null && info.maxConnections > 0) {
+            out.add(RowList.Row.item("info:max", "Max connections", info.maxConnections + (info.activeConnections > 0
+                    ? "  ·  " + info.activeConnections + " in use when last asked" : "")));
+        }
+        String active = Sources.active(tv);
+        List<Sources.Entry> all = Sources.list(tv);
+        if (all.size() > 1) {
+            boolean only = active.equals(id);
+            out.add(RowList.Row.item(only ? "do:all" : "do:only", only ? "Use all playlists together" : "Use only this playlist",
+                    only ? "Only this one is in use now" : "The others stay, not in use"));
+        }
+        String ua = PlayerPrefs.agentFor(tv, id);
+        out.add(RowList.Row.item("type:ua:" + id, "User-Agent", ua.isEmpty() ? "Not set" : ua));
+        out.add(RowList.Row.item("do:remove", "Remove playlist", "Its channels, movies and TV shows go from this TV"));
+        out.add(RowList.Row.note("A User-Agent only for a provider that asks for one; Not set uses the app's own."));
+    }
+
+    private void epg(List<RowList.Row> out) {
+        int extra = GuidePrefs.extra(tv).size();
+        out.add(MoreSettings.page("epg.sources", "EPG sources", extra == 0 ? "Your playlists' own"
+                : "Your playlists' own and " + extra + " more"));
+        out.add(MoreSettings.pick("x.shift", "Guide time shift", GuidePrefs.shiftWords(GuidePrefs.shiftMin(tv))));
+        out.add(RowList.Row.header("Update options"));
+        out.add(MoreSettings.pick("x.guide.hours", "Update interval, hours", String.valueOf(GuidePrefs.guideHours(tv))));
+        out.add(MoreSettings.tog("x.atstart", "Update on app start", "Playlists too, when the app starts afresh",
+                GuidePrefs.atStart(tv)));
+        Library lib = Library.get(tv);
+        out.add(RowList.Row.item("do:epg.update", "Update EPG", lib.guideBusy() ? "Reading the guide…" : ""));
+        out.add(RowList.Row.item("do:epg.clear", "Clear EPG", ""));
+        RowList.Row latest = RowList.Row.item("info:epg", "Latest update status", epgStatus(lib.guideBusy(), lib.guideChannels(),
+                lib.guideAt()));
+        latest.enabled = false;
+        out.add(latest);
+    }
+
+    /** Pure: the guide's last word, as the other app says it: "EPG is successfully updated for 16436 channels on 17/11/2026 08:34". */
+    static String epgStatus(boolean busy, int channels, long at) {
+        if (busy) return "The guide is being read…";
+        if (at <= 0 || channels <= 0) return "Not read yet";
+        return "EPG is successfully updated for " + channels + (channels == 1 ? " channel" : " channels") + " on "
+                + new SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.UK).format(new Date(at));
+    }
+
+    private void sources(List<RowList.Row> out) {
+        RowList.Row own = RowList.Row.item("info:own", "Your playlists' own guides", "Read first");
+        out.add(own);
+        List<String> extra = GuidePrefs.extra(tv);
+        for (int i = 0; i < extra.size(); i++) {
+            out.add(RowList.Row.item("guide:" + i, GuidePrefs.host(extra.get(i)), "Read after your playlists' own  ·  OK to remove it"));
+        }
+        if (extra.size() < GuidePrefs.MAX_EXTRA) {
+            out.add(RowList.Row.item("type:x.guide", "Add source", "An XMLTV address (.xml or .xml.gz), typed with the remote"));
+        }
+        out.add(RowList.Row.note("These fill in what your playlists' own guides leave out. A change reads your playlists and guide again."));
+    }
+
+    private void groups(List<RowList.Row> out) {
+        Library lib = Library.get(tv);
+        List<String> every = Categories.every(tv, lib.groups());
+        if (every.isEmpty()) {
+            out.add(RowList.Row.note("Your playlists' groups show here once their channels are in."));
+            return;
+        }
+        out.add(MoreSettings.pick("x.sorting", "Groups sorting", SORTING[Categories.ordered(tv) ? 1 : 0]));
+        boolean anyHidden = false;
+        for (String g : every) anyHidden |= Categories.isHidden(tv, g);
+        if (anyHidden) out.add(RowList.Row.item("do:cat.showall", "Show every group", "The hidden ones back in the lists"));
+        out.add(RowList.Row.header("Your playlists' groups"));
+        Map<String, Integer> counts = lib.groupSizes();
+        for (String g : every) {
+            boolean hidden = Categories.isHidden(tv, g);
+            Integer n = counts.get(g);
+            int k = n == null ? 0 : n;
+            String sub = (hidden ? "Hidden" : "Shown") + "  ·  " + k + (k == 1 ? " channel" : " channels")
+                    + (Categories.renamed(tv, g) ? "  ·  the playlist calls it " + (g.isEmpty() ? Categories.UNNAMED : g) : "");
+            out.add(MoreSettings.page("group:" + g, Categories.label(tv, g), sub));
+        }
+        out.add(RowList.Row.note("Hidden: out of the guide, Live TV, channel up and down and search; favourites stay."));
+    }
+
+    /** A group's page: shown or hidden, moved, named. */
+    private void group(String g, List<RowList.Row> out) {
+        Library lib = Library.get(tv);
+        List<String> every = Categories.every(tv, lib.groups());
+        int at = every.indexOf(g);
+        if (at < 0) {
+            out.add(RowList.Row.note("This group isn't in your playlists now."));
+            return;
+        }
+        boolean hidden = Categories.isHidden(tv, g);
+        out.add(MoreSettings.tog("cat.shown", "Show this group", "In the guide, Live TV, channel up and down and search", !hidden));
+        out.add(RowList.Row.header("Position  ·  " + MoreSettings.ordinal(at + 1) + " of " + every.size()));
+        if (at > 0) out.add(RowList.Row.item("do:cat.up", "Move up", ""));
+        if (at < every.size() - 1) out.add(RowList.Row.item("do:cat.down", "Move down", ""));
+        if (at > 0) out.add(RowList.Row.item("do:cat.top", "Move to the top", ""));
+        out.add(RowList.Row.header("Name"));
+        out.add(RowList.Row.item("type:x.cat", "Rename", Categories.label(tv, g)));
+        if (Categories.renamed(tv, g)) {
+            out.add(RowList.Row.item("do:cat.unname", "Its playlist's name again", g.isEmpty() ? Categories.UNNAMED : g));
+        }
+    }
+
+    /** Parental controls: the other app's lines, greyed while it is off; then Homefield's locked groups and channels. */
+    private void parental(List<RowList.Row> out) {
+        boolean on = Parental.hasPin(tv);
+        out.add(MoreSettings.tog("x.pc", on ? "On" : "Off", "", on));
+        out.add(enabled(RowList.Row.item("do:pin.change", "Change PIN", ""), on));
+        int mode = Parental.hides(tv) ? 1 : 0;
+        out.add(enabled(MoreSettings.pick("x.mode", "Locked channels", Parental.MODE_NAMES[mode]), on));
+        out.add(RowList.Row.header("Require PIN for"));
+        out.add(enabled(MoreSettings.tog("x.locksettings", "Settings", "", Parental.locksSettings(tv)), on));
+        Library lib = Library.get(tv);
+        List<String> every = Categories.every(tv, lib.groups());
+        if (!every.isEmpty()) out.add(RowList.Row.header("Locked groups"));
+        for (String g : every) {
+            boolean locked = Parental.lockedGroups(tv).contains(g);
+            out.add(enabled(RowList.Row.toggle("lockcat:" + g, Categories.label(tv, g), "", locked), on));
+        }
+        out.add(RowList.Row.header("Locked channels"));
+        List<String> keys = new ArrayList<>(Parental.lockedChannels(tv));
+        java.util.Collections.sort(keys);
+        for (String k : keys) {
+            Channel c = lib.byKey(k);
+            out.add(enabled(RowList.Row.item("unlockch:" + k, c == null ? "A channel not in your playlists now" : c.name,
+                    "Locked  ·  OK to unlock"), on));
+        }
+        out.add(RowList.Row.note(keys.isEmpty() ? "None yet: hold OK on a channel in Live TV and choose Lock this channel."
+                : "Lock more from a channel's menu: hold OK on it in Live TV."));
+        out.add(RowList.Row.note(on ? "Once the PIN is entered, locked channels play until you leave Homefield TV."
+                : "On: a four-number PIN, asked before a locked channel plays (and Settings opens, when they are locked)."));
+    }
+
+    private static RowList.Row enabled(RowList.Row r, boolean on) {
+        r.enabled = on;
+        return r;
+    }
+
+    private void restore(List<RowList.Row> out) {
+        for (String which : RESTORES) {
+            BackupStore.Kept k = BackupStore.kept(tv, which);
+            if (k == null) continue;
+            out.add(RowList.Row.item("restore:" + which, restoreName(which), "Made " + MoreSettings.when(k.contents.made) + "  ·  " + sizes(k)));
+        }
+        out.add(RowList.Row.item("do:pick", "Choose a backup file", "From Downloads or a USB stick, where this TV has a file chooser"));
+        out.add(RowList.Row.note("A backup holds your playlists' logins: keep its file to yourself. It has no TorBox key: on a new "
+                + "TV, type that in again in Settings → Playlists → TorBox."));
+        out.add(RowList.Row.note("Restoring puts everything back as it was in the backup, then starts the screens again."));
+    }
+
+    // ---- OK on a row ----------------------------------------------------------------------------------------------
+
+    @Override public void chosen(String page, RowList.Row row) {
+        String t = row.tag instanceof String ? (String) row.tag : "";
+        if (t.startsWith("page:")) {
+            s.open(t.substring(5));
+        } else if (t.startsWith("pick:")) {
+            s.open(SettingsScreen.PICK + t.substring(5));
+        } else if (t.startsWith("f:")) {
+            String f = t.substring(2);
+            s.type("f:" + f, row.title, f.equals("pass") ? "" : value("f:" + f), f.equals("pass"));
+        } else if (t.startsWith("type:")) {
+            String f = t.substring(5);
+            if (f.equals("x.cat") && page.startsWith("group:")) {
+                String g = page.substring(6);
+                s.type("x.cat:" + g, "A name for " + Categories.label(tv, g), Categories.label(tv, g), false);
+            } else if (f.equals("x.guide")) {
+                s.type("x.guide", "An EPG address (XMLTV)", "http://", false);
+            } else if (f.startsWith("ua:")) {
+                s.type(f, "User-Agent", PlayerPrefs.agentFor(tv, f.substring(3)), false);
+            } else if (f.equals(TorBoxSettings.FIELD)) {
+                // The TorBox key shows as dots, as a password does, and the one saved is never put back in the field.
+                s.type(TorBoxSettings.FIELD, "Your TorBox API key", "", true);
+            }
+        } else if (t.startsWith("tog:")) {
+            toggle(page, t.substring(4));
+        } else if (t.startsWith("do:")) {
+            act(page, t.substring(3));
+        } else if (t.startsWith("guide:")) {
+            int i = number(t.substring(6));
+            List<String> extra = GuidePrefs.extra(tv);
+            if (i < 0 || i >= extra.size()) return;
+            s.ask("Remove this EPG source?", GuidePrefs.host(extra.get(i)), "Remove it", "Keep it", () -> {
+                GuidePrefs.removeExtra(tv, i);
+                readAgain();
+            });
+        } else if (t.startsWith("lockcat:")) {
+            String g = t.substring(8);
+            Parental.lockGroup(tv, g, !Parental.lockedGroups(tv).contains(g));
+            s.refresh();
+        } else if (t.startsWith("unlockch:")) {
+            Parental.lockChannel(tv, t.substring(9), false);
+            s.refresh();
+        } else if (t.startsWith("restore:")) {
+            restoreAsk(t.substring(8));
+        } else if (page.equals("playlists.torbox")) {
+            if (TorBoxSettings.chosen(tv, t, this::torboxAnswered)) s.refresh();
+        }
+    }
+
+    private void toggle(String page, String key) {
         switch (key) {
-            case "guide.hours":
-                if (i >= 0 && i < GuidePrefs.GUIDE_HOURS.length) GuidePrefs.setGuideHours(tv, GuidePrefs.GUIDE_HOURS[i]);
+            case "x.atstart":
+                GuidePrefs.setAtStart(tv, !GuidePrefs.atStart(tv));
                 break;
-            case "lists.hours":
-                if (i >= 0 && i < GuidePrefs.LISTS_HOURS.length) GuidePrefs.setListsHours(tv, GuidePrefs.LISTS_HOURS[i]);
+            case "x.locksettings":
+                if (Parental.hasPin(tv)) Parental.setLocksSettings(tv, !Parental.locksSettings(tv));
                 break;
-            case "shift":
-                if (i >= 0 && i < GuidePrefs.SHIFTS.length && GuidePrefs.SHIFTS[i] != GuidePrefs.shiftMin(tv)) {
-                    GuidePrefs.setShiftMin(tv, GuidePrefs.SHIFTS[i]);
-                    readAgain();
+            case "x.pc":
+                if (!Parental.hasPin(tv)) {
+                    PinScreen.choose(tv, "Choose a PIN", pin -> {
+                        Parental.setPin(tv, pin);
+                        s.toast("Parental controls are on");
+                        s.refresh();
+                    });
+                    return;
                 }
+                Parental.clearPin(tv);
+                s.toast("Parental controls are off");
                 break;
-            case "mode":
-                Parental.setHides(tv, i == 1);
+            case "cat.shown":
+                if (page.startsWith("group:")) {
+                    String g = page.substring(6);
+                    Categories.setHidden(tv, g, !Categories.isHidden(tv, g));
+                }
                 break;
             default:
                 break;
         }
+        s.refresh();
     }
 
-    private int act(int section, String what, List<ListPanel.Item> before) {
-        String g = open.startsWith("cat:") ? open.substring(4) : null;
+    private void act(String page, String what) {
         Library lib = Library.get(tv);
+        String g = page.startsWith("group:") ? page.substring(6) : null;
         switch (what) {
-            case "cat.hide":
-            case "cat.show":
-                if (g == null) return STAY;
-                Categories.setHidden(tv, g, what.equals("cat.hide"));
-                return 1;
+            case "all":
+                Sources.setActive(tv, Sources.ALL);
+                lib.refresh(null);
+                s.refresh();
+                break;
+            case "only":
+                if (page.startsWith("playlist:")) {
+                    Sources.setActive(tv, page.substring(9));
+                    lib.refresh(null);
+                }
+                s.refresh();
+                break;
+            case "remove":
+                if (!page.startsWith("playlist:")) return;
+                String id = page.substring(9);
+                Sources.Entry e = Sources.get(tv, id);
+                s.ask("Remove " + (e == null ? "this playlist" : e.name) + "?", "Its channels, movies and TV shows go from this TV. "
+                        + "Your phones, tablets and other TVs keep theirs.", "Remove playlist", "Keep it", () -> {
+                    Sources.remove(tv, id);
+                    lib.refresh(null);
+                    s.up();
+                });
+                break;
+            case "add":
+                add(page.endsWith("m3u"));
+                break;
+            case "refresh":
+                refreshed = "Reading your playlists…";
+                s.refresh();
+                lib.refresh((n, err) -> {
+                    refreshed = err != null ? err : String.format(Locale.UK, "%,d channels", n);
+                    s.refresh();
+                });
+                Catalog.get(tv).refresh(true);
+                break;
+            case "epg.update":
+                if (lib.count() == 0) {
+                    s.toast("Add a playlist first: its channels come with their guide");
+                    break;
+                }
+                lib.updateGuide();
+                s.toast("Reading the guide again…");
+                s.refresh();
+                break;
+            case "epg.clear":
+                lib.clearGuideNow();
+                s.toast("The guide is cleared until it is read again (Update EPG)");
+                s.refresh();
+                break;
             case "cat.up":
             case "cat.down":
-            case "cat.top": {
-                if (g == null) return STAY;
+            case "cat.top":
+                if (g == null) return;
                 Categories.move(tv, lib.groups(), g, what.equals("cat.up") ? -1 : what.equals("cat.down") ? 1 : 0);
                 // The remote stays on the same move where it is still offered, to move it again.
-                keep = "do:" + what;
-                return 1;
-            }
+                s.refreshOn("do:" + what);
+                break;
             case "cat.unname":
                 if (g != null) Categories.rename(tv, g, "");
-                return 1;
+                s.refresh();
+                break;
             case "cat.showall":
                 Categories.showAll(tv);
-                return 0;
-            case "cat.reorder":
-                Categories.resetOrder(tv);
-                return 0;
-            case "guide.remove":
-                if (open.startsWith("guide:")) {
-                    GuidePrefs.removeExtra(tv, number(open.substring(6)));
-                    open = "";
-                    readAgain();
-                }
-                return 0;
-            case "pin.set":
-                PinScreen.choose(tv, "Choose a PIN", pin -> {
-                    Parental.setPin(tv, pin);
-                    toast("Parental control is on");
-                });
-                return STAY;
-            case "pin.enter":
-                PinScreen.check(tv, "Parental control", () -> { });
-                return STAY;
+                s.refresh();
+                break;
             case "pin.change":
+                if (!Parental.hasPin(tv)) return;
                 PinScreen.choose(tv, "Choose a new PIN", pin -> {
                     Parental.setPin(tv, pin);
-                    toast("PIN changed");
+                    s.toast("PIN changed");
                 });
-                return STAY;
-            case "pin.off":
-                Parental.clearPin(tv);
-                toast("Parental control is off");
-                return 0;
-            case "backup":
-                backUpNow();
-                return indexOfTag(before, "do:backup");
+                break;
             case "pick":
-                if (!BackupStore.pick(tv)) {
-                    toast("This TV has no file chooser. Use this TV's last backup instead.");
-                }
-                return STAY;
-            case "restore": {
-                String which = open.startsWith("restore:") ? open.substring(8) : "";
-                BackupStore.Kept k = BackupStore.kept(tv, which);
-                if (k == null) return 0;
-                PinScreen.check(tv, "Restoring needs the PIN", () -> {
-                    BackupStore.restore(tv, k);
-                    open = "";
-                    toast("Restored: starting again with the backup's settings");
-                    Library.get(tv).refresh(null);
-                    tv.restartLook(SettingsScreen.ABOUT + (MoreSettings.BACKUP - MoreSettings.BASE));
-                });
-                return STAY;
-            }
+                if (!BackupStore.pick(tv)) s.toast("This TV has no file chooser. Use this TV's last backup instead.");
+                break;
             default:
-                return STAY;
+                break;
         }
     }
 
-    private void backUpNow() {
-        try {
-            String where = BackupStore.backUp(tv, appVersion());
-            savedWhere = where.isEmpty() ? "on this TV" : where;
-            toast(where.isEmpty() ? "Backed up on this TV (no room for a file people can reach)" : "Backed up: " + where);
-        } catch (IOException | RuntimeException e) {
-            toast("That backup couldn't be made");
+    /** A backup offered to be put back, then after the PIN (when one is set) it replaces what is set here. */
+    private void restoreAsk(String which) {
+        BackupStore.Kept k = BackupStore.kept(tv, which);
+        if (k == null) return;
+        s.ask("Restore the backup made " + MoreSettings.when(k.contents.made) + "?", "It has " + sizes(k) + ", and every setting. "
+                + "What's set on this TV now is replaced by it.", "Restore it", "Not now", () ->
+                PinScreen.check(tv, "Restoring needs the PIN", () -> {
+                    BackupStore.restore(tv, k);
+                    Toast.makeText(tv, "Restored: starting again with the backup's settings", Toast.LENGTH_LONG).show();
+                    Library.get(tv).refresh(null);
+                    s.restart("general");
+                }));
+    }
+
+    /** Settings shows again (back from Android's file chooser): a backup chosen there is offered at once. */
+    void resumed() {
+        if (!askPicked) return;
+        askPicked = false;
+        restoreAsk(BackupStore.PICKED);
+    }
+
+    /** The playlist tried, and kept only when it gives live channels. */
+    private void add(boolean m3u) {
+        Source src = m3u ? new Source(Source.M3U, url, guide, null, null, null) : new Source(Source.XTREAM, null, guide, server, user, pass);
+        if (!src.usable()) {
+            status = m3u ? "Type the playlist's address first." : "Type the server's address, the username and the password first.";
+            s.refresh();
+            return;
         }
+        status = "Checking it…";
+        s.refresh();
+        Library.get(tv).test(null, name, src, (n, err) -> {
+            if (err != null) {
+                status = err;
+            } else {
+                status = String.format(Locale.UK, "Added: %,d channels. Its movies and TV shows are on their way.", n);
+                name = url = guide = server = user = pass = "";
+            }
+            s.refresh();
+        });
+    }
+
+    /** TorBox answered a check: its words on the page, the remote where it was. */
+    private void torboxAnswered() {
+        if (s.typing().isEmpty()) s.refresh();
     }
 
     /** The playlists and guide read again for a change to the guides, so it shows now. */
     private void readAgain() {
         Library.get(tv).refresh(null);
-        toast("Reading your playlists and guide again…");
+        s.toast("Reading your playlists and guide again…");
+    }
+
+    // ---- a setting's choices --------------------------------------------------------------------------------------
+
+    @Override public SettingsScreen.Picker picker(String key) {
+        switch (key) {
+            case "x.lists.hours": return new SettingsScreen.Picker("Update the playlists", GuidePrefs.LISTS_NAMES,
+                    PlayerPrefs.indexOf(GuidePrefs.LISTS_HOURS, GuidePrefs.listsHours(tv)), "Channels, movies and TV shows read again.");
+            case "x.guide.hours": {
+                String[] n = new String[GuidePrefs.GUIDE_HOURS.length];
+                for (int i = 0; i < n.length; i++) n[i] = String.valueOf(GuidePrefs.GUIDE_HOURS[i]);
+                return new SettingsScreen.Picker("Update interval, hours", n, PlayerPrefs.indexOf(GuidePrefs.GUIDE_HOURS,
+                        GuidePrefs.guideHours(tv)), "The guide holds the next 12 hours.");
+            }
+            case "x.shift": {
+                String[] n = new String[GuidePrefs.SHIFTS.length];
+                for (int i = 0; i < n.length; i++) n[i] = GuidePrefs.shiftWords(GuidePrefs.SHIFTS[i]);
+                return new SettingsScreen.Picker("Guide time shift", n, PlayerPrefs.indexOf(GuidePrefs.SHIFTS, GuidePrefs.shiftMin(tv)),
+                        "For a guide whose times are out by a fixed amount.");
+            }
+            case "x.mode": {
+                int m = Parental.hides(tv) ? 1 : 0;
+                return new SettingsScreen.Picker("Locked channels", Parental.MODE_NAMES, m, Parental.MODE_ABOUT[m]);
+            }
+            case "x.sorting": return new SettingsScreen.Picker("Groups sorting", SORTING, Categories.ordered(tv) ? 1 : 0,
+                    "Your own order: the groups moved on their own pages (OK on a group).");
+            default: return null;
+        }
+    }
+
+    @Override public void picked(String key, int i) {
+        switch (key) {
+            case "x.lists.hours":
+                if (i >= 0 && i < GuidePrefs.LISTS_HOURS.length) GuidePrefs.setListsHours(tv, GuidePrefs.LISTS_HOURS[i]);
+                break;
+            case "x.guide.hours":
+                if (i >= 0 && i < GuidePrefs.GUIDE_HOURS.length) GuidePrefs.setGuideHours(tv, GuidePrefs.GUIDE_HOURS[i]);
+                break;
+            case "x.shift":
+                if (i >= 0 && i < GuidePrefs.SHIFTS.length && GuidePrefs.SHIFTS[i] != GuidePrefs.shiftMin(tv)) {
+                    GuidePrefs.setShiftMin(tv, GuidePrefs.SHIFTS[i]);
+                    readAgain();
+                }
+                break;
+            case "x.mode":
+                Parental.setHides(tv, i == 1);
+                break;
+            case "x.sorting":
+                if (i == 0 && Categories.ordered(tv)) Categories.resetOrder(tv);
+                break;
+            default:
+                break;
+        }
     }
 
     // ---- typed in -------------------------------------------------------------------------------------------------
 
-    static boolean ownsField(String field) {
-        return field.startsWith("x.");
+    /** Whether a field typed in is one of these pages'. */
+    boolean ownsField(String field) {
+        return field.startsWith("f:") || field.startsWith("ua:") || field.startsWith("x.") || field.equals(TorBoxSettings.FIELD);
     }
 
-    String value(String field) {
-        if (field.equals("x.guide")) return "http://";
-        if (field.equals("x.cat") && open.startsWith("cat:")) return Categories.label(tv, open.substring(4));
-        return "";
-    }
-
-    void typed(String field, String text) {
-        if (field.equals("x.guide")) {
-            if (text.isEmpty() || text.equals("http://") || text.equals("https://")) return;
-            if (GuidePrefs.addExtra(tv, text)) readAgain();
-            else toast("That isn't a guide's address to read: it starts http:// or https://, once");
-        } else if (field.equals("x.cat") && open.startsWith("cat:")) {
-            Categories.rename(tv, open.substring(4), text);
+    @Override public String value(String field) {
+        switch (field) {
+            case "f:name": return name;
+            case "f:url": return url;
+            case "f:guide": return guide;
+            case "f:server": return server;
+            case "f:user": return user;
+            default: return "";
         }
     }
 
-    // ---- the file chooser's answer ---------------------------------------------------------------------------------
+    @Override public void typed(String field, String text) {
+        String v = text.trim();
+        if (field.equals(TorBoxSettings.FIELD)) {
+            // Kept and checked with TorBox; nothing of it stays on the keyboard.
+            TorBoxSettings.typed(tv, v, this::torboxAnswered);
+            return;
+        }
+        if (field.startsWith("ua:")) {
+            PlayerPrefs.setAgentFor(tv, field.substring(3), v);
+            return;
+        }
+        if (field.equals("x.guide")) {
+            if (v.isEmpty() || v.equals("http://") || v.equals("https://")) return;
+            if (GuidePrefs.addExtra(tv, v)) readAgain();
+            else s.toast("That isn't a guide's address to read: it starts http:// or https://, once");
+            return;
+        }
+        if (field.startsWith("x.cat:")) {
+            Categories.rename(tv, field.substring(6), v);
+            return;
+        }
+        switch (field) {
+            case "f:name": name = v; break;
+            case "f:url": url = v; break;
+            case "f:guide": guide = v; break;
+            case "f:server": server = v; break;
+            case "f:user": user = v; break;
+            // A password as typed (spaces and all).
+            case "f:pass": pass = text; break;
+            default: break;
+        }
+        status = "";
+    }
 
-    /** Android's file chooser answered (TvActivity): a backup chosen opens to be confirmed; anything else is said. */
+    // ---- backups --------------------------------------------------------------------------------------------------
+
+    /** General → Back up data: made on this TV and in Downloads (where it can be), and said where. */
+    static void backUp(TvActivity tv, String version, SettingsScreen s) {
+        try {
+            String where = BackupStore.backUp(tv, version);
+            savedWhere = where.isEmpty() ? "on this TV" : where;
+            s.toast(where.isEmpty() ? "Backed up on this TV (no room for a file people can reach)" : "Backed up: " + where);
+        } catch (IOException | RuntimeException e) {
+            s.toast("That backup couldn't be made");
+        }
+    }
+
+    static String savedWhere() {
+        return savedWhere;
+    }
+
+    /** Android's file chooser answered (TvActivity): a backup chosen is offered to be put back; anything else is said. */
     static void picked(TvActivity tv, String said) {
-        if (said.isEmpty()) openNext = "restore:" + BackupStore.PICKED;
+        if (said.isEmpty()) askPicked = true;
         else Toast.makeText(tv, said, Toast.LENGTH_LONG).show();
     }
 
     // ---- helpers --------------------------------------------------------------------------------------------------
 
-    /** The line a setting (or a category, guide or restore) is on in its section's own lines. */
-    private int lineOf(int section, String key) {
-        String was = open;
-        open = "";
-        List<ListPanel.Item> items = new ArrayList<>();
-        fill(section, items);
-        open = was;
-        int i = indexOfTag(items, "set:" + key);
-        if (i < 0) i = indexOfTag(items, key);
-        return Math.max(0, i);
+    private static RowList.Row field(String key, String label, String value, String hint) {
+        return RowList.Row.item("f:" + key, label, value.isEmpty() ? hint : value);
     }
 
-    private static int indexOfTag(List<ListPanel.Item> items, String tag) {
-        for (int i = 0; i < items.size(); i++) if (tag.equals(items.get(i).tag)) return i;
-        return STAY;
+    /** Pure: an address as Settings shows it: its server's name alone ("provider.example:8080"), never its login. */
+    static String host(String url) {
+        String u = url == null ? "" : url.trim();
+        if (u.isEmpty()) return "";
+        int s = u.indexOf("://");
+        if (s >= 0) u = u.substring(s + 3);
+        int slash = u.indexOf('/');
+        int at = u.lastIndexOf('@', slash < 0 ? u.length() : slash);
+        if (at >= 0) u = u.substring(at + 1);
+        int end = u.length();
+        for (char c : new char[]{'/', '?', '#'}) {
+            int i = u.indexOf(c);
+            if (i >= 0) end = Math.min(end, i);
+        }
+        return u.substring(0, end);
     }
 
-    /** How many channels each group has (hidden ones too), counted once as the playlists were read. */
-    private Map<String, Integer> counts(Library lib) {
-        return lib.groupSizes();
+    static String dots(int n) {
+        StringBuilder b = new StringBuilder();
+        for (int i = 0; i < Math.min(n, 16); i++) b.append('•');
+        return b.toString();
+    }
+
+    private String counts() {
+        Library lib = Library.get(tv);
+        Catalog cat = Catalog.get(tv);
+        return String.format(Locale.UK, "%,d channels  ·  %,d movies  ·  %,d TV shows", lib.count(), cat.films().size(), cat.series().size());
+    }
+
+    /** Catch-up: how many of the channels the provider keeps programmes for, and for how long ("" before they're in). */
+    private String archiveLine() {
+        Library lib = Library.get(tv);
+        if (!lib.ready()) return "";
+        int[] a = lib.archive();
+        return Catchup.summary(a[0], a[1]);
     }
 
     private static String restoreName(String which) {
-        switch (which) {
-            case BackupStore.PICKED: return "The file you chose";
-            default: return "This TV's last backup";
-        }
+        return BackupStore.PICKED.equals(which) ? "The file you chose" : "This TV's last backup";
     }
 
     private static String sizes(BackupStore.Kept k) {
@@ -530,46 +727,11 @@ final class ExtraSettings {
         return n + " " + word + (n == 1 ? "" : "s");
     }
 
-    private static String when(long t) {
-        return t <= 0 ? "some time ago" : new SimpleDateFormat("d MMM yyyy, HH:mm", Locale.UK).format(new Date(t));
-    }
-
-    private static String ordinal(int n) {
-        int t = n % 100;
-        if (t >= 11 && t <= 13) return n + "th";
-        switch (n % 10) {
-            case 1: return n + "st";
-            case 2: return n + "nd";
-            case 3: return n + "rd";
-            default: return n + "th";
-        }
-    }
-
     private static int number(String s) {
         try {
             return Integer.parseInt(s);
         } catch (NumberFormatException e) {
             return -1;
         }
-    }
-
-    private String appVersion() {
-        try {
-            return tv.getPackageManager().getPackageInfo(tv.getPackageName(), 0).versionName;
-        } catch (android.content.pm.PackageManager.NameNotFoundException | RuntimeException e) {
-            return "";
-        }
-    }
-
-    private void toast(String s) {
-        Toast.makeText(tv, s, Toast.LENGTH_LONG).show();
-    }
-
-    private static ListPanel.Item line(String key, String title, String sub) {
-        return new ListPanel.Item("set:" + key, ListPanel.TEXT, title, sub);
-    }
-
-    private static ListPanel.Item toggle(String key, String title, boolean on, String about) {
-        return new ListPanel.Item("tog:" + key, ListPanel.TEXT, title, (on ? "On" : "Off") + "  ·  " + about);
     }
 }

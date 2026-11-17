@@ -61,9 +61,17 @@ final class GroupsPanel extends View {
         static Entry bold(String name, Object tag) {
             return new Entry(name, tag, BOLD);
         }
+
+        /** A list's own entry in the regular weight, 64 px in (PLAIN_X), with no heading over it: My list's lists. */
+        static Entry plain(String name, Object tag) {
+            return new Entry(name, tag, PLAIN);
+        }
     }
 
     static final int GROUP = 0, HEADING = 1, BOLD = 2;
+    /** A plain entry (Entry.plain) and its text's x in the column, as My list's are drawn (DEVICE.md 160: x 176). */
+    static final int PLAIN = 3;
+    static final float PLAIN_X = 64f;
 
     interface Host {
         /** The remote moved onto a row (a group: show it now). */
@@ -255,7 +263,7 @@ final class GroupsPanel extends View {
             } else {
                 TextPaint p = e.kind == BOLD ? boldP : groupP;
                 p.setColor(Palette.TEXT1);
-                float tx = e.kind == BOLD ? HEAD_X : GROUP_X;
+                float tx = e.kind == BOLD ? HEAD_X : e.kind == PLAIN ? PLAIN_X : GROUP_X;
                 c.drawText(Ui.fit(e.name, p, Ui.f(W - tx - 48)), x0 + Ui.f(tx), Type.centred(p, cy), p);
             }
         }

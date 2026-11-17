@@ -9,8 +9,10 @@ import android.text.TextPaint;
 import android.view.View;
 
 /**
- * What's new, once, on the first start after an update (Updates.whatsNew): a card over Home with the version's name
- * and its notes, and OK. OK or Back closes it.
+ * What's new, once, on the first start after an update (Updates.whatsNew), as the panels' questions are drawn
+ * (DialogCard): the screen dimmed by the scrim, a card of the panel's colour in the middle with "What's new" in the
+ * accent, "Homefield TV 1.13" (PICKER size, medium), the notes in grey under it, and OK in the focus pill. OK or Back
+ * closes it. The full notes stay in Settings → About → Updates.
  */
 final class WhatsNewScreen extends Screen {
     private final String name, notes;
@@ -30,11 +32,10 @@ final class WhatsNewScreen extends Screen {
     }
 
     private final class Card extends View {
-        private static final float W = 960f, PAD = 64f;
-        private final Paint shade = Dark.fill(Dark.alpha(Dark.GROUND, 0xC8)), card = Dark.fill(Dark.CARD), edge = Dark.line(Dark.LINE, 1.5f);
-        private final Paint button = Dark.fill(Dark.ACCENT), ring = Dark.line(Dark.alpha(Dark.RING, 0xE6), 2.5f);
-        private final TextPaint kicker = Dark.text(24, 600, Dark.ACCENT), title = Dark.text(44, 600, Dark.TEXT);
-        private final TextPaint body = Dark.text(28, 400, Dark.SOFT), ok = Dark.text(28, 600, Dark.ACCENT_INK);
+        private static final float W = 960f, PAD = 48f;
+        private final Paint scrim = new Paint(), card = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint kicker = Type.paint(Type.SMALL, Type.MEDIUM, Palette.ACCENT), title = Type.paint(Type.PICKER, Type.MEDIUM, Palette.TEXT1);
+        private final TextPaint body = Type.paint(Type.ROW, Type.REGULAR, Palette.TEXT2), ok = Type.paint(Type.ROW, Type.REGULAR, Palette.TEXT1);
         private final RectF r = new RectF();
         private StaticLayout lines;
 
@@ -43,24 +44,28 @@ final class WhatsNewScreen extends Screen {
         }
 
         @Override protected void onDraw(Canvas c) {
-            c.drawRect(0, 0, getWidth(), getHeight(), shade);
-            if (lines == null) lines = Ui.layout(notes, body, Math.round(Ui.f(W - 2 * PAD)), 9);
-            float h = 64 + 40 + 64 + lines.getHeight() / Ui.s + 56 + 64 + PAD;
-            float x = (1920f - W) / 2f, y = Math.max(80f, (1080f - h) / 2f);
+            scrim.setColor(Palette.SCRIM);
+            c.drawRect(0, 0, getWidth(), getHeight(), scrim);
+            if (lines == null) lines = Ui.layout(notes, body, Ui.px(W - 2 * PAD), 12);
+            float textH = lines.getHeight() / Ui.s;
+            float h = PAD + 30f + 52f + 20f + textH + 32f + RowList.ROW_1 + Focus.INSET_PANEL;
+            float x = (1920f - W) / 2f, y = Math.max(60f, (1080f - h) / 2f);
             r.set(Ui.f(x), Ui.f(y), Ui.f(x + W), Ui.f(y + h));
-            c.drawRoundRect(r, Ui.f(28), Ui.f(28), card);
-            c.drawRoundRect(r, Ui.f(28), Ui.f(28), edge);
+            card.setColor(Palette.PANEL);
+            c.drawRoundRect(r, Ui.f(16), Ui.f(16), card);
             float tx = Ui.f(x + PAD);
-            c.drawText("WHAT'S NEW", tx, Ui.f(y + 88), kicker);
-            c.drawText(Ui.fit("Homefield TV " + name, title, Ui.f(W - 2 * PAD)), tx, Ui.f(y + 146), title);
-            Ui.draw(c, lines, tx, Ui.f(y + 190));
-            float by = y + 190 + lines.getHeight() / Ui.s + 48;
-            String label = "OK";
-            float bw = Math.max(Ui.f(160), ok.measureText(label) + Ui.f(80));
-            r.set(tx, Ui.f(by), tx + bw, Ui.f(by + 64));
-            c.drawRoundRect(r, Ui.f(32), Ui.f(32), button);
-            Dark.ring(c, r, Ui.f(32), ring);
-            c.drawText(label, r.centerX() - ok.measureText(label) / 2f, r.centerY() + Ui.f(10), ok);
+            kicker.setColor(Palette.ACCENT);
+            c.drawText("What's new", tx, Ui.f(y + PAD + 18f), kicker);
+            title.setColor(Palette.TEXT1);
+            c.drawText(Ui.fit("Homefield TV " + name, title, Ui.f(W - 2 * PAD)), tx, Ui.f(y + PAD + 70f), title);
+            body.setColor(Palette.TEXT2);
+            Ui.draw(c, lines, tx, Ui.f(y + PAD + 30f + 52f + 20f));
+            // OK, where the remote is: the focus pill, 16 px in from the card's sides.
+            float by = y + PAD + 30f + 52f + 20f + textH + 32f;
+            r.set(Ui.f(x + Focus.INSET_PANEL), Ui.f(by), Ui.f(x + W - Focus.INSET_PANEL), Ui.f(by + RowList.ROW_1));
+            Focus.pill(c, r);
+            ok.setColor(Palette.TEXT1);
+            c.drawText("OK", Ui.f(x + RowList.TEXT_X), Type.centred(ok, r.centerY()), ok);
         }
     }
 }

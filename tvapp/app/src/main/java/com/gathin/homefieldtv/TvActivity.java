@@ -221,6 +221,8 @@ public final class TvActivity extends Activity {
     /** Settings → Backup's file chooser answered: the file read, and Settings on it to confirm. */
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
+        // Search's microphone: Android's voice input answered.
+        if (SearchScreen.heard(this, request, result, data)) return;
         String said = com.gathin.homefieldtv.backups.BackupStore.picked(this, request, result, data);
         if (said != null) ExtraSettings.picked(this, said);
     }

@@ -23,19 +23,20 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 /**
- * A film's or a series' poster as the dark screens draw it, everywhere one shows (the category rows, the grid, the side
- * panel's lists, More like this), the same as the phone's: a 2:3 card with its corners rounded, its foot fading into the
- * poster's own colour; over the fade the title in bold white (there are no title logos here) and "Genre • ★ 8.2"; at
- * the top left "New" for a title the playlist added in the last fortnight; at the top right what the family's
- * playlists have of it (4K, 1080p or 720p in a white chip, and the Dolby Vision or Atmos mark where a name says so);
- * under the card the title and the year. Where the remote is, the card grows a little inside a white ring, its badges
- * still in sight. Every size comes from the card's width, so a row's posters and the grid's look alike.
+ * A film's or a series' poster card as the family's other app draws one, everywhere one shows (Movies and TV shows'
+ * grids, Search, My list, Home's rows, More like this): the poster (2:3, 244 x 366 on their TV) with its corners
+ * rounded, the rating in the accent's chip at its foot on the left ("5.8"), and under it a caption strip of the panel's
+ * colour with the title and its year in one line cut short with "..". Where the remote is the strip takes the focus
+ * colour and a 2 px edge in the light accent goes round the card; the card does not grow. Homefield's own marks stay
+ * on the picture: TorBox's green cloud on one of the family's own TorBox titles, "New" for a title the playlist added
+ * in the last fortnight, what the family's playlists have of it at the top right (4K, 1080p or 720p in a white chip,
+ * the Dolby Vision or Atmos mark), and how far through it is along the picture's foot in the accent. Every size comes
+ * from the card's width, so a row's posters and the grid's look alike.
  *
- * <p>Settings, Posters: Landscape makes each card 16:9 (as the phone's): its picture the title's wide backdrop (at
- * w780; the poster where there is none), the title at the foot's left in at most half the card's width (where the phone
- * puts the title's logo: there are none here), the genre and rating line left-aligned under it, the fade rising from
- * 24% of the way down. The badges, the chips and the writing under the card stay the size a portrait card's are (its
- * height is a portrait card's width).
+ * <p>Settings → Appearance → Posters: Landscape makes each card 16:9: its picture the title's wide backdrop (at w780;
+ * the poster where there is none), the same caption strip under it. The chips and the writing stay the size a portrait
+ * card's are (its height is a portrait card's width). The pure helpers below (the fade's colour, genres, the rating's
+ * line) are also Pics' and the phone-style posters'.
  */
 final class PosterArt {
     /** The corners' radius, as a share of the card's width. */
@@ -58,7 +59,7 @@ final class PosterArt {
         String backdrop = "";
         private StaticLayout over;
         private float overFor = -1f;
-        private String underTitle, underYear, line, badge;
+        private String underTitle, line, badge;
         private float underFor = -1f;
 
         Item(Catalog.Title t) {
@@ -282,15 +283,17 @@ final class PosterArt {
 
     /** The card's width (px) this was made for. */
     final float w;
-    /** Its height, its corners, and the size every badge and word is a share of (a portrait card's width). */
-    private final float h, r, u;
+    /**
+     * Its picture's height, its caption strip's, its corners, and the size every badge and word is a share of (a
+     * portrait card's width: 244 on the family's TV, its strip 52, its words 28 px).
+     */
+    private final float h, cap, r, u;
     private final boolean wide;
-    private final TextPaint overP, lineP, badgeP, chipP, nameP, nameOn, yearP;
-    private final Paint card = Dark.fill(Dark.CARD), bmp = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
-    private final Paint pill = Dark.fill(0), white = Dark.fill(0xFFFFFFFF), track = Dark.fill(0x59FFFFFF), bar = Dark.fill(0xFFFFFFFF);
-    private final Paint ring = Dark.line(Dark.RING, 3f), fade = new Paint(), plate = Dark.fill(0xB3111114);
+    private final TextPaint captionP, ratingP, badgeP, chipP, blankP;
+    private final Paint card = new Paint(Paint.ANTI_ALIAS_FLAG), bmp = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
+    private final Paint pill = Dark.fill(0), white = Dark.fill(0xFFFFFFFF), bar = Dark.fill(0), plate = Dark.fill(0xB3111114);
     private final RectF rect = new RectF(), tmp = new RectF();
-    private int fadeFor;
+    private final android.graphics.Path clip = new android.graphics.Path();
     private final int pw, ph;
 
     PosterArt(float widthPx) {
@@ -298,21 +301,22 @@ final class PosterArt {
         wide = landscape;
         h = wide ? w * 9f / 16f : w * 1.5f;
         u = wide ? h : w;
-        r = u * RADIUS;
+        cap = u * CAPTION;
+        r = u * 0.035f;
         pw = Math.round(w);
         ph = Math.round(h);
-        overP = text(0.105f, 700, 0xFFFFFFFF);
-        lineP = text(0.068f, 600, 0xBFFFFFFF);
-        badgeP = text(0.066f, 700, 0xFFFFFFFF);
-        chipP = text(0.064f, 800, 0xFF111114);
-        nameP = text(0.084f, 500, 0xFFFFFFFF);
-        nameOn = text(0.084f, 600, 0xFFFFFFFF);
-        yearP = text(0.07f, 400, YEAR);
-        overP.setShadowLayer(u * 0.03f, 0, u * 0.006f, 0x99000000);
+        captionP = text(0.115f, Type.REGULAR, 0xFFFFFFFF);
+        ratingP = text(0.103f, Type.REGULAR, 0xFFFFFFFF);
+        badgeP = text(0.066f, Type.BOLD, 0xFFFFFFFF);
+        chipP = text(0.064f, Type.BOLD, 0xFF111114);
+        blankP = text(0.1f, Type.MEDIUM, 0xFFFFFFFF);
     }
 
+    /** The caption strip's height, as a share of a portrait card's width (52 of 244). */
+    static final float CAPTION = 0.213f;
+
     private TextPaint text(float share, int weight, int color) {
-        TextPaint p = Dark.text(1, weight, color);
+        TextPaint p = Type.paint(1, weight, color);
         p.setTextSize(u * share);
         return p;
     }
@@ -324,119 +328,115 @@ final class PosterArt {
         return b.isEmpty() ? it.title.poster : w780(b);
     }
 
-    private int mode() {
-        return wide ? Pics.POSTER_WIDE : Pics.POSTER;
-    }
-
-    /** The card's height. */
+    /** The picture's height (the caption strip under it). */
     float cardH() {
         return h;
     }
 
-    /** The room under the card for the title and the year. */
+    /** The caption strip under the picture. */
     float under() {
-        return u * 0.27f;
+        return cap;
     }
 
-    /** The whole tile's height: the card and the writing under it. */
+    /** The whole card: the picture and its caption strip. */
     float tileH() {
-        return h + under();
+        return h + cap;
     }
 
     /** Asks for the poster's picture early, so it is there when the row slides on to it. */
     void prefetch(Item it, Runnable redraw) {
-        if (it != null && it.title != null) Pics.get(picture(it), pw, ph, mode(), redraw);
+        if (it != null && it.title != null) Pics.get(picture(it), pw, ph, Pics.CROP, redraw);
     }
 
-    /** One poster at (x, y): its card, then the writing under it; lifted inside a ring where the remote is. */
+    /** One card at (x, y): its picture, its caption under it; where the remote is, the strip lit and the edge drawn. */
     void draw(Canvas c, Item it, float x, float y, boolean focused, int alpha, Runnable redraw) {
         draw(c, it, x, y, focused ? 1f : 0f, alpha, redraw);
     }
 
-    /** lift: 0 resting, 1 where the remote is (grown to LIFT inside a ring), between as it grows or settles (Lift). */
+    /**
+     * lift: 0 resting, 1 where the remote is. The other app doesn't grow the poster the remote is on: past halfway it
+     * is drawn as the remote's (the strip in the focus colour, a 2 px edge in the light accent round the card), at once.
+     */
     void draw(Canvas c, Item it, float x, float y, float lift, int alpha, Runnable redraw) {
         Catalog.Title t = it.title;
         boolean focused = lift > 0.5f;
-        c.save();
-        if (lift > 0f) {
-            float s = 1f + (LIFT - 1f) * lift;
-            c.scale(s, s, x + w / 2f, y + h / 2f);
-        }
         rect.set(x, y, x + w, y + h);
+        // The picture with its top corners rounded, the strip under it with its foot's.
+        c.save();
+        clip.reset();
+        tmp.set(x, y, x + w, y + h + cap);
+        clip.addRoundRect(tmp, r, r, android.graphics.Path.Direction.CW);
+        c.clipPath(clip);
         String pic = picture(it);
-        Bitmap b = pic.isEmpty() ? null : Pics.get(pic, pw, ph, mode(), redraw);
+        Bitmap b = pic.isEmpty() ? null : Pics.get(pic, pw, ph, Pics.CROP, redraw);
         bmp.setAlpha(alpha);
         if (b != null) {
-            c.drawBitmap(b, x, y, bmp);
+            c.drawBitmap(b, null, rect, bmp);
         } else {
-            // No picture (yet): a card in the title's own deep colour, faded as a poster's foot is.
-            int colour = blank(t.name);
-            card.setColor(colour);
+            // No picture (yet): the title's own deep colour with its name on it.
+            card.setColor(blank(t.name));
             card.setAlpha(alpha);
-            c.drawRoundRect(rect, r, r, card);
-            if (fadeFor != colour) {
-                fade.setShader(fadeShader(fadeColour(colour & 0xFFFFFF), h, wide));
-                fadeFor = colour;
+            c.drawRect(rect, card);
+            if (it.over == null || it.overFor != w) {
+                int room = Math.round(w * 0.8f);
+                it.over = StaticLayout.Builder.obtain(t.name, 0, t.name.length(), blankP, room)
+                        .setAlignment(Layout.Alignment.ALIGN_CENTER).setMaxLines(4)
+                        .setEllipsize(TextUtils.TruncateAt.END).setIncludePad(false).build();
+                it.overFor = w;
             }
-            fade.setAlpha(alpha);
+            blankP.setAlpha(alpha);
             c.save();
-            c.translate(x, y);
-            tmp.set(0, 0, w, h);
-            c.drawRoundRect(tmp, r, r, fade);
+            c.translate(x + w * 0.1f, y + (h - it.over.getHeight()) / 2f);
+            it.over.draw(c);
             c.restore();
         }
-        overWriting(c, it, x, y, alpha);
-        badges(c, it, x, y, alpha);
+        // The caption strip: the panel's colour, the focus colour where the remote is.
+        card.setColor(focused ? Palette.over(Palette.GROUND, Palette.FOCUS) : Palette.PANEL);
+        card.setAlpha(alpha);
+        c.drawRect(x, y + h, x + w, y + h + cap, card);
         if (it.progress >= 0f) {
-            float bx = x + u * 0.07f, bw = w - u * 0.14f, by = y + h - u * 0.05f, bh = Math.max(2f, u * 0.022f);
-            track.setAlpha(alpha * 0x59 / 255);
+            // How far through: the accent along the picture's foot.
+            float bh = Math.max(2f, u * 0.018f);
+            bar.setColor(0x66000000);
+            bar.setAlpha(alpha * 0x66 / 255);
+            c.drawRect(x, y + h - bh, x + w, y + h, bar);
+            bar.setColor(Palette.ACCENT);
             bar.setAlpha(alpha);
-            tmp.set(bx, by - bh, bx + bw, by);
-            c.drawRoundRect(tmp, bh / 2, bh / 2, track);
-            tmp.set(bx, by - bh, bx + bw * Math.max(0.03f, Math.min(1f, it.progress)), by);
-            c.drawRoundRect(tmp, bh / 2, bh / 2, bar);
-        }
-        if (lift > 0f) {
-            ring.setStrokeWidth(Math.max(2f, u * 0.016f));
-            ring.setAlpha(Math.round(alpha * 0.92f * lift));
-            Dark.ring(c, rect, r, ring);
+            c.drawRect(x, y + h - bh, x + w * Math.max(0.03f, Math.min(1f, it.progress)), y + h, bar);
         }
         c.restore();
-        underWriting(c, it, x, y + h + h * (LIFT - 1f) / 2f * lift, focused, alpha);
+        rating(c, it, x, y, alpha);
+        badges(c, it, x, y, alpha);
+        caption(c, it, x, y + h, alpha);
+        if (focused) {
+            tmp.set(x, y, x + w, y + h + cap);
+            Focus.border(c, tmp, r);
+        }
     }
 
-    /**
-     * The title and the line under it, over the poster's fade: centred on a portrait card; on a landscape one at the
-     * foot's left, the title in at most half the card's width (where the phone puts the title's logo).
-     */
-    private void overWriting(Canvas c, Item it, float x, float y, int alpha) {
-        Catalog.Title t = it.title;
-        if (it.line == null) it.line = line(it.genre, t.rating);
-        float lineBase = y + h - u * (it.progress >= 0f ? 0.11f : 0.075f), pad = u * 0.07f;
-        if (!it.line.isEmpty()) {
-            lineP.setAlpha(alpha * 0xBF / 255);
-            String s = Ui.fit(it.line, lineP, wide ? w * 0.6f : w * 0.88f);
-            c.drawText(s, wide ? x + pad : x + (w - lineP.measureText(s)) / 2f, lineBase, lineP);
+    /** The rating in the accent's chip at the picture's foot on the left ("5.8"), when the playlist gives one. */
+    private void rating(Canvas c, Item it, float x, float y, int alpha) {
+        if (it.line == null) {
+            float v = Billboard.rating(it.title.rating);
+            it.line = v > 0 ? String.format(Locale.UK, "%.1f", v) : "";
         }
-        if (it.over == null || it.overFor != w) {
-            int room = Math.round(wide ? w * 0.5f : w * 0.86f);
-            it.over = StaticLayout.Builder.obtain(t.name, 0, t.name.length(), overP, room)
-                    .setAlignment(wide ? Layout.Alignment.ALIGN_NORMAL : Layout.Alignment.ALIGN_CENTER).setMaxLines(2)
-                    .setEllipsize(TextUtils.TruncateAt.END).setIncludePad(false).setLineSpacing(0f, 0.95f).build();
-            it.overFor = w;
-        }
-        float top = (it.line.isEmpty() ? lineBase : lineBase - lineP.getTextSize() * 1.1f) - u * 0.03f - it.over.getHeight();
-        overP.setAlpha(alpha);
-        c.save();
-        c.translate(x + pad, top);
-        it.over.draw(c);
-        c.restore();
+        if (it.line.isEmpty()) return;
+        float ch = u * 0.143f, pad = u * 0.045f, m = u * 0.05f;
+        float tw = ratingP.measureText(it.line);
+        float bottom = y + h - m - (it.progress >= 0f ? u * 0.02f : 0f);
+        tmp.set(x + m, bottom - ch, x + m + tw + pad * 2, bottom);
+        pill.setColor(Palette.ACCENT);
+        pill.setAlpha(alpha);
+        c.drawRoundRect(tmp, u * 0.025f, u * 0.025f, pill);
+        ratingP.setColor(Palette.ACCENT_INK);
+        ratingP.setAlpha(alpha);
+        c.drawText(it.line, tmp.left + pad, tmp.centerY() + ratingP.getTextSize() * 0.36f, ratingP);
     }
 
-    /** New at the top left; the picture's chip and the Dolby mark at the top right. */
+    /** TorBox's cloud and New at the top left; the picture's chip and the Dolby mark at the top right. */
     private void badges(Canvas c, Item it, float x, float y, int alpha) {
         Catalog.Title t = it.title;
-        float m = u * 0.055f, bh = u * 0.13f, rad = u * 0.035f;
+        float m = u * 0.05f, bh = u * 0.12f, rad = u * 0.025f;
         if (it.badge == null) it.badge = badge(t.added, System.currentTimeMillis());
         float left = x + m;
         if (t.torbox()) {
@@ -447,10 +447,10 @@ final class PosterArt {
         if (!it.badge.isEmpty()) {
             float tw = badgeP.measureText(it.badge);
             tmp.set(left, y + m, left + tw + u * 0.1f, y + m + bh);
-            pill.setColor(Dark.BADGE);
+            pill.setColor(Palette.ACCENT);
             pill.setAlpha(alpha);
             c.drawRoundRect(tmp, rad, rad, pill);
-            badgeP.setColor(Dark.ACCENT_INK);
+            badgeP.setColor(Palette.ACCENT_INK);
             badgeP.setAlpha(alpha);
             c.drawText(it.badge, tmp.left + u * 0.05f, tmp.centerY() + badgeP.getTextSize() * 0.36f, badgeP);
         }
@@ -461,7 +461,7 @@ final class PosterArt {
             float tw = chipP.measureText(q);
             tmp.set(right - tw - u * 0.07f, y + m, right, y + m + ch);
             white.setAlpha(alpha);
-            c.drawRoundRect(tmp, u * 0.025f, u * 0.025f, white);
+            c.drawRoundRect(tmp, rad, rad, white);
             chipP.setAlpha(alpha);
             c.drawText(q, tmp.left + u * 0.035f, tmp.centerY() + chipP.getTextSize() * 0.36f, chipP);
             right = tmp.left - u * 0.035f;
@@ -475,7 +475,7 @@ final class PosterArt {
                 // On a dark plate of its own, so it reads over a bright poster too.
                 tmp.set(markLeft - u * 0.025f, y + m, right + u * 0.025f, y + m + ch);
                 plate.setAlpha(alpha * 0xB3 / 255);
-                c.drawRoundRect(tmp, u * 0.025f, u * 0.025f, plate);
+                c.drawRoundRect(tmp, rad, rad, plate);
                 tmp.set(markLeft, y + m + (ch - mh) / 2f, right, y + m + (ch + mh) / 2f);
                 bmp.setAlpha(alpha);
                 c.drawBitmap(mark, null, tmp, bmp);
@@ -483,21 +483,26 @@ final class PosterArt {
         }
     }
 
-    /** The title in white and the year in grey, under the card. */
-    private void underWriting(Canvas c, Item it, float x, float y, boolean focused, int alpha) {
+    /** The caption: the title and its year ("Other Mommy (2026)"), one line, cut short with "..". */
+    private void caption(Canvas c, Item it, float x, float y, int alpha) {
         Catalog.Title t = it.title;
         if (it.underFor != w || it.underTitle == null) {
-            it.underTitle = Ui.fit(t.name, nameP, w);
-            it.underYear = t.year;
+            String s = t.name + (t.year.isEmpty() || t.name.endsWith(")") ? "" : " (" + t.year + ")");
+            it.underTitle = fitDots(s, captionP, w - u * 0.1f);
             it.underFor = w;
         }
-        TextPaint p = focused ? nameOn : nameP;
-        p.setAlpha(alpha);
-        c.drawText(it.underTitle, x, y + u * 0.125f, p);
-        if (!it.underYear.isEmpty()) {
-            yearP.setAlpha(alpha);
-            c.drawText(it.underYear, x, y + u * 0.225f, yearP);
-        }
+        captionP.setColor(Palette.TEXT1);
+        captionP.setAlpha(alpha);
+        c.drawText(it.underTitle, x + u * 0.05f, y + cap / 2f + captionP.getTextSize() * 0.36f, captionP);
+    }
+
+    /** Pure-ish: words cut to fit a width with ".." as the other app cuts its captions. */
+    static String fitDots(String s, TextPaint p, float room) {
+        if (s == null) return "";
+        if (p.measureText(s) <= room) return s;
+        int n = s.length();
+        while (n > 1 && p.measureText(s, 0, n) + p.measureText("..") > room) n--;
+        return s.substring(0, n).trim() + "..";
     }
 
     private static final int[] BLANKS = {0xFF2B3A55, 0xFF4A2B33, 0xFF2E4A3C, 0xFF46392A, 0xFF3A2D52, 0xFF27434A};

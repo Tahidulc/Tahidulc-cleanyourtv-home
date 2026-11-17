@@ -10,10 +10,10 @@ import java.io.IOException;
 import java.util.List;
 
 /**
- * Settings' TorBox section, as the phone's: the family's own TorBox account as a source for films and series beside the
- * playlists, on or off, its copies before the playlists' or after them, and its API key (kept on this TV and never shown
- * again once saved; typed with the remote's keyboard, or sent from a computer over adb), checked with TorBox when saved:
- * how many films and episodes it has ready, or why not.
+ * Settings → Playlists → TorBox, as the phone's: the family's own TorBox account as a source for movies and TV shows
+ * beside the playlists, on or off, its copies before the playlists' or after them, and its API key (kept on this TV and
+ * never shown again once saved; typed with the remote's keyboard as dots, or sent from a computer over adb), checked
+ * with TorBox when saved: how many films and episodes it has ready, or why not.
  */
 final class TorBoxSettings {
     private TorBoxSettings() {}
@@ -25,23 +25,22 @@ final class TorBoxSettings {
     private static String said = "";
     private static boolean checking;
 
-    static void fill(TvActivity tv, List<ListPanel.Item> out) {
+    /** The page's rows: the switches, the key, Check and Forget once a key is saved. */
+    static void rows(TvActivity tv, List<RowList.Row> out) {
         boolean has = TorBox.hasKey(tv);
-        out.add(new ListPanel.Item(null, ListPanel.HEADING, "TorBox", ""));
-        out.add(new ListPanel.Item(null, ListPanel.NOTE, "Films and series already in your own TorBox play here beside your playlists'", ""));
-        out.add(new ListPanel.Item(null, ListPanel.NOTE, "copies: its finished downloads, matched by their names. Nothing is searched for or added.", ""));
-        out.add(new ListPanel.Item("on", ListPanel.TEXT, "Use TorBox for films and series", TorBox.wanted(tv) ? "On" : "Off"));
-        out.add(new ListPanel.Item("first", ListPanel.TEXT, "Offer TorBox's copies first",
-                TorBox.first(tv) ? "On  ·  before your playlists' copies" : "Off  ·  after your playlists' copies"));
-        out.add(new ListPanel.Item("f:" + FIELD, ListPanel.TEXT, "API key",
-                has ? "Saved  ·  OK to type a new one" : "On torbox.app: Settings, then API key"));
+        out.add(RowList.Row.toggle("on", "Use TorBox for movies and TV shows", "", TorBox.wanted(tv)));
+        out.add(RowList.Row.toggle("first", "Offer TorBox's copies first", TorBox.first(tv) ? "Before your playlists' copies"
+                : "After your playlists' copies", TorBox.first(tv)));
+        out.add(RowList.Row.item("type:" + FIELD, "API key", has ? "Saved  ·  OK to type a new one" : "On torbox.app: Settings, then API key"));
         if (has) {
-            out.add(new ListPanel.Item("check", ListPanel.TEXT, "Check with TorBox",
-                    checking ? "Checking with TorBox…" : said.isEmpty() ? "How many films and episodes it has ready" : said));
-            out.add(new ListPanel.Item("forget", ListPanel.TEXT, "Forget the key", "TorBox's copies go until a key is saved again"));
+            out.add(RowList.Row.item("check", "Check with TorBox",
+                    checking ? "Checking with TorBox…" : said.isEmpty() ? "How many movies and episodes it has ready" : said));
+            out.add(RowList.Row.item("forget", "Forget the key", "TorBox's copies go until a key is saved again"));
         }
-        out.add(new ListPanel.Item(null, ListPanel.NOTE, "The key stays on this TV and isn't shown again once saved. From a computer:", ""));
-        out.add(new ListPanel.Item(null, ListPanel.NOTE, "adb shell content insert --uri content://com.gathin.homefieldtv.setup/torbox --bind key:s:…", ""));
+        out.add(RowList.Row.note("Movies and TV shows already in your own TorBox play here beside your playlists' copies: its "
+                + "finished downloads, matched by their names. Nothing is searched for or added."));
+        out.add(RowList.Row.note("The key stays on this TV and isn't shown again once saved. From a computer: adb shell content "
+                + "insert --uri content://com.gathin.homefieldtv.setup/torbox --bind key:s:…"));
     }
 
     /** A line chosen: changed (true), or not one of the section's (false). changed runs when a check has answered. */
