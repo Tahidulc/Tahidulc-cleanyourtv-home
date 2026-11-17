@@ -30,6 +30,7 @@ import java.util.List;
  * <pre>
  *   set(entries, focus)            the column's rows (Entry.heading / Entry.group / Entry.bold), the remote on focus
  *   choose(tag)                    the group on screen (its selected pill), the remote put on it too
+ *   mark(tag)                      the group on screen only (the remote and the list's slide left as they are)
  *   key(code) / ok()               the remote
  * </pre>
  */
@@ -132,6 +133,12 @@ final class GroupsPanel extends View {
                 break;
             }
         }
+        invalidate();
+    }
+
+    /** The group on screen (its selected pill), the remote left where it is and the list's slide left running. */
+    void mark(Object tag) {
+        current = tag;
         invalidate();
     }
 

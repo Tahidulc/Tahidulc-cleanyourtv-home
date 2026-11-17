@@ -1,5 +1,8 @@
 package com.gathin.homefieldtv;
 
+import android.animation.ValueAnimator;
+import android.graphics.Rect;
+import android.graphics.RectF;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.KeyEvent;
@@ -13,45 +16,79 @@ import com.gathin.homefieldtv.engine.Genres;
 import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.engine.Lineup;
-import com.gathin.homefieldtv.engine.Reminders;
+import com.gathin.homefieldtv.engine.Sources;
+import com.gathin.homefieldtv.prefs.Categories;
 
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 
 /**
- * The TV guide, dark, in the phone's guide's colours: the rail; the categories down the side (All channels, Favourites,
- * Recently watched, the guide's own kinds, then the playlist's groups, each with how many channels it has); at the top
- * the programme the remote is on (its title, channel, times and story) with its picture at the top right; then the
- * grid, with a strip under the channel's row about that programme. OK watches the channel, or plays a programme
- * already shown from the provider's archive (catch-up); OK held brings up a small menu (Remind me or Cancel reminder for
- * a programme to come, watch it live, from the start, the favourites); a programme with a reminder has a bell; Back from
- * the past comes back to now; the number keys go to a channel. No mini TV here: the stream is let go until a channel is
- * chosen.
+ * The TV guide, as the family's TiviMate shows it (DEVICE.md §2.7, §2.8, §2.10, §2.11): the preview at the top left
+ * playing the channel last watched, the programme the remote is on to its right (GuideBand), the times and the rows
+ * under them (GuideGrid), with nothing else on screen.
+ *
+ * <p>Left from the programme on now (or Back) brings in the rail and the groups column, pushing the guide right (it is
+ * never covered): Homefield's playlist with Favourites, All channels and Recently watched, then the playlist's groups
+ * in Settings → Categories' order and names (hidden ones and ones locked away left out), then the guide's own kinds
+ * (Sport, News…). The guide switches to a group as the remote moves onto it, with no OK. Left again (or Back) opens
+ * the rail into the drawer, the guide pushed further right; Back from there leaves the guide. Right goes back each
+ * step.
+ *
+ * <p>OK on a programme on now tunes its channel in the preview; OK again on the channel playing there goes full
+ * screen (Back comes back here). OK on a programme to come opens the small menu under it (Remind, Record…); on one
+ * already shown that the provider's archive keeps, it plays it from its start (catch-up, CatchupScreen). OK held (or
+ * MENU) opens the whole menu (GuideMenu, GuideActions): Search and Settings, the programme's lines (Remind or Watch from
+ * start…), the channel's (Favourites, Catch-up: the archive by day, ArchiveScreen; Block). Play/pause shows the
+ * programme's description, Stop adds the channel to the favourites or takes it off, Back held goes back to the player
+ * and Menu held opens Search (the family's TV's keys); the number keys go to a channel, the channel keys page the rows,
+ * rewind and fast-forward page the times (into the archive), and Back first comes back to the programmes on now.
+ * Back from the player opens a new guide (TvActivity.toGuide) on the list shown last, the channel playing in its
+ * preview.
  */
-final class GuideScreen extends Screen implements GuideGrid.Host {
-    private static final int RAIL = 0, PANEL = 1, GRID = 2;
-    private static final String ALL = "all", FAV = "fav", RECENT = "recent", GENRE = "genre:", GROUP = "group:";
+final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Host, GuideMenu.Host, DialogCard.Host, LiveTv.Listener {
+    private static final int GRID = 0, GROUPS = 1, DRAWER = 2;
+    private static final String ALL = "all", FAV = "fav", RECENT = "recent", GENRE = "genre:", GROUP = "group:", PLAYLIST = "playlist",
+            KINDS = "kinds";
+
+    /** The list the guide showed last, while the app runs: Back from the player opens a new guide on it (as the TV does). */
+    private static String lastShown = ALL;
 
     private final String startCategory;
-    private Rail rail;
-    private SidePanel panel;
-    private GuideGrid grid;
+    private FrameLayout content;
     private GuideBand band;
-    private Backdrop backdrop;
-    private PopMenu menu;
+    private GuideGrid grid;
+    private GroupsPanel groups;
+    private Rail rail;
+    private GuideMenu menu;
+    private DialogCard dialog;
     private int area = GRID;
     /** The list in the grid: ALL, FAV, RECENT, or GENRE / GROUP and its name. */
     private String shown = ALL;
-    private final Set<String> favourites = new HashSet<>();
+    /** The rail and the groups column in (1) or out (0), the guide pushed right by them; and its animation. */
+    private float reveal;
+    private ValueAnimator push;
+    /** The playlists' names by their channels' key prefix. */
+    private final Map<String, String> playlists = new HashMap<>();
+    private final List<String> listed = new ArrayList<>();
     private String digits = "";
+    /** Opened before there was anything to show (on the groups): goes to the rows when the channels come. */
+    private boolean waiting;
+    /** What a menu is open for: the channel, its programme's index and {start, end}. */
+    private Channel menuChannel;
+    private int menuIndex = -1;
+    private long[] menuTimes;
     private final Handler h = new Handler(Looper.getMainLooper());
     private final Runnable digitsDone = this::jump;
-    private final Runnable switchList = this::showChosen;
-    private final Runnable askPicture = this::askPicture;
+    private final RectF tmp = new RectF();
 
-    /** category: one of Genres' names to open on, or null for all the channels. */
+    /** The list shown last forgotten: the next guide opens on all the channels (a test's own channels gone). */
+    static void forgetList() {
+        lastShown = ALL;
+    }
+
+    /** category: one of Genres' names to open on, or null for the list shown last (all the channels at first). */
     GuideScreen(TvActivity tv, String category) {
         super(tv);
         this.startCategory = category;
@@ -59,59 +96,80 @@ final class GuideScreen extends Screen implements GuideGrid.Host {
 
     @Override View build() {
         FrameLayout f = new FrameLayout(tv);
-        f.setBackgroundColor(Dark.GROUND);
+        f.setBackgroundColor(Palette.GROUND);
         Library lib = Library.get(tv);
-        backdrop = new Backdrop(tv, 920f, 0f, 1000f, 340f, Pics.DARK);
+        content = new FrameLayout(tv);
+        band = new GuideBand(tv, lib);
         grid = new GuideGrid(tv, lib);
         grid.setHost(this);
-        band = new GuideBand(tv, lib);
-        panel = new SidePanel(tv);
+        content.addView(band, new FrameLayout.LayoutParams(-1, -1));
+        content.addView(grid, new FrameLayout.LayoutParams(-1, -1));
+        groups = new GroupsPanel(tv);
+        groups.setHost(this);
         rail = new Rail(tv, Rail.GUIDE);
-        f.addView(backdrop, new FrameLayout.LayoutParams(-1, -1));
-        f.addView(grid, new FrameLayout.LayoutParams(-1, -1));
-        f.addView(band, new FrameLayout.LayoutParams(-1, -1));
-        f.addView(panel, new FrameLayout.LayoutParams(-1, -1));
+        menu = new GuideMenu(tv);
+        menu.setHost(this);
+        dialog = new DialogCard(tv);
+        dialog.setHost(this);
+        f.addView(content, new FrameLayout.LayoutParams(-1, -1));
+        f.addView(groups, new FrameLayout.LayoutParams(-1, -1));
         f.addView(rail, new FrameLayout.LayoutParams(-1, -1));
-        menu = new PopMenu(tv);
         f.addView(menu, new FrameLayout.LayoutParams(-1, -1));
-        String first = startCategory == null ? ALL : GENRE + startCategory;
-        fillPanel(first);
-        load(first, null);
-        to(grid.count() == 0 ? PANEL : GRID);
+        f.addView(dialog, new FrameLayout.LayoutParams(-1, -1));
+        shown = startCategory == null ? lastShown : GENRE + startCategory;
+        fillGroups();
+        load(shown, null);
+        // Nothing to show: the groups (and from them the menu, for Settings) rather than an empty grid.
+        area = grid.count() == 0 ? GROUPS : GRID;
+        waiting = area == GROUPS;
+        reveal = area == GRID ? 0f : 1f;
+        groups.setActive(area == GROUPS);
+        grid.setActive(area == GRID);
+        place();
         return f;
     }
 
+    // ---- the groups -------------------------------------------------------------------------------------------------
+
     /**
-     * The categories with their counts: the guide's own lists, its kinds, then the playlist's groups. Each count is a
-     * list's size, the lists made as the channels were read (Library), never counted here: opening the guide costs the
-     * same with fifty channels or fifty thousand.
+     * The groups column: the playlist's name (or All playlists) over Favourites, All channels, Recently watched and the
+     * playlist's groups in Settings → Categories' order and names, hidden ones (and ones locked away) left out; then the
+     * guide's own kinds. Made from the lists the library keeps (Library: a group's size is its list's), so this goes
+     * through the groups, never through every channel.
      */
-    private void fillPanel(String chosen) {
+    private void fillGroups() {
         Library lib = Library.get(tv);
-        favourites.clear();
-        favourites.addAll(lib.favourites());
-        List<SidePanel.Entry> e = new ArrayList<>();
-        e.add(new SidePanel.Entry("All channels", Dark.LIVE, lib.all().size(), ALL));
-        e.add(new SidePanel.Entry("Favourites", Dark.HEART, lib.list(Library.FAVOURITES, "").size(), FAV));
-        e.add(new SidePanel.Entry("Recently watched", Dark.RESUME, lib.recent(null).size(), RECENT));
-        e.add(SidePanel.Entry.section("Categories"));
+        playlists.clear();
+        List<Sources.Entry> all = Sources.list(tv), inUse = Sources.inUse(tv);
+        for (Sources.Entry e : all) playlists.put(e.prefix(), e.name);
+        List<GroupsPanel.Entry> e = new ArrayList<>();
+        listed.clear();
+        e.add(GroupsPanel.Entry.heading(inUse.size() == 1 ? inUse.get(0).name : "All playlists", PLAYLIST));
+        add(e, "Favourites", FAV);
+        add(e, "All channels", ALL);
+        add(e, "Recently watched", RECENT);
+        for (String g : Categories.arranged(tv, lib.groups())) {
+            if (lib.group(g).channels.isEmpty()) continue;
+            add(e, Categories.label(tv, g), GROUP + g);
+        }
+        boolean kinds = false;
         for (String g : Genres.ORDER) {
-            int n = lib.genre(g).channels.size();
-            if (n > 0 || g.equals(startCategory)) e.add(new SidePanel.Entry(g, -1, n, GENRE + g));
+            if (lib.genre(g).channels.isEmpty() && !g.equals(startCategory)) continue;
+            if (!kinds) e.add(GroupsPanel.Entry.heading("TV guide categories", KINDS));
+            kinds = true;
+            add(e, g, GENRE + g);
         }
-        // Settings → Categories: in the family's order and names, hidden ones (and ones locked away) left out.
-        List<String> mine = com.gathin.homefieldtv.prefs.Categories.arranged(tv, lib.groups());
-        if (!mine.isEmpty()) {
-            e.add(SidePanel.Entry.section("Your playlist"));
-            for (String g : mine) {
-                int n = lib.group(g).channels.size();
-                if (n == 0) continue;
-                e.add(new SidePanel.Entry(com.gathin.homefieldtv.prefs.Categories.label(tv, g), -1, n, GROUP + g));
-            }
-        }
+        // The list on screen gone (its group hidden or emptied): all the channels.
+        if (!listed.contains(shown)) shown = ALL;
         int at = 0;
-        for (int i = 0; i < e.size(); i++) if (chosen.equals(e.get(i).tag)) at = i;
-        panel.set("TV guide", e, at);
+        for (int i = 0; i < e.size(); i++) if (shown.equals(e.get(i).tag)) at = i;
+        groups.set(e, at);
+        groups.choose(shown);
+    }
+
+    private void add(List<GroupsPanel.Entry> e, String name, String tag) {
+        e.add(GroupsPanel.Entry.group(name, tag));
+        listed.add(tag);
     }
 
     /** A list's channels, as the library made them (with where each is in it). */
@@ -124,84 +182,231 @@ final class GuideScreen extends Screen implements GuideGrid.Host {
         return lib.lineup();
     }
 
-    /** A list's channels in the grid, the remote on focusOn if it is there, else on the channel last watched. */
+    /** A list's channels in the grid, the remote on focusOn if it is there, else on the channel playing. */
     private void load(String tag, Channel focusOn) {
         shown = tag;
+        lastShown = tag;
         Library lib = Library.get(tv);
-        if (!lib.hasSource()) grid.empty = "Add your playlist in Settings, and its channels and guide show here.";
-        else if (!lib.ready()) grid.empty = lib.busy() ? "Loading your channels…" : lib.status();
-        else if (FAV.equals(tag)) grid.empty = "No favourites yet. Hold OK on a channel to add it.";
-        else if (RECENT.equals(tag)) grid.empty = "The channels you watch show here, the last one first.";
-        else grid.empty = "No channels here.";
-        grid.setChannels(channelsOf(tag), focusOn != null ? focusOn : tv.channelToPlay());
+        if (!lib.hasSource()) empty(Dark.TV, "No playlist yet", "Add your playlist in Settings, and its channels and guide show here.");
+        else if (!lib.ready()) empty(Dark.TV, lib.busy() || lib.status().isEmpty() ? "Loading your channels…" : lib.status(), "");
+        else if (FAV.equals(tag)) empty(Dark.STAR_LINE, "No favourites yet", "Hold OK on a channel to add it to Favourites");
+        else if (RECENT.equals(tag)) empty(Dark.RESUME, "Nothing watched yet", "The channels you watch show here, the last one first");
+        else empty(Dark.TV, "No channels here", "");
+        Channel playing = tv.live.channel();
+        grid.setChannels(channelsOf(tag), focusOn != null ? focusOn : playing != null ? playing : tv.channelToPlay());
     }
 
+    private void empty(int icon, String title, String line) {
+        grid.emptyIcon = icon;
+        grid.emptyTitle = title;
+        grid.emptyLine = line;
+    }
+
+    /** The playlist and the group a channel is in, as the guide's top shows them: "Home  •  UK | Sport". */
+    private String whereFrom(Channel c) {
+        String g = Categories.label(tv, c.group);
+        String p = playlists.get(prefix(c.key));
+        return p == null || p.isEmpty() ? g : p + "  •  " + g;
+    }
+
+    /** Pure: a channel key's playlist prefix ("p1:"), "" for the first playlist's. */
+    static String prefix(String key) {
+        if (key == null || key.length() < 3 || key.charAt(0) != 'p') return "";
+        int i = 1;
+        while (i < key.length() && Character.isDigit(key.charAt(i))) i++;
+        return i > 1 && i < key.length() && key.charAt(i) == ':' ? key.substring(0, i + 1) : "";
+    }
+
+    // ---- the screen ---------------------------------------------------------------------------------------------
+
     @Override void shown() {
-        // No mini TV in this guide: the stream let go until a channel is chosen.
-        tv.live.stop();
-        tv.live.place(null);
+        tv.live.addListener(this);
+        playPreview();
+        place();
+        moved();
         grid.refresh();
-        band.invalidate();
         rail.invalidate();
+    }
+
+    /** The preview plays the channel last watched (a programme from the archive playing there carries on). */
+    private void playPreview() {
+        if (tv.live.channel() != null && tv.live.behind()) return;
+        Channel want = tv.channelToPlay();
+        if (want != null) tv.live.play(want);
+        else tv.live.forget();
     }
 
     @Override void hidden() {
+        tv.live.removeListener(this);
         h.removeCallbacks(digitsDone);
-        h.removeCallbacks(switchList);
-        h.removeCallbacks(askPicture);
         if (menu.isOpen()) menu.close();
     }
 
-    @Override void tick() {
-        rail.invalidate();
+    @Override public void liveChanged() {
         band.invalidate();
         grid.invalidate();
     }
 
-    @Override void channelsChanged() {
-        Channel on = grid.channel();
-        fillPanel(shown);
-        load(shown, on);
-        if (grid.count() == 0 && area == GRID) to(PANEL);
+    @Override void tick() {
+        grid.tick();
+        band.invalidate();
+        rail.invalidate();
     }
 
-    // ---- the band and its picture -----------------------------------------------------------------------------------
+    @Override void channelsChanged() {
+        Channel on = grid.channel();
+        fillGroups();
+        load(shown, on);
+        // Opened with nothing to show (the groups, then): the rows once the channels are in, the remote untouched since.
+        if (waiting && area == GROUPS && grid.count() > 0) toGrid();
+        if (grid.count() > 0) waiting = false;
+        // Not while another app is in front, nor under another screen.
+        if (tv.showing(this)) playPreview();
+    }
+
+    // ---- where everything is ---------------------------------------------------------------------------------------
+
+    /** The rail and the groups column at the menu's edge (Rail.edge), coming in with reveal; the guide pushed right by both. */
+    private void place() {
+        float edge = rail.edge() / Ui.s, width = edge + GroupsPanel.W;
+        float shift = width * reveal, hide = Ui.f(width * (reveal - 1f));
+        rail.setTranslationX(hide);
+        groups.x = edge;
+        groups.setTranslationX(hide);
+        groups.invalidate();
+        content.setTranslationX(Ui.f(shift));
+        int vis = reveal > 0f ? View.VISIBLE : View.INVISIBLE;
+        if (rail.getVisibility() != vis) rail.setVisibility(vis);
+        if (groups.getVisibility() != vis) groups.setVisibility(vis);
+        placePreview();
+    }
+
+    /** The live picture in the preview, moving with the guide; out of the way of a menu or a question over it. */
+    private void placePreview() {
+        if (!tv.isTop(this)) return;
+        Rect at = GuideBand.previewRect(content.getTranslationX() / Ui.s);
+        boolean covered = asking() || menu.isOpen() && menu.box(tmp).intersects(at.left, at.top, at.right, at.bottom);
+        tv.live.place(covered ? null : at);
+    }
+
+    /** The question over the guide is up (from the moment it is asked until it has gone). */
+    private boolean asking() {
+        return dialog.getVisibility() == View.VISIBLE;
+    }
+
+    /** The groups (and the rail) in or out over GroupsPanel.SLIDE_MS, the guide pushed along; also follows the drawer. */
+    private void animatePush(float to) {
+        if (push != null) push.cancel();
+        if (Exec.inline) {
+            reveal = to;
+            place();
+            return;
+        }
+        float from = reveal;
+        ValueAnimator a = ValueAnimator.ofFloat(0f, 1f);
+        a.setDuration(Math.max(GroupsPanel.SLIDE_MS, Rail.DRAWER_MS));
+        a.setInterpolator(Fade.EASE);
+        a.addUpdateListener(v -> {
+            reveal = from + (to - from) * (Float) v.getAnimatedValue();
+            place();
+        });
+        push = a;
+        a.start();
+    }
+
+    private void toGrid() {
+        if (grid.count() == 0) return;
+        area = GRID;
+        rail.setActive(false);
+        groups.choose(shown);
+        groups.setActive(false);
+        grid.setActive(true);
+        animatePush(0f);
+    }
+
+    private void toGroups() {
+        area = GROUPS;
+        rail.setActive(false);
+        groups.choose(shown);
+        groups.setActive(true);
+        grid.setActive(false);
+        animatePush(1f);
+    }
+
+    private void toDrawer() {
+        area = DRAWER;
+        groups.choose(shown);
+        groups.setActive(false);
+        grid.setActive(false);
+        rail.setActive(true);
+        animatePush(1f);
+    }
+
+    // ---- the grid tells -----------------------------------------------------------------------------------------
 
     @Override public void moved() {
         Channel ch = grid.channel();
-        band.show(ch, grid.programme(), ch != null && favourites.contains(ch.key));
-        // The picture behind the band: the one known now, else none until the remote rests and it is found.
-        Guide.Schedule s = ch == null ? null : Library.get(tv).schedule(ch.key);
-        backdrop.set(ProgrammePictures.peek(ch, s, grid.programme()));
-        h.removeCallbacks(askPicture);
-        if (Exec.inline) askPicture();
-        else h.postDelayed(askPicture, ProgrammePictures.REST_MS);
+        band.show(ch, grid.programme(), grid.times(), ch != null && Library.get(tv).isFavourite(ch), ch == null ? "" : whereFrom(ch));
     }
 
-    private void askPicture() {
-        Channel ch = grid.channel();
-        Guide.Schedule s = ch == null ? null : Library.get(tv).schedule(ch.key);
-        String url = ProgrammePictures.get(tv, ch, s, grid.programme(), this::pictureCame);
-        if (url != null) backdrop.set(url);
+    @Override public void leftEdge() {
+        toGroups();
     }
 
-    private void pictureCame() {
-        Channel ch = grid.channel();
-        Guide.Schedule s = ch == null ? null : Library.get(tv).schedule(ch.key);
-        String url = ProgrammePictures.peek(ch, s, grid.programme());
-        if (url != null) backdrop.set(url);
+    @Override public Channel playing() {
+        return tv.live.channel();
+    }
+
+    // ---- the groups tell ----------------------------------------------------------------------------------------
+
+    @Override public void focused(GroupsPanel panel, GroupsPanel.Entry entry) {
+        // A group shows at once as the remote moves onto it (its lists are kept ready by the library).
+        if (entry.kind == GroupsPanel.HEADING || !(entry.tag instanceof String)) return;
+        String tag = (String) entry.tag;
+        panel.mark(tag);
+        if (!tag.equals(shown)) load(tag, null);
+    }
+
+    @Override public void chosen(GroupsPanel panel, GroupsPanel.Entry entry) {
+        toGrid();
+    }
+
+    @Override public boolean edge(GroupsPanel panel, int dir) {
+        if (dir == Ui.LEFT) toDrawer();
+        else if (dir == Ui.RIGHT) toGrid();
+        return true;
     }
 
     // ---- the remote ---------------------------------------------------------------------------------------------
 
-    private void to(int a) {
-        area = a;
-        rail.setActive(a == RAIL);
-        panel.setActive(a == PANEL);
-        grid.setActive(a == GRID);
+    /** The family's TV's guide keys held: Back (back to the player) and Menu (Search); not while a menu is up. */
+    @Override boolean holds(int code) {
+        return (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_MENU) && !menu.isOpen() && !asking() && digits.isEmpty();
+    }
+
+    @Override boolean keyLong(int code) {
+        if (code == KeyEvent.KEYCODE_MENU) {
+            tv.openSearch();
+            return true;
+        }
+        if (code != KeyEvent.KEYCODE_BACK) return false;
+        // Back held: the player again, on the channel in the preview (a programme from the archive from where it is).
+        Channel c = tv.live.channel();
+        if (c == null) return false;
+        if (tv.live.behind()) {
+            long at = tv.live.shownAt();
+            Guide.Schedule s = Library.get(tv).schedule(c.key);
+            int i = s == null ? -1 : s.at(at);
+            GuideActions.watchFrom(tv, c, at, i >= 0 ? s.stop[i] : at + GuideGrid.HOUR);
+        } else {
+            GuideActions.watch(tv, c);
+        }
+        return true;
     }
 
     @Override boolean key(int code, KeyEvent e) {
+        waiting = false;
+        if (asking()) return dialog.key(code);
         if (menu.isOpen()) return menu.key(code);
         if (code >= KeyEvent.KEYCODE_0 && code <= KeyEvent.KEYCODE_9) {
             digits += (char) ('0' + code - KeyEvent.KEYCODE_0);
@@ -212,52 +417,44 @@ final class GuideScreen extends Screen implements GuideGrid.Host {
             return true;
         }
         switch (area) {
-            case RAIL:
+            case DRAWER:
                 if (code == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                    to(PANEL);
+                    toGroups();
                     return true;
                 }
                 return rail.key(code) || code == KeyEvent.KEYCODE_DPAD_LEFT;
-            case PANEL:
-                if (code == KeyEvent.KEYCODE_DPAD_LEFT) {
-                    to(RAIL);
-                    return true;
-                }
-                if (code == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                    toGrid();
-                    return true;
-                }
-                if (panel.key(code)) {
-                    h.removeCallbacks(switchList);
-                    if (Exec.inline) showChosen();
-                    else h.postDelayed(switchList, 220);
-                    return true;
-                }
-                return code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN;
+            case GROUPS:
+                return groups.key(code);
             default:
-                if (grid.count() == 0) {
-                    if (code == KeyEvent.KEYCODE_DPAD_LEFT) {
-                        to(PANEL);
-                        return true;
-                    }
-                    return false;
-                }
-                return grid.key(code);
+                break;
         }
-    }
-
-    /** The panel's choice in the grid (a moment after the remote stops on it). */
-    private void showChosen() {
-        h.removeCallbacks(switchList);
-        SidePanel.Entry e = panel.chosen();
-        if (e == null || !(e.tag instanceof String)) return;
-        String tag = (String) e.tag;
-        if (!tag.equals(shown)) load(tag, null);
-    }
-
-    private void toGrid() {
-        showChosen();
-        if (grid.count() > 0) to(GRID);
+        boolean first = e == null || e.getRepeatCount() == 0;
+        switch (code) {
+            case KeyEvent.KEYCODE_MENU:
+                if (first) openCard();
+                return true;
+            case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+                if (first) openAbout();
+                return true;
+            case KeyEvent.KEYCODE_MEDIA_STOP: {
+                Channel c = grid.channel();
+                if (first && c != null) {
+                    GuideActions.favourite(tv, c);
+                    moved();
+                }
+                return true;
+            }
+            default:
+                break;
+        }
+        if (grid.count() == 0) {
+            if (code == KeyEvent.KEYCODE_DPAD_LEFT) {
+                toGroups();
+                return true;
+            }
+            return code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN || code == KeyEvent.KEYCODE_DPAD_RIGHT;
+        }
+        return grid.key(code);
     }
 
     private void jump() {
@@ -274,142 +471,216 @@ final class GuideScreen extends Screen implements GuideGrid.Host {
         }
         if (!grid.jumpTo(n) && !ALL.equals(shown)) {
             // Not in this list: all the channels, and there.
-            panel.choose(ALL);
-            load(ALL, null);
-            grid.jumpTo(n);
+            Channel c = Library.get(tv).numbered(n);
+            if (c != null) {
+                load(ALL, c);
+                groups.choose(ALL);
+            }
         }
-        if (grid.count() > 0) to(GRID);
+        if (grid.count() > 0 && area != GRID) toGrid();
     }
 
     @Override void ok() {
+        waiting = false;
+        if (asking()) {
+            dialog.ok();
+            return;
+        }
         if (menu.isOpen()) {
             menu.ok();
             return;
         }
         switch (area) {
-            case RAIL:
-                Rail.go(tv, rail.focus, Rail.GUIDE);
+            case DRAWER:
+                if (rail.focus == Rail.GUIDE) toGroups();
+                else Rail.go(tv, rail.focus, Rail.GUIDE);
                 break;
-            case PANEL:
-                toGrid();
+            case GROUPS:
+                groups.ok();
                 break;
-            default: {
-                Channel c = grid.channel();
-                if (c == null) break;
-                // A programme already shown that the provider's archive keeps: played from its start (catch-up).
-                long[] p = grid.times();
-                long now = System.currentTimeMillis();
-                if (p != null && p[1] <= now && Catchup.has(c, p[0], now)) tv.watchFrom(c, p[0], p[1]);
-                else tv.watch(c);
+            default:
+                okOnProgramme();
                 break;
-            }
         }
     }
 
     /**
-     * OK held on a programme: a small menu (a reminder for one to come, set or cancelled; watch it live, from its start;
-     * the channel in the favourites or out).
+     * OK on a programme: one to come opens its menu under it; one already shown that the archive keeps plays from its
+     * start (catch-up); else its channel is tuned in the preview, and OK on the channel playing there goes full screen.
      */
-    @Override void okLong() {
-        if (menu.isOpen()) return;
-        if (area != GRID) {
-            ok();
-            return;
-        }
+    private void okOnProgramme() {
         Channel c = grid.channel();
         if (c == null) return;
         long now = System.currentTimeMillis();
         long[] p = grid.times();
-        Guide.Schedule s = Library.get(tv).schedule(c.key);
-        int i = grid.programme();
-        boolean shown = p != null && p[1] <= now, onNow = p != null && p[0] <= now && now < p[1];
-        boolean archived = p != null && Catchup.has(c, p[0], now);
-        // A programme to come (and in the guide): a reminder a minute before it starts, or the one set taken off.
-        boolean later = p != null && p[0] > now && i >= 0 && s != null;
-        boolean reminded = later && Reminders.has(tv, c.key, p[0]);
-        List<String[]> items = new ArrayList<>();
-        if (later) items.add(reminded ? new String[]{"unremind", "Cancel reminder"} : new String[]{"remind", "Remind me"});
-        if (shown && archived) items.add(new String[]{"start", "Watch it"});
-        if (onNow && archived && now - p[0] >= LiveTv.LIVE_EDGE_MS) items.add(new String[]{"start", "Watch from the start"});
-        items.add(new String[]{"live", shown && archived ? "Watch " + c.name + " live" : "Watch " + c.name});
-        boolean fav = Library.get(tv).isFavourite(c);
-        items.add(new String[]{"fav", fav ? "Remove from favourites" : "Add to favourites"});
-        String title = i >= 0 && s != null ? s.title[i] : c.name;
-        String line = p == null ? c.name : Ui.day(p[0], now) + ", " + LiveText.span(p[0], p[1]) + "  ·  " + c.name;
-        menu.open(title, line, items, 760f, 360f, key -> {
-            switch (key) {
-                case "remind":
-                    remind(c, title, p[0], p[1]);
-                    break;
-                case "unremind":
-                    Reminders.remove(tv, c.key, p[0]);
-                    ReminderAlarm.schedule(tv);
-                    android.widget.Toast.makeText(tv, "Reminder cancelled: " + title, android.widget.Toast.LENGTH_SHORT).show();
-                    grid.invalidate();
-                    break;
-                case "start":
-                    if (p != null) tv.watchFrom(c, p[0], p[1]);
-                    break;
-                case "live":
-                    tv.watch(c);
-                    break;
-                default: {
-                    boolean on = Library.get(tv).toggleFavourite(c);
-                    android.widget.Toast.makeText(tv, on ? c.name + " added to your favourites" : c.name + " taken off your favourites",
-                            android.widget.Toast.LENGTH_SHORT).show();
-                    break;
-                }
-            }
+        if (p != null && p[0] > now) {
+            openPopup();
+            return;
+        }
+        if (p != null && p[1] <= now && Catchup.has(c, p[0], now)) {
+            GuideActions.watchFrom(tv, c, p[0], p[1]);
+            return;
+        }
+        Channel playing = tv.live.channel();
+        if (playing != null && playing.key.equals(c.key) && !tv.live.behind()) {
+            GuideActions.watch(tv, c);
+            return;
+        }
+        PinScreen.forChannel(tv, c, () -> {
+            tv.live.play(c);
+            placePreview();
+            grid.invalidate();
+            band.invalidate();
         });
     }
 
-    /** A reminder set: kept, its alarm made, a bell on the programme; the card over other apps asked for once. */
-    private void remind(Channel c, String title, long start, long end) {
-        Reminders.add(tv, new Reminders.Reminder(c.key, c.name, c.logo, title, start, end));
-        ReminderAlarm.schedule(tv);
-        android.widget.Toast.makeText(tv, "Reminder set: " + title + ", " + Ui.day(start, System.currentTimeMillis()) + " "
-                + LiveText.hm(start), android.widget.Toast.LENGTH_SHORT).show();
-        grid.invalidate();
-        if (ReminderCard.shouldAsk(tv)) askOverApps();
-    }
-
-    /** The first reminder: whether its card may pop up over other apps (Android's own page), asked once. */
-    private void askOverApps() {
-        ReminderCard.asked(tv);
-        List<String[]> items = new ArrayList<>();
-        items.add(new String[]{"open", "Open Android's page"});
-        items.add(new String[]{"no", "Not now"});
-        menu.ask("Reminders over other apps", ReminderCard.ASK, items, key -> {
-            if (key.equals("open") && !ReminderCard.openSettings(tv)) {
-                android.widget.Toast.makeText(tv, "This TV has no such page: reminders come as a notification instead",
-                        android.widget.Toast.LENGTH_LONG).show();
-            }
-        });
+    /** OK held: the whole menu, for the programme the remote is on (or anything else, as OK). */
+    @Override void okLong() {
+        if (asking() || menu.isOpen()) return;
+        if (area != GRID) {
+            ok();
+            return;
+        }
+        openCard();
     }
 
     @Override boolean back() {
+        waiting = false;
+        if (asking()) {
+            dialog.hide(this::placePreview);
+            return true;
+        }
         if (menu.isOpen()) {
-            menu.close();
+            closeMenu();
             return true;
         }
-        if (area == GRID && grid.inPast()) {
-            // Back from the archive's past: the guide at the time now.
-            grid.toNow();
+        if (!digits.isEmpty()) {
+            h.removeCallbacks(digitsDone);
+            digits = "";
+            band.typed("");
             return true;
         }
-        if (area == RAIL) {
-            to(PANEL);
-            return true;
+        switch (area) {
+            case DRAWER:
+                // Back from the menu leaves the guide, as it leaves the app on the family's TV.
+                return false;
+            case GROUPS:
+                toDrawer();
+                return true;
+            default:
+                // Back to the programmes on now first (Use Back to return to current programs), then the groups.
+                if (grid.awayFromNow()) grid.toNow();
+                else toGroups();
+                return true;
         }
-        if (area == PANEL && grid.count() > 0) {
-            to(GRID);
-            return true;
-        }
-        return false;
     }
 
-    @Override public void leftEdge() {
-        panel.choose(shown);
-        to(PANEL);
+    // ---- the menus ------------------------------------------------------------------------------------------------
+
+    private void remember() {
+        menuChannel = grid.channel();
+        menuIndex = grid.programme();
+        menuTimes = grid.times();
+    }
+
+    private void openPopup() {
+        remember();
+        if (menuChannel == null || menuTimes == null) return;
+        RectF cell = grid.focusedCell(new RectF());
+        cell.offset(content.getTranslationX(), 0f);
+        Guide.Schedule s = Library.get(tv).schedule(menuChannel.key);
+        String title = s != null && menuIndex >= 0 && menuIndex < s.title.length ? s.title[menuIndex] : menuChannel.name;
+        menu.openPopup(GuideActions.popup(tv, menuChannel, menuTimes[0], title), cell, GuideGrid.COLUMN + content.getTranslationX() / Ui.s);
+        placePreview();
+    }
+
+    private void openCard() {
+        remember();
+        if (menuChannel == null) return;
+        Guide.Schedule s = Library.get(tv).schedule(menuChannel.key);
+        menu.openCard(GuideActions.card(tv, menuChannel, s, menuIndex, true), 0, rowRect());
+        placePreview();
+    }
+
+    /** The programme's description, for the programme the remote is on (from the menu, or Play/pause). */
+    private void openAbout() {
+        if (menuChannel == null || !menu.isOpen()) remember();
+        Channel c = menuChannel;
+        if (c == null) return;
+        String[] a = GuideActions.about(c, Library.get(tv).schedule(c.key), menuIndex, System.currentTimeMillis());
+        long now = System.currentTimeMillis();
+        float done = menuTimes != null && menuTimes[0] <= now && now < menuTimes[1] ? LiveText.progress(now, menuTimes[0], menuTimes[1]) : -1f;
+        menu.openAbout(a[0], a[1], done, a[2], a[3], rowRect());
+        placePreview();
+    }
+
+    private RectF rowRect() {
+        RectF row = grid.focusedRow(new RectF());
+        row.offset(content.getTranslationX(), 0f);
+        return row;
+    }
+
+    private void closeMenu() {
+        menu.close();
+        menuChannel = null;
+        placePreview();
+    }
+
+    @Override public void chosen(GuideMenu m, String tag) {
+        Channel c = menuChannel;
+        if (c == null) return;
+        long[] p = menuTimes;
+        Guide.Schedule s = Library.get(tv).schedule(c.key);
+        boolean has = s != null && menuIndex >= 0 && menuIndex < s.title.length;
+        String title = has ? s.title[menuIndex] : c.name, desc = has ? s.desc[menuIndex] : "";
+        if (GuideActions.ABOUT.equals(tag)) {
+            openAbout();
+            return;
+        }
+        closeMenu();
+        boolean ask = GuideActions.act(tv, tag, c, title, desc, p);
+        // In Favourites: the list made again with the channel in or out.
+        if (GuideActions.FAVOURITE.equals(tag) && FAV.equals(shown)) load(FAV, c);
+        moved();
+        grid.invalidate();
+        if (ask && tv.isTop(this)) {
+            GuideActions.ask(tv, dialog);
+            placePreview();
+        }
+    }
+
+    @Override public void answered(DialogCard d, RowList.Row answer) {
+        d.hide(this::placePreview);
+        GuideActions.answered(tv, answer);
+    }
+
+    // ---- what the tests look at -------------------------------------------------------------------------------------
+
+    /** Where the remote is: 0 the grid, 1 the groups, 2 the menu's drawer. */
+    int area() {
+        return area;
+    }
+
+    /** The list on screen: "all", "fav", "recent", or "group:" / "genre:" and its name. */
+    String list() {
+        return shown;
+    }
+
+    Channel focusedChannel() {
+        return grid.channel();
+    }
+
+    /** The programme the remote is on as {start, end}, or null. */
+    long[] focusedTimes() {
+        return grid.times();
+    }
+
+    boolean menuOpen() {
+        return menu.isOpen();
+    }
+
+    /** How far the guide is pushed right by the rail and the groups (design pixels). */
+    float pushed() {
+        return content.getTranslationX() / Ui.s;
     }
 }

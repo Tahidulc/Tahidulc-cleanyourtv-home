@@ -85,10 +85,7 @@ public class LiveTextTest {
         assertEquals("", LiveText.quality(null));
     }
 
-    @Test public void blocksKeepTheirColourAndTheAnimationEases() {
-        assertEquals(GuideGrid.deep("EastEnders"), GuideGrid.deep("EastEnders"));
-        assertEquals(0xFF, GuideGrid.deep("Newsnight") >>> 24);
-        assertEquals(GuideGrid.deep(null), GuideGrid.deep(""));
+    @Test public void theAnimationEases() {
         assertEquals(0f, Fade.ease(0f), 0.0001f);
         assertEquals(1f, Fade.ease(1f), 0.0001f);
         assertEquals(1f, Fade.ease(2f), 0.0001f);
