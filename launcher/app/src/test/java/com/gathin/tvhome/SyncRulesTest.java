@@ -140,4 +140,32 @@ public class SyncRulesTest {
         assertEquals(117, d.get("runtime"));
         assertEquals(2000L, d.get("start"));
     }
+
+    @Test public void theNewKindsAreKeptToPassOnWithinBounds() {
+        assertTrue(SyncRules.relayFits("playlist", "pl:0123abcd", 300, false, 0));
+        assertTrue(SyncRules.relayFits("livefav", "pl:0123abcd/x:42", 120, false, 2999));
+        // A full kind takes no new key, but a known one is still changed.
+        assertFalse(SyncRules.relayFits("livefav", "pl:0123abcd/x:43", 120, false, 3000));
+        assertTrue(SyncRules.relayFits("livefav", "pl:0123abcd/x:42", 120, true, 3000));
+        assertFalse(SyncRules.relayFits("resume", "tv:harbour lights", SyncRules.RELAY_BYTES + 1, false, 0));
+        assertFalse(SyncRules.relayFits("setting", "", 10, false, 0));
+        assertFalse(SyncRules.relayFits("mylist", "tv:1", 10, false, 0));
+        assertEquals(10, SyncRules.relayMax("liverecent"));
+    }
+
+    @Test public void aLoginGoesOnlyWithAToken() {
+        assertTrue(SyncRules.shared("playlist", true));
+        assertFalse(SyncRules.shared("playlist", false));
+        // Everything else also goes between TVs on their own.
+        assertTrue(SyncRules.shared("livefav", false));
+        assertTrue(SyncRules.shared("mylist", false));
+    }
+
+    @Test public void homefieldTvsTokenMustMatchExactly() {
+        assertTrue(SyncRules.sameToken("0f1e2d3c4b5a69788796a5b4c3d2e1f0", "0f1e2d3c4b5a69788796a5b4c3d2e1f0"));
+        assertFalse(SyncRules.sameToken("0f1e2d3c4b5a69788796a5b4c3d2e1f0", "0f1e2d3c4b5a69788796a5b4c3d2e1f1"));
+        assertFalse(SyncRules.sameToken("0f1e2d3c4b5a69788796a5b4c3d2e1f0", ""));
+        assertFalse(SyncRules.sameToken(null, "x"));
+        assertFalse(SyncRules.sameToken("", ""));
+    }
 }

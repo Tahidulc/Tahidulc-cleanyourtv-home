@@ -1,5 +1,11 @@
 package com.gathin.tvhome;
 
+import java.util.HashSet;
+
+import java.util.Collections;
+
+import java.util.Arrays;
+
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -16,6 +22,49 @@ final class SyncRules {
     private SyncRules() { }
 
     static final long TOMBSTONE_MS = 60L * 24 * 3600_000L;
+
+    /**
+     * The kinds the phones, tablets and Homefield TV share through the TVs, which the TV only keeps to pass on (it has
+     * no store of its own for them): the IPTV playlists, favourite channels, categories, recent channels, where each film
+     * or episode is up to, and the settings every device has (SYNC.md).
+     */
+    static final Set<String> RELAYED = new HashSet<>(Arrays.asList("playlist", "livefav", "livecat", "liverecent", "resume", "setting"));
+    /** Kinds that carry a login: only to and from a caller with a token, never between TVs on their own. */
+    static final Set<String> SECRET = Collections.singleton("playlist");
+    /** A relayed item's data at most this long (as JSON). */
+    static final int RELAY_BYTES = 64 * 1024;
+
+    /** At most this many of each relayed kind kept here (one more of a kind already full is turned away). */
+    static int relayMax(String type) {
+        switch (type) {
+            case "playlist": return 30;
+            case "livefav": return 3000;
+            case "livecat": return 50;
+            case "liverecent": return 10;
+            case "resume": return 400;
+            case "setting": return 300;
+            default: return 0;
+        }
+    }
+
+    /** Whether a relayed item may be kept: its kind, a key and data within bounds, and room when it is a new one. */
+    static boolean relayFits(String type, String key, int bytes, boolean known, int countOfType) {
+        if (!RELAYED.contains(type) || key == null || key.isEmpty() || key.length() > 200) return false;
+        if (bytes <= 0 || bytes > RELAY_BYTES) return false;
+        return known || countOfType < relayMax(type);
+    }
+
+    /** Whether an item of this kind goes to, or is taken from, a caller: a login only with a token. */
+    static boolean shared(String type, boolean trusted) {
+        return trusted || !SECRET.contains(type);
+    }
+
+    /** The token given against the one kept, in time that doesn't tell how much of it matched. */
+    static boolean sameToken(String kept, String given) {
+        if (kept == null || given == null || kept.isEmpty()) return false;
+        byte[] a = kept.getBytes(java.nio.charset.StandardCharsets.UTF_8), b = given.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        return java.security.MessageDigest.isEqual(a, b);
+    }
 
     /** What the TV remembers of one item: its data's fingerprint, when and where it last changed, when it got here. */
     static final class Meta {
