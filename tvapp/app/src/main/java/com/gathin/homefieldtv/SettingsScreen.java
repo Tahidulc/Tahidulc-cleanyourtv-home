@@ -27,9 +27,9 @@ import java.util.Locale;
  */
 final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Host {
     private static final List<String> MENU = Arrays.asList("Your playlists", "Add an M3U playlist", "Add an Xtream Codes login",
-            "Refresh now", "Remove everything", "Channel logos", "Theme", "Posters", "Updates", "Scoreboard", "About");
-    static final int PLAYLISTS = 0, ADD_M3U = 1, ADD_XTREAM = 2, REFRESH = 3, CLEAR = 4, LOGOS = 5, THEME = 6, POSTERS = 7, UPDATES = 8,
-            SCOREBOARD = 9, ABOUT = 10;
+            "Refresh now", "Remove everything", "Channel logos", "Theme", "Posters", "Live TV", "Updates", "Scoreboard", "About");
+    static final int PLAYLISTS = 0, ADD_M3U = 1, ADD_XTREAM = 2, REFRESH = 3, CLEAR = 4, LOGOS = 5, THEME = 6, POSTERS = 7, LIVE = 8,
+            UPDATES = 9, SCOREBOARD = 10, ABOUT = 11;
 
     private Strip strip;
     private ListPanel menu, content;
@@ -90,7 +90,20 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
     @Override void shown() {
         tv.live.stop();
         tv.live.place(null);
+        tv.live.subs.watch(this::subsChanged);
         fillContent();
+    }
+
+    @Override void hidden() {
+        tv.live.subs.watch(null);
+    }
+
+    /** The speech model on its way or in: Live TV's lines again, the remote where it was. */
+    private void subsChanged() {
+        if (editing || content == null || section() != LIVE) return;
+        int at = content.focusIndex();
+        fillContent();
+        content.setFocus(at);
     }
 
     @Override void tick() {
@@ -228,6 +241,9 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
                 out.add(new ListPanel.Item(null, ListPanel.NOTE, "On the film and TV show rows, the grids and More like this.", ""));
                 break;
             }
+            case LIVE:
+                LiveSettings.fill(tv, out);
+                break;
             case UPDATES:
                 updates(out);
                 break;
@@ -413,6 +429,8 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
             look.show(themeAt(content.item()));
         } else if (section() == POSTERS) {
             content.setFocus(PosterArt.landscape ? 2 : 1);
+        } else if (section() == LIVE) {
+            content.setFocus(LiveSettings.focus(tv));
         }
     }
 
@@ -520,6 +538,14 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
             case SCOREBOARD: {
                 int at = content.focusIndex();
                 if (BoardSettings.chosen(tv, t)) {
+                    fillContent();
+                    content.setFocus(at);
+                }
+                return;
+            }
+            case LIVE: {
+                int at = content.focusIndex();
+                if (LiveSettings.chosen(tv, t)) {
                     fillContent();
                     content.setFocus(at);
                 }

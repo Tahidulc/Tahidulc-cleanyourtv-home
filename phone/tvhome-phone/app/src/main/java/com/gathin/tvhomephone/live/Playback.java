@@ -32,8 +32,17 @@ import androidx.media3.ui.PlayerView;
 @OptIn(markerClass = UnstableApi.class)
 final class Playback {
     static final int RETRIES = 5;
-    /** Staying on the channel (Quality.stay): its own stream tried again this many times (about four and a half minutes). */
+    /** Its own stream tried again this many times in all (about four and a half minutes) before it gives up. */
     static final int STAY_RETRIES = 30;
+    /** Adapting (Quality.adapt): the same stream tried this many times at once before another copy of the channel. */
+    static final int QUICK_TRIES = 2;
+    /** A step between the channel's copies under way: the channel stays on screen, its last picture held, no spinner. */
+    private boolean stepping;
+    private long steppedAt;
+    /** The buffer, a second apart (oldest first), while it plays: a steady drain steps down before the picture freezes. */
+    private final long[] buffered = new long[5];
+    private int bufferedN;
+    private final Runnable bufferTick = this::bufferTick;
     /** What the picture is doing: nothing open, opening (or buffering), playing, waiting to try again, given up. */
     static final int IDLE = 0, LOADING = 1, PLAYING = 2, RECONNECTING = 3, FAILED = 4;
     /** How long a stream plays on with no one showing it (a turn of the screen, a hand back) before it is let go. */
@@ -210,6 +219,7 @@ final class Playback {
     /** Plays a channel afresh (its retries, the HLS guess and its tracks); the same channel already open carries on. */
     void play(Channel ch) {
         if (ch == null || live(ch)) return;
+        stepDone();
         h.removeCallbacks(retry);
         if (cur != null && !cur.key.equals(ch.key)) previous = cur;
         cur = ch;
@@ -306,6 +316,8 @@ final class Playback {
         watchPosted = false;
         h.removeCallbacks(stallCheck);
         h.removeCallbacks(upCheck);
+        h.removeCallbacks(bufferTick);
+        stepDone();
         Timeshift.get(app).pause();
         if (replaying && front != null) front.onReplay(false);
         replaying = false;
@@ -363,7 +375,10 @@ final class Playback {
         lastStartMs = -1;
         player.prepare();
         player.setPlayWhenReady(true);
-        set(LOADING);
+        // A step between copies keeps the channel playing on screen (its last picture held): no spinner.
+        if (!stepping) set(LOADING);
+        h.removeCallbacks(bufferTick);
+        h.postDelayed(bufferTick, 1000);
     }
 
     /** An HLS stream's own versions held to the quality allowed: fixed picks the best under it and stays there. */
@@ -452,9 +467,46 @@ final class Playback {
 
     // ---- adaptive: down when it can't keep up, back up once steady -----------------------------------------------
 
-    /** Stepping between the channel's copies: only when the family chose to leave the channel for them (Quality.stay off). */
+    /** Stepping between the channel's own copies as its picture follows the connection (picture quality Adaptive). */
     private boolean adaptive() {
-        return !Quality.stay(app) && Quality.choice(app) == Quality.ADAPTIVE && rungs.size() > 1 && !replaying;
+        return Quality.adapt(app) && rungs.size() > 1 && !replaying;
+    }
+
+    /**
+     * A step to another of the channel's copies (down when it can't keep up, back up once steady): the channel stays as
+     * it is on screen, its last picture held while the copy opens, with no spinner and no message.
+     */
+    private void step() {
+        stepping = true;
+        steppedAt = android.os.SystemClock.elapsedRealtime();
+        bufferedN = 0;
+        if (front != null) front.view().setKeepContentOnPlayerReset(true);
+        prepare();
+    }
+
+    private void stepDone() {
+        if (!stepping) return;
+        stepping = false;
+        if (front != null) front.view().setKeepContentOnPlayerReset(false);
+    }
+
+    /** Each second while it plays: the buffer draining steadily (the connection falling behind) steps down at once. */
+    private void bufferTick() {
+        h.removeCallbacks(bufferTick);
+        if (player == null || cur == null || replaying) return;
+        h.postDelayed(bufferTick, 1000);
+        if (state != PLAYING || stepping || !adaptive() || !player.getPlayWhenReady()
+                || android.os.SystemClock.elapsedRealtime() - steppedAt < 10_000L) {
+            bufferedN = 0;
+            return;
+        }
+        System.arraycopy(buffered, 1, buffered, 0, buffered.length - 1);
+        buffered[buffered.length - 1] = player.getTotalBufferedDuration();
+        bufferedN = Math.min(buffered.length, bufferedN + 1);
+        if (bufferedN == buffered.length && Quality.draining(buffered)) {
+            bufferedN = 0;
+            down();
+        }
     }
 
     private void stallBegan() {
@@ -490,9 +542,9 @@ final class Playback {
         stallCount = 0;
         alt = bestAlt(base());
         asHls = Streams.looksHls(stream());
-        if (!wasTry) notice("Slow connection: " + Quality.label(Library.level(base())) + " for now");
         retries = 0;
-        prepare();
+        // No message: the channel stays as it is on screen, only its picture steps down (and back up once steady).
+        step();
         h.removeCallbacks(upCheck);
         h.postDelayed(upCheck, Quality.upAfter(failedUps));
     }
@@ -512,7 +564,7 @@ final class Playback {
         alt = bestAlt(base());
         asHls = Streams.looksHls(stream());
         retries = 0;
-        prepare();
+        step();
         if (rung > top) h.postDelayed(upCheck, Quality.upAfter(failedUps));
     }
 
@@ -576,9 +628,10 @@ final class Playback {
     }
 
     /**
-     * Dropped. Staying on the channel (the default): its own stream tried again, a second, two, four, eight, then ten
-     * apart, for about four and a half minutes; then given up (tap to try again). Otherwise, as before: on to the same
-     * channel in the next playlist when there is one (at once), then tried again a few times, then given up.
+     * Dropped. Adapting (the default), the channel staying on screen throughout: its stream tried again at once twice,
+     * then the same channel from the next playlist, then its copy a step down, then tried again a second, two, four,
+     * eight, then ten apart for about four and a half minutes in all; then given up (tap to try again). Not adapting:
+     * the exact stream picked tried again, the same way.
      */
     private void dropped() {
         // The replay at the end of what was kept: live again.
@@ -586,22 +639,43 @@ final class Playback {
             backToLive();
             return;
         }
+        stepDone();
         Channel b = base();
-        boolean stay = Quality.stay(app);
-        if (!stay && b != null && alt < b.alternates.size()) {
-            alt++;
-            retries = 0;
-            asHls = Streams.looksHls(stream());
-            set(RECONNECTING);
-            h.removeCallbacks(retry);
-            prepare();
-            return;
+        if (Quality.adapt(app)) {
+            if (retries < QUICK_TRIES) {
+                retries++;
+                set(RECONNECTING);
+                h.removeCallbacks(retry);
+                h.postDelayed(retry, retryDelay(retries, false));
+                return;
+            }
+            if (b != null && alt < b.alternates.size()) {
+                alt++;
+                retries = 0;
+                asHls = Streams.looksHls(stream());
+                set(RECONNECTING);
+                h.removeCallbacks(retry);
+                prepare();
+                return;
+            }
+            if (!replaying && rung < rungs.size() - 1) {
+                rung++;
+                alt = bestAlt(base());
+                asHls = Streams.looksHls(stream());
+                retries = 0;
+                set(RECONNECTING);
+                h.removeCallbacks(retry);
+                prepare();
+                h.removeCallbacks(upCheck);
+                h.postDelayed(upCheck, Quality.upAfter(failedUps));
+                return;
+            }
         }
-        if (retries < (stay ? STAY_RETRIES : RETRIES)) {
+        if (retries < STAY_RETRIES) {
             retries++;
             set(RECONNECTING);
             h.removeCallbacks(retry);
-            h.postDelayed(retry, retryDelay(retries, stay));
+            h.postDelayed(retry, retryDelay(retries, true));
         } else {
             set(FAILED);
         }
@@ -618,10 +692,12 @@ final class Playback {
             if (player == null) return;
             if (s == Player.STATE_READY) {
                 retries = 0;
+                stepDone();
                 if (bufferingSince > 0) stallEnded();
                 set(PLAYING);
             } else if (s == Player.STATE_BUFFERING) {
-                if (state == PLAYING) {
+                // A step between copies opening is not a stall: the channel plays on, its last picture held.
+                if (state == PLAYING && !stepping) {
                     if (!replaying) stallBegan();
                     set(LOADING);
                 }

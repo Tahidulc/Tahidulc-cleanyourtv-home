@@ -43,10 +43,22 @@ public class PlayerThreeTest {
         assertFalse(Quality.struggling(new long[0], 0, now, 0));
     }
 
+    @Test public void aDrainingBufferStepsDownBeforeThePictureFreezes() {
+        // Falling a second at a time to under 2.5 s: the connection is behind.
+        assertTrue(Quality.draining(new long[]{5200, 4300, 3400, 2600, 1900}));
+        // Low but steady (a live stream close to its edge): nothing to do.
+        assertFalse(Quality.draining(new long[]{1800, 1900, 1750, 1850, 1800}));
+        // Draining but still plenty in hand.
+        assertFalse(Quality.draining(new long[]{9000, 8000, 7000, 6000, 5000}));
+        // Growing again: the connection caught up.
+        assertFalse(Quality.draining(new long[]{4000, 3000, 2000, 2600, 2200}));
+        assertFalse(Quality.draining(new long[]{2000, 1000}));
+    }
+
     @Test public void tryingUpWaitsLongerEachTimeItFailed() {
-        assertEquals(4 * 60_000L, Quality.upAfter(0));
-        assertEquals(8 * 60_000L, Quality.upAfter(1));
-        assertEquals(128 * 60_000L, Quality.upAfter(9));
+        assertEquals(45_000L, Quality.upAfter(0));
+        assertEquals(90_000L, Quality.upAfter(1));
+        assertEquals(15 * 60_000L, Quality.upAfter(9));
     }
 
     @Test public void anotherPlaylistOnlyWhenClearlyBetter() {
