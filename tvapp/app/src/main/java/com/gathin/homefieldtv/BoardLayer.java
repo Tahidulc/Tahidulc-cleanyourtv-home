@@ -583,8 +583,10 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         return l;
     }
 
+    private static final DateTimeFormatter HH_MM = DateTimeFormatter.ofPattern("HH:mm");
+
     private static String hhmm(long t) {
-        return Instant.ofEpochMilli(t).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("HH:mm"));
+        return Instant.ofEpochMilli(t).atZone(ZoneId.systemDefault()).format(HH_MM);
     }
 
     /** The wait for the channel playing, in ms. */

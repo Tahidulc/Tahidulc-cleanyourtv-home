@@ -20,6 +20,7 @@ import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.Library;
+import com.gathin.homefieldtv.engine.Lineup;
 import com.gathin.homefieldtv.engine.Reminders;
 
 import java.util.ArrayList;
@@ -59,7 +60,11 @@ final class GuideGrid extends View {
 
     private final Library lib;
     private Host host;
+    /** The category's channels, with where a channel or a number is in them (found at once, however many there are). */
+    private Lineup lineup;
     private List<Channel> channels = new ArrayList<>();
+    /** Whether any reminder is set, looked at once a frame for the bells. */
+    private boolean reminders;
     private int focus;
     private long cursor, winStart;
     private float topRow, topRowTo;
@@ -122,17 +127,10 @@ final class GuideGrid extends View {
     }
 
     /** Another category's channels; the remote goes to the one playing if it is there, else the first. */
-    void setChannels(List<Channel> list, Channel playing) {
-        channels = list;
-        focus = 0;
-        if (playing != null) {
-            for (int i = 0; i < list.size(); i++) {
-                if (list.get(i).key.equals(playing.key)) {
-                    focus = i;
-                    break;
-                }
-            }
-        }
+    void setChannels(Lineup list, Channel playing) {
+        lineup = list;
+        channels = list.channels;
+        focus = Math.max(0, list.indexOf(playing));
         long now = System.currentTimeMillis();
         cursor = Math.max(cursor, now);
         if (cursor > winStart + WINDOW - 15 * 60_000L || cursor < winStart) winStart = now - now % HALF;
@@ -187,16 +185,13 @@ final class GuideGrid extends View {
         moved();
     }
 
-    /** To the channel with this number, if the category has it. */
+    /** To the channel with this number, if the category has it (the first with it). */
     boolean jumpTo(int number) {
-        for (int i = 0; i < channels.size(); i++) {
-            if (lib.number(channels.get(i)) == number) {
-                if (i != focus) toRow(i);
-                else moved();
-                return true;
-            }
-        }
-        return false;
+        int i = lineup == null ? -1 : lineup.indexOfNumber(number);
+        if (i < 0) return false;
+        if (i != focus) toRow(i);
+        else moved();
+        return true;
     }
 
     /** Pure: a programme's own deep colour, the same for the same title. */
@@ -367,6 +362,7 @@ final class GuideGrid extends View {
             return;
         }
         drawRuler(c, now);
+        reminders = Reminders.any(getContext());
         c.save();
         c.clipRect(Ui.f(X - 4), Ui.f(ROWS_Y - 4), Ui.f(RIGHT + 8), Ui.f(BOTTOM));
         int first = Math.max(0, (int) Math.floor(topRow) - 1);
@@ -454,9 +450,9 @@ final class GuideGrid extends View {
         }
         // Catch-up: how far back the provider's archive of this channel goes (MAX_VALUE: it keeps none).
         long kept = Catchup.earliest(ch, now);
-        boolean reminders = Reminders.any(getContext());
         boolean drewFocus = false;
-        for (int i = 0; i < s.start.length; i++) {
+        // From the first programme that can still be on in the window (found by halves), not from three days back.
+        for (int i = s.from(winStart); i < s.start.length; i++) {
             if (s.stop[i] <= winStart) continue;
             if (s.start[i] >= winEnd) break;
             float x0 = xAt(Math.max(s.start[i], winStart)), x1 = xAt(Math.min(s.stop[i], winEnd)) - gap;

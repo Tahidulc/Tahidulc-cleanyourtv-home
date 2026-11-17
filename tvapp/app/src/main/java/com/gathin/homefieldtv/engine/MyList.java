@@ -4,7 +4,10 @@ import android.content.Context;
 import android.content.SharedPreferences;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * The family's own list of films and series (the heart on a title's page, the side panel's My list), kept on this TV,
@@ -19,13 +22,32 @@ public final class MyList {
         return c.getApplicationContext().getSharedPreferences("my_list", Context.MODE_PRIVATE);
     }
 
-    /** The keys, the one added last first. */
-    public static synchronized List<String> keys(Context c) {
-        return parse(prefs(c).getString("keys", ""));
+    /** The keys as last read (and as a set), read again only when the kept line itself changes. */
+    private static String readFrom;
+    private static List<String> read = Collections.emptyList();
+    private static Set<String> readSet = Collections.emptySet();
+
+    private static List<String> kept(Context c) {
+        String raw = prefs(c).getString("keys", "");
+        //noinspection StringEquality: the very line read last time, or a new one
+        if (raw != readFrom) {
+            read = Collections.unmodifiableList(parse(raw));
+            readSet = new HashSet<>(read);
+            readFrom = raw;
+        }
+        return read;
     }
 
-    public static boolean has(Context c, String key) {
-        return key != null && keys(c).contains(key);
+    /** The keys, the one added last first. */
+    public static synchronized List<String> keys(Context c) {
+        return new ArrayList<>(kept(c));
+    }
+
+    /** Whether a title is on the list (at once: every poster asks). */
+    public static synchronized boolean has(Context c, String key) {
+        if (key == null) return false;
+        kept(c);
+        return readSet.contains(key);
     }
 
     /** On the list or off it; true when it is on it now. */

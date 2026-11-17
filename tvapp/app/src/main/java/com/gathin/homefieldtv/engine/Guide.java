@@ -36,12 +36,17 @@ public final class Guide {
         public final String[] title;
         /** Each programme's description ("" when the guide gives none). */
         public final String[] desc;
+        /** The longest programme, so that the first one still on at a time is found by its start (from()). */
+        private final long longest;
 
         Schedule(long[] start, long[] stop, String[] title, String[] desc) {
             this.start = start;
             this.stop = stop;
             this.title = title;
             this.desc = desc;
+            long l = 0;
+            for (int i = 0; i < start.length; i++) l = Math.max(l, stop[i] - start[i]);
+            longest = l;
         }
 
         /** The programme on at t, or -1. */
@@ -54,10 +59,29 @@ public final class Guide {
             return found >= 0 && stop[found] > t ? found : -1;
         }
 
-        /** The first programme starting after t, or -1. */
+        /** The first programme starting after t, or -1 (by halves, not one by one). */
         public int after(long t) {
-            for (int i = 0; i < start.length; i++) if (start[i] > t) return i;
-            return -1;
+            int i = startingFrom(t + 1);
+            return i < start.length ? i : -1;
+        }
+
+        /**
+         * Where to begin looking for the programmes still on at t or later (the guide's window): no programme before it
+         * ends after t. Found by halves, so a channel with days of catch-up costs no more than one with an evening.
+         */
+        public int from(long t) {
+            return startingFrom(t - longest + 1);
+        }
+
+        /** The first programme starting at t or later (start.length for none). */
+        private int startingFrom(long t) {
+            int lo = 0, hi = start.length;
+            while (lo < hi) {
+                int mid = (lo + hi) >>> 1;
+                if (start[mid] < t) lo = mid + 1;
+                else hi = mid;
+            }
+            return lo;
         }
     }
 

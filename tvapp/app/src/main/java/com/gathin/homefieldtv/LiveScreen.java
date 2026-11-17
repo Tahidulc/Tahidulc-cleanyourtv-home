@@ -24,7 +24,7 @@ import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.prefs.RemoteKeys;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -79,6 +79,8 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
     private BoardLayer board;
     /** The live screen's rows (the playlist's groups) and where the remote is in them. */
     private final List<Row> groups = new ArrayList<>();
+    /** Each group's row, by the group's own name. */
+    private final Map<String, Integer> rowOf = new HashMap<>();
     private int row, col;
     private final Handler h = new Handler(Looper.getMainLooper());
     private final Runnable hide = () -> setMode(NONE);
@@ -246,11 +248,11 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
     }
 
     private Channel step(Channel from, int dir) {
-        List<Channel> all = Library.get(tv).all();
-        if (all.isEmpty() || from == null) return from;
+        Library lib = Library.get(tv);
+        if (from == null || lib.all().isEmpty()) return from;
         // Settings → Categories and Parental control: past hidden categories, and past locked channels (they play
-        // when chosen from a list, after the PIN).
-        return com.gathin.homefieldtv.prefs.Shown.step(tv, all, from, dir);
+        // when chosen from a list, after the PIN). Found at once from the lists the library made (Shown.step's way).
+        return lib.step(from, dir);
     }
 
     /** A channel now: the banner comes up on it (unless Settings → Player → Channel banner is off). */
@@ -385,52 +387,48 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
             act(RemoteKeys.PREVIOUS);
             return;
         }
-        Library lib = Library.get(tv);
         int n;
         try {
             n = Integer.parseInt(d);
         } catch (NumberFormatException e) {
             return;
         }
-        for (Channel c : lib.all()) {
-            if (lib.number(c) == n) {
-                tune(c);
-                return;
-            }
+        // The first listed channel with that number, found at once (the library keeps them by number).
+        Channel c = Library.get(tv).numbered(n);
+        if (c != null) {
+            tune(c);
+            return;
         }
         banner.invalidate();
     }
 
     // ---- the live screen's rows -------------------------------------------------------------------------------------
 
-    /** The playlist's groups as rows: in the family's order and names, hidden ones left out (Settings → Categories). */
+    /**
+     * The playlist's groups as rows: in the family's order and names, hidden ones left out (Settings → Categories). Each
+     * group's channels as the library made them, so this goes through the groups, never through every channel.
+     */
     private void buildRows() {
         groups.clear();
-        Map<String, List<Channel>> by = new LinkedHashMap<>();
-        for (Channel c : Library.get(tv).all()) {
-            List<Channel> l = by.get(c.group);
-            if (l == null) by.put(c.group, l = new ArrayList<>());
-            l.add(c);
-        }
-        for (String g : com.gathin.homefieldtv.prefs.Categories.arranged(tv, new ArrayList<>(by.keySet()))) {
-            groups.add(new Row(com.gathin.homefieldtv.prefs.Categories.label(tv, g), by.get(g)));
+        rowOf.clear();
+        Library lib = Library.get(tv);
+        for (String g : com.gathin.homefieldtv.prefs.Categories.arranged(tv, lib.rowGroups())) {
+            rowOf.put(g, groups.size());
+            groups.add(new Row(com.gathin.homefieldtv.prefs.Categories.label(tv, g), lib.group(g).channels));
         }
     }
 
+    /** The remote on a channel's place in the rows (its group's row, its place in it), found at once. */
     private void find(Channel c) {
         row = 0;
         col = 0;
         if (c == null) return;
-        for (int r = 0; r < groups.size(); r++) {
-            List<Channel> l = groups.get(r).channels;
-            for (int k = 0; k < l.size(); k++) {
-                if (l.get(k).key.equals(c.key)) {
-                    row = r;
-                    col = k;
-                    return;
-                }
-            }
-        }
+        Integer r = rowOf.get(c.group);
+        int k = r == null ? -1 : Library.get(tv).group(c.group).indexOf(c);
+        if (k < 0 || r >= groups.size() || k >= groups.get(r).channels.size()) return;
+        if (!groups.get(r).channels.get(k).key.equals(c.key)) return;
+        row = r;
+        col = k;
     }
 
     private Channel browseChannel() {

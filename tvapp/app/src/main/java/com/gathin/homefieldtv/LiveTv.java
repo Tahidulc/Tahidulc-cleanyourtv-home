@@ -668,11 +668,11 @@ final class LiveTv {
         ladder = Ladder.single(c);
         if (Exec.inline) return;
         final int asked = ++ladderAsked;
-        // Every copy, in hidden categories too: they are the same channel's quality levels.
-        final List<Channel> all = Library.get(app).every();
         final Set<String> favourites = new HashSet<>(Library.get(app).favourites());
         Exec.io(() -> {
-            List<Channel> found = Ladder.variants(all, c, favourites);
+            // Every copy, in hidden categories too: they are the same channel's quality levels. Only the channels whose
+            // names read as this one's are looked at (the library's index of names), not every channel at each change.
+            List<Channel> found = Ladder.variants(Library.get(app).named(c.name), c, favourites);
             Exec.main(() -> {
                 if (asked != ladderAsked || ladder == null || cur == null || !cur.key.equals(c.key) || arc != null
                         || found.size() <= 1) return;

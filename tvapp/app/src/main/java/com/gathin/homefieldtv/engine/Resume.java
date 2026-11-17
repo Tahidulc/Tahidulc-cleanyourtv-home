@@ -8,7 +8,10 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Where each film and episode was left on this TV (its resume point), newest first: the Continue watching row and the
@@ -54,22 +57,44 @@ public final class Resume {
         return c.getApplicationContext().getSharedPreferences("resume", Context.MODE_PRIVATE);
     }
 
-    /** Every point, newest first. */
+    /**
+     * The points as last read, and each title's and each episode's (the first, newest, for each): read again only when
+     * the kept line itself changes, so a screen of thousands of posters asks them at no cost.
+     */
+    private static String readFrom;
+    private static List<Point> points = Collections.emptyList();
+    private static Map<String, Point> byTitle = Collections.emptyMap(), byEpisode = Collections.emptyMap();
+
+    /** Every point, newest first (read-only). */
     public static synchronized List<Point> all(Context c) {
-        return parse(prefs(c).getString("points", "[]"));
+        String raw = prefs(c).getString("points", "[]");
+        //noinspection StringEquality: the very line read last time, or a new one
+        if (raw != readFrom) {
+            List<Point> list = parse(raw);
+            Map<String, Point> t = new HashMap<>(), e = new HashMap<>();
+            for (Point p : list) {
+                t.putIfAbsent(p.title, p);
+                e.putIfAbsent(p.title + '\n' + p.episode, p);
+            }
+            points = Collections.unmodifiableList(list);
+            byTitle = t;
+            byEpisode = e;
+            readFrom = raw;
+        }
+        return points;
     }
 
     /** The point for a film (episode "") or one episode, or null. */
-    public static Point get(Context c, String title, String episode) {
-        String e = episode == null ? "" : episode;
-        for (Point p : all(c)) if (p.title.equals(title) && p.episode.equals(e)) return p;
-        return null;
+    public static synchronized Point get(Context c, String title, String episode) {
+        if (title == null) return null;
+        all(c);
+        return byEpisode.get(title + '\n' + (episode == null ? "" : episode));
     }
 
     /** A series' latest point (the episode watched last), or null. */
-    public static Point latest(Context c, String title) {
-        for (Point p : all(c)) if (p.title.equals(title)) return p;
-        return null;
+    public static synchronized Point latest(Context c, String title) {
+        all(c);
+        return byTitle.get(title);
     }
 
     /** Where it was left: kept first; the start or the very end forgets it (a film watched to the end is done). */

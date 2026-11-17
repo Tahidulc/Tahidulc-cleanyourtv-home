@@ -15,7 +15,6 @@ import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -510,13 +509,9 @@ final class ExtraSettings {
         return STAY;
     }
 
+    /** How many channels each group has (hidden ones too), counted once as the playlists were read. */
     private Map<String, Integer> counts(Library lib) {
-        Map<String, Integer> out = new HashMap<>();
-        for (Channel c : lib.every()) {
-            Integer n = out.get(c.group);
-            out.put(c.group, n == null ? 1 : n + 1);
-        }
-        return out;
+        return lib.groupSizes();
     }
 
     private static String restoreName(String which) {

@@ -10,7 +10,7 @@ import android.view.View;
 
 import com.gathin.homefieldtv.engine.Exec;
 
-import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -30,7 +30,8 @@ final class PosterGrid extends View {
 
     static final float GAP_X = 30f, GAP_Y = 30f, HEAD = 120f;
 
-    private final List<PosterArt.Item> items = new ArrayList<>();
+    /** The list as given (its posters may be made only as they are reached: PosterArt.Items), never copied. */
+    private List<PosterArt.Item> items = Collections.emptyList();
     private int focus;
     private boolean active;
     private Host host;
@@ -58,8 +59,7 @@ final class PosterGrid extends View {
     void set(String name, List<PosterArt.Item> list, String whenEmpty, boolean keep) {
         title = name == null ? "" : name;
         empty = whenEmpty == null ? "" : whenEmpty;
-        items.clear();
-        items.addAll(list);
+        items = list == null ? Collections.<PosterArt.Item>emptyList() : list;
         if (!keep) {
             focus = 0;
             scroll = scrollTo = 0;

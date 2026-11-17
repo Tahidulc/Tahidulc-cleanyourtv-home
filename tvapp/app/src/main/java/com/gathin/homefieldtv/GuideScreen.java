@@ -12,13 +12,12 @@ import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Genres;
 import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.Library;
+import com.gathin.homefieldtv.engine.Lineup;
 import com.gathin.homefieldtv.engine.Reminders;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 /**
@@ -45,7 +44,6 @@ final class GuideScreen extends Screen implements GuideGrid.Host {
     private int area = GRID;
     /** The list in the grid: ALL, FAV, RECENT, or GENRE / GROUP and its name. */
     private String shown = ALL;
-    private final Map<String, String> genreOf = new HashMap<>();
     private final Set<String> favourites = new HashSet<>();
     private String digits = "";
     private final Handler h = new Handler(Looper.getMainLooper());
@@ -83,19 +81,13 @@ final class GuideScreen extends Screen implements GuideGrid.Host {
         return f;
     }
 
-    /** The categories with their counts: the guide's own lists, its kinds, then the playlist's groups. */
+    /**
+     * The categories with their counts: the guide's own lists, its kinds, then the playlist's groups. Each count is a
+     * list's size, the lists made as the channels were read (Library), never counted here: opening the guide costs the
+     * same with fifty channels or fifty thousand.
+     */
     private void fillPanel(String chosen) {
         Library lib = Library.get(tv);
-        genreOf.clear();
-        Map<String, Integer> kinds = new HashMap<>(), groups = new HashMap<>();
-        for (Channel c : lib.all()) {
-            String g = Genres.of(c.group, c.name);
-            genreOf.put(c.key, g);
-            Integer n = kinds.get(g);
-            kinds.put(g, n == null ? 1 : n + 1);
-            Integer m = groups.get(c.group);
-            groups.put(c.group, m == null ? 1 : m + 1);
-        }
         favourites.clear();
         favourites.addAll(lib.favourites());
         List<SidePanel.Entry> e = new ArrayList<>();
@@ -104,16 +96,16 @@ final class GuideScreen extends Screen implements GuideGrid.Host {
         e.add(new SidePanel.Entry("Recently watched", Dark.RESUME, lib.recent(null).size(), RECENT));
         e.add(SidePanel.Entry.section("Categories"));
         for (String g : Genres.ORDER) {
-            Integer n = kinds.get(g);
-            if (n != null || g.equals(startCategory)) e.add(new SidePanel.Entry(g, -1, n == null ? 0 : n, GENRE + g));
+            int n = lib.genre(g).channels.size();
+            if (n > 0 || g.equals(startCategory)) e.add(new SidePanel.Entry(g, -1, n, GENRE + g));
         }
         // Settings → Categories: in the family's order and names, hidden ones (and ones locked away) left out.
         List<String> mine = com.gathin.homefieldtv.prefs.Categories.arranged(tv, lib.groups());
         if (!mine.isEmpty()) {
             e.add(SidePanel.Entry.section("Your playlist"));
             for (String g : mine) {
-                Integer n = groups.get(g);
-                if (n == null) continue;
+                int n = lib.group(g).channels.size();
+                if (n == 0) continue;
                 e.add(new SidePanel.Entry(com.gathin.homefieldtv.prefs.Categories.label(tv, g), -1, n, GROUP + g));
             }
         }
@@ -122,18 +114,14 @@ final class GuideScreen extends Screen implements GuideGrid.Host {
         panel.set("TV guide", e, at);
     }
 
-    private List<Channel> channelsOf(String tag) {
+    /** A list's channels, as the library made them (with where each is in it). */
+    private Lineup channelsOf(String tag) {
         Library lib = Library.get(tv);
-        if (FAV.equals(tag)) return lib.list(Library.FAVOURITES, "");
-        if (RECENT.equals(tag)) return lib.recent(null);
-        if (tag.startsWith(GENRE)) {
-            String g = tag.substring(GENRE.length());
-            List<Channel> out = new ArrayList<>();
-            for (Channel c : lib.all()) if (g.equals(genreOf.get(c.key))) out.add(c);
-            return out;
-        }
-        if (tag.startsWith(GROUP)) return lib.list(tag.substring(GROUP.length()), "");
-        return lib.all();
+        if (FAV.equals(tag)) return lib.lineup(lib.list(Library.FAVOURITES, ""));
+        if (RECENT.equals(tag)) return lib.lineup(lib.recent(null));
+        if (tag.startsWith(GENRE)) return lib.genre(tag.substring(GENRE.length()));
+        if (tag.startsWith(GROUP)) return lib.group(tag.substring(GROUP.length()));
+        return lib.lineup();
     }
 
     /** A list's channels in the grid, the remote on focusOn if it is there, else on the channel last watched. */
