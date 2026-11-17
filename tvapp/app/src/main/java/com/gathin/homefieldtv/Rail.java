@@ -48,6 +48,12 @@ final class Rail extends View {
     private boolean active;
     /** Home's menu: the remote comes back to the item it was on (every other screen's starts on its own). */
     boolean keep;
+    /**
+     * Home's menu: nothing at all while closed (Home has its own mark that opens it), the drawer sliding in from the
+     * left edge over a dimmed page when the remote comes on to it.
+     */
+    boolean hideClosed;
+    private final Paint scrim = new Paint();
     private float open;
     private ValueAnimator anim;
 
@@ -150,14 +156,22 @@ final class Rail extends View {
         a.start();
     }
 
-    /** The menu's right edge now (screen pixels): 112 closed, 440 open. */
+    /** The menu's right edge now (screen pixels): 112 closed, 440 open (0 closed when hidden while closed). */
     float edge() {
-        return Ui.f(W + (DRAWER - W) * open);
+        return hideClosed ? Ui.f(DRAWER * open) : Ui.f(W + (DRAWER - W) * open);
     }
 
     @Override protected void onDraw(Canvas c) {
         int h = getHeight();
         float right = edge();
+        if (hideClosed) {
+            if (open <= 0.005f) return;
+            scrim.setColor(0x99000000);
+            scrim.setAlpha(Math.round(0x99 * open));
+            c.drawRect(right, 0, getWidth(), h, scrim);
+            c.save();
+            c.clipRect(0, 0, right, h);
+        }
         if (open > 0f) {
             // The drawer's soft edge over the screen.
             shadow.setAlpha(Math.round(255 * open));
@@ -209,6 +223,7 @@ final class Rail extends View {
             c.drawCircle(sx, sy, Ui.f(8), dotEdge);
             c.drawCircle(sx, sy, Ui.f(7), dot);
         }
+        if (hideClosed) c.restore();
         if (anim != null && anim.isRunning()) postInvalidateOnAnimation();
     }
 }

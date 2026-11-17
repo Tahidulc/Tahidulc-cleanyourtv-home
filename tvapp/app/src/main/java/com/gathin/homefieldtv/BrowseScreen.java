@@ -1,12 +1,14 @@
 package com.gathin.homefieldtv;
 
-import android.animation.ValueAnimator;
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.os.Handler;
 import android.os.Looper;
+import android.text.StaticLayout;
+import android.text.TextPaint;
 import android.view.KeyEvent;
 import android.view.View;
 import android.widget.FrameLayout;
@@ -17,55 +19,40 @@ import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.engine.MyList;
 import com.gathin.homefieldtv.engine.Resume;
 import com.gathin.homefieldtv.engine.Sources;
+import com.gathin.homefieldtv.engine.Tmdb;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
 /**
- * Movies, or TV shows, as the family's other app has them: the rail down the left, then the categories' column
- * (GroupsPanel: My list and Continue watching in bold, then the playlists' heading with All movies, Your TorBox (the
- * family's own titles no playlist has), Recently added and every category, the remote's row held at one height),
- * and the list the remote is on as a grid of posters (PosterGrid) under the big words of the poster the remote is on
- * (VodHero: its title, rating, year, length and genres, cast, director and story) with its picture on the right
- * fading into the ground. Moving down the column shows each list at once. Right (or OK) goes into the posters: the
- * column goes and the posters slide to the left edge, and the search and sort buttons show at the top right; Left
- * from a row's first poster brings the column back. OK on a poster opens its page. Back goes from the posters to the
- * column, then to the menu, then back. An empty list says so with the clapperboard where the other app has it.
+ * Movies, or TV shows, as the family's "TV show card" has them, made for the remote: the top bar (Home, TV shows,
+ * Movies, Recently added; Homefield's mark; Search, My list), and under it the picture of whatever the remote is on
+ * across the page, fading into the page's colour (the picture's own, made deep, changing as the remote moves), with its
+ * logo or big lettering, its facts and what it's about. Under that the rows (CineRows): Continue watching with how far
+ * in, My list, Recently added, Your TorBox, then every category, each ending in a tile that opens all of it (ListScreen).
+ * OK on a poster opens its page; on a Continue watching tile it carries on at once. Up from the first row goes to the
+ * top bar; Back goes there too, then back Home.
  *
- * <p>Sort (the top right's second button): as the playlist has them, by name, newest first or best rated, sorted off
- * the main thread. Nothing here goes through every title on the main thread: the lists are the catalogue's own, and
- * each poster is made only as it is drawn (PosterArt.Items).
+ * <p>Nothing here goes through every title on the main thread: the rows are the catalogue's own lists, cut to their
+ * first few.
  */
-final class BrowseScreen extends Screen implements GroupsPanel.Host, PosterGrid.Host, RightPanel.Host {
-    private static final String MINE = "mine", CONTINUE = "continue", ALL = "all", RECENT = "recent", HEAD = "head";
-    private static final int RAIL = 0, COLUMN = 1, GRID = 2, BUTTONS = 3;
-    /** Content's left edge with the column out and with it gone (design pixels). */
-    static final float WITH_COLUMN = 672f, WITHOUT = 56f;
-    private static final long SLIDE_MS = 150;
+final class BrowseScreen extends Screen implements CineRows.Host {
+    static final String MINE = "mine", CONTINUE = "continue", RECENT = "recent";
+    /** How many of a list a row shows before its "All" tile. */
+    static final int ROW_MAX = 24;
     static final String[] SORTS = {"As in the playlist", "By name", "Newest first", "Best rated"};
-    /** The list each kind was last on, opened on it again (by tag). */
-    private static String lastFilms, lastShows;
+    /** My list's page (MyListScreen) still slides its content by these (design pixels). */
+    static final float WITH_COLUMN = 672f, WITHOUT = 56f;
 
     private final boolean series;
-    private Rail rail;
-    private GroupsPanel column;
-    private VodHero hero;
-    private Backdrop picture;
-    private PosterGrid grid;
-    private Overlay overlay;
-    private RightPanel sortPanel;
-    private int area = COLUMN, button;
-    /** The list shown (a tag), its sort, and the sorting asked last (an older answer is let go). */
-    private String showing = "";
-    private int sort, sortAsk;
-    private float contentX = WITH_COLUMN;
-    private ValueAnimator slide;
+    private TopBar bar;
+    private Hero hero;
+    private CineRows rows;
+    private boolean onBar;
     private final Handler h = new Handler(Looper.getMainLooper());
-    private Catalog.Title pending;
-    private final Runnable fetch = this::fetchDetails;
-    private List<Catalog.Title> madeFrom;
+    private Catalog.Title pending, extrasFor;
+    private final Runnable fetch = this::fetchDetails, extras = this::fetchExtras;
 
     BrowseScreen(TvActivity tv, boolean series) {
         super(tv);
@@ -73,34 +60,23 @@ final class BrowseScreen extends Screen implements GroupsPanel.Host, PosterGrid.
     }
 
     @Override View build() {
+        Cine.init(tv);
         FrameLayout f = new FrameLayout(tv);
-        f.setBackgroundColor(Palette.GROUND);
-        picture = new Backdrop(tv, 800f, 0f, 1120f, 640f, Pics.DARK);
-        hero = new VodHero(tv);
-        grid = new PosterGrid(tv);
-        grid.setHost(this);
-        overlay = new Overlay(tv);
-        column = new GroupsPanel(tv);
-        column.x = Rail.W;
-        column.setHost(this);
-        rail = new Rail(tv, series ? Rail.SHOWS : Rail.FILMS);
-        sortPanel = new RightPanel(tv);
-        sortPanel.setHost(this);
-        sortPanel.setVisibility(View.GONE);
-        f.addView(picture, new FrameLayout.LayoutParams(-1, -1));
+        f.setBackgroundColor(Cine.GROUND);
+        hero = new Hero(tv);
+        rows = new CineRows(tv);
+        rows.setHost(this);
+        bar = new TopBar(tv, series ? TopBar.SHOWS : TopBar.MOVIES);
         f.addView(hero, new FrameLayout.LayoutParams(-1, -1));
-        f.addView(grid, new FrameLayout.LayoutParams(-1, -1));
-        f.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
-        f.addView(column, new FrameLayout.LayoutParams(-1, -1));
-        f.addView(rail, new FrameLayout.LayoutParams(-1, -1));
-        f.addView(sortPanel, new FrameLayout.LayoutParams(-1, -1));
+        f.addView(rows, new FrameLayout.LayoutParams(-1, -1));
+        f.addView(bar, new FrameLayout.LayoutParams(-1, Ui.px(TopBar.H + 90f)));
         fill();
-        place(true);
+        if (rows.isEmpty()) toBar(true);
         return f;
     }
 
     @Override void shown() {
-        // No mini TV here: the stream let go (a film may want the provider's one connection).
+        // No live picture here: the stream let go (a film may want the provider's one connection).
         tv.live.stop();
         tv.live.place(null);
         fill();
@@ -108,10 +84,11 @@ final class BrowseScreen extends Screen implements GroupsPanel.Host, PosterGrid.
 
     @Override void hidden() {
         h.removeCallbacks(fetch);
+        h.removeCallbacks(extras);
     }
 
     @Override void tick() {
-        rail.invalidate();
+        bar.invalidate();
     }
 
     @Override void catalogChanged() {
@@ -149,109 +126,221 @@ final class BrowseScreen extends Screen implements GroupsPanel.Host, PosterGrid.
         return out;
     }
 
-    /** A title as a poster: its genre (its page's when read, else its category's) and how far through it is. */
-    private PosterArt.Item item(Catalog.Title t) {
-        PosterArt.Item it = new PosterArt.Item(t);
-        Catalog.Details d = Catalog.get(tv).cachedDetails(t);
-        it.genre = d != null && !PosterArt.firstGenre(d.genre).isEmpty() ? PosterArt.firstGenre(d.genre) : PosterArt.genreOf(t.category);
-        if (d != null) it.backdrop = d.backdrop;
-        Resume.Point p = t.series ? Resume.latest(tv, t.key) : Resume.get(tv, t.key, "");
-        if (p != null && p.position > 0) it.progress = p.progress();
-        return it;
-    }
-
-    /** A list's titles as posters, each made as it is first drawn or reached (PosterArt.Items), never all at once. */
-    private List<PosterArt.Item> items(List<Catalog.Title> titles) {
-        return new PosterArt.Items(titles, this::item);
-    }
-
-    /** The column's rows: the lists of the family's own, then the playlists' heading and their lists. */
-    private void fill() {
-        if (column == null) return;
-        Catalog cat = Catalog.get(tv);
-        List<GroupsPanel.Entry> entries = new ArrayList<>();
-        entries.add(GroupsPanel.Entry.bold("My list", MINE));
-        entries.add(GroupsPanel.Entry.bold("Continue watching", CONTINUE));
-        entries.add(GroupsPanel.Entry.heading(playlistsName(), HEAD));
-        entries.add(GroupsPanel.Entry.group(series ? "All TV shows" : "All movies", ALL));
-        List<Catalog.Category> cats = cat.categories(series);
-        Catalog.Category own = null;
-        for (Catalog.Category c : cats) if (c.name.equals(Catalog.TORBOX)) own = c;
-        if (own != null) entries.add(GroupsPanel.Entry.group(own.name, "cat:" + own.name));
-        entries.add(GroupsPanel.Entry.group("Recently added", RECENT));
-        for (Catalog.Category c : cats) if (c != own) entries.add(GroupsPanel.Entry.group(c.name, "cat:" + c.name));
-        if (showing.isEmpty()) {
-            String last = series ? lastShows : lastFilms;
-            showing = last != null ? last : !continuing().isEmpty() ? CONTINUE : ALL;
+    /** Pure: a Continue watching tile's line: "S2 E4 · 32m left", "32m left", "S2 E4", or "" (subtitle "S2 E4 · Pilot"). */
+    static String resumeLine(String subtitle, long position, long duration) {
+        String code = "";
+        if (subtitle != null && !subtitle.isEmpty()) {
+            int dot = subtitle.indexOf(" · ");
+            code = (dot > 0 ? subtitle.substring(0, dot) : subtitle).trim();
         }
-        int at = 0;
-        for (int i = 0; i < entries.size(); i++) if (showing.equals(entries.get(i).tag)) at = i;
-        column.set(entries, at);
-        column.choose(showing);
-        List<Catalog.Title> now = all();
-        boolean changed = now != madeFrom;
-        madeFrom = now;
-        show(showing, !changed);
+        String left = "";
+        if (duration > 0 && position > 0 && position < duration) {
+            long mins = Math.max(1, Math.round((duration - position) / 60_000.0));
+            left = mins >= 60 ? (mins / 60) + "h " + (mins % 60) + "m left" : mins + "m left";
+        }
+        if (code.isEmpty()) return left;
+        return left.isEmpty() ? code : code + " · " + left;
     }
 
-    /** The playlists' heading: the one in use's name, or All playlists. */
-    private String playlistsName() {
-        List<Sources.Entry> in = Sources.inUse(tv);
-        return in.size() == 1 ? in.get(0).name : "All playlists";
+    /** A title's poster tile (its wide picture where Settings → Posters say Landscape). */
+    private CineRows.Tile poster(Catalog.Title t) {
+        String pic = t.poster;
+        if (PosterArt.landscape) {
+            Catalog.Details d = Catalog.get(tv).cachedDetails(t);
+            pic = d != null && !d.backdrop.isEmpty() ? d.backdrop : !t.backdrop.isEmpty() ? t.backdrop : t.poster;
+        }
+        return new CineRows.Tile(t, pic, "", -1f, t);
     }
 
-    /** A list shown in the grid, by its tag (sorted as asked, off the main thread when it must be). */
-    private void show(String what, boolean keep) {
-        String name;
-        List<Catalog.Title> titles;
-        switch (what) {
-            case ALL:
-                name = series ? "All TV shows" : "All movies";
-                titles = all();
-                break;
-            case CONTINUE:
-                name = "Continue watching";
-                titles = continuing();
-                break;
-            case MINE:
-                name = "My list";
-                titles = mine();
-                break;
-            case RECENT:
-                name = "Recently added";
-                titles = Catalog.get(tv).recent(series, 60);
-                break;
-            default: {
-                name = what.startsWith("cat:") ? what.substring(4) : what;
-                titles = Collections.emptyList();
-                for (Catalog.Category c : Catalog.get(tv).categories(series)) if (c.name.equals(name)) titles = c.titles;
-                break;
+    /** A Continue watching tile: the wide picture (the episode's, where it was left), where it was and how far in. */
+    private CineRows.Tile resumeTile(Catalog.Title t) {
+        Resume.Point p = t.series ? Resume.latest(tv, t.key) : Resume.get(tv, t.key, "");
+        Catalog.Details d = Catalog.get(tv).cachedDetails(t);
+        String pic = d != null && !d.backdrop.isEmpty() ? d.backdrop : !t.backdrop.isEmpty() ? t.backdrop : t.poster;
+        if (p != null && t.series && !p.picture.isEmpty()) pic = p.picture;
+        String line = p == null ? "" : resumeLine(t.series ? p.subtitle : "", p.position, p.duration);
+        return new CineRows.Tile(t, pic, line, p != null && p.position > 0 ? p.progress() : -1f, p);
+    }
+
+    private List<CineRows.Tile> posters(List<Catalog.Title> titles) {
+        int n = Math.min(ROW_MAX, titles.size());
+        List<CineRows.Tile> out = new ArrayList<>(n);
+        for (int i = 0; i < n; i++) out.add(poster(titles.get(i)));
+        return out;
+    }
+
+    /** The page's rows: Continue watching, My list, Recently added, Your TorBox, then each category. */
+    private void fill() {
+        if (rows == null) return;
+        Catalog cat = Catalog.get(tv);
+        List<CineRows.Row> out = new ArrayList<>();
+        List<Catalog.Title> going = continuing();
+        if (!going.isEmpty()) {
+            List<CineRows.Tile> tiles = new ArrayList<>();
+            for (int i = 0; i < Math.min(ROW_MAX, going.size()); i++) tiles.add(resumeTile(going.get(i)));
+            out.add(new CineRows.Row("Continue watching", CineRows.WIDE, tiles, going.size(), CONTINUE));
+        }
+        List<Catalog.Title> mine = mine();
+        if (!mine.isEmpty()) out.add(new CineRows.Row("My List", CineRows.POSTERS, posters(mine), mine.size(), MINE));
+        List<Catalog.Title> recent = cat.recent(series, 60);
+        if (!recent.isEmpty()) out.add(new CineRows.Row("Recently added", CineRows.POSTERS, posters(recent), recent.size(), RECENT));
+        List<Catalog.Category> cats = cat.categories(series);
+        for (Catalog.Category c : cats) {
+            if (c.name.equals(Catalog.TORBOX) && !c.titles.isEmpty()) {
+                out.add(new CineRows.Row(c.name, CineRows.POSTERS, posters(c.titles), c.titles.size(), "cat:" + c.name));
             }
         }
-        if (sort == 0) {
-            grid.set(name, items(titles), keep);
-            showHero();
-        } else {
-            sorted(name, titles, keep);
+        for (Catalog.Category c : cats) {
+            if (c.name.equals(Catalog.TORBOX) || c.titles.isEmpty()) continue;
+            out.add(new CineRows.Row(c.name, CineRows.POSTERS, posters(c.titles), c.titles.size(), "cat:" + c.name));
         }
-        overlay.invalidate();
+        rows.set(out);
+        showHero();
     }
 
-    /** The list sorted as asked off the main thread, then shown (an answer to an older ask let go). */
-    private void sorted(String name, List<Catalog.Title> titles, boolean keep) {
-        int ask = ++sortAsk, how = sort;
-        Exec.work(() -> {
-            List<Catalog.Title> copy = new ArrayList<>(titles);
-            copy.sort(order(how));
-            Runnable done = () -> {
-                if (ask != sortAsk) return;
-                grid.set(name, items(copy), keep);
-                showHero();
-                overlay.invalidate();
-            };
-            if (Exec.inline) done.run();
-            else Exec.main(done);
+    /** A list's titles by its tag ("mine", "recent", "cat:Drama"). */
+    private List<Catalog.Title> listOf(Object tag) {
+        if (MINE.equals(tag)) return mine();
+        if (CONTINUE.equals(tag)) return continuing();
+        if (RECENT.equals(tag)) return Catalog.get(tv).recent(series, 120);
+        String name = tag instanceof String && ((String) tag).startsWith("cat:") ? ((String) tag).substring(4) : "";
+        for (Catalog.Category c : Catalog.get(tv).categories(series)) if (c.name.equals(name)) return c.titles;
+        return new ArrayList<>();
+    }
+
+    // ---- the big picture -----------------------------------------------------------------------------------------
+
+    private void showHero() {
+        h.removeCallbacks(fetch);
+        h.removeCallbacks(extras);
+        CineRows.Tile t = rows.tile();
+        CineRows.Row rw = rows.current();
+        if (t == null) {
+            if (rw != null) hero.list(rw.title, rw.allWords);
+            else hero.empty(emptyWhy());
+            return;
+        }
+        Catalog.Details d = Catalog.get(tv).cachedDetails(t.title);
+        hero.show(t.title, d, rw != null && rw.kind == CineRows.WIDE ? t.line : "");
+        pending = d == null ? t.title : null;
+        if (pending != null) h.postDelayed(fetch, t.title.series ? 900 : 500);
+        // TMDB's logo when the remote rests on it (kept ones at once).
+        extrasFor = t.title;
+        Tmdb.Extras kept = Tmdb.keptExtras(tv, t.title);
+        if (kept != null) hero.extras(t.title, kept);
+        else h.postDelayed(extras, 700);
+    }
+
+    private String emptyWhy() {
+        Catalog cat = Catalog.get(tv);
+        if (Sources.list(tv).isEmpty()) return "Add your playlist in Settings: its " + kind() + " show here.";
+        if (all().isEmpty() && (cat.busy() || Library.get(tv).busy())) return "Loading your playlist's " + kind() + "…";
+        if (all().isEmpty() && !cat.status().isEmpty()) return cat.status();
+        return "";
+    }
+
+    private void fetchDetails() {
+        Catalog.Title want = pending;
+        if (want == null) return;
+        Catalog.get(tv).details(want, d -> {
+            CineRows.Tile t = rows.tile();
+            if (t != null && t.title == want) {
+                CineRows.Row rw = rows.current();
+                hero.show(want, d, rw != null && rw.kind == CineRows.WIDE ? t.line : "");
+            }
         });
+    }
+
+    private void fetchExtras() {
+        Catalog.Title want = extrasFor;
+        if (want == null) return;
+        Exec.io(() -> {
+            Tmdb.Extras x = Tmdb.extras(tv, want);
+            if (x != null) Exec.main(() -> {
+                if (hero != null) hero.extras(want, x);
+            });
+        });
+    }
+
+    // ---- the remote -----------------------------------------------------------------------------------------------
+
+    private void toBar(boolean on) {
+        onBar = on;
+        bar.enter(on);
+        rows.setActive(!on);
+    }
+
+    @Override boolean key(int code, KeyEvent e) {
+        if (onBar) {
+            if (code == KeyEvent.KEYCODE_DPAD_DOWN && !rows.isEmpty()) {
+                toBar(false);
+                return true;
+            }
+            return bar.key(code) || code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN;
+        }
+        return rows.key(code);
+    }
+
+    @Override void ok() {
+        if (onBar) {
+            if (bar.focus == bar.current && !rows.isEmpty()) toBar(false);
+            else TopBar.go(tv, bar.focus, bar.current, series);
+            return;
+        }
+        rows.ok();
+    }
+
+    @Override boolean back() {
+        if (!onBar) {
+            toBar(true);
+            return true;
+        }
+        return false;
+    }
+
+    // ---- the rows ---------------------------------------------------------------------------------------------------
+
+    @Override public void focused(CineRows.Row row, int index) {
+        showHero();
+    }
+
+    @Override public void chosen(CineRows.Row row, int index) {
+        if (index >= row.tiles.size()) {
+            List<Catalog.Title> titles = listOf(row.tag);
+            if (!titles.isEmpty()) tv.push(new ListScreen(tv, series, row.title, titles));
+            return;
+        }
+        Catalog.Title t = row.tiles.get(index).title;
+        if (CONTINUE.equals(row.tag) && carryOn(t)) return;
+        tv.openTitle(t);
+    }
+
+    /** A Continue watching tile: on at once from where it was (an episode needs its series' page read; else its page). */
+    private boolean carryOn(Catalog.Title t) {
+        Resume.Point p = t.series ? Resume.latest(tv, t.key) : Resume.get(tv, t.key, "");
+        if (p == null) return false;
+        if (!t.series) {
+            tv.play(t, null, p.position, false);
+            return true;
+        }
+        Catalog.Details d = Catalog.get(tv).cachedDetails(t);
+        Catalog.Episode ep = d == null ? null : d.episode(p.episode);
+        if (ep == null) return false;
+        tv.play(t, ep, p.position, p.position <= 0);
+        return true;
+    }
+
+    @Override public boolean edge(int dir) {
+        if (dir == Ui.UP) {
+            toBar(true);
+            return true;
+        }
+        return dir == Ui.LEFT;
+    }
+
+    /** Previews and tests: the remote on a row and a tile. */
+    void focusRow(int row, int index) {
+        rows.focus(row, index);
     }
 
     /** Pure: a sort's order: by name, the newest added first, or the best rated first (the playlist's order kept on ties). */
@@ -264,273 +353,162 @@ final class BrowseScreen extends Screen implements GroupsPanel.Host, PosterGrid.
         }
     }
 
-    // ---- where things are --------------------------------------------------------------------------------------
+    // ---- the big picture's view ---------------------------------------------------------------------------------------
 
-    /** The views for where the remote is: the column out or gone, the posters and words beside it. */
-    private void place(boolean now) {
-        boolean columnOut = area != GRID && area != BUTTONS;
-        rail.setActive(area == RAIL);
-        column.setActive(area == COLUMN);
-        column.setVisibility(columnOut ? View.VISIBLE : View.GONE);
-        // In the posters the menu's rail goes too, as the other app's does: the posters from the screen's edge.
-        rail.setVisibility(columnOut ? View.VISIBLE : View.GONE);
-        grid.setActive(area == GRID);
-        slideTo(columnOut ? WITH_COLUMN : WITHOUT, now);
-        overlay.invalidate();
-    }
-
-    private void slideTo(float x, boolean now) {
-        if (slide != null) slide.cancel();
-        if (now || Exec.inline || contentX == x) {
-            contentX = x;
-            moved();
-            return;
-        }
-        ValueAnimator a = ValueAnimator.ofFloat(contentX, x);
-        a.setDuration(SLIDE_MS);
-        a.setInterpolator(Fade.EASE);
-        a.addUpdateListener(v -> {
-            contentX = (Float) v.getAnimatedValue();
-            moved();
-        });
-        slide = a;
-        a.start();
-    }
-
-    private void moved() {
-        hero.moveTo(contentX);
-        hero.w = Math.min(860f, 1420f - contentX);
-        grid.moveTo(contentX - 4f);
-        overlay.invalidate();
-    }
-
-    private void to(int a) {
-        area = a;
-        place(false);
-        if (a == COLUMN) column.slideIn();
-    }
-
-    // ---- the words over the posters -----------------------------------------------------------------------------
-
-    private void showHero() {
-        PosterArt.Item it = grid.item();
-        h.removeCallbacks(fetch);
-        if (it == null) {
-            hero.clear();
-            picture.set("");
-            return;
-        }
-        Catalog.Title t = it.title;
-        Catalog.Details d = Catalog.get(tv).cachedDetails(t);
-        hero.show(t, d, t.torbox() ? Catalog.TORBOX : "");
-        picture.set(d != null && !d.backdrop.isEmpty() ? d.backdrop : t.backdrop);
-        pending = d == null ? t : null;
-        if (pending != null) h.postDelayed(fetch, t.series ? 900 : 500);
-    }
-
-    private void fetchDetails() {
-        Catalog.Title want = pending;
-        if (want == null) return;
-        Catalog.get(tv).details(want, d -> {
-            PosterArt.Item it = grid.item();
-            if (it != null && it.title == want) {
-                hero.show(want, d, want.torbox() ? Catalog.TORBOX : "");
-                if (d != null && !d.backdrop.isEmpty()) picture.set(d.backdrop);
-            }
-        });
-    }
-
-    // ---- the remote -----------------------------------------------------------------------------------------------
-
-    @Override boolean key(int code, KeyEvent e) {
-        if (sortPanel.getVisibility() == View.VISIBLE) return sortPanel.key(code);
-        switch (area) {
-            case RAIL:
-                if (code == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                    to(COLUMN);
-                    return true;
-                }
-                return rail.key(code) || code == KeyEvent.KEYCODE_DPAD_LEFT;
-            case COLUMN:
-                return column.key(code);
-            case BUTTONS:
-                if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                    button = code == KeyEvent.KEYCODE_DPAD_LEFT ? 0 : 1;
-                    overlay.invalidate();
-                } else if (code == KeyEvent.KEYCODE_DPAD_DOWN) {
-                    to(GRID);
-                }
-                return true;
-            default:
-                return grid.key(code);
-        }
-    }
-
-    @Override void ok() {
-        if (sortPanel.getVisibility() == View.VISIBLE) {
-            sortPanel.ok();
-            return;
-        }
-        switch (area) {
-            case RAIL:
-                if (rail.focus == rail.page) to(COLUMN);
-                else Rail.go(tv, rail.focus, rail.page);
-                break;
-            case COLUMN:
-                column.ok();
-                break;
-            case BUTTONS:
-                if (button == 0) tv.openSearch();
-                else openSort();
-                break;
-            default:
-                grid.ok();
-                break;
-        }
-    }
-
-    @Override boolean back() {
-        if (sortPanel.getVisibility() == View.VISIBLE) {
-            sortPanel.close(() -> sortPanel.setVisibility(View.GONE));
-            return true;
-        }
-        switch (area) {
-            case GRID:
-            case BUTTONS:
-                to(COLUMN);
-                return true;
-            case COLUMN:
-                to(RAIL);
-                return true;
-            default:
-                return false;
-        }
-    }
-
-    // ---- the column ---------------------------------------------------------------------------------------------
-
-    @Override public void focused(GroupsPanel panel, GroupsPanel.Entry entry) {
-        if (entry.kind == GroupsPanel.HEADING || !(entry.tag instanceof String)) return;
-        // The list the remote is on, at once.
-        showing = (String) entry.tag;
-        if (series) lastShows = showing;
-        else lastFilms = showing;
-        column.choose(showing);
-        show(showing, false);
-    }
-
-    @Override public void chosen(GroupsPanel panel, GroupsPanel.Entry entry) {
-        if (!grid.isEmpty()) to(GRID);
-    }
-
-    @Override public boolean edge(GroupsPanel panel, int dir) {
-        if (dir == Ui.LEFT) to(RAIL);
-        else if (dir == Ui.RIGHT && !grid.isEmpty()) to(GRID);
-        return true;
-    }
-
-    // ---- the posters ----------------------------------------------------------------------------------------------
-
-    @Override public void focused(PosterArt.Item item) {
-        showHero();
-    }
-
-    @Override public void chosen(PosterArt.Item item) {
-        tv.openTitle(item.title);
-    }
-
-    @Override public boolean edge(int dir) {
-        if (dir == Ui.LEFT) {
-            to(COLUMN);
-            return true;
-        }
-        if (dir == Ui.UP) {
-            area = BUTTONS;
-            button = 0;
-            place(false);
-            return true;
-        }
-        return false;
-    }
-
-    // ---- sort -----------------------------------------------------------------------------------------------------
-
-    private void openSort() {
-        List<RowList.Row> rows = new ArrayList<>();
-        for (int i = 0; i < SORTS.length; i++) rows.add(RowList.Row.radio(i, SORTS[i], i == sort));
-        sortPanel.setVisibility(View.VISIBLE);
-        sortPanel.open("Sort", null, rows, sort, true);
-    }
-
-    @Override public void chosen(RightPanel p, RowList.Row row) {
-        int how = row.tag instanceof Integer ? (Integer) row.tag : 0;
-        sortPanel.close(() -> sortPanel.setVisibility(View.GONE));
-        if (how == sort) return;
-        sort = how;
-        show(showing, false);
-    }
-
-    @Override public void focused(RightPanel p, RowList.Row row) {}
-
-    @Override public boolean edge(RightPanel p, int dir) {
-        return true;
-    }
-
-    // ---- what is drawn over the posters ---------------------------------------------------------------------------
-
-    /** The search and sort buttons at the top right (with the posters), and an empty list's clapperboard. */
-    private final class Overlay extends View {
-        private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
+    /**
+     * The page under the bar: its colour, the picture of what the remote is on across it (the last one fading out as the
+     * new one comes), fading at the left and foot into the colour, and over it the logo or lettering, the facts, and
+     * what it's about; the words come in a little after the picture, rising into place.
+     */
+    private final class Hero extends View {
+        static final float TEXT_X = TopBar.LEFT, LOGO_TOP = 168f, LOGO_W = 780f, LOGO_H = 230f, FACTS_Y = 450f, PLOT_Y = 478f;
+        private Catalog.Title title, extrasTitle;
+        private Tmdb.Extras shownExtras;
+        private String picture = "", was = "", line = "", listName = "", listNote = "", why = "";
+        private final Smooth swap = new Smooth(170f, 0.004f), words = new Smooth(150f, 0.004f);
+        private final Cine.Wash wash = new Cine.Wash();
+        private final Lettering lettering = new Lettering();
+        private final FactsLine facts = new FactsLine(26f);
+        private final Paint ground = new Paint(), bmp = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint plotP = Cine.text(26f, Cine.inter(), Cine.SOFT), lineP = Cine.text(28f, Cine.interSemi(), Cine.TEXT),
+                bigP = Cine.text(84f, Cine.outfit(800), Cine.TEXT), noteP = Cine.text(28f, Cine.inter(), Cine.SOFT);
+        private StaticLayout plot;
         private final RectF r = new RectF();
+        private final Runnable redraw = this::invalidate, recolour = this::recolour;
 
-        Overlay(Context c) {
+        Hero(Context c) {
             super(c);
         }
 
+        void show(Catalog.Title t, Catalog.Details d, String resume) {
+            boolean fresh = t != title;
+            title = t;
+            listName = "";
+            why = "";
+            line = resume == null ? "" : resume;
+            String pic = d != null && !d.backdrop.isEmpty() ? d.backdrop : !t.backdrop.isEmpty() ? t.backdrop : t.poster;
+            if (!pic.equals(picture)) {
+                was = picture;
+                picture = pic;
+                swap.jump(0f);
+                swap.to(1f);
+            }
+            if (fresh) {
+                words.jump(0f);
+                words.to(1f);
+                lettering.logo("");
+            }
+            facts.set(t, d, extrasTitle == t ? shownExtras : null);
+            lettering.set(t.name, Ui.f(LOGO_W), Ui.f(LOGO_H), Ui.f(132f));
+            String p = d != null && !d.plot.isEmpty() ? d.plot : t.plot;
+            plot = p.isEmpty() ? null : Ui.layout(p, plotP, Ui.px(900f), line.isEmpty() ? 3 : 2);
+            recolour();
+            invalidate();
+        }
+
+        /** TMDB's extras for the title on show: its logo once read (never a blank between), its years and age. */
+        void extras(Catalog.Title t, Tmdb.Extras x) {
+            if (t != title || x == null) return;
+            extrasTitle = t;
+            shownExtras = x;
+            facts.set(t, Catalog.get(tv).cachedDetails(t), x);
+            if (!x.logo.isEmpty()) {
+                Runnable shown = () -> {
+                    if (title == t) {
+                        lettering.logo(x.logo);
+                        invalidate();
+                    }
+                };
+                if (Pics.get(x.logo, Ui.px(LOGO_W), Ui.px(LOGO_H), Pics.FIT, shown) != null) shown.run();
+            }
+            invalidate();
+        }
+
+        /** A row's "All" tile: its name and how many, no picture. */
+        void list(String name, String count) {
+            title = null;
+            listName = Ui.fit(name, bigP, Ui.f(1500f));
+            listNote = count + "  ·  OK shows them all";
+            was = picture;
+            picture = "";
+            swap.jump(0f);
+            swap.to(1f);
+            invalidate();
+        }
+
+        void empty(String note) {
+            title = null;
+            listName = "";
+            why = note;
+            picture = "";
+            was = "";
+            invalidate();
+        }
+
+        private void recolour() {
+            int art = Tint.of(picture, recolour);
+            wash.set(Cine.shade(art, 0.6f, 0.15f));
+            invalidate();
+        }
+
+        @Override protected void onSizeChanged(int w, int ht, int ow, int oh) {
+            wash.clear();
+            float H = Ui.f(1080f);
+            wash.add(0, 0, Ui.f(1300f), H, 0, 0, Ui.f(1300f), 0, 0.92f, 0.55f, 0.42f, 0f);
+            wash.add(0, Ui.f(300f), w, Ui.f(760f), 0, Ui.f(300f), 0, Ui.f(760f), 0f, 0.62f, 0.55f, 1f);
+        }
+
         @Override protected void onDraw(Canvas c) {
-            if (grid.isEmpty()) {
-                drawEmpty(c);
-                return;
+            boolean moving = swap.step();
+            moving |= words.step();
+            moving |= wash.step();
+            int w = getWidth(), ht = getHeight();
+            ground.setColor(wash.colour());
+            c.drawRect(0, 0, w, ht, ground);
+            r.set(0, 0, w, Ui.f(1080f));
+            float k = swap.value;
+            if (k < 1f && !was.isEmpty()) {
+                Bitmap b = Pics.cached(was, 1280, 720, Pics.CROP);
+                if (b != null) {
+                    bmp.setAlpha(Math.round(255 * (1f - k)));
+                    c.drawBitmap(b, null, r, bmp);
+                }
             }
-            if (area != GRID && area != BUTTONS) return;
-            // A pill with search and sort, the other app's [1728,40][1872,112].
-            r.set(Ui.f(1728), Ui.f(40), Ui.f(1872), Ui.f(112));
-            fill.setColor(Palette.SELECTED);
-            c.drawRoundRect(r, r.height() / 2f, r.height() / 2f, fill);
-            float[] cx = {1764f, 1836f};
-            for (int i = 0; i < 2; i++) {
-                if (area == BUTTONS && button == i) Focus.circle(c, Ui.f(cx[i]), Ui.f(76), Ui.f(64));
-                int colour = Palette.TEXT1;
-                if (i == 0) RoundButton.glyph(c, Dark.SEARCH, Ui.f(cx[i]), Ui.f(76), Ui.f(34), colour);
-                else Glyphs.draw(c, Glyphs.SORT, Ui.f(cx[i]), Ui.f(76), Ui.f(34), colour);
+            if (!picture.isEmpty()) {
+                Bitmap b = Pics.get(picture, 1280, 720, Pics.CROP, redraw);
+                if (b != null) {
+                    bmp.setAlpha(Math.round(255 * k));
+                    c.drawBitmap(b, null, r, bmp);
+                }
             }
-        }
+            wash.draw(c);
+            // Below the picture, the page's own colour (under the rows).
+            c.drawRect(0, Ui.f(760f), w, ht, ground);
 
-        private void drawEmpty(Canvas c) {
-            String why = "";
-            Catalog cat = Catalog.get(tv);
-            if (Sources.list(tv).isEmpty()) why = "Add your playlist in Settings: its " + kind() + " show here.";
-            else if (all().isEmpty() && (cat.busy() || Library.get(tv).busy())) why = "Loading your playlist's " + kind() + "…";
-            else if (all().isEmpty() && !cat.status().isEmpty()) why = cat.status();
-            else if (showing.equals(MINE)) why = "Open a title and choose My list to keep it here.";
-            else if (showing.equals(CONTINUE)) why = "What you start watching shows here, to carry on from where you left it.";
-            r.set(Ui.f(1232), 0, Ui.f(1920), getHeight());
-            EmptyState.draw(c, r, Dark.CLAPPER, 120f, series ? "No TV shows" : "No movies", why);
+            int a = Math.round(255 * words.value);
+            float rise = Ui.f(16f) * (1f - words.value), x = Ui.f(TEXT_X);
+            if (title != null) {
+                lettering.draw(c, x, Ui.f(LOGO_TOP) + rise, a, redraw);
+                facts.draw(c, x, Ui.f(FACTS_Y) + rise, a);
+                float y = Ui.f(PLOT_Y) + rise;
+                if (!line.isEmpty()) {
+                    lineP.setAlpha(a);
+                    c.drawText(line, x, y - lineP.ascent(), lineP);
+                    y += Ui.f(44f);
+                }
+                if (plot != null) {
+                    plotP.setAlpha(Math.round(a * 0.9f));
+                    Ui.draw(c, plot, x, y);
+                }
+            } else if (!listName.isEmpty()) {
+                bigP.setAlpha(255);
+                c.drawText(listName, x, Ui.f(LOGO_TOP + 170f), bigP);
+                c.drawText(listNote, x, Ui.f(FACTS_Y), noteP);
+            } else {
+                c.drawText(series ? "No TV shows" : "No movies", x, Ui.f(LOGO_TOP + 170f), bigP);
+                if (!why.isEmpty()) c.drawText(why, x, Ui.f(FACTS_Y), noteP);
+            }
+            if (moving) postInvalidateOnAnimation();
         }
-    }
-
-    /** Previews and tests: the list shown, by its column's tag ("all", "cat:Drama"), the remote in its posters. */
-    void showList(String tag) {
-        showing = tag;
-        fill();
-        if (!grid.isEmpty()) {
-            area = GRID;
-            place(true);
-        }
-    }
-
-    /** Previews: where the remote is in the posters (its place in the list). */
-    void focusPoster(int index) {
-        for (int i = 0; i < index; i++) grid.key(KeyEvent.KEYCODE_DPAD_RIGHT);
     }
 }

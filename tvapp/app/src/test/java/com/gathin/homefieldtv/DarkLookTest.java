@@ -140,10 +140,10 @@ public class DarkLookTest {
     }
 
     @Test public void episodeFacts() {
-        assertEquals("1h 7m, 9 Oct 2022", DetailPage.episodeFacts(67, "2022-10-09"));
-        assertEquals("54m", DetailPage.episodeFacts(54, ""));
-        assertEquals("9 Oct 2022", DetailPage.episodeFacts(0, "2022-10-09"));
-        assertEquals("", DetailPage.episodeFacts(0, "soon"));
+        assertEquals("1h 7m, 9 Oct 2022", TitlePage.episodeFacts(67, "2022-10-09"));
+        assertEquals("54m", TitlePage.episodeFacts(54, ""));
+        assertEquals("9 Oct 2022", TitlePage.episodeFacts(0, "2022-10-09"));
+        assertEquals("", TitlePage.episodeFacts(0, "soon"));
     }
 
     @Test public void billboardPeopleAndRatings() {
