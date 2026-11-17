@@ -34,6 +34,9 @@ public final class TvActivity extends Activity {
         @Override public void run() {
             for (Screen s : new ArrayList<>(stack)) s.tick();
             nextMinute();
+            // The memory log's line for this minute (MemLog: written off the main thread).
+            Screen t = top();
+            MemLog.write(TvActivity.this, live.buffered(), t == null ? "-" : t.getClass().getSimpleName());
         }
     };
     private final Runnable channels = () -> {
@@ -195,12 +198,35 @@ public final class TvActivity extends Activity {
      * the TV's screensaver never comes over what is being watched; stopped, failed or paused, the TV may sleep as usual.
      */
     private final LiveTv.Listener awake = this::keepAwake;
+    /** Whether the screen is kept on now: the window's flags are changed only when this changes (each change is a call to Android's window manager). */
+    private Boolean awakeOn;
 
     private void keepAwake() {
         int s = live.state();
         boolean on = !live.held() && (s == LiveTv.LOADING || s == LiveTv.PLAYING || s == LiveTv.RETRYING);
+        if (awakeOn != null && awakeOn == on) return;
+        awakeOn = on;
         if (on) getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         else getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    }
+
+    /**
+     * Android is short of memory: the pictures not on screen let go (all of them once the app is out of sight), the
+     * guide kept only around now (read back from its disk copy when the app is used again: Library.trim), Sky's
+     * programme lists and the text measured for the screens forgotten.
+     */
+    @Override public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        Pics.trim(level);
+        if (level >= TRIM_MEMORY_RUNNING_LOW) {
+            Library.get(this).trim(System.currentTimeMillis());
+            com.gathin.homefieldtv.engine.SkyGuide.trim();
+        }
+    }
+
+    @Override public void onLowMemory() {
+        super.onLowMemory();
+        onTrimMemory(TRIM_MEMORY_COMPLETE);
     }
 
     @Override protected void onResume() {

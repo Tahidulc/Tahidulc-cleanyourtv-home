@@ -7,13 +7,11 @@ import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.graphics.Shader;
-import android.os.SystemClock;
 import android.text.TextPaint;
 import android.view.KeyEvent;
 import android.view.View;
 
 import com.gathin.homefieldtv.engine.Channel;
-import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.Library;
 
@@ -57,8 +55,10 @@ final class PlayerTiles extends View {
     private final Host host;
     private final List<Channel> recent = new ArrayList<>();
     private int focus;
-    private float scroll, scrollFrom, scrollTo;
-    private long scrollAt;
+    /** The row's scroll (design pixels), gliding on the display's frame clock so the remote's tile is first. */
+    private final Glide scroll = new Glide(SCROLL_MS);
+    /** Names and titles measured once, cut from their kept widths (TextFit). */
+    private TextFit names, titles, lines, logos;
     /** Whether the seek line shows (catch-up keeps its own above the row). */
     boolean seekLine = true;
     /** Only peeking in under catch-up's transport: no tile lit, nothing under the row. */
@@ -86,8 +86,7 @@ final class PlayerTiles extends View {
         recent.clear();
         if (channels != null) recent.addAll(channels);
         focus = Math.max(0, Math.min(at, count() - 1));
-        scroll = scrollFrom = scrollTo = focus * PITCH;
-        scrollAt = 0;
+        scroll.jump(focus * PITCH);
         invalidate();
     }
 
@@ -111,10 +110,7 @@ final class PlayerTiles extends View {
                 int n = focus + (code == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1);
                 if (n < 0 || n >= count()) return true;
                 focus = n;
-                scrollFrom = scroll;
-                scrollTo = focus * PITCH;
-                scrollAt = Exec.inline ? 0 : SystemClock.uptimeMillis();
-                if (Exec.inline) scroll = scrollTo;
+                scroll.to(focus * PITCH);
                 invalidate();
                 return true;
             }
@@ -140,12 +136,13 @@ final class PlayerTiles extends View {
             scrimFor = hh;
         }
         c.drawRect(0, Ui.f(SCRIM_Y), w, hh, scrim);
-        boolean moving = false;
-        if (scrollAt != 0) {
-            float k = Math.min(1f, (SystemClock.uptimeMillis() - scrollAt) / (float) SCROLL_MS);
-            scroll = scrollFrom + (scrollTo - scrollFrom) * Fade.EASE.getInterpolation(k);
-            if (k >= 1f) scrollAt = 0;
-            else moving = true;
+        boolean moving = scroll.step();
+        float sc = scroll.value();
+        if (names == null) {
+            names = new TextFit(nameP, 64);
+            titles = new TextFit(onP, 64);
+            lines = new TextFit(lineP, 64);
+            logos = new TextFit(logoP, 32);
         }
         if (seekLine) {
             float[] sk = host.seek();
@@ -154,7 +151,7 @@ final class PlayerTiles extends View {
         long now = System.currentTimeMillis();
         Library lib = Library.get(getContext());
         for (int k = 0; k < count(); k++) {
-            float x = TILE_X + k * PITCH - scroll;
+            float x = TILE_X + k * PITCH - sc;
             if (x > 1920f) break;
             if (x + TILE_W < 0f) continue;
             drawTile(c, k, Ui.f(x), Ui.f(TILE_Y), k == focus && !peek, now, lib);
@@ -177,10 +174,10 @@ final class PlayerTiles extends View {
             if (!where.isEmpty()) c.drawText(where, Ui.f(1888f) - ww, base, whereP);
             if (i >= 0) {
                 lineP.setColor(Palette.TEXT1);
-                String sp = LiveText.span(s.start[i], s.stop[i]);
+                String sp = Words.span(s.start[i], s.stop[i]);
                 c.drawText(sp, Ui.f(SEEK_X0), base, lineP);
-                float tx = Ui.f(SEEK_X0) + lineP.measureText(sp) + Ui.f(24);
-                c.drawText(Ui.fit(s.title[i], lineP, Ui.f(1888f) - ww - Ui.f(40) - tx), tx, base, lineP);
+                float tx = Ui.f(SEEK_X0) + lines.width(sp) + Ui.f(24);
+                lines.line(c, s.title[i], tx, base, Ui.f(1888f) - ww - Ui.f(40) - tx);
             }
         } else {
             iconLine.setColor(Palette.TEXT2);
@@ -220,16 +217,16 @@ final class PlayerTiles extends View {
         if (logo != null) c.drawBitmap(logo, x + (tw - logo.getWidth()) / 2f, y + Ui.f(12f) + (Ui.f(78f) - logo.getHeight()) / 2f, bmp);
         else {
             logoP.setColor(Palette.TEXT1);
-            String nm = Ui.fit(ch.name, logoP, tw - Ui.f(32));
-            c.drawText(nm, x + (tw - logoP.measureText(nm)) / 2f, y + Ui.f(60f), logoP);
+            float nw = Math.min(logos.width(ch.name), tw - Ui.f(32));
+            logos.line(c, ch.name, x + (tw - nw) / 2f, y + Ui.f(60f), tw - Ui.f(32));
         }
         nameP.setColor(Palette.TEXT1);
-        c.drawText(Ui.fit(ch.name, nameP, tw - Ui.f(32)), x + Ui.f(16f), y + Ui.f(127f), nameP);
+        names.line(c, ch.name, x + Ui.f(16f), y + Ui.f(127f), tw - Ui.f(32));
         Guide.Schedule s = lib.schedule(ch.key);
         int i = s == null ? -1 : s.at(now);
         if (i >= 0) {
             onP.setColor(Palette.ACCENT_LIGHT);
-            c.drawText(Ui.fit(s.title[i], onP, tw - Ui.f(32)), x + Ui.f(16f), y + Ui.f(162f), onP);
+            titles.line(c, s.title[i], x + Ui.f(16f), y + Ui.f(162f), tw - Ui.f(32));
             Bars.thin(c, x + Ui.f(16f), y + th - Ui.f(4f), tw - Ui.f(32f), Ui.f(4f), LiveText.progress(now, s.start[i], s.stop[i]));
         }
     }

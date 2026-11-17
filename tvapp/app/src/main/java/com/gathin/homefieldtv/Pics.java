@@ -1,5 +1,6 @@
 package com.gathin.homefieldtv;
 
+import android.content.ComponentCallbacks2;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -10,16 +11,19 @@ import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
 import android.graphics.Shader;
+import android.os.Looper;
 import android.util.LruCache;
 
 import com.gathin.homefieldtv.engine.Exec;
 
-import java.io.ByteArrayOutputStream;
+import java.io.BufferedInputStream;
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.security.MessageDigest;
@@ -35,9 +39,16 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Posters, backdrops and channel logos: fetched off the main thread (the newest asked for first, so what is on screen
- * comes before what was scrolled past), kept on disk in the app's cache and in memory at the size they are drawn, so a
- * row draws each one with a single copy and the TV's graphics chip does little work.
+ * Posters, backdrops, programme pictures and channel logos: fetched off the main thread (the newest asked for first, so
+ * what is on screen comes before what was scrolled past; what a screen only expects to need next, prefetch, after
+ * everything asked for), kept on disk in the app's cache and in memory at the size they are drawn, so a row draws each
+ * one with a single copy and the TV's graphics chip does little work.
+ *
+ * <p>Memory: the pictures in memory are a least-recently-drawn cache bounded in bytes (BUDGET: at most 40 MB, less on a
+ * small heap), each decoded at the size it is drawn (sampled down while it is read, then scaled), opaque ones in 16-bit
+ * colour; trim() lets them go when Android asks (onTrimMemory). A picture is read from its file on disk, never as a
+ * whole copy in memory, and handed to the graphics chip as soon as it is made (prepareToDraw), not on the first frame
+ * that draws it. Looking one up as a frame draws makes nothing new.
  */
 final class Pics {
     private Pics() {}
@@ -64,6 +75,18 @@ final class Pics {
      * its corners a share of its height and its fade rising from 24% of the way down (PosterArt.fadeShader).
      */
     static final int POSTER_WIDE = 10;
+    /**
+     * ART is a programme's picture behind a panel's words (the guide's details, the player's info card: PanelArt): CROP,
+     * darkened a little, faded to nothing over its left part and at its foot (so it sinks into the panel's own colour,
+     * whatever the theme), its right-hand corners rounded; done once as it loads.
+     */
+    static final int ART = 11;
+    /**
+     * LOGO_ART stands in for a programme's picture where there is none (ART's size, shape and fades): the channel's logo
+     * (made ready for a dark ground, as READY) on a deep ground tinted by the logo's own colour, a soft round glow of that
+     * colour behind it, the logo itself low on the right, clear of most of the words. Asked for with the logo's address.
+     */
+    static final int LOGO_ART = 12;
 
     /** Each poster's fade colour as worked out when it loaded, by its address (0 until then). */
     private static final java.util.Map<String, Integer> FADES = java.util.Collections.synchronizedMap(new java.util.LinkedHashMap<String, Integer>(64, 0.75f, true) {
@@ -90,36 +113,68 @@ final class Pics {
         tiles = on;
         c.getApplicationContext().getSharedPreferences("look", Context.MODE_PRIVATE).edit().putBoolean("logo_tiles", on).apply();
     }
-    private static final int THREADS = 3, QUEUE = 48;
+
+    private static final int THREADS = 3, QUEUE = 48, PREFETCH = 24;
     private static final long DISK_MAX = 160L << 20, DISK_KEEP = 120L << 20;
+    /** The pictures in memory: at most this many bytes. */
+    static final int BUDGET = budget();
+
+    /** A picture as it is kept: its address, mode and size (one is looked up without making a new one). */
+    private static final class Key {
+        String url;
+        int mode, w, h, hash;
+
+        Key set(String u, int m, int ww, int hh) {
+            url = u;
+            mode = m;
+            w = ww;
+            h = hh;
+            hash = ((u.hashCode() * 31 + m) * 31 + ww) * 31 + hh;
+            return this;
+        }
+
+        Key copy() {
+            return new Key().set(url, mode, w, h);
+        }
+
+        @Override public int hashCode() {
+            return hash;
+        }
+
+        @Override public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof Key)) return false;
+            Key k = (Key) o;
+            return hash == k.hash && mode == k.mode && w == k.w && h == k.h && url.equals(k.url);
+        }
+    }
 
     private static File disk;
-    private static final LruCache<String, Bitmap> mem = new LruCache<String, Bitmap>(budget()) {
-        @Override protected int sizeOf(String k, Bitmap b) {
+    private static final LruCache<Key, Bitmap> mem = new LruCache<Key, Bitmap>(BUDGET) {
+        @Override protected int sizeOf(Key k, Bitmap b) {
             return b.getAllocationByteCount();
         }
     };
-    private static final Map<String, List<Runnable>> waiting = new HashMap<>();
-    private static final ArrayDeque<Job> queue = new ArrayDeque<>();
+    /** The main thread's key for looking up (the screens ask as they draw: nothing new each frame). */
+    private static final Key PROBE = new Key();
+    private static final Map<Key, List<Runnable>> waiting = new HashMap<>();
+    private static final ArrayDeque<Job> queue = new ArrayDeque<>(), later = new ArrayDeque<>();
     private static final Set<String> failed = Collections.synchronizedSet(new HashSet<>());
     private static boolean started;
+    /** For the tests and the memory log: pictures found in memory, read, and the bytes read from disk or the network. */
+    static volatile int hits, loads;
 
     private static final class Job {
-        final String key, url;
-        final int w, h, mode;
+        final Key key;
 
-        Job(String key, String url, int w, int h, int mode) {
+        Job(Key key) {
             this.key = key;
-            this.url = url;
-            this.w = w;
-            this.h = h;
-            this.mode = mode;
         }
     }
 
     private static int budget() {
         long max = Runtime.getRuntime().maxMemory();
-        return (int) Math.max(16L << 20, Math.min(72L << 20, max / 5));
+        return (int) Math.max(12L << 20, Math.min(40L << 20, max / 8));
     }
 
     static synchronized void init(Context c) {
@@ -136,45 +191,66 @@ final class Pics {
         return url != null && failed.contains(url);
     }
 
+    private static Key probe(String url, int w, int h, int mode) {
+        Key k = Looper.getMainLooper().isCurrentThread() ? PROBE : new Key();
+        return k.set(url, mode, w, h);
+    }
+
     /**
      * The picture at w x h, or null while it loads (then whenReady runs on the main thread). Several asking for the
      * same picture share one load.
      */
     static Bitmap get(String url, int w, int h, int mode, Runnable whenReady) {
+        return want(url, w, h, mode, whenReady, true);
+    }
+
+    /**
+     * A picture a screen expects to need next (the programme after, the channel below): read after everything asked for
+     * and kept, so it is there at once when the remote gets to it. Nothing happens when it is already in memory.
+     */
+    static void prefetch(String url, int w, int h, int mode) {
+        want(url, w, h, mode, null, false);
+    }
+
+    private static Bitmap want(String url, int w, int h, int mode, Runnable whenReady, boolean now) {
         if (url == null || url.isEmpty() || w <= 0 || h <= 0) return null;
-        String key = mode + "|" + w + "x" + h + "|" + url;
-        Bitmap b = mem.get(key);
-        if (b != null) return b;
+        Key probe = probe(url, w, h, mode);
+        Bitmap b = mem.get(probe);
+        if (b != null) {
+            hits++;
+            return b;
+        }
         if (failed.contains(url)) return null;
         if (Exec.inline) {
-            Bitmap got = load(url, w, h, mode);
+            Key key = probe.copy();
+            Bitmap got = load(key);
             if (got == null) failed.add(url);
             else mem.put(key, got);
-            return got;
+            return now ? got : null;
         }
         synchronized (waiting) {
-            List<Runnable> l = waiting.get(key);
+            List<Runnable> l = waiting.get(probe);
             if (l != null) {
                 if (whenReady != null && !l.contains(whenReady)) l.add(whenReady);
-                // Asked for again: to the front of the queue.
-                for (Iterator<Job> it = queue.iterator(); it.hasNext(); ) {
-                    Job j = it.next();
-                    if (j.key.equals(key)) {
-                        it.remove();
-                        queue.addFirst(j);
-                        break;
-                    }
+                // Asked for again (on screen now): to the front of the queue, unless it is there already.
+                if (now && (queue.isEmpty() || !queue.peekFirst().key.equals(probe))) {
+                    Job moved = take(queue, probe);
+                    if (moved == null) moved = take(later, probe);
+                    if (moved != null) queue.addFirst(moved);
                 }
                 return null;
             }
+            Key key = probe.copy();
             l = new ArrayList<>(2);
             if (whenReady != null) l.add(whenReady);
             waiting.put(key, l);
-            queue.addFirst(new Job(key, url, w, h, mode));
-            // Long gone from the screen: dropped (asked for again when it comes back).
-            while (queue.size() > QUEUE) {
-                Job old = queue.removeLast();
-                waiting.remove(old.key);
+            if (now) {
+                queue.addFirst(new Job(key));
+                // Long gone from the screen: dropped (asked for again when it comes back).
+                while (queue.size() > QUEUE) waiting.remove(queue.removeLast().key);
+            } else {
+                later.addLast(new Job(key));
+                while (later.size() > PREFETCH) waiting.remove(later.removeFirst().key);
             }
             if (!started) {
                 started = true;
@@ -190,32 +266,69 @@ final class Pics {
         return null;
     }
 
+    private static Job take(ArrayDeque<Job> q, Key k) {
+        for (Iterator<Job> it = q.iterator(); it.hasNext(); ) {
+            Job j = it.next();
+            if (j.key.equals(k)) {
+                it.remove();
+                return j;
+            }
+        }
+        return null;
+    }
+
     /** Already loaded at that size (no load started). */
     static Bitmap cached(String url, int w, int h, int mode) {
         if (url == null || url.isEmpty()) return null;
-        return mem.get(mode + "|" + w + "x" + h + "|" + url);
+        return mem.get(probe(url, w, h, mode));
+    }
+
+    /** The bytes the pictures in memory take now (the memory log). */
+    static int bytes() {
+        return mem.size();
+    }
+
+    /**
+     * Android is short of memory (onTrimMemory's level): the pictures not on screen let go — all of them once the app
+     * is out of sight or memory is critical, half of them while it runs low; the queue of pictures to read emptied.
+     */
+    static void trim(int level) {
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN || level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL) {
+            mem.evictAll();
+        } else if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+            mem.trimToSize(mem.size() / 2);
+        } else {
+            return;
+        }
+        synchronized (waiting) {
+            for (Job j : later) waiting.remove(j.key);
+            later.clear();
+        }
+        FADES.clear();
     }
 
     private static void work() {
         while (true) {
             Job j;
             synchronized (waiting) {
-                while (queue.isEmpty()) {
+                while (queue.isEmpty() && later.isEmpty()) {
                     try {
                         waiting.wait();
                     } catch (InterruptedException e) {
                         return;
                     }
                 }
-                j = queue.removeFirst();
+                j = !queue.isEmpty() ? queue.removeFirst() : later.removeFirst();
             }
             Bitmap b = null;
             try {
-                b = load(j.url, j.w, j.h, j.mode);
+                b = load(j.key);
+                // Handed to the graphics chip now, on its own thread, not on the frame that first draws it.
+                if (b != null) b.prepareToDraw();
             } catch (RuntimeException | OutOfMemoryError ignored) {
                 // left out
             }
-            if (b == null) failed.add(j.url);
+            if (b == null) failed.add(j.key.url);
             Bitmap got = b;
             Exec.main(() -> {
                 if (got != null) mem.put(j.key, got);
@@ -228,15 +341,31 @@ final class Pics {
         }
     }
 
-    private static Bitmap load(String url, int w, int h, int mode) {
-        byte[] data = bytes(url);
-        if (data == null) return null;
+    /** Where a picture's bytes come from: its file (read twice: its size, then the picture), never all in memory. */
+    private interface Source {
+        InputStream open() throws IOException;
+    }
+
+    private static Bitmap load(Key k) {
+        Source src = source(k.url);
+        if (src == null) return null;
+        loads++;
+        try {
+            return decode(src, k.url, k.w, k.h, k.mode);
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    private static Bitmap decode(Source in, String url, int w, int h, int mode) throws IOException {
         BitmapFactory.Options o = new BitmapFactory.Options();
         o.inJustDecodeBounds = true;
-        BitmapFactory.decodeByteArray(data, 0, data.length, o);
+        try (InputStream s = in.open()) {
+            BitmapFactory.decodeStream(s, null, o);
+        }
         if (o.outWidth <= 0 || o.outHeight <= 0) return null;
         int sample = 1;
-        boolean fit = mode == FIT || mode == TILE || mode == READY;
+        boolean fit = mode == FIT || mode == TILE || mode == READY || mode == LOGO_ART;
         if (!fit) {
             while (o.outWidth / (sample * 2) >= w && o.outHeight / (sample * 2) >= h) sample *= 2;
         } else {
@@ -245,9 +374,12 @@ final class Pics {
         BitmapFactory.Options d = new BitmapFactory.Options();
         d.inSampleSize = sample;
         d.inPreferredConfig = fit ? Bitmap.Config.ARGB_8888 : Bitmap.Config.RGB_565;
-        Bitmap src = BitmapFactory.decodeByteArray(data, 0, data.length, d);
+        Bitmap src;
+        try (InputStream s = in.open()) {
+            src = BitmapFactory.decodeStream(s, null, d);
+        }
         if (src == null) return null;
-        if (mode == TILE || mode == READY) {
+        if (mode == TILE || mode == READY || mode == LOGO_ART) {
             // Made ready for black and trimmed (LogoTile); nothing of it to draw: no logo (the name instead).
             Bitmap ready = com.gathin.broadcast.LogoTile.ready(src);
             src.recycle();
@@ -257,6 +389,7 @@ final class Pics {
                 ready.recycle();
                 return t;
             }
+            if (mode == LOGO_ART) return logoArt(ready, w, h);
             src = ready;
         }
         Paint p = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
@@ -274,6 +407,7 @@ final class Pics {
             if (mode == POSTER || mode == POSTER_WIDE) return poster(url, out, mode == POSTER_WIDE);
             if (mode == CARD) return card(out);
             if (mode == DARK || mode == DARK_FULL) return darkFade(out, mode == DARK_FULL);
+            if (mode == ART) return art(out, true);
             return out;
         }
         float sc = Math.min(w / (float) src.getWidth(), h / (float) src.getHeight());
@@ -351,46 +485,131 @@ final class Pics {
         return out;
     }
 
+    /** The share of an ART picture's width its left fade takes, and of its height its foot's. */
+    static final float ART_FADE_LEFT = 0.62f, ART_FADE_FOOT = 0.42f;
+
+    /**
+     * A programme's picture behind a panel's words (ART): darkened a little (the words over it stay white on dark),
+     * faded to nothing over its left part and at its foot, its right-hand corners rounded.
+     */
+    private static Bitmap art(Bitmap src, boolean darker) {
+        int w = src.getWidth(), h = src.getHeight();
+        Bitmap out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(out);
+        Paint shape = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        shape.setShader(new android.graphics.BitmapShader(src, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP));
+        float r = h * 0.05f;
+        // Rounded at the right only: the left is faded away anyway.
+        c.drawRoundRect(-r * 2f, 0, w, h, r, r, shape);
+        src.recycle();
+        if (darker) {
+            Paint dim = new Paint();
+            dim.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_ATOP));
+            dim.setColor(0x5C000000);
+            c.drawRect(0, 0, w, h, dim);
+        }
+        Paint m = new Paint();
+        m.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_IN));
+        float left = w * ART_FADE_LEFT;
+        m.setShader(new LinearGradient(0, 0, left, 0, new int[]{0x00000000, 0x40000000, 0xB3000000, 0xFF000000},
+                new float[]{0f, 0.3f, 0.7f, 1f}, Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, left, h, m);
+        float foot = h * (1f - ART_FADE_FOOT);
+        m.setShader(new LinearGradient(0, foot, 0, h, new int[]{0xFF000000, 0x80000000, 0x00000000},
+                new float[]{0f, 0.6f, 1f}, Shader.TileMode.CLAMP));
+        c.drawRect(0, foot, w, h, m);
+        return out;
+    }
+
+    /**
+     * The stand-in for a programme's picture (LOGO_ART): a deep ground tinted by the logo's own colour, a soft round glow
+     * of it with no edge anywhere, the logo itself low on the right and a little faded, then ART's shape and fades.
+     */
+    private static Bitmap logoArt(Bitmap ready, int w, int h) {
+        int tint = tintOf(ready);
+        Bitmap ground = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(ground);
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        p.setShader(new LinearGradient(0, 0, w, h, Theme.mix(0xFF000000, tint, 0.42f), Theme.mix(0xFF000000, tint, 0.18f),
+                Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, w, h, p);
+        // Where the logo sits: low on the right, clear of most of the words over it.
+        float cx = w * 0.80f, cy = h * 0.64f;
+        // Its soft glow: the logo's own colour, fading out all round (no edge anywhere).
+        p.setShader(new android.graphics.RadialGradient(cx, cy, h * 0.62f, Palette.alpha(Theme.mix(0xFF000000, tint, 0.85f), 0xB0),
+                Palette.alpha(tint, 0), Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, w, h, p);
+        p.setShader(null);
+        float lh = h * 0.30f, lw = Math.min(w * 0.30f, lh * ready.getWidth() / (float) Math.max(1, ready.getHeight()));
+        lh = Math.min(lh, lw * ready.getHeight() / (float) Math.max(1, ready.getWidth()));
+        p.setAlpha(0xA6);
+        c.drawBitmap(ready, null, new android.graphics.RectF(cx - lw / 2f, cy - lh / 2f, cx + lw / 2f, cy + lh / 2f), p);
+        ready.recycle();
+        return art(ground, true);
+    }
+
+    /** Pure: a logo's own colour, the average of its solid, coloured pixels (a grey for a white or black logo). */
+    static int tintOf(Bitmap b) {
+        int w = b.getWidth(), h = b.getHeight(), step = Math.max(1, Math.max(w, h) / 48);
+        long r = 0, g = 0, bl = 0, n = 0;
+        for (int y = 0; y < h; y += step) {
+            for (int x = 0; x < w; x += step) {
+                int c = b.getPixel(x, y);
+                if ((c >>> 24) < 0xC0) continue;
+                int cr = (c >> 16) & 0xFF, cg = (c >> 8) & 0xFF, cb = c & 0xFF;
+                int max = Math.max(cr, Math.max(cg, cb)), min = Math.min(cr, Math.min(cg, cb));
+                // Coloured pixels count four times as much as greys (a white logo with a red mark is red).
+                int k = max - min > 40 ? 4 : 1;
+                r += (long) cr * k;
+                g += (long) cg * k;
+                bl += (long) cb * k;
+                n += k;
+            }
+        }
+        if (n == 0) return 0xFF5A6390;
+        return 0xFF000000 | (int) (r / n) << 16 | (int) (g / n) << 8 | (int) (bl / n);
+    }
+
     // ---- the bytes: a file (previews), the disk cache, or the network --------------------------------------------
 
-    private static byte[] bytes(String url) {
-        if (url.startsWith("file:")) return read(new File(url.substring(5)));
+    /** Where a picture is read from: its own file, the disk copy, or downloaded to the disk first (null: it can't be). */
+    private static Source source(String url) {
+        if (url.startsWith("file:")) {
+            File f = new File(url.substring(5));
+            return f.exists() ? () -> new BufferedInputStream(new FileInputStream(f), 32 * 1024) : null;
+        }
         File f = disk == null ? null : new File(disk, name(url));
-        if (f != null && f.exists()) {
-            byte[] b = read(f);
-            if (b != null) {
-                //noinspection ResultOfMethodCallIgnored
-                f.setLastModified(System.currentTimeMillis());
-                return b;
-            }
+        if (f != null && f.exists() && f.length() > 0) {
+            //noinspection ResultOfMethodCallIgnored
+            f.setLastModified(System.currentTimeMillis());
+            return () -> new BufferedInputStream(new FileInputStream(f), 32 * 1024);
         }
-        byte[] b = download(url);
-        if (b != null && f != null) {
-            File tmp = new File(f.getPath() + ".part");
-            try (FileOutputStream o = new FileOutputStream(tmp)) {
-                o.write(b);
-            } catch (IOException e) {
+        if (f == null) {
+            byte[] b = download(url, null);
+            return b == null ? null : () -> new ByteArrayInputStream(b);
+        }
+        File tmp = new File(f.getPath() + "." + Thread.currentThread().getId() + ".part");
+        try (OutputStream o = new FileOutputStream(tmp)) {
+            if (download(url, o) == null) {
                 //noinspection ResultOfMethodCallIgnored
                 tmp.delete();
-                return b;
+                return null;
             }
-            if (!tmp.renameTo(f)) {
-                //noinspection ResultOfMethodCallIgnored
-                tmp.delete();
-            }
-        }
-        return b;
-    }
-
-    private static byte[] read(File f) {
-        try (InputStream in = new FileInputStream(f)) {
-            return all(in, 16 << 20);
         } catch (IOException e) {
+            //noinspection ResultOfMethodCallIgnored
+            tmp.delete();
             return null;
         }
+        if (!tmp.renameTo(f)) {
+            //noinspection ResultOfMethodCallIgnored
+            tmp.delete();
+            if (!f.exists()) return null;
+        }
+        return () -> new BufferedInputStream(new FileInputStream(f), 32 * 1024);
     }
 
-    private static byte[] download(String url) {
+    /** Fetched into out as it comes (an empty array back for done), or into memory when out is null; null: it can't be. */
+    private static byte[] download(String url, OutputStream out) {
         String u = url;
         for (int hop = 0; hop < 5; hop++) {
             HttpURLConnection c = null;
@@ -409,7 +628,7 @@ final class Pics {
                 }
                 if (code != 200) return null;
                 try (InputStream in = c.getInputStream()) {
-                    return all(in, 8 << 20);
+                    return copy(in, out, 8 << 20);
                 }
             } catch (IOException | RuntimeException e) {
                 return null;
@@ -420,14 +639,17 @@ final class Pics {
         return null;
     }
 
-    private static byte[] all(InputStream in, int max) throws IOException {
-        ByteArrayOutputStream b = new ByteArrayOutputStream(64 * 1024);
+    private static byte[] copy(InputStream in, OutputStream out, int max) throws IOException {
+        java.io.ByteArrayOutputStream mem = out == null ? new java.io.ByteArrayOutputStream(64 * 1024) : null;
+        OutputStream to = out != null ? out : mem;
         byte[] buf = new byte[32 * 1024];
+        long total = 0;
         for (int n; (n = in.read(buf)) > 0; ) {
-            b.write(buf, 0, n);
-            if (b.size() > max) return null;
+            to.write(buf, 0, n);
+            total += n;
+            if (total > max) return null;
         }
-        return b.toByteArray();
+        return mem != null ? mem.toByteArray() : new byte[0];
     }
 
     private static String name(String url) {

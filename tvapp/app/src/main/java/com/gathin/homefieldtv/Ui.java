@@ -98,9 +98,13 @@ final class Ui {
 
     static final int LEFT = 0, UP = 1, RIGHT = 2, DOWN = 3;
 
+    /** The chevron's and the star's paths, made again in place each time (drawn on the main thread: nothing new a frame). */
+    private static final Path CHEVRON = new Path(), STAR = new Path();
+
     /** A thin chevron pointing left, up, right or down, centred on (cx, cy); size is half its height (screen px). */
     static void chevron(Canvas c, float cx, float cy, float size, int dir, Paint p) {
-        Path path = new Path();
+        Path path = CHEVRON;
+        path.reset();
         float a = size * 0.5f;
         switch (dir) {
             case LEFT:
@@ -127,9 +131,18 @@ final class Ui {
         c.drawPath(path, p);
     }
 
-    /** A five-point star, for the ratings. */
+    /** A five-point star, for the ratings: a new path (kept by the caller). */
     static Path star(float cx, float cy, float r) {
-        Path p = new Path();
+        return star(new Path(), cx, cy, r);
+    }
+
+    /** The star drawn at once (its path made again in place: nothing new a frame). */
+    static void drawStar(Canvas c, float cx, float cy, float r, Paint paint) {
+        STAR.reset();
+        c.drawPath(star(STAR, cx, cy, r), paint);
+    }
+
+    private static Path star(Path p, float cx, float cy, float r) {
         for (int i = 0; i < 10; i++) {
             double a = Math.PI / 2 + i * Math.PI / 5;
             float rr = i % 2 == 0 ? r : r * 0.45f;

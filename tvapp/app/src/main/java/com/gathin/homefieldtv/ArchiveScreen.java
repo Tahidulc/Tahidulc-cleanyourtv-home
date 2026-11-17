@@ -10,7 +10,6 @@ import android.graphics.RectF;
 import android.graphics.Shader;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.SystemClock;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
@@ -102,7 +101,7 @@ final class ArchiveScreen extends Screen implements GuideMenu.Host, DialogCard.H
 
     @Override View build() {
         FrameLayout f = new FrameLayout(tv);
-        f.setBackgroundColor(Palette.GROUND);
+        // No ground of its own: the window's (TvActivity) is the screen's, so it is filled once, not twice.
         page = new Page(tv);
         menu = new GuideMenu(tv);
         menu.setHost(this);
@@ -387,8 +386,7 @@ final class ArchiveScreen extends Screen implements GuideMenu.Host, DialogCard.H
         private final Path clip = new Path();
         private final Runnable redraw = this::invalidate;
         /** The list's place (rows, fractional while it slides to the remote's row) and the days' (days). */
-        private float listAt, listFrom, dayAt, dayFrom;
-        private long movedAt;
+        private float listAt, dayAt;
         boolean settled;
         private int fadeFor = -1;
         private String cardFor = "";
@@ -398,11 +396,15 @@ final class ArchiveScreen extends Screen implements GuideMenu.Host, DialogCard.H
             super(c);
         }
 
+        /** The list's and the days' places, gliding on the display's frame clock (a held key glides on smoothly). */
+        private final Glide listGlide = new Glide(SCROLL_MS, 75f), dayGlide = new Glide(SCROLL_MS, 75f);
+
         /** In place at once (opening, the lists made again). */
         void jump() {
-            listAt = listFrom = Math.max(0, focus);
-            dayAt = dayFrom = dayOfFocus();
-            movedAt = 0;
+            listGlide.jump(Math.max(0, focus));
+            dayGlide.jump(dayOfFocus());
+            listAt = listGlide.value();
+            dayAt = dayGlide.value();
             settled = Exec.inline;
             h.removeCallbacks(askPicture);
             if (!Exec.inline) h.postDelayed(askPicture, ProgrammePictures.REST_MS);
@@ -411,13 +413,10 @@ final class ArchiveScreen extends Screen implements GuideMenu.Host, DialogCard.H
 
         /** The remote moved: the list and the days slide to it; the picture asked for once it rests. */
         void moved() {
-            listFrom = listAt;
-            dayFrom = dayAt;
-            movedAt = Exec.inline ? 0 : SystemClock.uptimeMillis();
-            if (Exec.inline) {
-                listAt = focus;
-                dayAt = dayOfFocus();
-            }
+            listGlide.to(focus);
+            dayGlide.to(dayOfFocus());
+            listAt = listGlide.value();
+            dayAt = dayGlide.value();
             settled = Exec.inline;
             h.removeCallbacks(askPicture);
             if (!Exec.inline) h.postDelayed(askPicture, ProgrammePictures.REST_MS);
@@ -425,12 +424,10 @@ final class ArchiveScreen extends Screen implements GuideMenu.Host, DialogCard.H
         }
 
         private boolean step() {
-            if (movedAt == 0) return false;
-            float k = Math.min(1f, (SystemClock.uptimeMillis() - movedAt) / (float) SCROLL_MS), e = Fade.EASE.getInterpolation(k);
-            listAt = listFrom + (focus - listFrom) * e;
-            dayAt = dayFrom + (dayOfFocus() - dayFrom) * e;
-            if (k >= 1f) movedAt = 0;
-            return k < 1f;
+            boolean moving = listGlide.step() | dayGlide.step();
+            listAt = listGlide.value();
+            dayAt = dayGlide.value();
+            return moving;
         }
 
         @Override protected void onDraw(Canvas c) {

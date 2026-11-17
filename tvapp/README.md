@@ -23,15 +23,20 @@ wordmark are Homefield; it carries no Sky logo or name.
   Your TorBox (the family's own TorBox films and shows that no playlist has, newest first, each with TorBox's cloud),
   New films, New TV shows (the posters as everywhere), Sport on now and favourite channels.
 - **TV guide:** as the family's other app has it. At the top left the preview, 640 by 360, playing the channel last
-  watched (or the programme from the archive Back came from); to its right the programme the remote is on: its title, a
-  star for a favourite channel, its times ("10:00 — 11:00") with a bar and the minutes left for one on now ("16 min"),
-  the playlist and the group at the right, and all it says about it. Under it the date and the clock in the light
+  watched (or the programme from the archive Back came from); to its right, on a panel of its own, the programme the
+  remote is on: its title, a star for a favourite channel, its times ("10:00 — 11:00") with a bar and the minutes left
+  for one on now ("16 min"), the picture's frames a second for the channel playing ("50 FPS", or as last seen on a
+  channel watched before), the playlist and the group at the right, and all it says about it; behind the words, across
+  the panel's right-hand part, the programme's picture (Sky's public UK guide, else the channel's logo on a ground
+  tinted by its own colour), faded into the panel from the left and the foot, cross-fading to the next programme's as
+  the remote moves (Left, Right, Up, Down), the pictures either side read ahead. Under it the date and the clock in the light
   accent, the times every half hour and a dot at the time now; then a row a channel, 88 high: its number, its logo on its
   tile and its name, a ▶ on the channel in the preview and the archive's mark on one whose provider keeps an archive; its
   programmes in neutral cells, the part already shown a little lighter, the remote's row lighter still and its cell in
   the accent, their titles in two lines; a bell on a programme with a reminder. Up and Down move a row, the rows sliding
   so the remote's stays third from the top; Left and Right go along the programmes, the times paging so the remote's
-  starts at the left; the channel keys page the rows, rewind and fast forward the times (back into an archive too).
+  starts at the left (both glide on the display's own clock, and on smoothly while a key is held, never starting over);
+  the channel keys page the rows, rewind and fast forward the times (back into an archive too).
   Left from the programme on now brings in the menu's rail and the groups beside it, pushing the guide right: the
   playlist's Favourites, All channels and Recently watched, its groups in Settings, Categories' order and names (hidden
   and locked-away ones left out), then the guide's own categories; the guide shows a group as soon as the remote is on
@@ -53,8 +58,11 @@ wordmark are Homefield; it carries no Sky logo or name.
 - **Live TV:** full screen, the picture alone. A channel changed to brings up the info card at the foot for the channel banner's
   seconds (Settings, Player; 6 as it comes), and INFO brings it up too: a card in the playback panel's colour with the
   channel's logo and name, the programme's title, the date and the clock, its times with a bar and the minutes left,
-  the playlist and the group, chips for the picture and the sound as the player has them (FHD, 50 FPS, STEREO), two
-  lines about it and what's next. CH+ and CH− bring up the next or previous channel's card without leaving the channel
+  the playlist and the group, chips for the picture and the sound as the player has them (FHD, 50 FPS, STEREO; the
+  frames a second as the stream says them, else counted from the frames it shows over a few seconds and taken to the
+  usual rate: 24, 25, 30, 50 or 60, left out until they are known, and kept for each channel), two lines about it and
+  what's next, and behind its words, across its right-hand part, the programme's picture as the guide's panel has it,
+  cross-fading as Up, Down, CH+, CH− and INFO bring up another channel's card. CH+ and CH− bring up the next or previous channel's card without leaving the channel
   (OK then changes to it); Up and Down change channel (Settings, Remote can make them bring up the live screen's rows of
   channels instead, as Homefield TV came); Right goes back to the channel watched last; the number keys go to a channel,
   the number in a box at the top right. OK brings up the overlay: the card at the top, a line across the foot for how
@@ -318,3 +326,4 @@ The APK is `app/build/outputs/apk/release/app-release.apk`, signed with the debu
 | 1.12 | The dark look everywhere, from the first open: Home, Search, Settings and the player's bar now look like Live TV, the guide, films and TV shows, and the app opens on its dark ground. Home has the rail (where the remote starts, as on the old menu), the big picture of what the remote is on, the mini TV at the top right on a dark card with the channel and what's on, and rows laid out as Films' are: On now and Sport on now as the live screen's tiles, Continue watching, Your TorBox, New films and New TV shows as posters. Search and Settings have the rail, Settings its sections on a side panel and the keyboard on a dark sheet; What's new, Updates and the PIN pad are dark too. The colour themes work on every screen, and a new icon and TV banner carry Homefield's amber mark. No more freezes with very big playlists: the channel lists and their counts, hidden and locked channels, Home's rows, the guide's categories, channel up and down, search, and films and TV shows with tens of thousands of titles are worked out off the main thread or kept ready, tried with 50,000 channels and 40,000 titles. With 1.11's every source shown before playing, the best first. |
 | 1.13 | TiviMate's look and ways, on Homefield's own screens, in the Indigo • Blue theme the family's TiviMate uses (TiviMate's other primary and accent colours in Settings › Appearance). The icon rail that opens into the labelled menu; Settings as the panel from the right, in TiviMate's sections; Roboto; times written "10:00 — 11:00" and a 24-hour clock. Watching: the info card (INFO, and CH+/− showing the next channel without tuning), Up and Down changing channel, Right for the last channel, Left for the channel list over the picture with its groups, OK for the overlay with its seek line and tiles (TV guide, History, recent channels), the bar of round buttons with its pickers (picture, audio, audio offset per channel, captions, display mode with three new shapes, sleep timer, favourites, scoreboard, channel options), History, the description card and catch-up's player; Back to the guide. The guide: the preview top left with the programme's details, the dated time ruler with the now-dot, rows with number, logo tile and name, neutral blocks, the menu pushing it right, groups, the OK popup and the long-OK card (Remind, Watch from start, Record, My list, Favourites, Catch-up, Block channel), and the new catch-up archive by day. Search with the mic, history and results as you type; Movies and TV shows with the category column, poster rows and grid, title and series pages; My list; Recordings kept from catch-up (one stream per account, so nothing is recorded live). New settings that work: search history, favourite channels first, autoplay next episode, update or clear the guide now, groups sorting. |
 | 1.13.1 | The screen stays on while a channel or a programme from the archive plays (or starts, or reconnects): the TV's screensaver no longer comes over what is being watched. Paused, stopped or failed, the TV may sleep as before. |
+| 1.14 | Faster, smoother and lighter. Scrolling glides everywhere (the guide's rows and times, lists, groups, the menu, Search), holding a button keeps it moving smoothly, and the guide draws without making anything per frame. When a channel buffers, the app no longer redraws or calls the system on every stall, and a failing stream waits longer between tries. Memory: the player's buffer is capped (it could hold about 138 MB), pictures stay within a 40 MB cache, and memory is freed when the TV runs low. The guide's details and the player's channel card show the programme's picture behind them, changing as you move; FPS shows on the channel card, the OK overlay and the guide, measured from the picture when the channel doesn't say. |

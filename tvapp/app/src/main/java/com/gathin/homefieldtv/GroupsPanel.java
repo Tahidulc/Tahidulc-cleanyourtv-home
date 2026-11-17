@@ -5,7 +5,6 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.RectF;
-import android.os.SystemClock;
 import android.text.TextPaint;
 import android.view.KeyEvent;
 import android.view.View;
@@ -21,7 +20,8 @@ import java.util.List;
  * in), 77 px a row. Lists such as Movies' can start with bold entries of their own (My list, History: bold).
  *
  * The remote's row is in the focus pill (32 px in from both sides: 440 wide) and always sits at the same height,
- * FOCUS_Y (502), the list sliding under it (SCROLL_MS); the group on screen keeps the selected pill while the remote is
+ * FOCUS_Y (502), the list gliding under it (SCROLL_MS, on the display's frame clock: a held key glides on smoothly, never
+ * starting over; Glide); each name is cut to fit once, not each frame; the group on screen keeps the selected pill while the remote is
  * elsewhere (setActive(false)). Moving onto a group tells the host at once (focused): the guide switches group as the
  * remote moves, with no OK. OK on a heading folds or opens it; OK on a group is chosen. Left and Right go to the host
  * (edge). It slides in from the left (slideIn, 150 ms) and follows the menu's edge: set x to Rail.W, or Rail.DRAWER
@@ -44,6 +44,17 @@ final class GroupsPanel extends View {
         final Object tag;
         final int kind;
         boolean folded;
+        /** The name cut to fit the column (kept for the width it was cut for). */
+        private String fit;
+        private float fitW = -1f;
+
+        String fitted(TextPaint p, float width) {
+            if (fit == null || width != fitW) {
+                fit = Ui.fit(name, p, width);
+                fitW = width;
+            }
+            return fit;
+        }
 
         private Entry(String name, Object tag, int kind) {
             this.name = name == null ? "" : name;
@@ -94,8 +105,8 @@ final class GroupsPanel extends View {
     private Object current;
     private boolean active = true;
     private Host host;
-    private float scroll, scrollFrom, scrollTo;
-    private long scrollAt;
+    /** The list's scroll (design pixels), gliding so the remote's row sits at FOCUS_Y. */
+    private final Glide scroll = new Glide(SCROLL_MS);
     private ValueAnimator slide;
 
     private final Paint back = new Paint(), chevron = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -196,14 +207,8 @@ final class GroupsPanel extends View {
 
     private void settle(boolean now) {
         float target = scrollFor(focus);
-        if (now || Exec.inline) {
-            scroll = scrollFrom = scrollTo = target;
-            scrollAt = 0;
-        } else if (target != scrollTo) {
-            scrollFrom = scroll;
-            scrollTo = target;
-            scrollAt = SystemClock.uptimeMillis();
-        }
+        if (now) scroll.jump(target);
+        else scroll.to(target);
     }
 
     boolean key(int code) {
@@ -242,21 +247,15 @@ final class GroupsPanel extends View {
     }
 
     @Override protected void onDraw(Canvas c) {
-        long t = SystemClock.uptimeMillis();
-        boolean moving = false;
-        if (scrollAt != 0) {
-            float k = Math.min(1f, (t - scrollAt) / (float) SCROLL_MS);
-            scroll = scrollFrom + (scrollTo - scrollFrom) * Fade.EASE.getInterpolation(k);
-            if (k >= 1f) scrollAt = 0;
-            else moving = true;
-        }
+        boolean moving = scroll.step();
+        float sc = scroll.value();
         float x0 = Ui.f(x), x1 = Ui.f(x + W);
         back.setColor(background != 0 ? background : Palette.GROUND);
         c.drawRect(x0, 0, x1, getHeight(), back);
         c.save();
         c.clipRect(x0, 0, x1, getHeight());
         for (int i = 0; i < shown.size(); i++) {
-            float top = TOP + i * ROW - scroll;
+            float top = TOP + i * ROW - sc;
             if (top > 1080f || top + ROW < 0f) continue;
             Entry e = shown.get(i);
             float cy = Ui.f(top + ROW / 2f);
@@ -265,7 +264,7 @@ final class GroupsPanel extends View {
             else if (current != null && current.equals(e.tag) && e.kind != HEADING) Focus.selected(c, r);
             if (e.kind == HEADING) {
                 headP.setColor(Palette.TEXT1);
-                c.drawText(Ui.fit(e.name, headP, Ui.f(W - HEAD_X - 96)), x0 + Ui.f(HEAD_X), Type.centred(headP, cy), headP);
+                c.drawText(e.fitted(headP, Ui.f(W - HEAD_X - 96)), x0 + Ui.f(HEAD_X), Type.centred(headP, cy), headP);
                 chevron.setColor(Palette.TEXT2);
                 chevron.setStrokeWidth(Math.max(1f, Ui.f(3f)));
                 Ui.chevron(c, x1 - Ui.f(68), cy, Ui.f(10), e.folded ? Ui.DOWN : Ui.UP, chevron);
@@ -273,7 +272,7 @@ final class GroupsPanel extends View {
                 TextPaint p = e.kind == BOLD ? boldP : groupP;
                 p.setColor(Palette.TEXT1);
                 float tx = e.kind == BOLD ? HEAD_X : e.kind == PLAIN ? PLAIN_X : GROUP_X;
-                c.drawText(Ui.fit(e.name, p, Ui.f(W - tx - 48)), x0 + Ui.f(tx), Type.centred(p, cy), p);
+                c.drawText(e.fitted(p, Ui.f(W - tx - 48)), x0 + Ui.f(tx), Type.centred(p, cy), p);
             }
         }
         c.restore();
