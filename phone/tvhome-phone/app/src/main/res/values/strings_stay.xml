@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- Settings → Live TV: how the picture follows the connection. -->
-    <string name="live_stay">Adapt quality to the connection</string>
-    <string name="live_stay_note">On: you stay on the channel you picked, and its picture steps down when the connection struggles and back up when it recovers, using the channel\'s own copies in other qualities, with no break on screen. Off: the exact stream you picked plays on, waiting and reconnecting when the connection drops.</string>
-</resources>

@@ -636,3 +636,8 @@ held: no spinner, no message, no other channel. It steps down before the picture
 2.5 s), and tries back up 45 s after it steadies (longer after a failed try). When a stream fails: it is tried again at
 once twice, then the same channel from another playlist, then its copy a step down, all as the same channel. Settings →
 Live TV, "Adapt quality to the connection", on by default; off, the exact stream picked plays on and reconnects.
+
+**One control for the picture (5.22).** Settings → Live TV's Picture quality is the one place: Adaptive (the default)
+is 5.21's picture following the connection on the channel picked; a fixed quality (4K, 1080p, 720p, SD) is the way to
+turn that off, that resolution playing on and reconnecting when the connection drops. 5.21's separate "Adapt quality
+to the connection" switch, which said the same thing twice, is gone.

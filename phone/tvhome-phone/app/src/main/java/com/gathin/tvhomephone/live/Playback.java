@@ -467,9 +467,9 @@ final class Playback {
 
     // ---- adaptive: down when it can't keep up, back up once steady -----------------------------------------------
 
-    /** Stepping between the channel's own copies as its picture follows the connection (Quality.adapt, on unless off). */
+    /** Stepping between the channel's own copies as its picture follows the connection (picture quality Adaptive). */
     private boolean adaptive() {
-        return Quality.adapt(app) && Quality.choice(app) == Quality.ADAPTIVE && rungs.size() > 1 && !replaying;
+        return Quality.adapt(app) && rungs.size() > 1 && !replaying;
     }
 
     /**

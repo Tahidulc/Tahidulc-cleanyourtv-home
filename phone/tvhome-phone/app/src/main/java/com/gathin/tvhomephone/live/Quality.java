@@ -30,20 +30,14 @@ final class Quality {
         prefs(c).edit().putInt(CHOICE, choice).apply();
     }
 
-    private static final String ADAPT = "adapt_quality";
-
     /**
-     * Adapt quality to the connection (on unless turned off): the channel picked stays on screen (its name, number,
-     * guide) while its picture steps down when the connection can't keep up and back up when it can, through the
-     * channel's own copies in other qualities (an HLS stream's own versions too), each step with its last picture held
-     * and no break. Off: the exact stream picked plays on, waiting and reconnecting when the connection drops.
+     * Picture quality Adaptive (the default): the channel picked stays on screen (its name, number, guide) while its
+     * picture steps down when the connection can't keep up and back up when it can, through the channel's own copies
+     * in other qualities (an HLS stream's own versions too), each step with its last picture held and no break. A fixed
+     * quality is the way to turn that off: that resolution plays on, reconnecting when the connection drops.
      */
     static boolean adapt(Context c) {
-        return prefs(c).getBoolean(ADAPT, true);
-    }
-
-    static void setAdapt(Context c, boolean on) {
-        prefs(c).edit().putBoolean(ADAPT, on).apply();
+        return choice(c) == ADAPTIVE;
     }
 
     /**
