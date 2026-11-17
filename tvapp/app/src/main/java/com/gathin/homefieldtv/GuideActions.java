@@ -137,19 +137,14 @@ final class GuideActions {
         }
     }
 
-    /** A channel full screen over the screen it was chosen on (the guide: Back comes back to it), after its PIN. */
+    /** A channel full screen, after its PIN (Back from the player comes back to the guide: TvActivity.toGuide). */
     static void watch(TvActivity tv, Channel c) {
-        if (c == null) return;
-        PinScreen.forChannel(tv, c, () -> tv.push(new LiveScreen(tv, c)));
+        tv.watch(c);
     }
 
-    /**
-     * A programme from its start, from the provider's archive: CatchupScreen over the channel's live screen, as before
-     * (LiveScreen's catch-up start), over the screen it was chosen on.
-     */
+    /** A programme from its start, from the provider's archive: CatchupScreen over the channel's live screen, as before. */
     static void watchFrom(TvActivity tv, Channel c, long start, long end) {
-        if (c == null) return;
-        PinScreen.forChannel(tv, c, () -> tv.push(new LiveScreen(tv, c, start, end)));
+        tv.watchFrom(c, start, end);
     }
 
     /** A reminder a minute before it starts (its card over whatever is on); true when the over-apps question is due. */

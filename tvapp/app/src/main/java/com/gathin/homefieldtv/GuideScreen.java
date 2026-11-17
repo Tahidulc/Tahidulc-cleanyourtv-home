@@ -41,14 +41,19 @@ import java.util.Map;
  * already shown that the provider's archive keeps, it plays it from its start (catch-up, CatchupScreen). OK held (or
  * MENU) opens the whole menu (GuideMenu, GuideActions): Search and Settings, the programme's lines (Remind or Watch from
  * start…), the channel's (Favourites, Catch-up: the archive by day, ArchiveScreen; Block). Play/pause shows the
- * programme's description, Stop adds the channel to the favourites or takes it off (the family's TV's keys), the
- * number keys go to a channel, the channel keys page the rows, rewind and fast-forward page the times (into the
- * archive), and Back first comes back to the programmes on now.
+ * programme's description, Stop adds the channel to the favourites or takes it off, Back held goes back to the player
+ * and Menu held opens Search (the family's TV's keys); the number keys go to a channel, the channel keys page the rows,
+ * rewind and fast-forward page the times (into the archive), and Back first comes back to the programmes on now.
+ * Back from the player opens a new guide (TvActivity.toGuide) on the list shown last, the channel playing in its
+ * preview.
  */
 final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Host, GuideMenu.Host, DialogCard.Host, LiveTv.Listener {
     private static final int GRID = 0, GROUPS = 1, DRAWER = 2;
     private static final String ALL = "all", FAV = "fav", RECENT = "recent", GENRE = "genre:", GROUP = "group:", PLAYLIST = "playlist",
             KINDS = "kinds";
+
+    /** The list the guide showed last, while the app runs: Back from the player opens a new guide on it (as the TV does). */
+    private static String lastShown = ALL;
 
     private final String startCategory;
     private FrameLayout content;
@@ -76,7 +81,12 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
     private final Runnable digitsDone = this::jump;
     private final RectF tmp = new RectF();
 
-    /** category: one of Genres' names to open on, or null for all the channels. */
+    /** The list shown last forgotten: the next guide opens on all the channels (a test's own channels gone). */
+    static void forgetList() {
+        lastShown = ALL;
+    }
+
+    /** category: one of Genres' names to open on, or null for the list shown last (all the channels at first). */
     GuideScreen(TvActivity tv, String category) {
         super(tv);
         this.startCategory = category;
@@ -104,8 +114,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
         f.addView(rail, new FrameLayout.LayoutParams(-1, -1));
         f.addView(menu, new FrameLayout.LayoutParams(-1, -1));
         f.addView(dialog, new FrameLayout.LayoutParams(-1, -1));
-        String first = startCategory == null ? ALL : GENRE + startCategory;
-        shown = first;
+        shown = startCategory == null ? lastShown : GENRE + startCategory;
         fillGroups();
         load(shown, null);
         // Nothing to show: the groups (and from them the menu, for Settings) rather than an empty grid.
@@ -173,6 +182,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
     /** A list's channels in the grid, the remote on focusOn if it is there, else on the channel playing. */
     private void load(String tag, Channel focusOn) {
         shown = tag;
+        lastShown = tag;
         Library lib = Library.get(tv);
         if (!lib.hasSource()) empty(Dark.TV, "No playlist yet", "Add your playlist in Settings, and its channels and guide show here.");
         else if (!lib.ready()) empty(Dark.TV, lib.busy() || lib.status().isEmpty() ? "Loading your channels…" : lib.status(), "");
@@ -362,6 +372,31 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
     }
 
     // ---- the remote ---------------------------------------------------------------------------------------------
+
+    /** The family's TV's guide keys held: Back (back to the player) and Menu (Search); not while a menu is up. */
+    @Override boolean holds(int code) {
+        return (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_MENU) && !menu.isOpen() && !asking() && digits.isEmpty();
+    }
+
+    @Override boolean keyLong(int code) {
+        if (code == KeyEvent.KEYCODE_MENU) {
+            tv.openSearch();
+            return true;
+        }
+        if (code != KeyEvent.KEYCODE_BACK) return false;
+        // Back held: the player again, on the channel in the preview (a programme from the archive from where it is).
+        Channel c = tv.live.channel();
+        if (c == null) return false;
+        if (tv.live.behind()) {
+            long at = tv.live.shownAt();
+            Guide.Schedule s = Library.get(tv).schedule(c.key);
+            int i = s == null ? -1 : s.at(at);
+            GuideActions.watchFrom(tv, c, at, i >= 0 ? s.stop[i] : at + GuideGrid.HOUR);
+        } else {
+            GuideActions.watch(tv, c);
+        }
+        return true;
+    }
 
     @Override boolean key(int code, KeyEvent e) {
         if (asking()) return dialog.key(code);
@@ -605,5 +640,35 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
     @Override public void answered(DialogCard d, RowList.Row answer) {
         d.hide(this::placePreview);
         GuideActions.answered(tv, answer);
+    }
+
+    // ---- what the tests look at -------------------------------------------------------------------------------------
+
+    /** Where the remote is: 0 the grid, 1 the groups, 2 the menu's drawer. */
+    int area() {
+        return area;
+    }
+
+    /** The list on screen: "all", "fav", "recent", or "group:" / "genre:" and its name. */
+    String list() {
+        return shown;
+    }
+
+    Channel focusedChannel() {
+        return grid.channel();
+    }
+
+    /** The programme the remote is on as {start, end}, or null. */
+    long[] focusedTimes() {
+        return grid.times();
+    }
+
+    boolean menuOpen() {
+        return menu.isOpen();
+    }
+
+    /** How far the guide is pushed right by the rail and the groups (design pixels). */
+    float pushed() {
+        return content.getTranslationX() / Ui.s;
     }
 }

@@ -614,7 +614,7 @@ final class ArchiveScreen extends Screen implements GuideMenu.Host, DialogCard.H
             if (!state.isEmpty()) {
                 float x = r.left + pad + cardP.measureText(when) + Ui.f(24f);
                 if (over && !state.isEmpty()) {
-                    GuideGrid.archiveMark(c, x + Ui.f(12f), base - Ui.f(8f), Ui.f(24f), Palette.ACCENT_LIGHT);
+                    RoundButton.glyph(c, Dark.HISTORY, x + Ui.f(12f), base - Ui.f(8f), Ui.f(24f), Palette.ACCENT_LIGHT);
                     x += Ui.f(32f);
                 }
                 cardP.setColor(on || over ? Palette.ACCENT_LIGHT : Palette.TEXT2);

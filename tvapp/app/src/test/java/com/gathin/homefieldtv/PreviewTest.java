@@ -118,11 +118,9 @@ public class PreviewTest {
         // CH+: the next channel's card, the channel playing on.
         press(a, KeyEvent.KEYCODE_CHANNEL_UP);
         shot(a, "08-live-next");
-        // Back hides the card, Back again is the TV guide (as TiviMate's), and Back from it Home (the menu still on TV
-        // guide).
-        press(a, KeyEvent.KEYCODE_BACK);
-        press(a, KeyEvent.KEYCODE_BACK);
-        press(a, KeyEvent.KEYCODE_BACK);
+        // Back hides the card, Back again is the TV guide (as TiviMate's); from the guide Back opens the groups, then the
+        // menu's drawer, then leaves for Home (the menu still on TV guide).
+        press(a, KeyEvent.KEYCODE_BACK, 5);
 
         // Movies, a film's page.
         press(a, KeyEvent.KEYCODE_DPAD_DOWN);

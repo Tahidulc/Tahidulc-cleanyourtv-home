@@ -628,7 +628,7 @@ final class GuideGrid extends View {
                 fill.setColor(markInk);
                 Dark.bell(c, mx, my, Ui.f(11f), fill);
             } else {
-                archiveMark(c, mx, my, Ui.f(22f), markInk);
+                RoundButton.glyph(c, Dark.HISTORY, mx, my, Ui.f(22f), markInk);
             }
             room -= Ui.f(34f);
         }
@@ -676,7 +676,7 @@ final class GuideGrid extends View {
             markX -= 42f;
         }
         if (Catchup.source(ch) != null) {
-            archiveMark(c, Ui.f(markX), cy, Ui.f(24f), Palette.TEXT2);
+            RoundButton.glyph(c, Dark.HISTORY, Ui.f(markX), cy, Ui.f(24f), Palette.TEXT2);
             nameRight = markX - 26f;
         }
         nameP.setColor(lit);
@@ -711,43 +711,5 @@ final class GuideGrid extends View {
         }
         wraps.put(key, out);
         return out;
-    }
-
-    private static final Paint MARK = new Paint(Paint.ANTI_ALIAS_FLAG), MARK_FILL = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private static final RectF MARK_OVAL = new RectF();
-    private static final android.graphics.Path MARK_HEAD = new android.graphics.Path();
-
-    static {
-        MARK.setStyle(Paint.Style.STROKE);
-        MARK.setStrokeCap(Paint.Cap.ROUND);
-        MARK.setStrokeJoin(Paint.Join.ROUND);
-    }
-
-    /**
-     * Homefield's catch-up mark, drawn in the style of Dark's icons: a clock face whose rim turns back on itself
-     * (anticlockwise, open at the left, its arrowhead pointing back), with its hands at ten past, centred on (cx, cy)
-     * and s across (screen pixels).
-     */
-    static void archiveMark(Canvas c, float cx, float cy, float s, int colour) {
-        float r = s * 0.40f;
-        MARK.setColor(colour);
-        MARK.setStrokeWidth(Math.max(1f, s * 0.09f));
-        MARK_FILL.setColor(colour);
-        MARK_OVAL.set(cx - r, cy - r, cx + r, cy + r);
-        // The rim from the upper left, round over the top and the right, and back underneath to the lower left.
-        c.drawArc(MARK_OVAL, 205f, 290f, false, MARK);
-        // The arrowhead at the rim's upper end, pointing on round it the other way (anticlockwise: back in time).
-        double end = Math.toRadians(205f);
-        float ex = cx + (float) Math.cos(end) * r, ey = cy + (float) Math.sin(end) * r;
-        float dx = (float) Math.sin(end), dy = (float) -Math.cos(end), nx = -dy, ny = dx, a = s * 0.24f;
-        MARK_HEAD.reset();
-        MARK_HEAD.moveTo(ex + dx * a * 0.9f, ey + dy * a * 0.9f);
-        MARK_HEAD.lineTo(ex - dx * a * 0.4f + nx * a * 0.75f, ey - dy * a * 0.4f + ny * a * 0.75f);
-        MARK_HEAD.lineTo(ex - dx * a * 0.4f - nx * a * 0.75f, ey - dy * a * 0.4f - ny * a * 0.75f);
-        MARK_HEAD.close();
-        c.drawPath(MARK_HEAD, MARK_FILL);
-        // The hands: to twelve, and to a little after four.
-        c.drawLine(cx, cy, cx, cy - r * 0.58f, MARK);
-        c.drawLine(cx, cy, cx + r * 0.42f, cy + r * 0.32f, MARK);
     }
 }

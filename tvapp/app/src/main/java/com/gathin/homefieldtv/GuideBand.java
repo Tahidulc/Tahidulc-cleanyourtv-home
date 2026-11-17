@@ -117,7 +117,7 @@ final class GuideBand extends View {
                 x += metaP.measureText(left) + Ui.f(GAP);
             } else if (end <= now && Catchup.has(ch, start, now)) {
                 // Already shown, in the archive: the catch-up mark and how long it is (as the player's banner has it).
-                GuideGrid.archiveMark(c, x + Ui.f(14f), cy, Ui.f(28f), Palette.TEXT2);
+                RoundButton.glyph(c, Dark.HISTORY, x + Ui.f(14f), cy, Ui.f(28f), Palette.TEXT2);
                 x += Ui.f(36f);
                 String len = minutes(end - start);
                 c.drawText(len, x, base, metaP);
