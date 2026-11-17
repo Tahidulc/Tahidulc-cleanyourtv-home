@@ -181,7 +181,7 @@ final class LiveTv {
         picture.setVisibility(View.GONE);
         layer.addView(picture, new FrameLayout.LayoutParams(1, 1));
         note = new TextView(c);
-        note.setTypeface(Dark.outfit);
+        note.setTypeface(Type.face(Type.MEDIUM));
         note.setTextColor(Dark.TEXT);
         note.setGravity(Gravity.CENTER);
         note.setVisibility(View.GONE);
