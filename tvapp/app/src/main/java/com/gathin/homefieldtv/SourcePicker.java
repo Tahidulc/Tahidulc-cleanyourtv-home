@@ -1,6 +1,8 @@
 package com.gathin.homefieldtv;
 
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Path;
@@ -12,6 +14,7 @@ import android.view.KeyEvent;
 import android.view.View;
 
 import com.gathin.homefieldtv.engine.Catalog;
+import com.gathin.homefieldtv.engine.Formats;
 import com.gathin.homefieldtv.engine.TorBox;
 
 import java.util.ArrayList;
@@ -19,11 +22,13 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Where a film or episode is playing from and the other copies it can play from, as the phone's source sheet: TorBox's
- * (a green mark with a cloud) and the IPTV playlists' (a blue one with a screen and the playlist's name), so that the
- * two can't be mistaken; beside each mark the picture and the file's kind its name says, under it the file's name and
- * size; the one playing ticked. A panel on the right over the picture (Up while a film plays): Up and Down choose, OK
- * plays the copy chosen from the same moment, Back shuts it; it goes by itself after a while untouched.
+ * Where a film or episode can play from, as the phone's source sheet: TorBox's copies (a green mark with a cloud) and
+ * the IPTV playlists' (a blue one with a screen and the playlist's name), so that the two can't be mistaken; beside each
+ * mark the logos of the picture, its HDR and its sound as its name says them (4K Ultra HD, Dolby Vision, Dolby Atmos…)
+ * and the file's kind, under it the file's name and size. Two ways: before playing (choose: every copy, the best first
+ * and marked the best match, the remote on it; OK plays the one chosen, the rest kept as its backups in their order,
+ * Back goes back), and while a film plays (open, Up: a panel on the right, the one playing ticked; OK plays the one
+ * chosen from the same moment, Back shuts it; it goes by itself after a while untouched).
  */
 final class SourcePicker extends View {
     interface Pick {
@@ -34,13 +39,17 @@ final class SourcePicker extends View {
     static final int TORBOX = 0xFF0E9F6E, IPTV = 0xFF3B5BDB, TORBOX_SOFT = 0xFF5EE0B0, IPTV_SOFT = 0xFF91A7FF;
     private static final long IDLE_MS = 20_000;
     private static final float X = 1130f, W = 730f, TOP = 70f, BOTTOM = 1010f, HEAD = 128f, ROW = 100f, GROUP = 46f, FOOT = 64f;
+    /** Before playing: wider and in the middle, nothing playing behind it. */
+    private static final float CHOOSE_X = 260f, CHOOSE_W = 1400f;
 
     private final List<Catalog.Play> plays = new ArrayList<>();
     private final List<Line> lines = new ArrayList<>();
     private int playing, focus;
     private float scroll;
     private Pick pick;
-    private boolean open;
+    private boolean open, choosing;
+    /** Before playing: what Back does (goes back from the player). */
+    private Runnable back;
     private final Handler h = new Handler(Looper.getMainLooper());
     private final Runnable idle = this::close;
     private final Mark mark = new Mark();
@@ -51,6 +60,10 @@ final class SourcePicker extends View {
     private final TextPaint chipP = Dark.text(20, 700, Dark.SOFT), status = Dark.text(22, 700, Dark.TEXT);
     private final TextPaint detail = Dark.text(21, 500, Dark.MUTED), hint = Dark.text(21, 500, Dark.MUTED);
     private final TextPaint torboxHead = Dark.text(19, 700, TORBOX_SOFT), iptvHead = Dark.text(19, 700, IPTV_SOFT);
+    private final TextPaint markP = Dark.text(19, 700, 0xFFFFFFFF), best = Dark.text(22, 700, Dark.MUTED);
+    private final Paint markLine = Dark.line(0xBFFFFFFF, 2f), logoPaint = new Paint(Paint.FILTER_BITMAP_FLAG);
+    private final RectF logoBox = new RectF();
+    private final android.graphics.Rect logoSrc = new android.graphics.Rect();
     private final RectF r = new RectF();
     private final Path check = new Path();
 
@@ -81,11 +94,29 @@ final class SourcePicker extends View {
 
     /** Open on the copy playing (its place in plays), the remote on it. */
     void open(List<Catalog.Play> copies, int now, Pick p) {
+        show(copies, now, p, null);
+    }
+
+    /**
+     * Before playing: every copy, the best first (the remote on it, "Best match"); OK plays the one chosen, Back runs
+     * back. It stays until one of them.
+     */
+    void choose(List<Catalog.Play> copies, Pick p, Runnable onBack) {
+        show(copies, -1, p, onBack);
+    }
+
+    boolean isChoosing() {
+        return open && choosing;
+    }
+
+    private void show(List<Catalog.Play> copies, int now, Pick p, Runnable onBack) {
         if (copies.isEmpty()) return;
         plays.clear();
         plays.addAll(copies);
         playing = now;
         pick = p;
+        back = onBack;
+        choosing = onBack != null;
         lines.clear();
         List<List<Integer>> groups = groups(plays);
         for (List<Integer> g : groups) {
@@ -95,7 +126,9 @@ final class SourcePicker extends View {
             for (int i : g) lines.add(new Line(i, "", plays.get(i).torbox));
         }
         focus = 0;
-        for (int i = 0; i < lines.size(); i++) if (lines.get(i).play == playing) focus = i;
+        // The one playing, or before playing the best: the first.
+        int on = playing >= 0 ? playing : 0;
+        for (int i = 0; i < lines.size(); i++) if (lines.get(i).play == on) focus = i;
         if (lines.get(focus).play < 0) focus = next(focus, 1);
         scroll = 0;
         open = true;
@@ -109,13 +142,16 @@ final class SourcePicker extends View {
         h.removeCallbacks(idle);
         if (!open) return;
         open = false;
+        choosing = false;
         pick = null;
+        back = null;
         setVisibility(GONE);
     }
 
     private void poke() {
         h.removeCallbacks(idle);
-        h.postDelayed(idle, IDLE_MS);
+        // Before playing it waits for an answer; over a film it goes by itself after a while.
+        if (!choosing) h.postDelayed(idle, IDLE_MS);
     }
 
     /** A key while open: true when it was the panel's (the volume keys go on to the TV). */
@@ -140,7 +176,9 @@ final class SourcePicker extends View {
                 return true;
             case KeyEvent.KEYCODE_BACK:
             case KeyEvent.KEYCODE_ESCAPE:
+                Runnable b = back;
                 close();
+                if (b != null && e.getRepeatCount() == 0) b.run();
                 return true;
             default:
                 return true;
@@ -202,6 +240,71 @@ final class SourcePicker extends View {
         return String.format(Locale.UK, "%.1f GB", mb / 1024.0);
     }
 
+    /**
+     * Pure: the marks beside a copy's mark, as the phone's (Marks): its picture ("4K", "1080p", "720p", "SD"), its HDR
+     * ("Dolby Vision", "HDR10+", "HDR10", "HLG", "HDR"), its sound ("Dolby Atmos"; "Dolby" and its channels for Dolby's
+     * other sound; else its words, "DTS-HD 7.1", "AAC Stereo", "5.1"), then its file's kind ("MKV"). Those with a logo
+     * are drawn with it (logo()), the rest in words.
+     */
+    static List<String> marks(Catalog.Play p) {
+        List<String> out = new ArrayList<>();
+        String q = Catalog.pictureName(p.picture);
+        if (!q.isEmpty()) out.add(q);
+        if (p.hdr != null && !p.hdr.isEmpty()) out.add(p.hdr);
+        String a = p.sound == null ? "" : p.sound;
+        if (a.startsWith("Dolby Atmos")) {
+            out.add("Dolby Atmos");
+        } else if (a.startsWith("Dolby")) {
+            out.add("Dolby");
+            String ch = Formats.channelsOf(a);
+            if (!ch.isEmpty()) out.add(ch);
+        } else if (!a.isEmpty()) {
+            out.add(a);
+        }
+        if (p.kind != null && !p.kind.isEmpty()) out.add(p.kind);
+        return out;
+    }
+
+    /** Pure: a mark's logo (a drawable), or 0 for one drawn in words. */
+    static int logo(String mark) {
+        switch (mark) {
+            case "4K": return R.drawable.fmt_4k;
+            case "1080p": return R.drawable.fmt_1080;
+            case "720p": return R.drawable.fmt_720;
+            case "SD": return R.drawable.fmt_sd;
+            case "Dolby Vision": return R.drawable.fmt_dolby_vision;
+            case "HDR10+": return R.drawable.fmt_hdr10plus;
+            case "HDR10": return R.drawable.fmt_hdr10;
+            case "HLG": return R.drawable.fmt_hlg;
+            case "Dolby Atmos": return R.drawable.fmt_dolby_atmos;
+            case "Dolby": return R.drawable.fmt_dolby;
+            default: return 0;
+        }
+    }
+
+    /** How much of its box's height a logo takes: Dolby's long and low, HDR10's tallest (to carry its small "10"). */
+    private static float logoHeight(int logo) {
+        if (logo == R.drawable.fmt_hdr10 || logo == R.drawable.fmt_hdr10plus) return 0.8f;
+        if (logo == R.drawable.fmt_dolby || logo == R.drawable.fmt_dolby_atmos || logo == R.drawable.fmt_dolby_vision) return 0.6f;
+        return 0.7f;
+    }
+
+    /** The logos, read once (they're small). */
+    private static final java.util.Map<Integer, Bitmap> LOGOS = new java.util.HashMap<>();
+
+    private Bitmap bitmap(int logo) {
+        Bitmap b = LOGOS.get(logo);
+        if (b == null && !LOGOS.containsKey(logo)) {
+            try {
+                b = BitmapFactory.decodeResource(getResources(), logo);
+            } catch (RuntimeException e) {
+                b = null;
+            }
+            LOGOS.put(logo, b);
+        }
+        return b;
+    }
+
     /** Pure: what its name says of a copy beside its mark ("1080p · MKV"; "" when it says nothing). */
     static String facts(Catalog.Play p) {
         String q = Catalog.pictureName(p.picture);
@@ -217,12 +320,14 @@ final class SourcePicker extends View {
 
     @Override protected void onDraw(Canvas c) {
         if (!open || lines.isEmpty()) return;
-        float x = Ui.f(X), w = Ui.f(W);
+        float x = Ui.f(choosing ? CHOOSE_X : X), w = Ui.f(choosing ? CHOOSE_W : W);
         r.set(x, Ui.f(TOP), x + w, Ui.f(BOTTOM));
         c.drawRoundRect(r, Ui.f(26), Ui.f(26), panel);
         c.drawRoundRect(r, Ui.f(26), Ui.f(26), edge);
-        c.drawText("Play from", x + Ui.f(36), Ui.f(TOP + 62), title);
-        String count = plays.size() + " copies  ·  " + (plays.get(0).torbox ? "TorBox's first" : "your playlist's first");
+        c.drawText(choosing ? "Choose a source" : "Play from", x + Ui.f(36), Ui.f(TOP + 62), title);
+        String count = choosing
+                ? plays.size() + " sources  ·  the best first  ·  the others stay as backups: change between them while it plays"
+                : plays.size() + " copies  ·  " + (plays.get(0).torbox ? "TorBox's first" : "your playlist's first");
         c.drawText(Ui.fit(count, sub, w - Ui.f(72)), x + Ui.f(36), Ui.f(TOP + 98), sub);
 
         // The list scrolled so that the line the remote is on stays in sight.
@@ -254,7 +359,8 @@ final class SourcePicker extends View {
             ly += lh;
         }
         c.restore();
-        c.drawText("OK plays it from here  ·  Back closes", x + Ui.f(36), Ui.f(BOTTOM - 26), hint);
+        c.drawText(choosing ? "OK plays it  ·  Back goes back" : "OK plays it from here  ·  Back closes", x + Ui.f(36),
+                Ui.f(BOTTOM - 26), hint);
     }
 
     private void drawHeading(Canvas c, Line l, float x, float y) {
@@ -272,10 +378,19 @@ final class SourcePicker extends View {
         float left = x + Ui.f(40), right = x + w - Ui.f(40);
         float cy = Ui.f(y + 38);
         float mx = left + mark.draw(c, left, cy, Ui.f(38), p.torbox, p.playlist, Ui.f(240));
-        // What its name says, in outlined chips beside the mark.
-        String q = Catalog.pictureName(p.picture);
-        if (!q.isEmpty()) mx += chip(c, q, mx + Ui.f(12), cy) + Ui.f(12);
-        if (!p.kind.isEmpty()) chip(c, p.kind, mx + Ui.f(12), cy);
+        // Its picture's, HDR's and sound's logos (and its file's kind) beside the mark, as far as there is room.
+        String flag = index == playing ? "Playing" : playing < 0 && index == 0 && plays.size() > 1 ? "Best match" : "";
+        float room = right - (flag.isEmpty() ? 0f : best.measureText(flag) + Ui.f(60));
+        for (String m : marks(p)) {
+            float mw = markWidth(m);
+            if (mx + Ui.f(12) + mw > room) break;
+            drawMark(c, m, mx + Ui.f(12), cy);
+            mx += Ui.f(12) + mw;
+        }
+        if (flag.equals("Best match")) {
+            float tw = best.measureText(flag);
+            c.drawText(flag, right - tw, cy + Ui.f(8), best);
+        }
         if (index == playing) {
             // The one playing: a tick and its word at the line's end.
             String word = "Playing";
@@ -290,6 +405,34 @@ final class SourcePicker extends View {
         }
         String d = detail(p);
         if (!d.isEmpty()) c.drawText(Ui.fit(d, detail, right - left), left, Ui.f(y + 80), detail);
+    }
+
+    private static final float MARK_H = 34f;
+
+    /** A mark's width in its box: its logo's, or its words'. */
+    private float markWidth(String m) {
+        float bh = Ui.f(MARK_H);
+        int logo = logo(m);
+        Bitmap b = logo == 0 ? null : bitmap(logo);
+        if (b != null && b.getHeight() > 0) return bh * logoHeight(logo) * b.getWidth() / b.getHeight() + bh * 0.6f;
+        return markP.measureText(m) + bh * 0.56f;
+    }
+
+    /** A mark in its outlined box, MARK_H tall, from x, centred on cy: its logo in white, or its words. */
+    private void drawMark(Canvas c, String m, float x, float cy) {
+        float bh = Ui.f(MARK_H), w = markWidth(m);
+        logoBox.set(x, cy - bh / 2f, x + w, cy + bh / 2f);
+        c.drawRoundRect(logoBox, bh * 0.2f, bh * 0.2f, markLine);
+        int logo = logo(m);
+        Bitmap b = logo == 0 ? null : bitmap(logo);
+        if (b != null && b.getHeight() > 0) {
+            float lh = bh * logoHeight(logo), lw = lh * b.getWidth() / b.getHeight();
+            logoSrc.set(0, 0, b.getWidth(), b.getHeight());
+            logoBox.set(x + bh * 0.3f, cy - lh / 2f, x + bh * 0.3f + lw, cy + lh / 2f);
+            c.drawBitmap(b, logoSrc, logoBox, logoPaint);
+        } else {
+            c.drawText(m, x + bh * 0.28f, cy + markP.getTextSize() * 0.36f, markP);
+        }
     }
 
     /** An outlined chip ("1080p", "MKV") at x, centred on cy; its width. */

@@ -421,13 +421,13 @@ final class HomeScreen extends Screen implements Rows.Host, LiveTv.Listener {
             if (t == null) return;
             if (held || !t.series && p.episode.isEmpty()) {
                 if (held) tv.openTitle(t);
-                else tv.play(t, null, p.position);
+                else tv.play(t, null, p.position, false);
                 return;
             }
             // An episode: its details first (where it plays comes from them).
             Catalog.get(tv).details(t, d -> {
                 Catalog.Episode e = d == null ? null : d.episode(p.episode);
-                if (e != null) tv.play(t, e, p.position);
+                if (e != null) tv.play(t, e, p.position, false);
                 else tv.openTitle(t);
             });
         }
