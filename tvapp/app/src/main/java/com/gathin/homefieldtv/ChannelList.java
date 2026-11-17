@@ -6,7 +6,6 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
-import android.os.SystemClock;
 import android.text.StaticLayout;
 import android.text.TextPaint;
 import android.view.KeyEvent;
@@ -14,7 +13,6 @@ import android.view.View;
 import android.widget.FrameLayout;
 
 import com.gathin.homefieldtv.engine.Channel;
-import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.engine.Lineup;
@@ -43,6 +41,10 @@ import java.util.List;
  * the channels move right beside them, and moving onto a group shows its channels at once; Right or OK goes back to the
  * channels. OK on a channel plays it (the list stays); OK on the one playing goes full screen. Back closes the groups,
  * then the list.
+ *
+ * <p>The rows glide on the display's frame clock (Glide: a held key glides on smoothly, never starting over), and a frame
+ * makes nothing new: names and titles are measured once and cut from their kept widths (TextFit), times are kept words
+ * (Words), and the ground round the preview's window is four rectangles and its corners' one kept shape, not a clip.
  */
 final class ChannelList extends FrameLayout implements GroupsPanel.Host {
     static final int OVERLAY = 0, PREVIEW = 1;
@@ -76,8 +78,8 @@ final class ChannelList extends FrameLayout implements GroupsPanel.Host {
     private String group = ALL;
     private int focus;
     private boolean groupsOpen;
-    private float scroll, scrollFrom, scrollTo;
-    private long scrollAt;
+    /** The rows' scroll (design pixels), gliding so the remote's row is the second. */
+    private final Glide scroll = new Glide((long) ROLL_MS);
 
     ChannelList(TvActivity tv, int mode, Host host) {
         super(tv);
@@ -243,14 +245,8 @@ final class ChannelList extends FrameLayout implements GroupsPanel.Host {
 
     private void settle(boolean now) {
         float t = scrollFor(focus, lineup.channels.size(), 1080f);
-        if (now || Exec.inline) {
-            scroll = scrollFrom = scrollTo = t;
-            scrollAt = 0;
-        } else if (t != scrollTo) {
-            scrollFrom = scroll;
-            scrollTo = t;
-            scrollAt = SystemClock.uptimeMillis();
-        }
+        if (now) scroll.jump(t);
+        else scroll.to(t);
     }
 
     // ---- drawing ------------------------------------------------------------------------------------------------
@@ -264,40 +260,59 @@ final class ChannelList extends FrameLayout implements GroupsPanel.Host {
         private final TextPaint cardTitleP = Type.paint(36f, Type.MEDIUM, Palette.TEXT1), descP = Type.paint(Type.ROW, Type.REGULAR, Palette.TEXT2);
         private final TextPaint logoP = Type.paint(Type.SMALL, Type.MEDIUM, Palette.TEXT1);
         private final RectF r = new RectF();
-        private final Path hole = new Path(), tri = new Path();
+        private final Path corners = new Path(), tri = new Path();
         private final Runnable redraw = this::invalidate;
-        private String cardKey = "", bandKey = "", bandText = "", whereKey = "", whereText = "";
+        private String bandKey = "", bandText = "", whereKey = "", whereText = "";
+        /** The card's programme and width as last laid out (no key made each frame). */
+        private String cardChannel = "";
+        private long cardStart = Long.MIN_VALUE;
+        private float cardWidth = -1f, cornersFor = -1f;
+        private TextFit names, titles, times, heads;
         private StaticLayout cardTitle, cardDesc;
         private final InfoCard where;
+        private TextFit logos;
+        private String bandFor, bandFit = "", dateFor;
+        private float dateW;
 
         Columns(Context c) {
             super(c);
             where = new InfoCard(this);
+            names = new TextFit(nameP, 128);
+            titles = new TextFit(onP, 256);
+            times = new TextFit(timeP, 256);
+            heads = new TextFit(headP, 32);
+        }
+
+        /** The preview's ground: everywhere but the picture's window, its corners rounded (17), with no clip. */
+        private void ground(Canvas c) {
+            float x0 = Ui.f(VIDEO_X), y0 = Ui.f(VIDEO_Y), x1 = Ui.f(VIDEO_X + VIDEO_W), y1 = Ui.f(VIDEO_Y + VIDEO_H), w = getWidth(), h = getHeight();
+            fill.setColor(Palette.GROUND);
+            c.drawRect(0, 0, w, y0, fill);
+            c.drawRect(0, y1, w, h, fill);
+            c.drawRect(0, y0, x0, y1, fill);
+            c.drawRect(x1, y0, w, y1, fill);
+            float rad = Ui.f(17f);
+            if (cornersFor != x0 + y0 * 7f + x1 * 13f + y1 * 17f) {
+                // The four corners' ground, made once: each a square less a quarter circle.
+                cornersFor = x0 + y0 * 7f + x1 * 13f + y1 * 17f;
+                corners.reset();
+                corners.setFillType(Path.FillType.EVEN_ODD);
+                corners.addRect(x0, y0, x1, y1, Path.Direction.CW);
+                r.set(x0, y0, x1, y1);
+                corners.addRoundRect(r, rad, rad, Path.Direction.CW);
+            }
+            c.drawPath(corners, fill);
         }
 
         @Override protected void onDraw(Canvas c) {
-            long t = SystemClock.uptimeMillis();
-            boolean moving = false;
-            if (scrollAt != 0) {
-                float k = Math.min(1f, (t - scrollAt) / ROLL_MS);
-                scroll = scrollFrom + (scrollTo - scrollFrom) * Fade.EASE.getInterpolation(k);
-                if (k >= 1f) scrollAt = 0;
-                else moving = true;
-            }
+            boolean moving = scroll.step();
+            float sc = scroll.value();
             long now = System.currentTimeMillis();
             Library lib = Library.get(getContext());
             boolean preview = mode == PREVIEW;
             float x0 = groupsOpen ? GROUPS_W + (preview ? 2f : 0f) : 0f;
-            if (preview) {
-                // The ground everywhere but the picture's window.
-                hole.reset();
-                r.set(Ui.f(VIDEO_X), Ui.f(VIDEO_Y), Ui.f(VIDEO_X + VIDEO_W), Ui.f(VIDEO_Y + VIDEO_H));
-                hole.addRoundRect(r, Ui.f(17f), Ui.f(17f), Path.Direction.CW);
-                c.save();
-                c.clipOutPath(hole);
-                c.drawColor(Palette.GROUND);
-                c.restore();
-            }
+            // The ground everywhere but the picture's window.
+            if (preview) ground(c);
             Channel f = focused();
             // The programmes of the channel the remote is on (not while the groups are open).
             if (!groupsOpen && f != null) drawSchedule(c, f, now, lib, preview);
@@ -313,13 +328,17 @@ final class ChannelList extends FrameLayout implements GroupsPanel.Host {
                 bandText = InfoCard.where(lists.size() == 1 ? lists.get(0).name : "", g);
             }
             bandP.setColor(Palette.TEXT1);
-            c.drawText(Ui.fit(bandText, bandP, Ui.f(COL_W - 64f)), Ui.f(x0 + 32f), Ui.f(48f), bandP);
+            if (!bandText.equals(bandFor)) {
+                bandFor = bandText;
+                bandFit = Ui.fit(bandText, bandP, Ui.f(COL_W - 64f));
+            }
+            c.drawText(bandFit, Ui.f(x0 + 32f), Ui.f(48f), bandP);
             c.save();
             c.clipRect(Ui.f(x0), Ui.f(BAND_H), Ui.f(x0 + COL_W), getHeight());
             Channel playing = tv.live.channel();
-            int first = Math.max(0, (int) ((scroll - ROWS_TOP) / ROW) - 1);
+            int first = Math.max(0, (int) ((sc - ROWS_TOP) / ROW) - 1);
             for (int k = first; k < lineup.channels.size(); k++) {
-                float top = ROWS_TOP + k * ROW - scroll;
+                float top = ROWS_TOP + k * ROW - sc;
                 if (top > 1080f) break;
                 if (top + ROW < BAND_H) continue;
                 Channel ch = lineup.channels.get(k);
@@ -328,9 +347,13 @@ final class ChannelList extends FrameLayout implements GroupsPanel.Host {
             c.restore();
             if (preview) {
                 // The date and the clock over the picture's window, its programme's card under it.
-                String date = Ui.dateClock(now);
+                String date = Words.dateClock(now);
                 dateP.setColor(Palette.ACCENT_LIGHT);
-                c.drawText(date, Ui.f(1880f) - dateP.measureText(date), Ui.f(46f), dateP);
+                if (!date.equals(dateFor)) {
+                    dateFor = date;
+                    dateW = dateP.measureText(date);
+                }
+                c.drawText(date, Ui.f(1880f) - dateW, Ui.f(46f), dateP);
                 if (f != null) drawCard(c, f, VIDEO_X, CARD_Y, VIDEO_X + VIDEO_W, Palette.PANEL, now, lib);
             } else if (!groupsOpen && f != null) {
                 drawCard(c, f, 1155f, 50f, 1871f, Palette.PLAYBACK, now, lib);
@@ -349,11 +372,12 @@ final class ChannelList extends FrameLayout implements GroupsPanel.Host {
                 c.drawBitmap(logo, Ui.f(x0 + 32f) + (Ui.f(96) - logo.getWidth()) / 2f, Ui.f(top + 22f) + (Ui.f(72) - logo.getHeight()) / 2f, bmp);
             } else {
                 logoP.setColor(Palette.TEXT2);
-                c.drawText(Ui.fit(ch.name, logoP, Ui.f(96)), Ui.f(x0 + 32f), Ui.f(top + 66f), logoP);
+                if (logos == null) logos = new TextFit(logoP, 64);
+                logos.line(c, ch.name, Ui.f(x0 + 32f), Ui.f(top + 66f), Ui.f(96));
             }
             float tx = Ui.f(x0 + 144f), room = Ui.f(COL_W - 144f - 32f - (playing ? 48f : 0f));
             nameP.setColor(Palette.TEXT1);
-            c.drawText(Ui.fit(ch.name, nameP, room), tx, Ui.f(top + 42f), nameP);
+            names.line(c, ch.name, tx, Ui.f(top + 42f), room);
             if (playing) {
                 // The channel playing: the accent's ▶.
                 float px = Ui.f(x0 + 556f), py = Ui.f(top + 32f), s = Ui.f(16f);
@@ -369,7 +393,7 @@ final class ChannelList extends FrameLayout implements GroupsPanel.Host {
             int i = s == null ? -1 : s.at(now);
             if (i >= 0) {
                 onP.setColor(Palette.ACCENT_LIGHT);
-                c.drawText(Ui.fit(s.title[i], onP, Ui.f(COL_W - 144f - 32f)), tx, Ui.f(top + 82f), onP);
+                titles.line(c, s.title[i], tx, Ui.f(top + 82f), Ui.f(COL_W - 144f - 32f));
                 Bars.thin(c, tx, Ui.f(top + 99f), Ui.f(424f), Ui.f(4f), LiveText.progress(now, s.start[i], s.stop[i]));
             }
         }
@@ -384,13 +408,13 @@ final class ChannelList extends FrameLayout implements GroupsPanel.Host {
             Bitmap logo = Pics.get(ch.logo, Ui.px(108), Ui.px(72), Pics.tiles ? Pics.READY : Pics.FIT, redraw);
             if (logo != null) c.drawBitmap(logo, Ui.f(624f) + (Ui.f(108) - logo.getWidth()) / 2f, Ui.f(20f) + (Ui.f(72) - logo.getHeight()) / 2f, bmp);
             headP.setColor(Palette.TEXT1);
-            c.drawText(Ui.fit(ch.name, headP, Ui.f(x1 - 748f - 16f)), Ui.f(748f), Ui.f(46f), headP);
+            heads.line(c, ch.name, Ui.f(748f), Ui.f(46f), Ui.f(x1 - 748f - 16f));
             if (!ch.key.equals(whereKey)) {
                 whereKey = ch.key;
                 whereText = where.where(getContext(), ch);
             }
             timeP.setColor(Palette.TEXT2);
-            c.drawText(Ui.fit(whereText, timeP, Ui.f(x1 - 748f - 16f)), Ui.f(748f), Ui.f(86f), timeP);
+            times.line(c, whereText, Ui.f(748f), Ui.f(86f), Ui.f(x1 - 748f - 16f));
             Guide.Schedule s = lib.schedule(ch.key);
             if (s == null) return;
             int at = s.at(now), from = Math.max(0, (at >= 0 ? at : Math.max(0, s.after(now))) - 5);
@@ -401,9 +425,8 @@ final class ChannelList extends FrameLayout implements GroupsPanel.Host {
                 TextPaint p = on ? onP : timeP;
                 p.setColor(on ? Palette.ACCENT_LIGHT : Palette.TEXT2);
                 float base = Type.centred(p, Ui.f(cy));
-                String hm = LiveText.hm(s.start[k]);
-                c.drawText(hm, Ui.f(628f), base, p);
-                c.drawText(Ui.fit(s.title[k], p, Ui.f(x1 - 727f - 4f)), Ui.f(727f), base, p);
+                c.drawText(Words.hm(s.start[k]), Ui.f(628f), base, p);
+                (on ? titles : times).line(c, s.title[k], Ui.f(727f), base, Ui.f(x1 - 727f - 4f));
             }
         }
 
@@ -412,10 +435,11 @@ final class ChannelList extends FrameLayout implements GroupsPanel.Host {
             Guide.Schedule s = lib.schedule(ch.key);
             int i = s == null ? -1 : s.at(now);
             if (i < 0) return;
-            String k = ch.key + "|" + s.start[i] + "|" + (x1 - x0);
             float inner = x1 - x0 - 64f;
-            if (!k.equals(cardKey)) {
-                cardKey = k;
+            if (!ch.key.equals(cardChannel) || s.start[i] != cardStart || x1 - x0 != cardWidth) {
+                cardChannel = ch.key;
+                cardStart = s.start[i];
+                cardWidth = x1 - x0;
                 cardTitleP.setColor(Palette.TEXT1);
                 descP.setColor(Palette.TEXT2);
                 cardTitle = InfoCard.lines(s.title[i], cardTitleP, Ui.px(inner), 2, 42f / 36f);
@@ -429,13 +453,13 @@ final class ChannelList extends FrameLayout implements GroupsPanel.Host {
             float tx = Ui.f(x0 + 32f), y = y0 + 30f;
             Ui.draw(c, cardTitle, tx, Ui.f(y));
             y += th + 20f;
-            String sp = LiveText.span(s.start[i], s.stop[i]);
+            String sp = Words.span(s.start[i], s.stop[i]);
             timeP.setColor(Palette.TEXT2);
             float base = Ui.f(y + 28f);
             c.drawText(sp, tx, base, timeP);
-            float bx = tx + timeP.measureText(sp) + Ui.f(25);
+            float bx = tx + times.width(sp) + Ui.f(25);
             Bars.thin(c, bx, base - Ui.f(10), Ui.f(80), Ui.f(6), LiveText.progress(now, s.start[i], s.stop[i]));
-            if (s.stop[i] > now) c.drawText(InfoCard.minutes(s.stop[i] - now), bx + Ui.f(80 + 24), base, timeP);
+            if (s.stop[i] > now) c.drawText(Words.minutes(s.stop[i] - now), bx + Ui.f(80 + 24), base, timeP);
             y += 40f + 18f;
             if (cardDesc != null) Ui.draw(c, cardDesc, tx, Ui.f(y));
         }

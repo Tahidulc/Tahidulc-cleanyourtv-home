@@ -66,10 +66,15 @@ public final class PlayerSetup {
         if (!PlayerPrefs.adaptive(quality)) p.setForceHighestSupportedBitrate(true);
     }
 
-    /** The buffer Settings chose for live TV or for films and episodes. */
+    /**
+     * The buffer Settings chose for live TV or for films and episodes: its seconds, and at most its bytes
+     * (PlayerPrefs.bufferBytes): Media3 would otherwise allow a video stream some 140 MB of the app's memory.
+     */
     public static DefaultLoadControl load(Context c, boolean live) {
-        int[] b = PlayerPrefs.bufferMs(live, PlayerPrefs.buffer(c, live));
-        return new DefaultLoadControl.Builder().setBufferDurationsMs(b[0], b[1], b[2], b[3]).build();
+        int size = PlayerPrefs.buffer(c, live);
+        int[] b = PlayerPrefs.bufferMs(live, size);
+        return new DefaultLoadControl.Builder().setBufferDurationsMs(b[0], b[1], b[2], b[3])
+                .setTargetBufferBytes(PlayerPrefs.bufferBytes(live, size)).setPrioritizeTimeOverSizeThresholds(false).build();
     }
 
     /** The decoders and the sound's way out as Settings chose. */

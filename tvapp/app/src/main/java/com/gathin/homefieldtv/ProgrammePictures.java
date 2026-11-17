@@ -35,6 +35,11 @@ final class ProgrammePictures {
         return ch.key + "|" + start;
     }
 
+    /** Previews: programme i's picture given straight in (a drawn picture's file: address), as if Sky had answered. */
+    static void preview(Channel ch, Guide.Schedule s, int i, String url) {
+        if (ch != null && s != null && i >= 0 && i < s.start.length) known.put(key(ch, s.start[i]), url == null ? "" : url);
+    }
+
     /** What is known of programme i's picture without asking: its address, "" when Sky has none, null when not known. */
     static String peek(Channel ch, Guide.Schedule s, int i) {
         if (ch == null || s == null || i < 0 || i >= s.start.length) return "";

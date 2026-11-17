@@ -1,6 +1,5 @@
 package com.gathin.homefieldtv;
 
-import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.LinearGradient;
@@ -22,7 +21,8 @@ import com.gathin.homefieldtv.engine.Exec;
  * When the remote comes on to it (setActive(true)) it opens into the drawer: 440 px, Homefield's name at the top, each
  * icon's name beside it (ITEM size, 120 px in), the remote's item in the focus pill (32 px in from both sides, 80 high,
  * radius 12), and the section on screen in the selected pill while the remote is on another. It opens over the screen
- * in DRAWER_MS, its names fading in, with a soft shadow down its edge, and closes the same way. Up and Down jump
+ * in DRAWER_MS, its names fading in, with a soft shadow down its edge, and closes the same way, gliding on the display's
+ * frame clock (Glide: opened and closed again quickly, it turns smoothly, never jumping back). Up and Down jump
  * between the items with no wrap-around; OK opens one (go); Right and Back close it (the screen's call). A newer
  * Homefield TV waiting puts the accent dot on Settings.
  *
@@ -49,7 +49,8 @@ final class Rail extends View {
     /** Home's menu: the remote comes back to the item it was on (every other screen's starts on its own). */
     boolean keep;
     private float open;
-    private ValueAnimator anim;
+    /** How open it is, gliding (0 the rail, 1 the drawer; its unit the drawer's extra width). */
+    private final Glide opening = new Glide(DRAWER_MS, DRAWER - W);
 
     private final Paint back = new Paint(), shadow = new Paint(), amber = Dark.fill(0xFFFFB547), ink = Dark.fill(0xFF1E1606);
     private final Paint dot = Dark.fill(Palette.ACCENT), dotEdge = Dark.line(Palette.PANEL, 3f);
@@ -133,29 +134,32 @@ final class Rail extends View {
     }
 
     private void animateTo(float to) {
-        if (anim != null) anim.cancel();
-        if (Exec.inline) {
-            open = to;
-            invalidate();
-            return;
-        }
-        ValueAnimator a = ValueAnimator.ofFloat(open, to);
-        a.setDuration(DRAWER_MS);
-        a.setInterpolator(Fade.EASE);
-        a.addUpdateListener(v -> {
-            open = (Float) v.getAnimatedValue();
-            invalidate();
-        });
-        anim = a;
-        a.start();
+        if (Exec.inline) opening.jump(to);
+        else opening.to(to);
+        open = opening.value();
+        invalidate();
+    }
+
+    /** The frame's step of the drawer's glide (the same frame's time asked again moves nothing). */
+    private boolean stepOpen() {
+        boolean moving = opening.step();
+        open = Math.max(0f, Math.min(1f, opening.value()));
+        return moving;
+    }
+
+    /** Whether the drawer is still opening or closing. */
+    boolean moving() {
+        return opening.moving();
     }
 
     /** The menu's right edge now (screen pixels): 112 closed, 440 open. */
     float edge() {
+        stepOpen();
         return Ui.f(W + (DRAWER - W) * open);
     }
 
     @Override protected void onDraw(Canvas c) {
+        boolean moving = stepOpen();
         int h = getHeight();
         float right = edge();
         if (open > 0f) {
@@ -209,6 +213,6 @@ final class Rail extends View {
             c.drawCircle(sx, sy, Ui.f(8), dotEdge);
             c.drawCircle(sx, sy, Ui.f(7), dot);
         }
-        if (anim != null && anim.isRunning()) postInvalidateOnAnimation();
+        if (moving) postInvalidateOnAnimation();
     }
 }

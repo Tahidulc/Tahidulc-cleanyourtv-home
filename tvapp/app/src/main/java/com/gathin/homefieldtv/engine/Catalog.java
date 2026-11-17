@@ -78,23 +78,25 @@ public final class Catalog {
 
         Title(String source, boolean series, String id, String rawName, String category, String poster, String backdrop,
               String rating, String plot, long added, String ext, String url, String userAgent, String referrer, String year) {
-            this.source = source;
+            // What tens of thousands of titles share (the playlist, a year, a rating, a file's kind, a category, a user
+            // agent): one copy each; one empty string for all that say nothing (the memory diet).
+            this.source = Channel.shared(source);
             this.series = series;
-            this.id = id;
+            this.id = Channel.own(id);
             this.key = source + (series ? "|s|" : "|m|") + id;
             this.name = displayName(rawName);
             String y = year == null || year.isEmpty() ? year(rawName) : year(year);
-            this.year = y;
-            this.category = category == null ? "" : category;
-            this.poster = poster == null ? "" : poster.trim();
-            this.backdrop = backdrop == null ? "" : backdrop.trim();
-            this.rating = rating(rating);
-            this.plot = plot == null ? "" : plot.trim();
+            this.year = Channel.shared(y);
+            this.category = Channel.shared(category);
+            this.poster = poster == null ? "" : Channel.own(poster.trim());
+            this.backdrop = backdrop == null ? "" : Channel.own(backdrop.trim());
+            this.rating = Channel.shared(rating(rating));
+            this.plot = plot == null ? "" : Channel.own(plot.trim());
             this.added = added;
-            this.ext = ext == null ? "" : ext;
-            this.url = url == null ? "" : url;
-            this.userAgent = userAgent == null ? "" : userAgent;
-            this.referrer = referrer == null ? "" : referrer;
+            this.ext = Channel.shared(ext);
+            this.url = Channel.own(url);
+            this.userAgent = Channel.shared(userAgent);
+            this.referrer = Channel.shared(referrer);
             this.picture = Math.max(pictureOf(rawName), pictureOf(category) == PICTURE_4K ? PICTURE_4K : 0);
             this.dolbyVision = dolbyVisionOf(rawName) || dolbyVisionOf(category);
             this.atmos = atmosOf(rawName) || atmosOf(category);
@@ -103,8 +105,8 @@ public final class Catalog {
             String h = dolbyVision ? "Dolby Vision" : "", s = atmos ? "Dolby Atmos" : "";
             if (h.isEmpty() && (Formats.mayHdr(rawName) || Formats.mayHdr(c))) h = Formats.hdr(rawName + " " + c);
             if (s.isEmpty() && (Formats.maySound(rawName) || Formats.maySound(c))) s = Formats.audio(rawName + " " + c);
-            this.hdr = h;
-            this.sound = s;
+            this.hdr = Channel.shared(h);
+            this.sound = Channel.shared(s);
         }
 
         /** The playlist it is from. */

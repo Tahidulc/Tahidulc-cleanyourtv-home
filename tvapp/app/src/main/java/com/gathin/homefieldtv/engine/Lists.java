@@ -31,7 +31,8 @@ final class Lists {
         static final Index EMPTY = new Index(Collections.emptyList());
 
         final List<Channel> channels;
-        final Map<String, Integer> byKey;
+        /** Each channel's place by its key (KeyTable: an int table, not a map of boxed numbers). */
+        final KeyTable byKey;
         final String[] lower;
         /** The playlist's own groups, in first-seen order (channels with no group have none). */
         final List<String> groups;
@@ -47,14 +48,13 @@ final class Lists {
             int n = ch.size();
             lower = new String[n];
             genre = new byte[n];
-            byKey = new HashMap<>(n * 2);
+            byKey = new KeyTable(ch);
             Map<String, Integer> size = new HashMap<>();
             Map<String, String> groupSays = new HashMap<>();
             LinkedHashMap<String, Boolean> gs = new LinkedHashMap<>();
             for (int i = 0; i < n; i++) {
                 Channel c = ch.get(i);
                 lower[i] = Names.plain(c.name).toLowerCase(Locale.ROOT);
-                byKey.put(c.key, i);
                 if (!c.group.isEmpty()) gs.put(c.group, Boolean.TRUE);
                 Integer had = size.get(c.group);
                 size.put(c.group, had == null ? 1 : had + 1);
@@ -91,8 +91,7 @@ final class Lists {
 
         /** A channel's place (by its key), or -1. */
         int find(Channel c) {
-            Integer i = c == null ? null : byKey.get(c.key);
-            return i == null ? -1 : i;
+            return c == null ? -1 : byKey.get(c.key);
         }
 
         /** The number shown for a channel: the playlist's own, else its place in the list. */
@@ -189,8 +188,8 @@ final class Lists {
         if (edits != null && edits.anyRenamed()) {
             for (Map.Entry<String, ChannelEdits.Rec> e : edits.recs.entrySet()) {
                 if (e.getValue().name.isEmpty()) continue;
-                Integer i = ix.byKey.get(e.getKey());
-                if (i != null) names.put(i, Names.plain(e.getValue().name).toLowerCase(Locale.ROOT));
+                int i = ix.byKey.get(e.getKey());
+                if (i >= 0) names.put(i, Names.plain(e.getValue().name).toLowerCase(Locale.ROOT));
             }
         }
         renamedAt = new int[names.size()];

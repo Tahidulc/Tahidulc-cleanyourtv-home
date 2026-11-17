@@ -68,6 +68,8 @@ public final class Library {
     private volatile int[] archive = {0, 0};
     private volatile long loadedAt, guideAt;
     private volatile boolean read;
+    /** The guide was cut to the hours around now to give memory back (trim): read whole again from its disk copy. */
+    private volatile boolean trimmed;
     private final AtomicBoolean busy = new AtomicBoolean(), guideBusy = new AtomicBoolean();
     private final List<Runnable> listeners = new CopyOnWriteArrayList<>();
     /** The favourites and the recent channels as last read from the TV's settings (read again once the kept line changes). */
@@ -204,6 +206,17 @@ public final class Library {
     public boolean hasGuide() { return !guide.isEmpty(); }
     /** Settings → EPG: when the guide was last read (0: not yet), for how many channels, and whether it is being read. */
     public long guideAt() { return guideAt; }
+
+    /** The guide's size, for the memory log: {channels, programmes, characters of descriptions}. Any thread. */
+    public long[] guideSize() {
+        Map<String, Guide.Schedule> g = guide;
+        long n = 0, chars = 0;
+        for (Guide.Schedule s : g.values()) {
+            n += s.start.length;
+            for (String d : s.desc) chars += d.length();
+        }
+        return new long[]{g.size(), n, chars};
+    }
     public int guideChannels() { return guide.size(); }
     public boolean guideBusy() { return guideBusy.get(); }
 
@@ -305,16 +318,15 @@ public final class Library {
 
     public Channel byKey(String key) {
         Lists.Index ix = current.index;
-        Integer i = key == null ? null : ix.byKey.get(key);
-        return i == null || i >= ix.channels.size() ? null : ix.channels.get(i);
+        int i = key == null ? -1 : ix.byKey.get(key);
+        return i < 0 || i >= ix.channels.size() ? null : ix.channels.get(i);
     }
 
     public Guide.Schedule schedule(String key) { return guide.get(key); }
 
     /** The channel's place in the list (0 first), or -1. */
     public int position(String key) {
-        Integer i = key == null ? null : current.index.byKey.get(key);
-        return i == null ? -1 : i;
+        return key == null ? -1 : current.index.byKey.get(key);
     }
 
     /** The number shown for a channel: the playlist's own (tvg-chno, Xtream's num), else its place in the playlist. */
@@ -418,8 +430,8 @@ public final class Library {
         for (int k = 0; k < n && (on.size() < ON_NOW || sport.size() < SPORT_ON_NOW); k++) {
             Channel c;
             if (k < favourites) {
-                Integer e = ix.byKey.get(f.keys.get(k));
-                if (e == null) continue;
+                int e = ix.byKey.get(f.keys.get(k));
+                if (e < 0) continue;
                 c = ix.channels.get(e);
                 if (!seen.add(c.key)) continue;
             } else {
@@ -558,6 +570,7 @@ public final class Library {
     /** The cached channels read if they haven't been, then a refresh when they or the guide are old. Any thread. */
     public void ensure() {
         if (read) {
+            if (trimmed) untrim();
             maybeRefresh();
             return;
         }
@@ -950,6 +963,66 @@ public final class Library {
         fingerprint = fp;
         guideUrl = gUrl == null ? "" : gUrl;
         loadedAt = at;
+    }
+
+    /**
+     * Android is short of memory (or the app has gone out of sight): the guide kept only from an hour ago to four hours on,
+     * descriptions only for what starts in the next two, off the main thread; read whole again from its disk copy the next
+     * time the app is used (ensure()). Nothing is fetched from the provider for it.
+     */
+    public void trim(long now) {
+        Map<String, Guide.Schedule> g = guide;
+        if (g.isEmpty() || trimmed) return;
+        Exec.work(() -> {
+            Map<String, Guide.Schedule> cut = new HashMap<>(g.size() * 2);
+            for (Map.Entry<String, Guide.Schedule> e : g.entrySet()) {
+                Guide.Schedule s = Guide.window(e.getValue(), now - Guide.BEHIND_MS, now + 4 * 3600_000L, now + 2 * 3600_000L);
+                if (s.start.length > 0) cut.put(e.getKey(), s);
+            }
+            synchronized (this) {
+                if (guide != g) return;
+                guide = cut;
+                trimmed = true;
+            }
+        });
+    }
+
+    /** The whole guide read back from its disk copy after a trim (off the main thread), the screens told. */
+    private void untrim() {
+        if (!guideBusy.compareAndSet(false, true)) return;
+        Exec.io(() -> {
+            try {
+                if (trimmed) {
+                    trimmed = false;
+                    readGuide(fingerprint);
+                }
+            } finally {
+                guideBusy.set(false);
+            }
+            changed();
+        });
+    }
+
+    /** Tests (MemoryDietTest): the guide as it is kept, put in place, and the disk copies read again on the next ensure(). */
+    static Map<String, Guide.Schedule> guideOf(Library l) {
+        return l.guide;
+    }
+
+    static void setGuide(Library l, Map<String, Guide.Schedule> g) {
+        l.guide = g;
+    }
+
+    static void forgetRead(Library l) {
+        l.read = false;
+    }
+
+    /** Tests: the context the library keeps (it is made once), and its disk copies' files. */
+    static Context appOf(Library l) {
+        return l.app;
+    }
+
+    static File fileOf(Library l, String name) {
+        return l.file(name);
     }
 
     /** Previews only: channels and a guide given straight in, as if read from a playlist. */

@@ -52,6 +52,20 @@ public final class Reminders {
 
     private static List<Reminder> cache;
     private static final Set<String> ids = new HashSet<>();
+    /** Each channel's reminders' starts (the guide asks for every cell it draws: found without making anything). */
+    private static final java.util.Map<String, long[]> starts = new java.util.HashMap<>();
+
+    private static void index(List<Reminder> list) {
+        ids.clear();
+        starts.clear();
+        for (Reminder r : list) {
+            ids.add(r.id());
+            long[] had = starts.get(r.key);
+            long[] now = had == null ? new long[1] : java.util.Arrays.copyOf(had, had.length + 1);
+            now[now.length - 1] = r.start;
+            starts.put(r.key, now);
+        }
+    }
 
     /** Pure: one reminder's id, its channel and its start. */
     public static String id(String key, long start) {
@@ -72,16 +86,14 @@ public final class Reminders {
     private static synchronized List<Reminder> all(Context c) {
         if (cache == null) {
             cache = parse(prefs(c).getString(KEY, ""));
-            ids.clear();
-            for (Reminder r : cache) ids.add(r.id());
+            index(cache);
         }
         return cache;
     }
 
     private static synchronized void save(Context c, List<Reminder> list) {
         cache = list;
-        ids.clear();
-        for (Reminder r : list) ids.add(r.id());
+        index(list);
         prefs(c).edit().putString(KEY, join(list)).apply();
     }
 
@@ -94,7 +106,10 @@ public final class Reminders {
 
     public static synchronized boolean has(Context c, String key, long start) {
         all(c);
-        return ids.contains(id(key, start));
+        long[] at = starts.get(key);
+        if (at == null) return false;
+        for (long t : at) if (t == start) return true;
+        return false;
     }
 
     /** Whether any is set (the guide looks for bells only then). */
@@ -206,5 +221,6 @@ public final class Reminders {
     public static synchronized void reset() {
         cache = null;
         ids.clear();
+        starts.clear();
     }
 }

@@ -5,7 +5,6 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.RectF;
-import android.os.SystemClock;
 import android.text.TextPaint;
 import android.view.KeyEvent;
 import android.view.View;
@@ -22,9 +21,7 @@ import com.gathin.homefieldtv.prefs.ChannelEdits;
 import com.gathin.homefieldtv.prefs.Look;
 
 import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * The TV guide's grid, as the family's TiviMate draws it (DEVICE.md §2.7), under the programme's details (GuideBand):
@@ -38,15 +35,18 @@ import java.util.Map;
  * that began before the window keeps its title at the window's left edge). A bell on a programme to come with a
  * reminder; the catch-up mark on a programme already shown that the archive keeps.
  *
- * <p>The remote: Up and Down move a row, the rows sliding (ROW_MS) so the remote's row stays third from the top; Left
- * and Right go to the programme before or after, the window paging smoothly (PAGE_MS) so that the remote's programme
- * starts at its left; a programme that runs past the window's right edge pages an hour on, the remote staying on it.
- * Left from the programme on now goes to the groups (Host.leftEdge). The channel keys page the rows; the rewind and
- * fast-forward keys page the times two hours, back into a channel's archive too (Homefield's catch-up), and Back comes
- * back to now (awayFromNow, toNow).
+ * <p>The remote: Up and Down move a row, the rows gliding (ROW_MS) so the remote's row stays third from the top; Left
+ * and Right go to the programme before or after, the times gliding (PAGE_MS) so that the remote's programme starts at
+ * the window's left; a programme that runs past the window's right edge pages an hour on, the remote staying on it. Both
+ * glides (Glide) are stepped on the display's frame clock and turn smoothly when a held key sends them on again, never
+ * starting over and never snapping. Left from the programme on now goes to the groups (Host.leftEdge). The channel keys
+ * page the rows; the rewind and fast-forward keys page the times two hours, back into a channel's archive too
+ * (Homefield's catch-up), and Back comes back to now (awayFromNow, toNow).
  *
  * <p>Nothing here goes through every channel: a row asks its channel's schedule only for the programmes in the window
- * (Guide.Schedule.from, by halves), and only the rows on screen are drawn.
+ * (Guide.Schedule.from, by halves), and only the rows on screen are drawn. A frame makes nothing new: titles and names
+ * are measured once and cut from their kept widths (TextFit), times and numbers are kept words (Words), pictures are
+ * looked up without a new key (Pics).
  */
 final class GuideGrid extends View {
     interface Host {
@@ -61,7 +61,7 @@ final class GuideGrid extends View {
     }
 
     static final long HALF = 30 * 60_000L, HOUR = 60 * 60_000L, PAGE = 2 * HOUR;
-    /** The rows' slide and the times' page, as measured on the family's TV (§5: 200–230 ms and 300–330 ms, easing out). */
+    /** The rows' glide and the times' page, as measured on the family's TV (§5: 200–230 ms and 300–330 ms, easing out). */
     static final long ROW_MS = 215, PAGE_MS = 315;
     // Where things go (design pixels): DEVICE.md §2.7, the side panels closed.
     static final float COLUMN = 540f, RIGHT = 1920f, DATE_X = 32f, LABELS_Y = 447f, RULE_Y = 462f, ROWS_Y = 468f;
@@ -89,13 +89,11 @@ final class GuideGrid extends View {
     private long cursor;
     private boolean live = true;
     private boolean active = true;
-    /** The window's start (where it is going) and where it is drawn now, moving there over PAGE_MS. */
+    /** The window's start: where it is going. Where it is drawn is that and the times' glide (pan, design pixels). */
     private long winStart;
-    private double winShown, winFrom;
-    private long winAt;
-    /** The first row's place (rows from the top, fractional while it slides) and where it is going. */
-    private float top, topFrom, topTo;
-    private long topAt;
+    private final Glide pan = new Glide(PAGE_MS);
+    /** The rows' scroll: the first row's top above ROWS_Y, in design pixels, gliding to where the remote's row sits. */
+    private final Glide rows = new Glide(ROW_MS);
     /** Shown when there are no channels: an icon, a title and a line (EmptyState). */
     String emptyTitle = "", emptyLine = "";
     int emptyIcon = Dark.TV;
@@ -106,23 +104,24 @@ final class GuideGrid extends View {
     private final TextPaint dateP = Type.paint(Type.ROW, Type.MEDIUM, Palette.ACCENT_LIGHT), labelP = Type.paint(Type.ROW, Type.REGULAR, Palette.TEXT2);
     private final TextPaint nameP = Type.paint(Type.ROW, Type.MEDIUM, Palette.TEXT1), numP = Type.paint(Type.ROW, Type.REGULAR, Palette.TEXT2);
     private final TextPaint cellP = Type.paint(Type.ROW, Type.REGULAR, CELL_TEXT);
+    /** Titles, names and numbers measured once, cut from their kept widths each frame. */
+    private final TextFit cells, names, numbers;
     private final RectF r = new RectF(), area = new RectF();
     private final Runnable redraw = this::invalidate;
-    /** Titles and names cut into their lines, kept while they are on screen (no layout made each frame). */
-    private final Map<String, String[]> wraps = new LinkedHashMap<String, String[]>(128, 0.75f, true) {
-        @Override protected boolean removeEldestEntry(Map.Entry<String, String[]> e) {
-            return size() > 320;
-        }
-    };
+    /** The day the window is on when it isn't today, and its words ("Wed, 18 Nov"). */
+    private long dayKey = Long.MIN_VALUE;
+    private String dayText = "";
 
     GuideGrid(Context c, Library lib) {
         super(c);
         this.lib = lib;
         cellP.setTypeface(Type.condensed());
+        cells = new TextFit(cellP, 640);
+        names = new TextFit(nameP, 256);
+        numbers = new TextFit(numP, 128);
         long now = System.currentTimeMillis();
         cursor = now;
         winStart = nowHalf(now);
-        winShown = winFrom = winStart;
     }
 
     void setHost(Host h) {
@@ -190,6 +189,12 @@ final class GuideGrid extends View {
         return focus >= 0 && focus < channels.size() ? channels.get(focus) : null;
     }
 
+    /** The channel n rows from the remote's (-1 above, 1 below), or null past either end. */
+    Channel channelAt(int offset) {
+        int i = focus + offset;
+        return i >= 0 && i < channels.size() ? channels.get(i) : null;
+    }
+
     int count() {
         return channels.size();
     }
@@ -253,7 +258,7 @@ final class GuideGrid extends View {
      * the row's first cell's place when there is none.
      */
     RectF focusedCell(RectF out) {
-        float y = rowY(focus);
+        float y = rowTop(focus, rows.target());
         long[] sp = span(channel(), cursor);
         double ws = winStart;
         float x0 = Math.max(Ui.f(COLUMN), xAt(sp[0], ws) + Ui.f(GAP / 2f)), x1 = Math.min(Ui.f(RIGHT), xAt(sp[1], ws) - Ui.f(GAP / 2f));
@@ -263,7 +268,7 @@ final class GuideGrid extends View {
 
     /** The remote's whole row (16 px in from the left, to the screen's edge), for the menus to leave undimmed. */
     RectF focusedRow(RectF out) {
-        float y = rowY(focus);
+        float y = rowTop(focus, rows.target());
         out.set(Ui.f(16f), Ui.f(y), Ui.f(RIGHT), Ui.f(y + pitch()));
         return out;
     }
@@ -282,30 +287,24 @@ final class GuideGrid extends View {
         settle(false);
     }
 
-    /** The rows slide so the remote's row is third from the top (at once: now, or in previews). */
+    /** The rows glide so the remote's row is third from the top (at once: a new list, or in previews). */
     private void settle(boolean now) {
-        float target = topFor(focus, channels.size(), visible());
-        if (now || Exec.inline) {
-            top = topFrom = topTo = target;
-            topAt = 0;
-        } else if (target != topTo) {
-            topFrom = top;
-            topTo = target;
-            topAt = SystemClock.uptimeMillis();
-        }
+        float target = topFor(focus, channels.size(), visible()) * pitch();
+        if (now) rows.jump(target);
+        else rows.to(target);
         invalidate();
     }
 
-    /** The window to start at ws, paging smoothly there (or at once). */
+    /** The window to start at ws, gliding there from where it is drawn now (or at once). */
     private void setWindow(long ws, boolean animate) {
-        if (ws == winStart && winAt == 0) return;
+        long was = winStart;
         winStart = ws;
         if (!animate || Exec.inline) {
-            winShown = winFrom = ws;
-            winAt = 0;
-        } else {
-            winFrom = winShown;
-            winAt = SystemClock.uptimeMillis();
+            pan.jump(0f);
+        } else if (ws != was) {
+            // What is drawn stays where it is (the glide's place moves by the change), then glides to the new start.
+            pan.shift((float) ((was - ws) / 60_000.0 * PX_PER_MIN));
+            pan.to(0f);
         }
         invalidate();
     }
@@ -455,31 +454,14 @@ final class GuideGrid extends View {
 
     // ---- drawing ------------------------------------------------------------------------------------------------
 
-    /** One frame's step of the rows' slide and the window's page; true while either still moves. */
-    private boolean step() {
-        long t = SystemClock.uptimeMillis();
-        boolean moving = false;
-        if (topAt != 0) {
-            float k = Math.min(1f, (t - topAt) / (float) ROW_MS);
-            top = topFrom + (topTo - topFrom) * Fade.EASE.getInterpolation(k);
-            if (k >= 1f) topAt = 0;
-            else moving = true;
-        }
-        if (winAt != 0) {
-            float k = Math.min(1f, (t - winAt) / (float) PAGE_MS);
-            winShown = winFrom + (winStart - winFrom) * Fade.EASE.getInterpolation(k);
-            if (k >= 1f) {
-                winAt = 0;
-                winShown = winStart;
-            } else {
-                moving = true;
-            }
-        }
-        return moving;
+    /** Whether the rows or the times are still gliding (the details wait for them to settle before reading ahead). */
+    boolean gliding() {
+        return rows.moving() || pan.moving();
     }
 
-    private float rowY(int i) {
-        return ROWS_Y + (i - top) * pitch();
+    /** A row's top (design pixels) with the rows scrolled by scroll. */
+    private static float rowTop(int i, float scroll) {
+        return ROWS_Y + i * pitch() - scroll;
     }
 
     private static float xAt(long time, double ws) {
@@ -488,8 +470,9 @@ final class GuideGrid extends View {
 
     @Override protected void onDraw(Canvas c) {
         long now = System.currentTimeMillis();
-        boolean moving = step();
-        double ws = winShown;
+        // The frame's step of both glides (on the display's clock), then the window's start where it is drawn now.
+        boolean moving = rows.step() | pan.step();
+        double ws = winStart + pan.value() / PX_PER_MIN * 60_000.0;
         drawTimes(c, now, ws);
         if (channels.isEmpty()) {
             area.set(0, Ui.f(ROWS_Y), Ui.f(RIGHT), getHeight());
@@ -501,17 +484,17 @@ final class GuideGrid extends View {
         Channel playing = host == null ? null : host.playing();
         c.save();
         c.clipRect(0, Ui.f(RULE_Y + 2), getWidth(), getHeight());
-        float h = pitch();
-        int first = Math.max(0, (int) Math.floor(top));
+        float h = pitch(), scroll = rows.value();
+        int first = Math.max(0, (int) Math.floor(scroll / h));
         for (int i = first; i < channels.size(); i++) {
-            float y = rowY(i);
+            float y = rowTop(i, scroll);
             if (y > 1080f) break;
             if (y + h < ROWS_Y) continue;
             drawRow(c, i, y, h, now, ws, bells, playing);
         }
         // A row moved by hand (Move channel): raised, its edge in the accent, ▲▼ at its right (MoveMode).
         if (lifted != null && focus < channels.size() && channels.get(focus).key.equals(lifted)) {
-            float y = rowY(focus);
+            float y = rowTop(focus, scroll);
             r.set(Ui.f(16f), Ui.f(y + 1f), Ui.f(RIGHT - 4f), Ui.f(y + h - 1f));
             MoveMode.drawLifted(c, r, Ui.f(RIGHT - 44f), Ui.f(y + h / 2f), Palette.PANEL);
         }
@@ -524,8 +507,7 @@ final class GuideGrid extends View {
         dateP.setColor(Palette.ACCENT_LIGHT);
         // The window on another day than today: its day (Homefield's), else the date and the clock as on the TV.
         long day = (long) ws + 60_000L;
-        String date = Ui.day(day, now).equals("Today") ? Ui.dateClock(now) : dayOf(day);
-        c.drawText(date, Ui.f(DATE_X), Ui.f(LABELS_Y), dateP);
+        c.drawText(Words.sameDay(day, now) ? Words.dateClock(now) : dayOf(day), Ui.f(DATE_X), Ui.f(LABELS_Y), dateP);
         labelP.setColor(Palette.TEXT2);
         int a = labelP.getAlpha();
         for (long t = half((long) ws); ; t += HALF) {
@@ -534,7 +516,7 @@ final class GuideGrid extends View {
             float fade = (x - Ui.f(COLUMN - 70f)) / Ui.f(70f);
             if (fade <= 0f) continue;
             labelP.setAlpha(Math.round(a * Math.min(1f, fade)));
-            c.drawText(LiveText.hm(t), x, Ui.f(LABELS_Y), labelP);
+            c.drawText(Words.hm(t), x, Ui.f(LABELS_Y), labelP);
         }
         labelP.setAlpha(a);
         fill.setColor(Palette.GUIDE_DIVIDER);
@@ -546,11 +528,16 @@ final class GuideGrid extends View {
         }
     }
 
-    /** "Wed, 18 Nov": a day as the date at the guide's left shows it. */
-    private static String dayOf(long t) {
-        String d = Ui.dateClock(t);
-        int cut = d.indexOf(',', d.indexOf(',') + 1);
-        return cut > 0 ? d.substring(0, cut) : d;
+    /** "Wed, 18 Nov": a day as the date at the guide's left shows it (kept for the day the window is on). */
+    private String dayOf(long t) {
+        long k = Words.dayIndex(t);
+        if (k != dayKey) {
+            dayKey = k;
+            String d = Ui.dateClock(t);
+            int cut = d.indexOf(',', d.indexOf(',') + 1);
+            dayText = cut > 0 ? d.substring(0, cut) : d;
+        }
+        return dayText;
     }
 
     private void drawRow(Canvas c, int index, float y, float h, long now, double ws, boolean bells, Channel playing) {
@@ -644,26 +631,21 @@ final class GuideGrid extends View {
         }
         if (title.isEmpty() || room < Ui.f(18f)) return;
         cellP.setColor(ink);
-        String[] lines = lines(title, cellP, room, pitch() >= 88f ? 2 : 1);
         float cy = (top0 + bottom) / 2f;
-        if (lines.length == 1) {
-            c.drawText(lines[0], tx, Type.centred(cellP, cy), cellP);
-        } else {
-            c.drawText(lines[0], tx, Type.centred(cellP, cy - Ui.f(LINE / 2f)), cellP);
-            c.drawText(lines[1], tx, Type.centred(cellP, cy + Ui.f(LINE / 2f)), cellP);
-        }
+        cells.lines(c, title, tx, Type.centred(cellP, cy), Type.centred(cellP, cy - Ui.f(LINE / 2f)),
+                Type.centred(cellP, cy + Ui.f(LINE / 2f)), room, pitch() >= 88f ? 2 : 1);
     }
 
     /** The channel: its number, its logo on its rounded tile, its name (two lines), and the ▶ or catch-up mark at its right. */
     private void drawChannel(Canvas c, Channel ch, boolean here, float cy, float h, boolean playing) {
-        boolean numbers = Look.numbers;
+        boolean numbered = Look.numbers;
         float tileH = Math.min(TILE_H, h - 28f), tileW = tileH * 1.5f;
-        float tileX = numbers ? 112f : 32f, nameX = tileX + tileW + 20f;
+        float tileX = numbered ? 112f : 32f, nameX = tileX + tileW + 20f;
         int lit = here && active ? Palette.ACCENT : Palette.TEXT1;
-        if (numbers) {
-            String n = String.valueOf(lib.number(ch));
+        if (numbered) {
+            String n = Words.number(lib.number(ch));
             numP.setColor(here && active ? Palette.ACCENT : Palette.TEXT2);
-            c.drawText(n, Ui.f(96f) - numP.measureText(n), Type.centred(numP, cy), numP);
+            c.drawText(n, Ui.f(96f) - numbers.width(n), Type.centred(numP, cy), numP);
         }
         // The logo on its tile (Settings → Channel logos; the new logo or the channel's own choice: LogoPack), or the tile
         // with a TV on it while there is none.
@@ -692,36 +674,27 @@ final class GuideGrid extends View {
             nameRight = markX - 26f;
         }
         nameP.setColor(lit);
-        float room = Ui.f(nameRight - nameX);
-        String[] lines = lines(ChannelEdits.name(ch), nameP, room, h >= 88f ? 2 : 1);
-        float tx = Ui.f(nameX);
-        if (lines.length == 1) {
-            c.drawText(lines[0], tx, Type.centred(nameP, cy), nameP);
-        } else {
-            c.drawText(lines[0], tx, Type.centred(nameP, cy - Ui.f(LINE / 2f)), nameP);
-            c.drawText(lines[1], tx, Type.centred(nameP, cy + Ui.f(LINE / 2f)), nameP);
-        }
+        names.lines(c, ChannelEdits.name(ch), Ui.f(nameX), Type.centred(nameP, cy), Type.centred(nameP, cy - Ui.f(LINE / 2f)),
+                Type.centred(nameP, cy + Ui.f(LINE / 2f)), Ui.f(nameRight - nameX), h >= 88f ? 2 : 1);
     }
 
-    /** Up to max lines of text that fit width, broken at a space, the last ending in an ellipsis when cut (kept). */
-    private String[] lines(String text, TextPaint p, float width, int max) {
-        String key = (p == nameP ? 'n' : 'c') + max + "|" + Math.round(width / 3f) + "|" + text;
-        String[] got = wraps.get(key);
-        if (got != null) return got;
-        String[] out;
-        if (max <= 1 || p.measureText(text) <= width) {
-            out = new String[]{Ui.fit(text, p, width)};
-        } else {
-            int n = Math.max(1, p.breakText(text, true, width, null));
-            int cut = n;
-            if (n < text.length() && text.charAt(n) != ' ') {
-                int sp = text.lastIndexOf(' ', n);
-                if (sp > 0) cut = sp;
-            }
-            String first = text.substring(0, cut).trim(), rest = text.substring(cut).trim();
-            out = rest.isEmpty() ? new String[]{first} : new String[]{first, Ui.fit(rest, p, width)};
-        }
-        wraps.put(key, out);
-        return out;
+    // ---- what the tests look at --------------------------------------------------------------------------------------
+
+    /** Titles, names and numbers measured so far, and found already measured (the frame's text cache). */
+    int textMeasured() {
+        return cells.misses + names.misses + numbers.misses;
+    }
+
+    int textKept() {
+        return cells.hits + names.hits + numbers.hits;
+    }
+
+    /** Where the rows and the times are drawn now (design pixels of scroll, ms of the window's start). */
+    float rowsShown() {
+        return rows.value();
+    }
+
+    double windowShown() {
+        return winStart + pan.value() / PX_PER_MIN * 60_000.0;
     }
 }

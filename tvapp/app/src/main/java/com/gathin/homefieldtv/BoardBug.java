@@ -267,7 +267,9 @@ final class BoardBug extends View {
     private final android.graphics.Rect textBounds = new android.graphics.Rect();
 
     /** Made once for a size and kept: the score's shade, the band's, Glass's sheen, the ring's dashes. */
-    private LinearGradient scoreShade, bandShade, sheenShade;
+    private LinearGradient scoreShade, bandShade, sheenShade, groundShade;
+    private float groundShadeH = -1f;
+    private int groundShadeA, groundShadeB;
     private float shadeY = -1, shadeH = -1, bandShadeH = -1, sheenH = -1, dashFor = -1;
     private int shadeA, shadeB;
 
@@ -1046,7 +1048,16 @@ final class BoardBug extends View {
         int base = layered ? cv.saveLayer(0, 0, body, h, null) : -1;
         fill.setShader(null);
         fill.setColor(p.ground);
-        if (p.groundFoot != 0) fill.setShader(new LinearGradient(0, 0, 0, h, p.ground, p.groundFoot, Shader.TileMode.CLAMP));
+        if (p.groundFoot != 0) {
+            // The ground's shade made once for its height and colours (not a new shader each frame).
+            if (groundShade == null || groundShadeH != h || groundShadeA != p.ground || groundShadeB != p.groundFoot) {
+                groundShade = new LinearGradient(0, 0, 0, h, p.ground, p.groundFoot, Shader.TileMode.CLAMP);
+                groundShadeH = h;
+                groundShadeA = p.ground;
+                groundShadeB = p.groundFoot;
+            }
+            fill.setShader(groundShade);
+        }
         cv.drawRect(r, fill);
         fill.setShader(null);
         if (p.sheen) sheen(cv, w, h);
