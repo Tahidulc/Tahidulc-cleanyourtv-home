@@ -2,6 +2,8 @@ package com.gathin.homefieldtv;
 
 import static org.junit.Assert.assertEquals;
 
+import com.gathin.homefieldtv.prefs.Look;
+
 import org.junit.Test;
 
 import java.time.LocalDateTime;
@@ -14,12 +16,27 @@ public class UiTest {
     }
 
     @Test public void clockTimes() {
-        assertEquals("3.00pm", Ui.clock(at(2026, 11, 4, 15, 0)));
-        assertEquals("12.05am", Ui.clock(at(2026, 11, 4, 0, 5)));
-        assertEquals("12.30pm", Ui.clock(at(2026, 11, 4, 12, 30)));
-        assertEquals("9.07am", Ui.clock(at(2026, 11, 4, 9, 7)));
-        assertEquals("Wednesday, 3.01pm", Ui.dayClock(at(2026, 11, 4, 15, 1)));
-        assertEquals("3.00pm - 4.30pm", Ui.span(at(2026, 11, 4, 15, 0), at(2026, 11, 4, 16, 30)));
+        int was = Look.clock;
+        try {
+            // As it comes: 24-hour, the date and the clock as the family's other app shows them.
+            Look.clock = Look.CLOCK_24;
+            assertEquals("15:00", Ui.clock(at(2026, 11, 4, 15, 0)));
+            assertEquals("09:07", Ui.clock(at(2026, 11, 4, 9, 7)));
+            assertEquals("Wed, 4 Nov, 10:31", Ui.dateClock(at(2026, 11, 4, 10, 31)));
+            // Settings → Appearance → Clock: 12-hour.
+            Look.clock = Look.CLOCK_12;
+            assertEquals("3.00pm", Ui.clock(at(2026, 11, 4, 15, 0)));
+            assertEquals("12.05am", Ui.clock(at(2026, 11, 4, 0, 5)));
+            assertEquals("12.30pm", Ui.clock(at(2026, 11, 4, 12, 30)));
+            assertEquals("9.07am", Ui.clock(at(2026, 11, 4, 9, 7)));
+            assertEquals("Wednesday, 3.01pm", Ui.dayClock(at(2026, 11, 4, 15, 1)));
+            assertEquals("3.00pm - 4.30pm", Ui.span(at(2026, 11, 4, 15, 0), at(2026, 11, 4, 16, 30)));
+            // Off: the date alone.
+            Look.clock = Look.CLOCK_OFF;
+            assertEquals("Wed, 4 Nov", Ui.dateClock(at(2026, 11, 4, 10, 31)));
+        } finally {
+            Look.clock = was;
+        }
     }
 
     @Test public void days() {

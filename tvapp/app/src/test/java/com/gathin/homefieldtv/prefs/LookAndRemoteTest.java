@@ -24,9 +24,9 @@ public class LookAndRemoteTest {
         assertEquals("15:05", Look.clock(15, 5, true));
         assertEquals("09:07", Look.hm(9, 7, true));
         // A programme's span: one am/pm when both halves share it.
-        assertEquals("5.40 – 6.45pm", Look.span(Look.hm(17, 40, false), Look.hm(18, 45, false)));
-        assertEquals("11.30am – 12.15pm", Look.span(Look.hm(11, 30, false), Look.hm(12, 15, false)));
-        assertEquals("17:40 – 18:45", Look.span(Look.hm(17, 40, true), Look.hm(18, 45, true)));
+        assertEquals("5.40 — 6.45pm", Look.span(Look.hm(17, 40, false), Look.hm(18, 45, false)));
+        assertEquals("11.30am — 12.15pm", Look.span(Look.hm(11, 30, false), Look.hm(12, 15, false)));
+        assertEquals("17:40 — 18:45", Look.span(Look.hm(17, 40, true), Look.hm(18, 45, true)));
     }
 
     @Test public void theGuidesRows() {
@@ -39,7 +39,8 @@ public class LookAndRemoteTest {
     @Test public void appearanceAsItCameUntilChanged() {
         Context c = RuntimeEnvironment.getApplication();
         Look.load(c);
-        assertEquals(Look.CLOCK_12, Look.clock);
+        // The clock 24-hour as it comes ("Tue, 17 Nov, 10:31"), programme times too.
+        assertEquals(Look.CLOCK_24, Look.clock);
         assertTrue(Look.times24);
         assertTrue(Look.numbers);
         assertTrue(Look.progress);
@@ -50,7 +51,11 @@ public class LookAndRemoteTest {
         Look.load(c);
         assertEquals(Look.CLOCK_OFF, Look.clock);
         assertEquals(1.2f, Look.text, 0.0001f);
+        // A choice made is kept as it is.
         Look.setClock(c, Look.CLOCK_12);
+        Look.load(c);
+        assertEquals(Look.CLOCK_12, Look.clock);
+        Look.setClock(c, Look.CLOCK_24);
         Look.setTextSize(c, 1);
     }
 
