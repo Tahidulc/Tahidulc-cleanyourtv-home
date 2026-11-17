@@ -246,17 +246,21 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
     }
 
     private Channel step(Channel from, int dir) {
-        Library lib = Library.get(tv);
-        List<Channel> all = lib.all();
+        List<Channel> all = Library.get(tv).all();
         if (all.isEmpty() || from == null) return from;
-        int i = lib.position(from.key);
-        if (i < 0) i = 0;
-        return all.get(((i + dir) % all.size() + all.size()) % all.size());
+        // Settings → Categories and Parental control: past hidden categories, and past locked channels (they play
+        // when chosen from a list, after the PIN).
+        return com.gathin.homefieldtv.prefs.Shown.step(tv, all, from, dir);
     }
 
     /** A channel now: the banner comes up on it (unless Settings → Player → Channel banner is off). */
     private void tune(Channel c) {
         if (c == null) return;
+        // Settings → Parental control: a locked channel after its PIN.
+        if (com.gathin.homefieldtv.prefs.Parental.blocks(tv, c)) {
+            PinScreen.forChannel(tv, c, () -> tune(c));
+            return;
+        }
         pick = -1;
         tv.live.play(c);
         setMode(com.gathin.homefieldtv.prefs.PlayerPrefs.bannerSeconds(tv) <= 0 ? NONE : BANNER);
@@ -297,6 +301,9 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
         boolean fav = Library.get(tv).isFavourite(c);
         items.add(new String[]{"fav", fav ? "Remove from favourites" : "Add to favourites"});
         if (playing) items.add(new String[]{"subs", "Subtitles: " + LiveSubs.MODES[LiveSubs.mode(tv)]});
+        // Settings → Parental control: with a PIN set, the channel locked or unlocked (unlocking asks for the PIN).
+        boolean lockedHere = com.gathin.homefieldtv.prefs.Parental.lockedChannels(tv).contains(c.key);
+        if (com.gathin.homefieldtv.prefs.Parental.hasPin(tv)) items.add(new String[]{"lock", lockedHere ? "Unlock this channel" : "Lock this channel"});
         long now = System.currentTimeMillis();
         Guide.Schedule s = Library.get(tv).schedule(c.key);
         int i = s == null ? -1 : s.at(now);
@@ -308,10 +315,23 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
                     tune(c);
                     break;
                 case "start":
-                    startOver(c);
+                    PinScreen.forChannel(tv, c, () -> startOver(c));
                     break;
                 case "subs":
                     openSubs();
+                    break;
+                case "lock":
+                    if (lockedHere) {
+                        PinScreen.check(tv, "Unlock " + c.name, () -> {
+                            com.gathin.homefieldtv.prefs.Parental.lockChannel(tv, c.key, false);
+                            android.widget.Toast.makeText(tv, c.name + " unlocked", android.widget.Toast.LENGTH_SHORT).show();
+                        });
+                    } else {
+                        com.gathin.homefieldtv.prefs.Parental.lockChannel(tv, c.key, true);
+                        android.widget.Toast.makeText(tv, c.name + " locked: the PIN is asked before it plays",
+                                android.widget.Toast.LENGTH_SHORT).show();
+                    }
+                    if (mode != NONE) setMode(mode);
                     break;
                 default: {
                     boolean on = Library.get(tv).toggleFavourite(c);
@@ -383,7 +403,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
 
     // ---- the live screen's rows -------------------------------------------------------------------------------------
 
-    /** The playlist's groups as rows, in the playlist's order. */
+    /** The playlist's groups as rows: in the family's order and names, hidden ones left out (Settings → Categories). */
     private void buildRows() {
         groups.clear();
         Map<String, List<Channel>> by = new LinkedHashMap<>();
@@ -392,8 +412,8 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
             if (l == null) by.put(c.group, l = new ArrayList<>());
             l.add(c);
         }
-        for (Map.Entry<String, List<Channel>> e : by.entrySet()) {
-            groups.add(new Row(e.getKey().isEmpty() ? "Channels" : e.getKey(), e.getValue()));
+        for (String g : com.gathin.homefieldtv.prefs.Categories.arranged(tv, new ArrayList<>(by.keySet()))) {
+            groups.add(new Row(com.gathin.homefieldtv.prefs.Categories.label(tv, g), by.get(g)));
         }
     }
 

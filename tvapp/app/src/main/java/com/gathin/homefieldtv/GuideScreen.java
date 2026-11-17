@@ -99,7 +99,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host {
         favourites.clear();
         favourites.addAll(lib.favourites());
         List<SidePanel.Entry> e = new ArrayList<>();
-        e.add(new SidePanel.Entry("All channels", Dark.LIVE, lib.count(), ALL));
+        e.add(new SidePanel.Entry("All channels", Dark.LIVE, lib.all().size(), ALL));
         e.add(new SidePanel.Entry("Favourites", Dark.HEART, lib.list(Library.FAVOURITES, "").size(), FAV));
         e.add(new SidePanel.Entry("Recently watched", Dark.RESUME, lib.recent(null).size(), RECENT));
         e.add(SidePanel.Entry.section("Categories"));
@@ -107,11 +107,14 @@ final class GuideScreen extends Screen implements GuideGrid.Host {
             Integer n = kinds.get(g);
             if (n != null || g.equals(startCategory)) e.add(new SidePanel.Entry(g, -1, n == null ? 0 : n, GENRE + g));
         }
-        if (!lib.groups().isEmpty()) {
+        // Settings → Categories: in the family's order and names, hidden ones (and ones locked away) left out.
+        List<String> mine = com.gathin.homefieldtv.prefs.Categories.arranged(tv, lib.groups());
+        if (!mine.isEmpty()) {
             e.add(SidePanel.Entry.section("Your playlist"));
-            for (String g : lib.groups()) {
+            for (String g : mine) {
                 Integer n = groups.get(g);
-                e.add(new SidePanel.Entry(g, -1, n == null ? 0 : n, GROUP + g));
+                if (n == null) continue;
+                e.add(new SidePanel.Entry(com.gathin.homefieldtv.prefs.Categories.label(tv, g), -1, n, GROUP + g));
             }
         }
         int at = 0;

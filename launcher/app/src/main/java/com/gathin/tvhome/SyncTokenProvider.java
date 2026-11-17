@@ -15,8 +15,8 @@ import android.os.Process;
  * family's playlists, favourites and the rest through this TV. call("token") answers only an app signed with this
  * app's own key: the caller's signing certificate is compared when it calls, which is what a signature permission
  * checks, without that permission's trap (one requested by an app installed before the app that defines it is never
- * granted). The token is only ever taken from the TV itself (DeliveryLink checks the caller is on loopback). Nothing
- * else is served here.
+ * granted). The token is only ever taken from the TV itself (DeliveryLink checks the caller is on loopback).
+ * call("tmdb") answers the same apps with the theme's TMDB key (as /tmdb gives a paired phone). Nothing else is served.
  */
 public final class SyncTokenProvider extends ContentProvider {
     static final String AUTHORITY = "com.gathin.tvhome.sync";
@@ -26,10 +26,16 @@ public final class SyncTokenProvider extends ContentProvider {
     }
 
     @Override public Bundle call(String method, String arg, Bundle extras) {
-        if (!"token".equals(method)) return null;
+        if (!"token".equals(method) && !"tmdb".equals(method)) return null;
         Context c = getContext();
         if (c == null || !sameSigner(c.getPackageManager(), Binder.getCallingUid())) throw new SecurityException("not one of the family's own apps");
         Bundle b = new Bundle();
+        if ("tmdb".equals(method)) {
+            // The theme's TMDB key, for Homefield TV's posters of titles only the family's TorBox has (as /tmdb gives a
+            // paired phone); kept in its memory, never written out.
+            b.putString("key", Config.themeString(c, "tmdb_key", "").trim());
+            return b;
+        }
         b.putString("token", SyncHub.appToken(c));
         b.putInt("port", DeliveryLink.PORT);
         return b;
