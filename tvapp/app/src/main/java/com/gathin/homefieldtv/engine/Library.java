@@ -242,8 +242,9 @@ public final class Library {
     public List<String> rowGroups() { return lists().groupOrder; }
 
     /**
-     * Every channel (hidden ones too) whose name reads as this one does (Names.key: "UK: TNT SPORTS 1 FHD" as "TNT
-     * Sports 1"), in the list's order. The first ask after a load reads every name once: off the main thread only.
+     * Every channel (hidden ones too) whose name reads as this one does (Names.key: "UK: KESTREL SPORTS 1 FHD" as
+     * "Kestrel Sports 1"), in the list's order. The first ask after a load reads every name once: off the main thread
+     * only.
      */
     public List<Channel> named(String name) {
         String k = Names.key(name);

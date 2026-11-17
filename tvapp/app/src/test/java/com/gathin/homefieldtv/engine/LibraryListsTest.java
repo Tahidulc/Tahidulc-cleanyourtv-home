@@ -257,10 +257,10 @@ public class LibraryListsTest {
     }
 
     @Test public void genresWordForWordAsTheRegexReadThem() {
-        String[] names = {"Sky Sports News", "Disney Cinema", "BBC News HD", "Nat Geo Wild", "Premier Sports 1", "MTV Hits", "Popcorn TV",
-                "UK | Sports", "Kids", "Milkshake!", "ESPN+", "F1®", "Ⅻ Sports", "Sport²", "Ｓｐｏｒｔｓ", "Café Cinéma", "news24",
-                "sports-news", "кино Kids", "体育 Sports", "𝒮 Sports", "", "  ", "+", "a+b", "MUSIC/NEWS", "film4+1",
-                "Al Jazeera", "TNT Sports 2", "Animal Planet", "Kerrang!", "Docs & Science", "Nick Jr.", "x́ Kids"};
+        String[] names = {"Kestrel Sports News", "Lantern Cinema", "Brightwater News HD", "Harbour Nature Wild", "Copperfield Sports 1",
+                "Marlowe Music Hits", "Popcorn TV", "UK | Sports", "Kids", "Fizzpop!", "Redwing+", "Racing®", "Ⅻ Sports", "Sport²",
+                "Ｓｐｏｒｔｓ", "Café Cinéma", "news24", "sports-news", "кино Kids", "体育 Sports", "𝒮 Sports", "", "  ", "+",
+                "a+b", "MUSIC/NEWS", "film+1", "Harbour Hits!", "Docs & Science", "Lantern Jr.", "x́ Kids"};
         for (String n : names) assertEquals(n, oldByWords(n), Genres.byWords(n));
         Random r = new Random(11);
         String alphabet = "abcdefghijklmnopqrstuvwxyz0123456789 +-|:!.&é²Ⅻ体𝒮";

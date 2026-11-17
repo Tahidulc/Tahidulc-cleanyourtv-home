@@ -56,7 +56,7 @@ public class DarkLookTest {
     }
 
     @Test public void genresWithoutARegularExpressionAsWithOne() {
-        String[] names = {"UK | Action Movies", "Sci-Fi & Fantasy", "sci fi", "EN - COMEDIES", "Netflix Originals", "|DE| Krimi Thrillers",
+        String[] names = {"UK | Action Movies", "Sci-Fi & Fantasy", "sci fi", "EN - COMEDIES", "Streamline Originals", "|DE| Krimi Thrillers",
                 "Kids' Animation", "Documentaries 4K", "Romantic-Comedy", "WAR/WESTERN", "Ｃｏｍｅｄｙ", "Café Drama", "", "  ", "1990s",
                 "Mystery&Crime", "History+Sport"};
         // 1.10's table and its way: the name split by a regular expression, the first word that names a genre.
