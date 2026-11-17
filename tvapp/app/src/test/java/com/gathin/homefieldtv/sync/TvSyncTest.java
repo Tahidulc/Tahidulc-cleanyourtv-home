@@ -71,12 +71,19 @@ public class TvSyncTest {
         @Override public int update(Uri u, ContentValues v, String s, String[] a) { return 0; }
     }
 
-    @Before public void fresh() {
+    @Before public void fresh() throws Exception {
         c = RuntimeEnvironment.getApplication();
         refuse = false;
         TvLiveSync.refresh = () -> { };
+        // The channels' and films' singletons made again on this test's application (an earlier test's may be kept).
+        for (Class<?> k : new Class<?>[]{com.gathin.homefieldtv.engine.Library.class, com.gathin.homefieldtv.engine.Catalog.class}) {
+            java.lang.reflect.Field f = k.getDeclaredField("instance");
+            f.setAccessible(true);
+            f.set(null, null);
+        }
         Sources.clear(c);
-        for (String p : new String[]{"sync_store", "sync_live_sent", "sync_live_base", "sync_kinds", "sync_state", "live_tv", "resume"}) {
+        for (String p : new String[]{"sync_store", "sync_live_sent", "sync_live_base", "sync_kinds", "sync_state", "sync_resume_tried",
+                "live_tv", "resume"}) {
             c.getSharedPreferences(p, Context.MODE_PRIVATE).edit().clear().commit();
         }
     }
@@ -138,6 +145,42 @@ public class TvSyncTest {
         String said = TvSync.status(c);
         assertTrue(said, said.startsWith("Synced"));
         for (String secret : new String[]{"harbour", "s3cret", "example", TOKEN}) assertFalse(said.contains(secret));
+    }
+
+    @Test public void removeEverythingClearsThisTvOnlyAndSwitchesPlaylistsOff() {
+        Sources.put(c, null, "Family", XTREAM);
+        com.gathin.homefieldtv.engine.Library.get(c).setPicks(java.util.Arrays.asList("x:42"), java.util.Arrays.asList("x:42"));
+        com.gathin.homefieldtv.engine.Resume.save(c, new com.gathin.homefieldtv.engine.Resume.Point("p0|m|12", "", "Harbour Lights", "", "",
+                600_000L, 3_000_000L, System.currentTimeMillis()));
+        TvLiveSync.apply(c, true);
+        TvLiveSync.export(c);
+        String key = TvLiveSync.keyOf(XTREAM);
+        assertNotNull(SyncItems.get(c, TvLiveSync.PLAYLIST, key));
+        assertNotNull(SyncItems.get(c, TvLiveSync.RESUME, "mv:harbour lights"));
+        // Settings, Remove everything: what it clears, with the sync held still.
+        TvLiveSync.removeEverything(c, () -> {
+            com.gathin.homefieldtv.engine.Library.get(c).clear();
+            com.gathin.homefieldtv.engine.Resume.clear(c);
+        });
+        assertFalse(TvLiveSync.on(c, TvLiveSync.PLAYLISTS));
+        assertTrue(TvLiveSync.offByRemoveEverything(c));
+        // The next syncs: nothing goes out as a removal, and the family's playlist doesn't come straight back.
+        TvLiveSync.export(c);
+        assertTrue(TvLiveSync.apply(c, true));
+        TvLiveSync.export(c);
+        for (String type : new String[]{TvLiveSync.PLAYLIST, TvLiveSync.LIVEFAV, TvLiveSync.LIVERECENT, TvLiveSync.RESUME}) {
+            for (JSONObject it : SyncItems.items(c, type)) assertFalse(type + " " + it.optString("key"), it.optBoolean("deleted"));
+        }
+        assertNotNull(SyncItems.get(c, TvLiveSync.PLAYLIST, key));
+        assertNotNull(SyncItems.get(c, TvLiveSync.RESUME, "mv:harbour lights"));
+        assertTrue(Sources.list(c).isEmpty());
+        // Switched on again: the family's playlist is taken in, login and all, as on a new TV.
+        TvLiveSync.setOn(c, TvLiveSync.PLAYLISTS, true);
+        assertFalse(TvLiveSync.offByRemoveEverything(c));
+        assertTrue(TvLiveSync.apply(c, true));
+        assertEquals(1, Sources.list(c).size());
+        assertEquals(XTREAM.pass, Sources.list(c).get(0).source.pass);
+        assertEquals(java.util.Collections.singletonList("x:42"), com.gathin.homefieldtv.engine.Library.get(c).favourites());
     }
 
     /** The launcher's /sync, twice: the request line, its token and its body noted; the phone's playlist the first time. */

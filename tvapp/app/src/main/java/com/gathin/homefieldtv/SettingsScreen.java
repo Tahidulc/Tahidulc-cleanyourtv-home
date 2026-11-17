@@ -216,9 +216,11 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
                     out.add(new ListPanel.Item(null, ListPanel.HEADING, "Remove everything from this TV?", ""));
                     out.add(new ListPanel.Item("yes", ListPanel.TEXT, "Yes, remove everything", ""));
                     out.add(new ListPanel.Item("no", ListPanel.TEXT, "No, keep it all", ""));
+                    SyncSettings.removeNote(out);
                 } else {
                     out.add(new ListPanel.Item("clear", ListPanel.TEXT, "Remove everything from this TV",
                             "Your playlists, channels, favourites and where you left films"));
+                    SyncSettings.removedNote(tv, out);
                 }
                 break;
             case LOGOS:
@@ -532,9 +534,12 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
                     confirm = true;
                 } else if (t.equals("yes")) {
                     confirm = false;
-                    tv.live.forget();
-                    lib.clear();
-                    Resume.clear(tv);
+                    // This TV only: nothing removed elsewhere, and Playlists sync switched off here (SyncSettings).
+                    SyncSettings.removeEverything(tv, () -> {
+                        tv.live.forget();
+                        lib.clear();
+                        Resume.clear(tv);
+                    });
                     status = "";
                 } else {
                     confirm = false;

@@ -68,7 +68,7 @@ public final class TvLiveSync {
     }
 
     /** Switched on again, a kind starts afresh: the family's taken in first, this TV's own kept, then sent. */
-    public static void setOn(Context c, String kind, boolean on) {
+    public static synchronized void setOn(Context c, String kind, boolean on) {
         kinds(c).edit().putBoolean(kind, on).apply();
         if (!on) return;
         SharedPreferences.Editor b = base(c).edit(), s = sent(c).edit();
@@ -79,6 +79,46 @@ public final class TvLiveSync {
         }
         b.apply();
         s.apply();
+        if (PLAYLISTS.equals(kind)) {
+            // The family's playlists can come again; the films and episodes not found before are looked for again.
+            kinds(c).edit().remove(RESET).apply();
+            tried(c).edit().clear().apply();
+        }
+    }
+
+    /** Set by Remove everything, which switched Playlists sync off on this TV; gone when it is switched on again. */
+    private static final String RESET = "off_by_remove_everything";
+
+    /** Whether Playlists sync is off here because Remove everything switched it off (Settings says so). */
+    public static boolean offByRemoveEverything(Context c) {
+        return !on(c, PLAYLISTS) && kinds(c).getBoolean(RESET, false);
+    }
+
+    /**
+     * Settings, Remove everything, for this TV only. clear (the playlists, channels, guide, favourites, where films were
+     * left) runs with the sync held still, so none of it goes out as a removal: the family keep theirs. Playlists sync is
+     * switched off so the family's playlists don't come straight back; switched on again, they are taken in as on a new
+     * TV. The rest starts afresh too: the family's is taken in at the next sync before anything of this TV's is sent. A
+     * single playlist removed on purpose still goes everywhere (export's tombstone).
+     */
+    public static synchronized void removeEverything(Context c, Runnable clear) {
+        // apply(): what is read next, on any thread, sees it at once; written out before the app could stop.
+        kinds(c).edit().putBoolean(PLAYLISTS, false).putBoolean(RESET, true).apply();
+        SharedPreferences.Editor b = base(c).edit(), s = sent(c).edit();
+        for (String type : TYPES) {
+            if (SETTING.equals(type)) continue;
+            b.remove(type);
+            for (String id : sent(c).getAll().keySet()) if (id.startsWith(type + "|")) s.remove(id);
+        }
+        b.apply();
+        s.apply();
+        tried(c).edit().clear().apply();
+        clear.run();
+    }
+
+    /** Resume points looked for here and not found, with when each was watched: not looked for again until it changes. */
+    private static SharedPreferences tried(Context c) {
+        return c.getApplicationContext().getSharedPreferences("sync_resume_tried", Context.MODE_PRIVATE);
     }
 
     /** Pure: the switch a type is under. */
@@ -415,7 +455,7 @@ public final class TvLiveSync {
         for (Resume.Point p : Resume.all(c)) if (!p.name.isEmpty()) here.put(SyncKeys.resume(isSeries(p.title), p.name), p);
         Catalog cat = Catalog.get(c);
         Map<String, Catalog.Title> index = null;
-        SharedPreferences tried = c.getApplicationContext().getSharedPreferences("sync_resume_tried", Context.MODE_PRIVATE);
+        SharedPreferences tried = tried(c);
         int adopted = 0;
         for (JSONObject it : items) {
             String key = it.optString("key");
