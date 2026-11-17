@@ -5,6 +5,8 @@ import android.content.SharedPreferences;
 import android.util.JsonReader;
 import android.util.JsonToken;
 
+import com.gathin.homefieldtv.prefs.GuidePrefs;
+
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -41,7 +43,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public final class Library {
     public static final String ALL = "", FAVOURITES = "★";
-    static final long REFRESH_MS = 24 * 3600_000L, GUIDE_MS = 6 * 3600_000L;
+    // How often the playlists and the guide are read again: Settings → Guide (GuidePrefs; as it came, a day and 6 hours).
     private static Library instance;
 
     private final Context app;
@@ -84,7 +86,13 @@ public final class Library {
     public boolean hasGuide() { return !guide.isEmpty(); }
     /** The playlist's own groups, in first-seen order. */
     public List<String> groups() { return groups; }
-    public List<Channel> all() { return channels; }
+    /**
+     * The channels the screens list: without hidden categories and channels locked away (Settings → Categories and
+     * Parental control, prefs.Shown).
+     */
+    public List<Channel> all() { return com.gathin.homefieldtv.prefs.Shown.of(app, channels); }
+    /** Every channel, hidden ones too (a channel's other copies, its quality levels). */
+    public List<Channel> every() { return channels; }
 
     public Channel byKey(String key) {
         Integer i = key == null ? null : byKey.get(key);
@@ -116,7 +124,8 @@ public final class Library {
         if (FAVOURITES.equals(group)) {
             for (String k : favourites()) {
                 Channel c = byKey(k);
-                if (c != null && (q.isEmpty() || Names.plain(c.name).toLowerCase(Locale.ROOT).contains(q))) out.add(c);
+                if (c == null || !com.gathin.homefieldtv.prefs.Shown.kept(app, c)) continue;
+                if (q.isEmpty() || Names.plain(c.name).toLowerCase(Locale.ROOT).contains(q)) out.add(c);
             }
             return out;
         }
@@ -124,6 +133,7 @@ public final class Library {
             Channel c = ch.get(i);
             if (group != null && !group.isEmpty() && !group.equals(c.group)) continue;
             if (!q.isEmpty() && (i >= low.length || !low[i].contains(q))) continue;
+            if (!com.gathin.homefieldtv.prefs.Shown.listed(app, c)) continue;
             out.add(c);
         }
         return out;
@@ -186,7 +196,7 @@ public final class Library {
         List<String> keys = RecentChannels.parse(prefs().getString("recent", ""));
         for (String k : RecentChannels.shown(keys, playing == null ? null : playing.key)) {
             Channel c = byKey(k);
-            if (c != null) out.add(c);
+            if (c != null && com.gathin.homefieldtv.prefs.Shown.kept(app, c)) out.add(c);
         }
         return out;
     }
@@ -214,8 +224,13 @@ public final class Library {
     private void maybeRefresh() {
         if (Sources.inUse(app).isEmpty()) return;
         long now = System.currentTimeMillis();
-        if (channels.isEmpty() || now - loadedAt > REFRESH_MS || !Sources.fingerprint(app).equals(fingerprint)) refresh(null);
-        else if (!guideUrl.isEmpty() && now - guideAt > GUIDE_MS) refreshGuide();
+        // Settings → Guide: how often the playlists and the guide are read again, and on each start if chosen.
+        boolean start = GuidePrefs.firstStart(app);
+        if (channels.isEmpty() || start || GuidePrefs.listsDue(app, loadedAt, now) || !Sources.fingerprint(app).equals(fingerprint)) {
+            refresh(null);
+        } else if (!GuidePrefs.guides(app, guideUrl).isEmpty() && GuidePrefs.guideDue(app, guideAt, now)) {
+            refreshGuide();
+        }
     }
 
     /** The channels of the playlists in use read again from their providers now (then the guides). */
@@ -598,7 +613,9 @@ public final class Library {
 
     /** The guide read again (in the background, after the channels): only the playlist's channels, a 13 hour window. */
     void refreshGuide() {
-        String urls = guideUrl;
+        // The playlists' own guides, then Settings → Guide's (each read in the guide's own time when it is shifted).
+        String urls = GuidePrefs.guides(app, guideUrl);
+        long shift = GuidePrefs.shiftMs(app);
         if (urls.isEmpty() || channels.isEmpty() || !guideBusy.compareAndSet(false, true)) return;
         Exec.io(() -> {
             try {
@@ -628,12 +645,12 @@ public final class Library {
                 Map<String, Guide.Schedule> g = new HashMap<>();
                 IOException last = null;
                 long now = System.currentTimeMillis();
-                Map<String, Long> since = since(now);
+                Map<String, Long> since = GuideShift.since(since(now), shift);
                 for (String url : urls.split(" ")) {
                     if (url.isEmpty()) continue;
                     try (InputStream in = Fetch.open(url, null)) {
-                        for (Map.Entry<String, Guide.Schedule> e : Guide.read(in, ids, names, now, since).entrySet()) {
-                            if (!g.containsKey(e.getKey())) g.put(e.getKey(), e.getValue());
+                        for (Map.Entry<String, Guide.Schedule> e : Guide.read(in, ids, names, now - shift, since).entrySet()) {
+                            if (!g.containsKey(e.getKey())) g.put(e.getKey(), GuideShift.by(e.getValue(), shift));
                         }
                     } catch (IOException e) {
                         last = e;

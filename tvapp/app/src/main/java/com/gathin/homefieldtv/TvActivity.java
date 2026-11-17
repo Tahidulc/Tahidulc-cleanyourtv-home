@@ -213,6 +213,19 @@ public final class TvActivity extends Activity {
         live.stop();
     }
 
+    @Override protected void onStop() {
+        super.onStop();
+        // Settings → Parental control: whatever the PIN opened is locked again once Homefield TV is left.
+        if (!isChangingConfigurations()) com.gathin.homefieldtv.prefs.Parental.relock();
+    }
+
+    /** Settings → Backup's file chooser answered: the file read, and Settings on it to confirm. */
+    @Override protected void onActivityResult(int request, int result, Intent data) {
+        super.onActivityResult(request, result, data);
+        String said = com.gathin.homefieldtv.backups.BackupStore.picked(this, request, result, data);
+        if (said != null) ExtraSettings.picked(this, said);
+    }
+
     @Override protected void onDestroy() {
         Library.get(this).removeListener(channels);
         Catalog.get(this).removeListener(catalog);
@@ -341,8 +354,9 @@ public final class TvActivity extends Activity {
     Channel channelToPlay() {
         Library lib = Library.get(this);
         Channel c = live.channel();
-        if (c != null && lib.byKey(c.key) != null) return lib.byKey(c.key);
-        return lib.lastChannel();
+        c = c != null && lib.byKey(c.key) != null ? lib.byKey(c.key) : lib.lastChannel();
+        // Settings → Categories and Parental control: never a hidden or locked channel started by itself.
+        return com.gathin.homefieldtv.prefs.Shown.playable(this, c, lib.all());
     }
 
     // ---- where the screens go ----------------------------------------------------------------------------------
@@ -350,13 +364,14 @@ public final class TvActivity extends Activity {
     /** A channel full screen, with its banner. */
     void watch(Channel c) {
         if (c == null) return;
-        fromHome(new LiveScreen(this, c));
+        // Settings → Parental control: a locked channel after its PIN.
+        PinScreen.forChannel(this, c, () -> fromHome(new LiveScreen(this, c)));
     }
 
     /** A programme on a channel from its start (catch-up, CatchupScreen), over the channel's live screen. */
     void watchFrom(Channel c, long start, long end) {
         if (c == null) return;
-        fromHome(new LiveScreen(this, c, start, end));
+        PinScreen.forChannel(this, c, () -> fromHome(new LiveScreen(this, c, start, end)));
     }
 
     void openGuide(String category) {
@@ -376,7 +391,8 @@ public final class TvActivity extends Activity {
     }
 
     void openSettings() {
-        push(new SettingsScreen(this));
+        // Settings → Parental control → Lock Settings: after the PIN.
+        PinScreen.forSettings(this, () -> push(new SettingsScreen(this)));
     }
 
     /** A film (episode null) or an episode, full screen, from start ms in. */

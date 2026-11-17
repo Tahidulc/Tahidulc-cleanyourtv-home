@@ -16,15 +16,18 @@ import java.util.List;
  * Stream problems (reconnecting, the provider's adaptive stream, a playlist's own user agent), General (the screen it
  * starts on, starting with the TV), Appearance (the clock, programme times, the words' size, the live screen's tiles, the
  * guide's rows, progress bars, channel numbers) and Remote (Up and Down, OK, OK held, the number keys' wait, the channel
- * before, the colour keys). Each line opens its choices in place; a switch changes with OK.
+ * before, the colour keys). Each line opens its choices in place; a switch changes with OK. Guide, Categories, Parental
+ * control and Backup are ExtraSettings', handed over whole.
  *
  * SettingsScreen shows them before About (their sections' tags from BASE), hands them OK and Back, and opens its
  * keyboard for what is typed (fields named "m:…").
  */
 final class MoreSettings {
     static final int BASE = 100;
-    static final int PLAYER = BASE, SOUND = BASE + 1, PROBLEMS = BASE + 2, GENERAL = BASE + 3, LOOK = BASE + 4, REMOTE = BASE + 5;
-    static final String[] NAMES = {"Player", "Sound", "Stream problems", "General", "Appearance", "Remote"};
+    static final int PLAYER = BASE, SOUND = BASE + 1, PROBLEMS = BASE + 2, GENERAL = BASE + 3, LOOK = BASE + 4, REMOTE = BASE + 5,
+            GUIDE = BASE + 6, CATEGORIES = BASE + 7, PARENTAL = BASE + 8, BACKUP = BASE + 9;
+    static final String[] NAMES = {"Player", "Sound", "Stream problems", "General", "Appearance", "Remote", "Guide", "Categories",
+            "Parental control", "Backup"};
     /** chosen(): nothing to focus after it. */
     static final int STAY = -1;
 
@@ -35,12 +38,15 @@ final class MoreSettings {
 
     private final TvActivity tv;
     private final Host host;
+    /** Guide, Categories, Parental control and Backup. */
+    private final ExtraSettings extra;
     /** The setting whose choices are open ("" for its section's own lines). */
     private String open = "";
 
     MoreSettings(TvActivity tv, Host host) {
         this.tv = tv;
         this.host = host;
+        this.extra = new ExtraSettings(tv, host);
     }
 
     /** The sections, into Settings' menu at a place (before About). */
@@ -55,10 +61,12 @@ final class MoreSettings {
     /** Another section chosen in the menu: its choices closed. */
     void reset() {
         open = "";
+        extra.reset();
     }
 
     /** Back in a section: its open choices closed, the line to put the remote on (its setting's); STAY when none was open. */
     int back(int section) {
+        if (section >= GUIDE) return extra.back(section);
         if (open.isEmpty()) return STAY;
         String was = open;
         open = "";
@@ -67,12 +75,16 @@ final class MoreSettings {
 
     /** Whether a setting's choices are open. */
     boolean isOpen() {
-        return !open.isEmpty();
+        return !open.isEmpty() || extra.isOpen();
     }
 
     // ---- the lines ------------------------------------------------------------------------------------------------
 
     void fill(int section, List<ListPanel.Item> out) {
+        if (section >= GUIDE) {
+            extra.fill(section, out);
+            return;
+        }
         if (!open.isEmpty()) {
             choices(open, out);
             return;
@@ -389,6 +401,7 @@ final class MoreSettings {
 
     /** Where the remote goes on entering the lines: the choice in use when choices are open, else the first line. */
     int focus(List<ListPanel.Item> items) {
+        if (extra.isOpen()) return extra.focus(items);
         if (open.isEmpty()) return 0;
         for (int i = 0; i < items.size(); i++) {
             String sub = items.get(i).subtitle;
@@ -404,6 +417,7 @@ final class MoreSettings {
      * on that setting). Returns the line to put the remote on once Settings has filled them again, or STAY.
      */
     int chosen(int section, String tag, List<ListPanel.Item> before) {
+        if (section >= GUIDE) return extra.chosen(section, tag, before);
         if (tag.startsWith("tog:")) {
             String key = tag.substring(4);
             flip(key);
@@ -523,11 +537,13 @@ final class MoreSettings {
     // ---- typed in -------------------------------------------------------------------------------------------------
 
     String value(String field) {
+        if (ExtraSettings.ownsField(field)) return extra.value(field);
         if (field.startsWith("ua:")) return PlayerPrefs.agentFor(tv, field.substring(3));
         return "";
     }
 
     void typed(String field, String text) {
-        if (field.startsWith("ua:")) PlayerPrefs.setAgentFor(tv, field.substring(3), text);
+        if (ExtraSettings.ownsField(field)) extra.typed(field, text);
+        else if (field.startsWith("ua:")) PlayerPrefs.setAgentFor(tv, field.substring(3), text);
     }
 }

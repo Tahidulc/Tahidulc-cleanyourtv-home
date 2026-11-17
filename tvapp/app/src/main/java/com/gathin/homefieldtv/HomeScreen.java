@@ -329,13 +329,9 @@ final class HomeScreen extends Screen implements Rows.Host, LiveTv.Listener {
     }
 
     private void zap(int dir) {
-        Library lib = Library.get(tv);
-        List<Channel> all = lib.all();
-        if (all.isEmpty()) return;
-        Channel c = tv.live.channel();
-        int i = c == null ? -1 : lib.position(c.key);
-        i = ((i + dir) % all.size() + all.size()) % all.size();
-        tv.live.play(all.get(i));
+        // Settings → Categories and Parental control: past hidden categories and locked channels.
+        Channel c = com.gathin.homefieldtv.prefs.Shown.step(tv, Library.get(tv).all(), tv.live.channel(), dir);
+        if (c != null && !com.gathin.homefieldtv.prefs.Parental.blocks(tv, c)) tv.live.play(c);
     }
 
     @Override void ok() {

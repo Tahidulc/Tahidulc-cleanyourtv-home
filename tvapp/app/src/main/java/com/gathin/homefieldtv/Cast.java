@@ -165,6 +165,8 @@ final class Cast {
         if (head == null) return;
         String[] first = head.split("\r\n", 2)[0].split(" ");
         String method = first.length > 0 ? first[0] : "", path = first.length > 1 ? first[1] : "";
+        // Settings → Backup: a backup to and from the phone (BackupLink), which also notes that a phone uses this link.
+        if (BackupLink.handle(app, method, path, head, in, out)) return;
         if ("GET".equals(method) && "/hello".equals(path)) {
             reply(out, 200, "{\"app\":\"homefieldtv\",\"v\":1,\"name\":" + quote(tvName(app)) + "}");
             return;
