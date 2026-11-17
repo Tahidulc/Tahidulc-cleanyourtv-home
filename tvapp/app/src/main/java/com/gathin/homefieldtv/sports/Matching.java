@@ -77,9 +77,12 @@ public final class Matching {
             r.score += 4;
             if (byKey.size() >= 24) break;
         }
-        // The broadcasters it is on, as the playlist has them: its 4K channel and its HD one.
+        // The broadcasters it is on, as the playlist has them: its 4K channel and its HD one. Their channels found by
+        // the name's key (the library's index of names), not by reading every channel's name again for each.
         for (String name : Channels.names(g)) {
-            Channel[] tier = tiers(all, name);
+            List<Channel> same = new ArrayList<>();
+            for (Channel ch : lib.named(name)) if (lib.listed(ch)) same.add(ch);
+            Channel[] tier = tiers(same, name);
             for (int t = 1; t >= 0; t--) {
                 Channel ch = tier[t];
                 if (ch == null) continue;
@@ -257,11 +260,13 @@ public final class Matching {
         return w;
     }
 
+    private static final Pattern MARKS = Pattern.compile("\\p{M}"), NOT_WORDS = Pattern.compile("[^a-z0-9]+");
+
     /** Pure: words made comparable: lower case, accents and punctuation gone, a space either side. */
     static String words(String s) {
-        String n = Normalizer.normalize(s == null ? "" : s, Normalizer.Form.NFKD).replaceAll("\\p{M}", "")
+        String n = MARKS.matcher(Normalizer.normalize(s == null ? "" : s, Normalizer.Form.NFKD)).replaceAll("")
                 .toLowerCase(Locale.ROOT).replace("&", " and ");
-        return " " + n.replaceAll("[^a-z0-9]+", " ").trim() + " ";
+        return " " + NOT_WORDS.matcher(n).replaceAll(" ").trim() + " ";
     }
 
     /** Pure: whether words (as words() makes them) name both clubs, each by one of its names. */

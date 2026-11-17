@@ -36,7 +36,7 @@ public final class Parental {
     static final long WAIT_MS = 30_000L;
 
     private static volatile Set<String> groups, channels;
-    private static volatile Boolean pinSet, hideMode;
+    private static volatile Boolean pinSet, hideMode, settingsLocked;
     private static volatile long openUntil;
     private static int wrong;
     private static long waitUntil;
@@ -51,6 +51,7 @@ public final class Parental {
         channels = null;
         pinSet = null;
         hideMode = null;
+        settingsLocked = null;
         openUntil = 0;
         wrong = 0;
         waitUntil = 0;
@@ -58,12 +59,13 @@ public final class Parental {
     }
 
     private static synchronized void load(Context c) {
-        if (groups != null && channels != null && pinSet != null && hideMode != null) return;
+        if (groups != null && channels != null && pinSet != null && hideMode != null && settingsLocked != null) return;
         SharedPreferences p = prefs(c);
         groups = Collections.unmodifiableSet(new HashSet<>(p.getStringSet(GROUPS, Collections.emptySet())));
         channels = Collections.unmodifiableSet(new HashSet<>(p.getStringSet(CHANNELS, Collections.emptySet())));
         pinSet = !p.getString(PIN, "").isEmpty();
         hideMode = p.getBoolean(HIDE, false);
+        settingsLocked = p.getBoolean(SETTINGS, false);
     }
 
     // ---- the PIN --------------------------------------------------------------------------------------------------
@@ -213,11 +215,17 @@ public final class Parental {
 
     /** Settings locked too (asked for the PIN before it opens). */
     public static boolean locksSettings(Context c) {
-        return prefs(c).getBoolean(SETTINGS, false);
+        Boolean b = settingsLocked;
+        if (b == null) {
+            load(c);
+            b = settingsLocked;
+        }
+        return b;
     }
 
-    public static void setLocksSettings(Context c, boolean on) {
+    public static synchronized void setLocksSettings(Context c, boolean on) {
         prefs(c).edit().putBoolean(SETTINGS, on).apply();
+        settingsLocked = on;
     }
 
     /** Whether Settings needs the PIN before it opens now. */

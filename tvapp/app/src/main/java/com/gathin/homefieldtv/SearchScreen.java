@@ -8,6 +8,7 @@ import android.widget.FrameLayout;
 
 import com.gathin.homefieldtv.engine.Catalog;
 import com.gathin.homefieldtv.engine.Channel;
+import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.Library;
 
@@ -79,17 +80,37 @@ final class SearchScreen extends Screen implements Keyboard.Host, ListPanel.Host
         channelsChanged();
     }
 
+    /** The search asked last: an answer to an older one is let go. */
+    private int asked;
+
     private void search() {
         String q = keys.text().trim();
-        List<ListPanel.Item> out = new ArrayList<>();
+        int ask = ++asked;
         if (q.isEmpty()) {
+            List<ListPanel.Item> out = new ArrayList<>();
             out.add(new ListPanel.Item(null, ListPanel.NOTE, "Type a channel, a film or a TV show.", ""));
             results.setItems(out);
             return;
         }
         Library lib = Library.get(tv);
+        Catalog cat = Catalog.get(tv);
+        // Every channel, film and series looked through off the main thread; the answer shown once it comes, if the
+        // letters are still the same.
+        Exec.work(() -> {
+            List<Channel> ch = lib.search(q, 8);
+            List<Catalog.Title> films = cat.search(q, false, 12), shows = cat.search(q, true, 12);
+            Runnable show = () -> {
+                if (ask == asked) show(ch, films, shows);
+            };
+            if (Exec.inline) show.run();
+            else Exec.main(show);
+        });
+    }
+
+    private void show(List<Channel> ch, List<Catalog.Title> films, List<Catalog.Title> shows) {
+        Library lib = Library.get(tv);
         long now = System.currentTimeMillis();
-        List<Channel> ch = lib.list(Library.ALL, q);
+        List<ListPanel.Item> out = new ArrayList<>();
         if (!ch.isEmpty()) {
             out.add(new ListPanel.Item(null, ListPanel.HEADING, "Channels", ""));
             for (int i = 0; i < ch.size() && i < 8; i++) {
@@ -102,9 +123,8 @@ final class SearchScreen extends Screen implements Keyboard.Host, ListPanel.Host
                 out.add(it);
             }
         }
-        Catalog cat = Catalog.get(tv);
-        add(out, "Films", cat.search(q, false, 12));
-        add(out, "TV shows", cat.search(q, true, 12));
+        add(out, "Films", films);
+        add(out, "TV shows", shows);
         if (out.isEmpty()) out.add(new ListPanel.Item(null, ListPanel.NOTE, "Nothing in your playlist called that.", ""));
         results.setItems(out);
     }

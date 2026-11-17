@@ -6,6 +6,8 @@ import android.util.JsonReader;
 import android.util.JsonToken;
 
 import com.gathin.homefieldtv.prefs.GuidePrefs;
+import com.gathin.homefieldtv.prefs.Parental;
+import com.gathin.homefieldtv.prefs.Shown;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -26,6 +28,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -40,17 +43,24 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * disk in the app's private files (drawn at once next time), the channels again after a day and the guide after six
  * hours. A channel in more than one playlist is shown once, the others' copies its backups. Also keeps the TV's
  * favourite channels and the last one watched (the mini TV starts on it).
+ *
+ * <p>With tens of thousands of channels nothing the screens ask for here goes through them all on the main thread:
+ * what a load gives is worked out once as it is read (Lists.Index: each channel's guide category, its place, the
+ * groups), and the lists the screens show (Lists: Settings → Categories and Parental control applied, with each
+ * channel's place in them and the channels by number) are made off the main thread, again whenever what is hidden or
+ * locked changes. The screens read them at once (Lineup) and are told (the listeners) when new ones are in.
  */
 public final class Library {
     public static final String ALL = "", FAVOURITES = "★";
+    /** Home's rows of channels: the most on now, and the most of them sport. */
+    public static final int ON_NOW = 24, SPORT_ON_NOW = 16;
     // How often the playlists and the guide are read again: Settings → Guide (GuidePrefs; as it came, a day and 6 hours).
     private static Library instance;
 
     private final Context app;
-    private volatile List<Channel> channels = Collections.emptyList();
-    private volatile String[] lower = new String[0];
-    private volatile List<String> groups = Collections.emptyList();
-    private volatile Map<String, Integer> byKey = Collections.emptyMap();
+    /** The channels as last read with what is worked out from them, and the lists the screens show: put in place at once. */
+    private volatile Lists current = Lists.EMPTY;
+    private final AtomicBoolean listing = new AtomicBoolean();
     private volatile Map<String, Guide.Schedule> guide = Collections.emptyMap();
     private volatile String fingerprint = "", guideUrl = "", status = "";
     /** Catch-up: {channels whose provider keeps an archive, the most days kept}. */
@@ -59,6 +69,14 @@ public final class Library {
     private volatile boolean read;
     private final AtomicBoolean busy = new AtomicBoolean(), guideBusy = new AtomicBoolean();
     private final List<Runnable> listeners = new CopyOnWriteArrayList<>();
+    /** The favourites and the recent channels as last read from the TV's settings (read again once the kept line changes). */
+    private volatile Picks favs = Picks.NONE, recents = Picks.NONE;
+    /** The favourites' channels the lists keep, for one version of the favourites and of the lists. */
+    private volatile Kept kept = Kept.NONE;
+    /** Home's rows of channels on now (onNow), and who asked for them while they were being found. */
+    private volatile OnNow onNow = OnNow.NONE;
+    private final AtomicBoolean finding = new AtomicBoolean();
+    private volatile Runnable onNowTold;
 
     /** Told on the main thread how a test or refresh went: the channel count, or an error to show. */
     public interface Callback {
@@ -70,41 +88,214 @@ public final class Library {
     }
 
     public static synchronized Library get(Context c) {
-        if (instance == null) instance = new Library(c.getApplicationContext());
+        if (instance == null) {
+            instance = new Library(c.getApplicationContext());
+            // A category hidden or shown, a channel locked, the PIN entered: the lists made again at once, off the main thread.
+            Shown.listen(instance::relist);
+        }
         return instance;
+    }
+
+    /** Home's rows of channels: those with something on now (favourites first) and the sport among them. */
+    public static final class OnNow {
+        static final OnNow NONE = new OnNow(Collections.emptyList(), Collections.emptyList(), null, null, null, -1);
+
+        public final List<Channel> channels, sport;
+        final Lists lists;
+        final Map<String, Guide.Schedule> guide;
+        final Picks favourites;
+        final long minute;
+
+        OnNow(List<Channel> channels, List<Channel> sport, Lists lists, Map<String, Guide.Schedule> guide, Picks favourites, long minute) {
+            this.channels = channels;
+            this.sport = sport;
+            this.lists = lists;
+            this.guide = guide;
+            this.favourites = favourites;
+            this.minute = minute;
+        }
+    }
+
+    /** Channel keys kept in the TV's settings, as read from that very line (read again only once it changes). */
+    static final class Picks {
+        static final Picks NONE = new Picks(null, Collections.emptyList());
+
+        final String raw;
+        final List<String> keys;
+        final Set<String> set;
+
+        Picks(String raw, List<String> keys) {
+            this.raw = raw;
+            this.keys = Collections.unmodifiableList(keys);
+            this.set = new HashSet<>(keys);
+        }
+    }
+
+    /** The favourites' channels the lists keep, and what they were made from. */
+    private static final class Kept {
+        static final Kept NONE = new Kept(null, null, Collections.emptyList());
+
+        final Picks picks;
+        final Lists lists;
+        final List<Channel> channels;
+
+        Kept(Picks picks, Lists lists, List<Channel> channels) {
+            this.picks = picks;
+            this.lists = lists;
+            this.channels = channels;
+        }
+    }
+
+    /** The lists for the channels as they are; made again off the main thread when what is hidden or locked has changed. */
+    private Lists lists() {
+        Lists l = current;
+        // No channels, no lists to make (nor settings to read for them).
+        if (!l.fresh() && !l.index.channels.isEmpty()) {
+            relist();
+            // Made at once in previews and tests; else these until the new ones are in (the screens are told then).
+            l = current;
+        }
+        return l;
+    }
+
+    /** The lists made again for what is hidden and locked now: off the main thread (at once in previews), the screens told. */
+    private void relist() {
+        if (current.index.channels.isEmpty()) return;
+        if (Exec.inline) {
+            synchronized (this) {
+                current = new Lists(current.index, Shown.filter(app));
+            }
+            return;
+        }
+        if (!listing.compareAndSet(false, true)) return;
+        Exec.work(() -> {
+            boolean made = false;
+            try {
+                for (int tries = 0; tries < 4; tries++) {
+                    Lists was = current;
+                    if (was.fresh() || was.index.channels.isEmpty()) break;
+                    Lists l = new Lists(was.index, Shown.filter(app));
+                    synchronized (this) {
+                        // A load meanwhile brought lists of its own.
+                        if (current == was) {
+                            current = l;
+                            made = true;
+                        }
+                    }
+                }
+            } finally {
+                listing.set(false);
+            }
+            if (!current.fresh()) relist();
+            if (made) changed();
+        });
     }
 
     // ---- what the screens read ----------------------------------------------------------------------------------
 
     public boolean hasSource() { return !Sources.list(app).isEmpty(); }
-    public boolean ready() { return !channels.isEmpty(); }
+    public boolean ready() { return !current.index.channels.isEmpty(); }
     public boolean busy() { return busy.get(); }
     public String status() { return status; }
-    public int count() { return channels.size(); }
+    public int count() { return current.index.channels.size(); }
     /** Catch-up: {how many channels keep programmes, for up to how many days}. */
     public int[] archive() { return archive; }
     public boolean hasGuide() { return !guide.isEmpty(); }
     /** The playlist's own groups, in first-seen order. */
-    public List<String> groups() { return groups; }
+    public List<String> groups() { return current.index.groups; }
+    /** How many channels each group has, hidden ones too (Settings → Categories), counted as they were read. */
+    public Map<String, Integer> groupSizes() { return current.index.sizes; }
     /**
      * The channels the screens list: without hidden categories and channels locked away (Settings → Categories and
-     * Parental control, prefs.Shown).
+     * Parental control, prefs.Shown). Made off the main thread, read at once.
      */
-    public List<Channel> all() { return com.gathin.homefieldtv.prefs.Shown.of(app, channels); }
+    public List<Channel> all() { return lists().all; }
     /** Every channel, hidden ones too (a channel's other copies, its quality levels). */
-    public List<Channel> every() { return channels; }
+    public List<Channel> every() { return current.index.channels; }
+
+    /** All the channels listed, with where each is. */
+    public Lineup lineup() {
+        Lists l = lists();
+        return new Lineup(l, Lineup.EVERY, "", -1, l.all);
+    }
+
+    /** A group's listed channels (none for a hidden group), with where each is. */
+    public Lineup group(String group) {
+        Lists l = lists();
+        List<Channel> g = group == null ? null : l.groups.get(group);
+        return g == null ? Lineup.NONE : new Lineup(l, Lineup.GROUP, group, -1, g);
+    }
+
+    /** One of the guide's categories (Genres) with its listed channels, with where each is. */
+    public Lineup genre(String genre) {
+        Lists l = lists();
+        int g = Genres.index(genre);
+        return g < 0 ? Lineup.NONE : new Lineup(l, Lineup.KIND, "", g, l.genres.get(g));
+    }
+
+    /** A short list of channels (the favourites, the recent ones), with where each is. */
+    public Lineup lineup(List<Channel> few) {
+        return new Lineup(lists(), Lineup.FEW, "", -1, few == null ? Collections.<Channel>emptyList() : few);
+    }
+
+    /** The groups that have listed channels, in the order they first come (the unnamed group too): Live TV's rows. */
+    public List<String> rowGroups() { return lists().groupOrder; }
+
+    /**
+     * Every channel (hidden ones too) whose name reads as this one does (Names.key: "UK: TNT SPORTS 1 FHD" as "TNT
+     * Sports 1"), in the list's order. The first ask after a load reads every name once: off the main thread only.
+     */
+    public List<Channel> named(String name) {
+        String k = Names.key(name);
+        List<Channel> l = k.isEmpty() ? null : current.index.byName().get(k);
+        return l == null ? Collections.<Channel>emptyList() : Collections.unmodifiableList(l);
+    }
+
+    /** Whether a channel is in the lists (not hidden, not locked away), as the lists made last say. At once. */
+    public boolean listed(Channel c) {
+        Lists l = lists();
+        int e = l.index.find(c);
+        return e >= 0 && l.at[e] >= 0;
+    }
+
+    /**
+     * Channel up or down from a channel through the lists, past those that need the PIN, as Shown.step goes: from
+     * itself when there is no other; the first (or last) when it isn't listed; null when nothing is. At once.
+     */
+    public Channel step(Channel from, int dir) {
+        return lists().step(from, dir);
+    }
+
+    /**
+     * The channel the mini TV may start by itself (Shown.playable): the one asked for when nothing keeps it back, else
+     * the first listed that needs no PIN; null when there is none. At once.
+     */
+    public Channel playable(Channel want) {
+        if (want != null && Shown.listed(app, want) && !Parental.blocks(app, want)) return want;
+        Lists l = lists();
+        Channel c = l.first < 0 ? null : l.all.get(l.first);
+        // Never one that needs the PIN now, even from lists not made again yet (the screens are told once they are).
+        return c == null || Parental.blocks(app, c) ? null : c;
+    }
+
+    /** The first listed channel with this number, or null. At once. */
+    public Channel numbered(int number) {
+        Lists l = lists();
+        int k = l.numbered(number);
+        return k < 0 ? null : l.all.get((int) l.numbers[k]);
+    }
 
     public Channel byKey(String key) {
-        Integer i = key == null ? null : byKey.get(key);
-        List<Channel> ch = channels;
-        return i == null || i >= ch.size() ? null : ch.get(i);
+        Lists.Index ix = current.index;
+        Integer i = key == null ? null : ix.byKey.get(key);
+        return i == null || i >= ix.channels.size() ? null : ix.channels.get(i);
     }
 
     public Guide.Schedule schedule(String key) { return guide.get(key); }
 
     /** The channel's place in the list (0 first), or -1. */
     public int position(String key) {
-        Integer i = key == null ? null : byKey.get(key);
+        Integer i = key == null ? null : current.index.byKey.get(key);
         return i == null ? -1 : i;
     }
 
@@ -115,28 +306,110 @@ public final class Library {
         return p < 0 ? 0 : p + 1;
     }
 
-    /** A group's channels (ALL, FAVOURITES or a group's name), narrowed by a search. */
+    /**
+     * A group's channels (ALL, FAVOURITES or a group's name), narrowed by a search; read-only. Without a search they are
+     * the lists made already; a search goes through every channel, so it is for the threads off the main one.
+     */
     public List<Channel> list(String group, String query) {
-        List<Channel> ch = channels;
-        String[] low = lower;
         String q = query == null ? "" : Names.plain(query).toLowerCase(Locale.ROOT).trim();
-        List<Channel> out = new ArrayList<>();
         if (FAVOURITES.equals(group)) {
-            for (String k : favourites()) {
-                Channel c = byKey(k);
-                if (c == null || !com.gathin.homefieldtv.prefs.Shown.kept(app, c)) continue;
-                if (q.isEmpty() || Names.plain(c.name).toLowerCase(Locale.ROOT).contains(q)) out.add(c);
-            }
+            List<Channel> fav = favouriteChannels();
+            if (q.isEmpty()) return fav;
+            List<Channel> out = new ArrayList<>();
+            for (Channel c : fav) if (Names.plain(c.name).toLowerCase(Locale.ROOT).contains(q)) out.add(c);
             return out;
         }
-        for (int i = 0; i < ch.size(); i++) {
-            Channel c = ch.get(i);
-            if (group != null && !group.isEmpty() && !group.equals(c.group)) continue;
-            if (!q.isEmpty() && (i >= low.length || !low[i].contains(q))) continue;
-            if (!com.gathin.homefieldtv.prefs.Shown.listed(app, c)) continue;
-            out.add(c);
+        boolean every = group == null || group.isEmpty();
+        if (q.isEmpty()) return every ? all() : group(group).channels;
+        return find(every ? null : group, q, Integer.MAX_VALUE);
+    }
+
+    /** The listed channels whose names have the words typed, at most max, in the lists' order. Off the main thread. */
+    public List<Channel> search(String query, int max) {
+        String q = query == null ? "" : Names.plain(query).toLowerCase(Locale.ROOT).trim();
+        return q.isEmpty() ? new ArrayList<>() : find(null, q, max);
+    }
+
+    private List<Channel> find(String group, String q, int max) {
+        Lists l = lists();
+        Lists.Index ix = l.index;
+        List<Channel> out = new ArrayList<>();
+        for (int i = 0; i < ix.channels.size() && out.size() < max; i++) {
+            if (l.at[i] < 0 || !ix.lower[i].contains(q)) continue;
+            Channel c = ix.channels.get(i);
+            if (group == null || group.equals(c.group)) out.add(c);
         }
         return out;
+    }
+
+    /**
+     * Home's rows of channels: at most ON_NOW with something on now (favourites first, then the lists' order; every
+     * channel when there is no guide) and at most SPORT_ON_NOW of them sport. The last found, at once; found again off
+     * the main thread when the minute, the channels, the guide, the favourites or what is hidden has changed since, and
+     * whenReady then told on the main thread.
+     */
+    public OnNow onNow(long time, Runnable whenReady) {
+        OnNow o = onNow;
+        Lists l = lists();
+        Map<String, Guide.Schedule> g = guide;
+        Picks f = picks();
+        long minute = time / 60_000L;
+        if (o.lists == l && o.guide == g && o.favourites == f && o.minute == minute) return o;
+        if (Exec.inline) {
+            onNow = o = onNow(l, g, f, time);
+            return o;
+        }
+        onNowTold = whenReady;
+        if (finding.compareAndSet(false, true)) {
+            Exec.work(() -> {
+                try {
+                    onNow = onNow(l, g, f, time);
+                } finally {
+                    finding.set(false);
+                }
+                Runnable r = onNowTold;
+                onNowTold = null;
+                if (r != null) Exec.main(r);
+            });
+        }
+        return o;
+    }
+
+    /** Tests: what the lists are made from now, and Home's rows worked out at once. */
+    Lists.Index index() {
+        return current.index;
+    }
+
+    OnNow onNowAt(long time) {
+        return onNow(lists(), guide, picks(), time);
+    }
+
+    /** Pure: Home's rows of channels from these lists, guide and favourites at time (see onNow). */
+    static OnNow onNow(Lists l, Map<String, Guide.Schedule> g, Picks f, long time) {
+        List<Channel> on = new ArrayList<>(ON_NOW), sport = new ArrayList<>(SPORT_ON_NOW);
+        boolean hasGuide = !g.isEmpty();
+        int sportKind = Genres.index(Genres.SPORT);
+        Lists.Index ix = l.index;
+        Set<String> seen = new HashSet<>();
+        int favourites = f.keys.size(), n = favourites + l.all.size();
+        for (int k = 0; k < n && (on.size() < ON_NOW || sport.size() < SPORT_ON_NOW); k++) {
+            Channel c;
+            if (k < favourites) {
+                Integer e = ix.byKey.get(f.keys.get(k));
+                if (e == null) continue;
+                c = ix.channels.get(e);
+                if (!seen.add(c.key)) continue;
+            } else {
+                c = l.all.get(k - favourites);
+                if (seen.contains(c.key)) continue;
+            }
+            Guide.Schedule s = g.get(c.key);
+            if (hasGuide && (s == null || s.at(time) < 0)) continue;
+            if (on.size() < ON_NOW) on.add(c);
+            int e = ix.find(c);
+            if (sport.size() < SPORT_ON_NOW && e >= 0 && ix.genre[e] == sportKind) sport.add(c);
+        }
+        return new OnNow(Collections.unmodifiableList(on), Collections.unmodifiableList(sport), l, g, f, time / 60_000L);
     }
 
     // ---- favourites and the last channel -------------------------------------------------------------------------
@@ -145,20 +418,56 @@ public final class Library {
         return app.getSharedPreferences("live_tv", Context.MODE_PRIVATE);
     }
 
-    /** The favourite channels' keys, in the order they were added. */
-    public List<String> favourites() {
-        List<String> out = new ArrayList<>();
-        try {
-            JSONArray a = new JSONArray(prefs().getString("favourites", "[]"));
-            for (int i = 0; i < a.length(); i++) out.add(a.getString(i));
-        } catch (JSONException ignored) {
-            // none
+    /** The favourites as kept, read again only when the kept line itself has changed (here, by a sync or a backup). */
+    private Picks picks() {
+        String raw = prefs().getString("favourites", "[]");
+        Picks p = favs;
+        //noinspection StringEquality: the very line read last time, or a new one
+        if (raw != p.raw) {
+            List<String> out = new ArrayList<>();
+            try {
+                JSONArray a = new JSONArray(raw);
+                for (int i = 0; i < a.length(); i++) out.add(a.getString(i));
+            } catch (JSONException ignored) {
+                // none
+            }
+            favs = p = new Picks(raw, out);
         }
-        return out;
+        return p;
+    }
+
+    /** The recent channels as kept, read again only when the kept line has changed. */
+    private Picks recentPicks() {
+        String raw = prefs().getString("recent", "");
+        Picks p = recents;
+        //noinspection StringEquality: the very line read last time, or a new one
+        if (raw != p.raw) recents = p = new Picks(raw, RecentChannels.parse(raw));
+        return p;
+    }
+
+    /** The favourite channels' keys, in the order they were added (read-only). */
+    public List<String> favourites() {
+        return picks().keys;
     }
 
     public boolean isFavourite(Channel c) {
-        return c != null && favourites().contains(c.key);
+        return c != null && picks().set.contains(c.key);
+    }
+
+    /** The favourites' channels the lists keep (not locked away), made again only when either changes. */
+    private List<Channel> favouriteChannels() {
+        Picks p = picks();
+        Lists l = lists();
+        Kept k = kept;
+        if (k.picks == p && k.lists == l) return k.channels;
+        List<Channel> out = new ArrayList<>();
+        for (String key : p.keys) {
+            Channel c = byKey(key);
+            if (c != null && l.filter != null && l.filter.kept(c)) out.add(c);
+        }
+        k = new Kept(p, l, Collections.unmodifiableList(out));
+        kept = k;
+        return k.channels;
     }
 
     /** A channel added to the favourites, or taken off them; true when it is one now. */
@@ -185,16 +494,15 @@ public final class Library {
     public Channel lastChannel() {
         Channel c = byKey(prefs().getString("last", null));
         if (c != null) return c;
-        List<Channel> ch = channels;
+        List<Channel> ch = current.index.channels;
         return ch.isEmpty() ? null : ch.get(0);
     }
 
     /** A channel played: the last one, and first of the recent channels (kept on this TV only). */
     public void watched(Channel c) {
         if (c == null) return;
-        SharedPreferences p = prefs();
-        List<String> recent = RecentChannels.add(RecentChannels.parse(p.getString("recent", "")), c.key);
-        p.edit().putString("last", c.key).putString("recent", RecentChannels.join(recent)).apply();
+        List<String> recent = RecentChannels.add(recentPicks().keys, c.key);
+        prefs().edit().putString("last", c.key).putString("recent", RecentChannels.join(recent)).apply();
         com.gathin.homefieldtv.sync.TvSync.changed();
     }
 
@@ -204,10 +512,10 @@ public final class Library {
      */
     public List<Channel> recent(Channel playing) {
         List<Channel> out = new ArrayList<>();
-        List<String> keys = RecentChannels.parse(prefs().getString("recent", ""));
-        for (String k : RecentChannels.shown(keys, playing == null ? null : playing.key)) {
+        Lists l = lists();
+        for (String k : RecentChannels.shown(recentPicks().keys, playing == null ? null : playing.key)) {
             Channel c = byKey(k);
-            if (c != null && com.gathin.homefieldtv.prefs.Shown.kept(app, c)) out.add(c);
+            if (c != null && l.filter != null && l.filter.kept(c)) out.add(c);
         }
         return out;
     }
@@ -237,7 +545,8 @@ public final class Library {
         long now = System.currentTimeMillis();
         // Settings → Guide: how often the playlists and the guide are read again, and on each start if chosen.
         boolean start = GuidePrefs.firstStart(app);
-        if (channels.isEmpty() || start || GuidePrefs.listsDue(app, loadedAt, now) || !Sources.fingerprint(app).equals(fingerprint)) {
+        if (current.index.channels.isEmpty() || start || GuidePrefs.listsDue(app, loadedAt, now)
+                || !Sources.fingerprint(app).equals(fingerprint)) {
             refresh(null);
         } else if (!GuidePrefs.guides(app, guideUrl).isEmpty() && GuidePrefs.guideDue(app, guideAt, now)) {
             refreshGuide();
@@ -302,7 +611,7 @@ public final class Library {
                 if (!fp.equals(fingerprint)) clearGuide();
                 apply(all, fp, String.join(" ", guides), System.currentTimeMillis());
                 writeCache();
-                n = channels.size();
+                n = current.index.channels.size();
                 if (!problems.isEmpty()) status = String.join("; ", problems);
             } catch (IOException | RuntimeException e) {
                 error = e instanceof IOException && e.getMessage() != null ? e.getMessage() : "That didn't work";
@@ -327,10 +636,9 @@ public final class Library {
         Sources.clear(app);
         Catalog.get(app).clear();
         prefs().edit().clear().apply();
-        channels = Collections.emptyList();
-        lower = new String[0];
-        groups = Collections.emptyList();
-        byKey = Collections.emptyMap();
+        synchronized (this) {
+            current = Lists.EMPTY;
+        }
         fingerprint = "";
         guideUrl = "";
         status = "";
@@ -379,9 +687,15 @@ public final class Library {
     static String playlistOf(String key) {
         if (key != null && key.length() > 2 && key.charAt(0) == 'p') {
             int colon = key.indexOf(':');
-            if (colon > 1 && key.substring(1, colon).matches("\\d+")) return key.substring(0, colon);
+            if (colon > 1 && digits(key, 1, colon)) return key.substring(0, colon);
         }
         return "p0";
+    }
+
+    /** Pure: whether s holds only digits from start to end (no regular expression made for each channel). */
+    private static boolean digits(String s, int start, int end) {
+        for (int i = start; i < end; i++) if (s.charAt(i) < '0' || s.charAt(i) > '9') return false;
+        return end > start;
     }
 
     private static final class Loaded {
@@ -591,23 +905,15 @@ public final class Library {
         }
     }
 
-    /** New channels in place: the groups in first-seen order, the key index built once. */
+    /**
+     * New channels in place, on the thread that read them: the key index, each channel's guide category, the groups,
+     * and the lists the screens show, all made here, then put in place together.
+     */
     private synchronized void apply(List<Channel> raw, String fp, String gUrl, long at) {
-        List<Channel> ch = Collections.unmodifiableList(new ArrayList<>(merged(raw)));
-        String[] low = new String[ch.size()];
-        Map<String, Integer> keys = new HashMap<>(ch.size() * 2);
-        LinkedHashMap<String, Boolean> gs = new LinkedHashMap<>();
-        for (int i = 0; i < ch.size(); i++) {
-            Channel c = ch.get(i);
-            low[i] = Names.plain(c.name).toLowerCase(Locale.ROOT);
-            keys.put(c.key, i);
-            if (!c.group.isEmpty()) gs.put(c.group, Boolean.TRUE);
-        }
-        lower = low;
-        byKey = keys;
-        groups = Collections.unmodifiableList(new ArrayList<>(gs.keySet()));
-        archive = Catchup.count(ch);
-        channels = ch;
+        Lists.Index ix = new Lists.Index(Collections.unmodifiableList(new ArrayList<>(merged(raw))));
+        Lists l = new Lists(ix, Shown.filter(app));
+        archive = Catchup.count(ix.channels);
+        current = l;
         fingerprint = fp;
         guideUrl = gUrl == null ? "" : gUrl;
         loadedAt = at;
@@ -627,6 +933,7 @@ public final class Library {
         // The playlists' own guides, then Settings → Guide's (each read in the guide's own time when it is shifted).
         String urls = GuidePrefs.guides(app, guideUrl);
         long shift = GuidePrefs.shiftMs(app);
+        List<Channel> channels = current.index.channels;
         if (urls.isEmpty() || channels.isEmpty() || !guideBusy.compareAndSet(false, true)) return;
         Exec.io(() -> {
             try {
@@ -656,7 +963,7 @@ public final class Library {
                 Map<String, Guide.Schedule> g = new HashMap<>();
                 IOException last = null;
                 long now = System.currentTimeMillis();
-                Map<String, Long> since = GuideShift.since(since(now), shift);
+                Map<String, Long> since = GuideShift.since(since(channels, now), shift);
                 for (String url : urls.split(" ")) {
                     if (url.isEmpty()) continue;
                     try (InputStream in = Fetch.open(url, null)) {
@@ -685,7 +992,7 @@ public final class Library {
      * How far back the guide is kept for each channel with catch-up (by key): its archive, at most Guide.PAST_DAYS;
      * the others keep the last hour (Guide.BEHIND_MS).
      */
-    private Map<String, Long> since(long now) {
+    private static Map<String, Long> since(List<Channel> channels, long now) {
         Map<String, Long> out = new HashMap<>();
         for (Channel c : channels) {
             Channel s = Catchup.source(c);
@@ -712,7 +1019,7 @@ public final class Library {
         try (Writer w = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(tmp), StandardCharsets.UTF_8), 64 * 1024)) {
             w.write("v2\t" + fingerprint + "\t" + loadedAt + "\t" + cell(guideUrl) + "\n");
             // Each channel with its backups after it: read back, they are made one again (merged).
-            for (Channel main : channels) {
+            for (Channel main : current.index.channels) {
                 List<Channel> rows = new ArrayList<>(1 + main.alternates.size());
                 rows.add(main);
                 rows.addAll(main.alternates);
@@ -795,7 +1102,7 @@ public final class Library {
             if (h.length < 3 || !"v2".equals(h[0]) || !fp.equals(h[1])) return;
             at = Long.parseLong(h[2]);
             Map<String, String> pool = new HashMap<>();
-            Map<String, Long> since = since(now);
+            Map<String, Long> since = since(current.index.channels, now);
             for (String line; (line = r.readLine()) != null; ) {
                 String[] c = line.split("\t", 5);
                 if (c.length < 4) continue;
