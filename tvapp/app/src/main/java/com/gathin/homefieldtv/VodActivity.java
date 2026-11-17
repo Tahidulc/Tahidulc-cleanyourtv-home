@@ -690,7 +690,8 @@ public final class VodActivity extends Activity {
          * ("1080p · MKV"), with Up for the other copies when there are more; nothing for a film with one copy only.
          */
         private void source(Canvas c, int w) {
-            if (plays.isEmpty() || plays.size() < 2 && !current().torbox) return;
+            // Not while the copies are listed: the list says it there.
+            if (plays.isEmpty() || plays.size() < 2 && !current().torbox || picker != null && picker.isOpen()) return;
             Catalog.Play p = current();
             float mh = Ui.f(36), my = Ui.f(804), most = Ui.f(380);
             String facts = SourcePicker.facts(p), more = plays.size() > 1 ? "Change source" : "";

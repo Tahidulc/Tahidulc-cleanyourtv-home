@@ -33,7 +33,7 @@ final class SourcePicker extends View {
     /** The marks' own colours (neither service's): TorBox's green, the playlists' blue; the headings' lighter ones. */
     static final int TORBOX = 0xFF0E9F6E, IPTV = 0xFF3B5BDB, TORBOX_SOFT = 0xFF5EE0B0, IPTV_SOFT = 0xFF91A7FF;
     private static final long IDLE_MS = 20_000;
-    private static final float X = 1130f, W = 730f, TOP = 70f, BOTTOM = 1010f, HEAD = 128f, ROW = 112f, GROUP = 52f, FOOT = 64f;
+    private static final float X = 1130f, W = 730f, TOP = 70f, BOTTOM = 1010f, HEAD = 128f, ROW = 100f, GROUP = 46f, FOOT = 64f;
 
     private final List<Catalog.Play> plays = new ArrayList<>();
     private final List<Line> lines = new ArrayList<>();
@@ -259,18 +259,18 @@ final class SourcePicker extends View {
 
     private void drawHeading(Canvas c, Line l, float x, float y) {
         TextPaint p = l.torbox ? torboxHead : iptvHead;
-        c.drawText(Ui.fit(l.heading, p, Ui.f(W - 80)), x + Ui.f(40), Ui.f(y + 36), p);
+        c.drawText(Ui.fit(l.heading, p, Ui.f(W - 80)), x + Ui.f(40), Ui.f(y + 32), p);
     }
 
     private void drawCopy(Canvas c, int index, boolean on, float x, float w, float y) {
         Catalog.Play p = plays.get(index);
-        r.set(x + Ui.f(18), Ui.f(y + 6), x + w - Ui.f(18), Ui.f(y + ROW - 6));
+        r.set(x + Ui.f(18), Ui.f(y + 4), x + w - Ui.f(18), Ui.f(y + ROW - 4));
         if (on) {
             c.drawRoundRect(r, Ui.f(18), Ui.f(18), hi);
             c.drawRoundRect(r, Ui.f(18), Ui.f(18), ring);
         }
         float left = x + Ui.f(40), right = x + w - Ui.f(40);
-        float cy = Ui.f(y + 42);
+        float cy = Ui.f(y + 38);
         float mx = left + mark.draw(c, left, cy, Ui.f(38), p.torbox, p.playlist, Ui.f(240));
         // What its name says, in outlined chips beside the mark.
         String q = Catalog.pictureName(p.picture);
@@ -289,7 +289,7 @@ final class SourcePicker extends View {
             c.drawPath(check, tick);
         }
         String d = detail(p);
-        if (!d.isEmpty()) c.drawText(Ui.fit(d, detail, right - left), left, Ui.f(y + 88), detail);
+        if (!d.isEmpty()) c.drawText(Ui.fit(d, detail, right - left), left, Ui.f(y + 80), detail);
     }
 
     /** An outlined chip ("1080p", "MKV") at x, centred on cy; its width. */
