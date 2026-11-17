@@ -281,9 +281,11 @@ public final class LiveTvSettings {
         removeAll.setOnClickListener(v -> new AlertDialog.Builder(c)
                 .setMessage(R.string.live_remove_ask)
                 .setPositiveButton(R.string.live_remove, (d, w) -> {
-                    lib.clear();
+                    // This phone only: nothing removed elsewhere, and Playlists sync switched off here (sync.LiveSync).
+                    com.gathin.tvhomephone.sync.LiveSync.removeEverything(c, lib::clear);
                     closeForm.run();
                     show[0].run();
+                    android.widget.Toast.makeText(c, R.string.live_removed_here, android.widget.Toast.LENGTH_LONG).show();
                 })
                 .setNegativeButton(R.string.live_cancel, null)
                 .show());

@@ -25,6 +25,8 @@
         <intent>
             <action android:name="android.speech.RecognitionService" />
         </intent>
+        <!-- Sync (sync.TvSync): the launcher on this TV hands this app its token and passes everything on. -->
+        <package android:name="com.gathin.tvhome" />
     </queries>
 
     <application

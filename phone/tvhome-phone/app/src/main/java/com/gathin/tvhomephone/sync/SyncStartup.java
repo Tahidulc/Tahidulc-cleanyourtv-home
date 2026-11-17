@@ -26,6 +26,13 @@ public final class SyncStartup {
 
     private static final Runnable SOON = () -> App.io.execute(() -> Syncer.syncAll(app, false));
 
+    /** A change to what LiveSync shares (a playlist, favourites, hidden channels): a sync a few seconds later. */
+    public static void soon() {
+        if (app == null) return;
+        App.main.removeCallbacks(SOON);
+        App.main.postDelayed(SOON, AFTER_CHANGE_MS);
+    }
+
     public static synchronized void start(Context c) {
         if (started) return;
         started = true;

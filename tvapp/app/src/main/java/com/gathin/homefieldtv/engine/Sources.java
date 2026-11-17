@@ -116,6 +116,8 @@ public final class Sources {
         }
         if (!replaced) all.add(e);
         save(c, all);
+        // The family's other devices get it at the next sync, ten seconds on (sync.TvSync).
+        com.gathin.homefieldtv.sync.TvSync.changed();
         return e;
     }
 
@@ -138,6 +140,7 @@ public final class Sources {
         prefs(c).edit().remove("info." + id).apply();
         Catalog.forget(c, id);
         if (id.equals(active(c))) setActive(c, ALL);
+        com.gathin.homefieldtv.sync.TvSync.changed();
     }
 
     public static synchronized void clear(Context c) {

@@ -90,4 +90,18 @@ final class Picks {
     static void clear(Context c) {
         prefs(c).edit().clear().apply();
     }
+
+    /** The favourites as another of the family's devices has them, in their order (sync); null leaves them. */
+    static void replace(Context c, List<String> favourites, List<String> recent) {
+        SharedPreferences.Editor e = prefs(c).edit();
+        if (favourites != null) {
+            e.putStringSet("fav", new HashSet<>(favourites)).putString("fav_order", new JSONArray(favourites).toString());
+        }
+        if (recent != null) {
+            List<String> r = new ArrayList<>(recent.subList(0, Math.min(recent.size(), RECENT_MAX)));
+            e.putString("recent", new JSONArray(r).toString());
+        }
+        e.apply();
+        Library.get(c).picksChanged();
+    }
 }

@@ -28,9 +28,9 @@ import java.util.Locale;
 final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Host {
     private static final List<String> MENU = Arrays.asList("Your playlists", "Add an M3U playlist", "Add an Xtream Codes login",
             "TorBox", "Refresh now", "Remove everything", "Channel logos", "Theme", "Posters", "Live TV", "Reminders", "Updates",
-            "Scoreboard", "About");
+            "Scoreboard", "Sync", "About");
     static final int PLAYLISTS = 0, ADD_M3U = 1, ADD_XTREAM = 2, TORBOX = 3, REFRESH = 4, CLEAR = 5, LOGOS = 6, THEME = 7, POSTERS = 8,
-            LIVE = 9, REMINDERS = 10, UPDATES = 11, SCOREBOARD = 12, ABOUT = 13;
+            LIVE = 9, REMINDERS = 10, UPDATES = 11, SCOREBOARD = 12, SYNC = 13, ABOUT = 14;
 
     private Strip strip;
     private ListPanel menu, content;
@@ -219,9 +219,11 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
                     out.add(new ListPanel.Item(null, ListPanel.HEADING, "Remove everything from this TV?", ""));
                     out.add(new ListPanel.Item("yes", ListPanel.TEXT, "Yes, remove everything", ""));
                     out.add(new ListPanel.Item("no", ListPanel.TEXT, "No, keep it all", ""));
+                    SyncSettings.removeNote(out);
                 } else {
                     out.add(new ListPanel.Item("clear", ListPanel.TEXT, "Remove everything from this TV",
                             "Your playlists, channels, favourites and where you left films"));
+                    SyncSettings.removedNote(tv, out);
                 }
                 break;
             case LOGOS:
@@ -256,6 +258,9 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
                 break;
             case SCOREBOARD:
                 BoardSettings.fill(tv, out);
+                break;
+            case SYNC:
+                SyncSettings.fill(tv, out);
                 break;
             default:
                 out.add(new ListPanel.Item(null, ListPanel.NOTE, "Homefield TV " + version(), ""));
@@ -541,9 +546,12 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
                     confirm = true;
                 } else if (t.equals("yes")) {
                     confirm = false;
-                    tv.live.forget();
-                    lib.clear();
-                    Resume.clear(tv);
+                    // This TV only: nothing removed elsewhere, and Playlists sync switched off here (SyncSettings).
+                    SyncSettings.removeEverything(tv, () -> {
+                        tv.live.forget();
+                        lib.clear();
+                        Resume.clear(tv);
+                    });
                     status = "";
                 } else {
                     confirm = false;
@@ -573,6 +581,20 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
                     fillContent();
                     // The remote stays on a line there is (one cancelled goes).
                     content.setFocus(Math.min(at, Math.max(0, content.items().size() - 1)));
+                }
+                return;
+            }
+            case SYNC: {
+                int at = content.focusIndex();
+                Runnable again = () -> {
+                    if (section() != SYNC) return;
+                    int now = content.focusIndex();
+                    fillContent();
+                    content.setFocus(now);
+                };
+                if (SyncSettings.chosen(tv, t, again)) {
+                    fillContent();
+                    content.setFocus(at);
                 }
                 return;
             }
