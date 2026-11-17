@@ -61,7 +61,7 @@ final class SportsSection {
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final ExecutorService logoIo = Executors.newFixedThreadPool(2);
-    private final Map<String, Bitmap> logos = new HashMap<>();
+    private final BitmapCache logos = new BitmapCache("sports", 6L * 1024 * 1024);
     final HorizontalScrollView view;
     private final LinearLayout strip;
     private final FrameLayout featuredCard, f1Card;
@@ -510,7 +510,7 @@ final class SportsSection {
     private Typeface font(int res) {
         Typeface t = fonts.get(res);
         if (t == null) {
-            try { t = ctx.getResources().getFont(res); } catch (Exception e) { t = Typeface.DEFAULT_BOLD; }
+            try { t = Fonts.get(ctx, res); } catch (Exception e) { t = Typeface.DEFAULT_BOLD; }
             fonts.put(res, t);
         }
         return t;

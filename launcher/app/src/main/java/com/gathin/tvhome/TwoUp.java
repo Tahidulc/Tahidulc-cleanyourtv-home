@@ -432,11 +432,11 @@ final class TwoUp {
     }
 
     private static Typeface heavy() {
-        return h.a.getResources().getFont(R.font.outfit_extrabold);
+        return Fonts.get(h.a, R.font.outfit_extrabold);
     }
 
     private static Typeface semi() {
-        return h.a.getResources().getFont(R.font.inter_semibold);
+        return Fonts.get(h.a, R.font.inter_semibold);
     }
 
     /** Under each picture its app's name (the one with the remote marked), and how to reach the options. */

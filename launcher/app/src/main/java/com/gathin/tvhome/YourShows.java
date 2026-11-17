@@ -95,7 +95,7 @@ final class YourShows {
         View[] made = new View[1];
         return (h, t) -> {
             if (made[0] != null) return made[0];
-            Typeface bold = Typeface.create(h.semi, Typeface.BOLD), heavy = h.a.getResources().getFont(R.font.outfit_extrabold);
+            Typeface bold = Typeface.create(h.semi, Typeface.BOLD), heavy = Fonts.get(h.a, R.font.outfit_extrabold);
             LocalDate today = LocalDate.now(), monday = today.with(DayOfWeek.MONDAY);
             FrameLayout layer = new FrameLayout(h.a);
             LinearLayout card = new LinearLayout(h.a);

@@ -461,7 +461,7 @@ final class DeliveryCard {
     /** Words on v2's Home: Inter, as the rest of Home (its bold the real semibold). */
     private static TextView laneText(Context c, CharSequence s, float sp, int colour, boolean bold) {
         TextView t = text(c, s, sp, colour, false);
-        if (inter == null) inter = c.getResources().getFont(R.font.inter_ui);
+        if (inter == null) inter = Fonts.get(c, R.font.inter_ui);
         t.setTypeface(bold ? Typeface.create(inter, Typeface.BOLD) : inter);
         t.getPaint().setSubpixelText(true);
         return t;

@@ -146,7 +146,7 @@ final class BrandStyles {
         if (weight >= 500) return ScoreCard.outfit(c, weight);
         int res = weight >= 400 ? R.font.outfit_regular : weight >= 300 ? R.font.outfit_light : R.font.outfit_extralight;
         try {
-            return c.getResources().getFont(res);
+            return Fonts.get(c, res);
         } catch (RuntimeException e) {
             return ScoreCard.outfit(c, 500);
         }

@@ -94,7 +94,7 @@ final class FitsTonight {
     /** The poster's foot: "Ends 22:38" large and heavy, and under it "1h 46m · 22 min spare". */
     static CharSequence foot(HomeV2 h, int runtime) {
         SpannableStringBuilder b = new SpannableStringBuilder(ends(runtime));
-        b.setSpan(new Face(h.a.getResources().getFont(R.font.outfit_extrabold)), 0, b.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        b.setSpan(new Face(Fonts.get(h.a, R.font.outfit_extrabold)), 0, b.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         int from = b.length();
         Integer spare = spare(h.a, runtime);
         b.append("\n").append(length(runtime)).append(spare == null ? "" : spare == 0 ? " · right on bedtime" : " · " + spare + " min spare");
@@ -199,7 +199,7 @@ final class FitsTonight {
             // Minutes left before bed when it ends (below 0: past bed).
             int spare = bedMinutes(h.a) - (nowMinutes() + t.runtime);
             if (made[0] == null) {
-                Typeface heavy = h.a.getResources().getFont(R.font.outfit_extrabold), bold = Typeface.create(h.semi, Typeface.BOLD);
+                Typeface heavy = Fonts.get(h.a, R.font.outfit_extrabold), bold = Typeface.create(h.semi, Typeface.BOLD);
                 FrameLayout layer = new FrameLayout(h.a);
                 LinearLayout card = new LinearLayout(h.a);
                 card.setOrientation(LinearLayout.VERTICAL);

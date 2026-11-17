@@ -48,8 +48,8 @@ import java.util.List;
 final class LineupCard {
     /** Everything it shows, fetched before it opens (GoalWatchService, off the main thread). */
     static final class Data {
-        /** Times it has waited for Settings to close (OverlayGuard). */
-        int hiddenWaits;
+        /** Times it has waited for Settings to close (OverlayGuard), and for TiviMate's guide or a menu (notInChannel). */
+        int hiddenWaits, scopeWaits;
         Bitmap leagueLogo;
         Team home, away;
         String kickoff, channel, venue, competition;
@@ -194,6 +194,9 @@ final class LineupCard {
         }
         if (renderTo == null && !(GoalWatchService.laneHome && GoalWatchService.homeInFront || PopupFrame.isShowing())
                 && OverlayGuard.hiding(c) != null && hiddenWait(c, "line-up card", d.hiddenWaits++, () -> show(c, d))) return;
+        // Over an app: only in the channel (OverlayScope): never over Homefield TV, and not over TiviMate's guide or menus.
+        if (renderTo == null && !(GoalWatchService.laneHome && GoalWatchService.homeInFront || PopupFrame.isShowing())
+                && notInChannel(c, "line-up card", d.scopeWaits++, () -> show(c, d))) return;
         AlertLog.note(c, "line-up card shown" + (CameraAlert.isShowing() ? " (after the camera card)" : ""));
         if (CameraAlert.isShowing()) {
             main.postDelayed(() -> show(c, d), 2_000L);
@@ -692,7 +695,7 @@ final class LineupCard {
         /** Run instead when Home is in front as its turn comes (Home's bar, ScoreCard). */
         Runnable onHome;
         /** Times it has waited for another pop-up to go, and for Settings to close. */
-        int waited, hiddenWaits;
+        int waited, hiddenWaits, scopeWaits;
     }
 
     private static final long HALF_MS = 13_000L;
@@ -709,6 +712,32 @@ final class LineupCard {
             return false;
         }
         if (times == 0) AlertLog.note(c, what + " waiting: " + OverlayGuard.name(hiding) + " is open (Android hides pop-ups over it)");
+        retry.postDelayed(again, 2_000L);
+        return true;
+    }
+
+    /** How long a card waits for TiviMate's guide or a menu to close before it is left out (its moment gone). */
+    private static final long MENU_WAIT_MS = 2 * 60_000L;
+
+    /**
+     * Over an app, only in the channel (OverlayScope, as the family asked): never over Homefield TV, which has its own
+     * line-ups and match cards (left out, noted); over TiviMate's guide, channel list or a menu it waits for the channel,
+     * two seconds at a time, two minutes at most, then is left out. True when it is not to show now (again runs later
+     * when it waits). Main thread.
+     */
+    private static boolean notInChannel(Context c, String what, int times, Runnable again) {
+        String front = AppSearchService.front();
+        if (front == null || front.equals(c.getPackageName())) front = AlertLog.front(c);
+        if (OverlayScope.HOMEFIELD.equals(front)) {
+            AlertLog.note(c, what + " not shown: Homefield TV is in front (it has its own)");
+            return true;
+        }
+        if (!OverlayScope.TIVIMATE.equals(front) || !AppSearchService.playerMenuUp()) return false;
+        if (times * 2_000L >= MENU_WAIT_MS) {
+            AlertLog.note(c, what + " left out: TiviMate's guide or a menu stayed open");
+            return true;
+        }
+        if (times == 0) AlertLog.note(c, what + " waiting: TiviMate's guide or a menu is open");
         retry.postDelayed(again, 2_000L);
         return true;
     }
@@ -733,6 +762,7 @@ final class LineupCard {
         }
         // Over Settings Android hides every app's pop-ups: it waits until Settings is closed (ten minutes at most).
         if (OverlayGuard.hiding(c) != null && hiddenWait(c, "half-time card", f.hiddenWaits++, () -> showHalfTime(c, f))) return;
+        if (notInChannel(c, "half-time card", f.scopeWaits++, () -> showHalfTime(c, f))) return;
         // One at a time, as the F1 boards: two seconds at a time, at most a minute and a half, then it shows all the same.
         if ((CameraAlert.isShowing() || ScoreCard.busy() || GoalWatchService.alertShowing() || isShowing() || QuickReply.isOpen())
                 && f.waited < 45) {
@@ -961,7 +991,7 @@ final class LineupCard {
         /** The games to hop to, then Stay as the last line; what OK on line i does (i == options.size(): stay). */
         final List<HopOption> options = new ArrayList<>();
         java.util.function.IntConsumer chosen;
-        int waited, hiddenWaits;
+        int waited, hiddenWaits, scopeWaits;
     }
 
     /** One game to hop to: both crests and names, its score and its minute. */
@@ -1001,6 +1031,7 @@ final class LineupCard {
             return;
         }
         if (OverlayGuard.hiding(c) != null && hiddenWait(c, "half-time hop", hp.hiddenWaits++, () -> showHop(c, hp))) return;
+        if (notInChannel(c, "half-time hop", hp.scopeWaits++, () -> showHop(c, hp))) return;
         if ((CameraAlert.isShowing() || ScoreCard.busy() || GoalWatchService.alertShowing() || isShowing() || QuickReply.isOpen())
                 && hp.waited < 45) {
             hp.waited++;
@@ -1218,7 +1249,7 @@ final class LineupCard {
         Bitmap channelLogo;
         Runnable watch;
         /** Times it has waited for another pop-up to go, and for Settings to close. */
-        int waited, hiddenWaits;
+        int waited, hiddenWaits, scopeWaits;
     }
 
     /** Sky Sports F1's colours: F1's red, and a plain black ground (nothing on it moves). */
@@ -2755,7 +2786,7 @@ final class LineupCard {
     /** One of Home's own typefaces (Inter); the system's when it cannot be read. */
     private static Typeface inter(Context c, int font) {
         try {
-            return c.getResources().getFont(font);
+            return Fonts.get(c, font);
         } catch (RuntimeException e) {
             return Typeface.create("sans-serif-medium", Typeface.NORMAL);
         }

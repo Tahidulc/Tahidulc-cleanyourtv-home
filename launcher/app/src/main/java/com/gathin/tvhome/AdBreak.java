@@ -988,7 +988,8 @@ final class AdBreak {
     private static volatile List<FanPosts.Post> posts = new ArrayList<>();
     private static long postsAt;
     private static final java.util.Set<String> postsShown = new java.util.HashSet<>();
-    private static final Map<String, Bitmap> avatars = new HashMap<>();
+    /** Fans' pictures, held to a size in bytes: a plain map before, it grew with every new poster all match long. */
+    private static final BitmapCache avatars = new BitmapCache("avatars", 2L * 1024 * 1024);
 
     private static void fetchPosts(ScoresTicker.Game g) {
         long now = System.currentTimeMillis();
@@ -1568,6 +1569,8 @@ final class AdBreak {
         List<Widget> list = new ArrayList<>();
         int at;
         MediaPlayer player;
+        /** The clip's surface on its texture, let go with its player (it was left to Java's finalizer). */
+        android.view.Surface clipSurface;
         private final Runnable next = () -> turn(1);
         private boolean ringed;
 
@@ -1739,10 +1742,12 @@ final class AdBreak {
             video.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
                 @Override public void onSurfaceTextureAvailable(android.graphics.SurfaceTexture st, int sw2, int sh2) {
                     try {
+                        stopClip();   // one there already (the texture came again): let go first
                         MediaPlayer mp = new MediaPlayer();
                         player = mp;
                         mp.setDataSource(w.clipUrl);
-                        mp.setSurface(new android.view.Surface(st));
+                        clipSurface = new android.view.Surface(st);
+                        mp.setSurface(clipSurface);
                         mp.setVolume(0f, 0f);
                         mp.setOnPreparedListener(m -> {
                             if (player != m) return;
@@ -1783,6 +1788,9 @@ final class AdBreak {
             if (mp != null) {
                 try { mp.release(); } catch (RuntimeException ignored) { }
             }
+            android.view.Surface s = clipSurface;
+            clipSurface = null;
+            if (s != null) s.release();
         }
 
         void stop() {

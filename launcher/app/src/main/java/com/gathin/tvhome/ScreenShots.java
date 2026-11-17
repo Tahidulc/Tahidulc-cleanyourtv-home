@@ -216,6 +216,7 @@ final class ScreenShots {
         if (Build.VERSION.SDK_INT < 30 || s == null) return false;
         lastAt = SystemClock.uptimeMillis();
         busy = true;
+        shots++;
         long at = System.currentTimeMillis();
         int window = Build.VERSION.SDK_INT >= 34 && WINDOWS.on(lastAt) ? tivimateWindowNow(s) : -1;
         boolean own = window >= 0;
@@ -345,7 +346,11 @@ final class ScreenShots {
 
     static final long KEYS_REST_MS = 1_500L;
 
-    /** The part f (fractions) of hw, ow by oh (ow 0: oh high in its own shape), scaled by the graphics chip; null if too small. */
+    /**
+     * The part f (fractions) of hw, ow by oh (ow 0: oh high in its own shape), scaled by the graphics chip; null if too
+     * small. Made by a renderer kept for its size (GpuParts); the old way (a Picture and a renderer of its own for each
+     * part) only where that fails.
+     */
     @android.annotation.TargetApi(30)
     private static Bitmap part(Bitmap hw, RectF f, int ow, int oh) {
         int w = hw.getWidth(), h = hw.getHeight();
@@ -355,6 +360,10 @@ final class ScreenShots {
         if (ow <= 0) ow = Math.max(2, Math.round(oh * src.width() / (float) src.height()));
         ow = Math.min(ow, 2048);
         oh = Math.min(oh, 2048);
+        parts++;
+        Bitmap made = GpuParts.part(hw, src, ow, oh, Made.SCALE);
+        idleSoon();
+        if (made != null) return made;
         Picture p = new Picture();
         Canvas pc = p.beginRecording(ow, oh);
         pc.drawBitmap(hw, src, new Rect(0, 0, ow, oh), Made.SCALE);
@@ -363,6 +372,32 @@ final class ScreenShots {
         Bitmap soft = gpu.copy(Bitmap.Config.ARGB_8888, false);
         gpu.recycle();
         return soft;
+    }
+
+    // ---- how many, and letting go -----------------------------------------------------------------------------------------
+
+    /** Pictures asked for, and parts made from them, since the start (the self-check counts them a minute at a time). */
+    static volatile long shots, parts;
+    private static boolean idleAsked;
+
+    /** The part renderers looked at again once they may have been idle long enough (GpuParts.IDLE_MS). Work thread. */
+    private static void idleSoon() {
+        if (idleAsked) return;
+        idleAsked = true;
+        Made.MAIN.postDelayed(ScreenShots::idleCheck, GpuParts.IDLE_MS + 1_000L);
+    }
+
+    private static void idleCheck() {
+        work().execute(() -> {
+            idleAsked = false;
+            if (GpuParts.releaseIdle(SystemClock.uptimeMillis())) idleSoon();
+        });
+    }
+
+    /** A memory warning (MemoryWatch): the part renderers let go now, made again for the next picture. */
+    static void release() {
+        if (work == null) return;
+        work().execute(GpuParts::releaseAll);
     }
 
     /** Pure enough: a picture all but black (a window taken without its video). */

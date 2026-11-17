@@ -65,9 +65,9 @@ final class FilmNightPanel {
         where = FilmNight.where(h, gb);
         this.done = done;
         this.closed = closed;
-        heavy = c.getResources().getFont(R.font.outfit_extrabold);
-        semi = c.getResources().getFont(R.font.inter_semibold);
-        regular = c.getResources().getFont(R.font.inter_regular);
+        heavy = Fonts.get(c, R.font.outfit_extrabold);
+        semi = Fonts.get(c, R.font.inter_semibold);
+        regular = Fonts.get(c, R.font.inter_regular);
         had = FilmNight.forFilm(c, t.id);
         lights = TuyaCloud.configured(c);
         times = FilmNightPlan.choices(LocalDateTime.now());

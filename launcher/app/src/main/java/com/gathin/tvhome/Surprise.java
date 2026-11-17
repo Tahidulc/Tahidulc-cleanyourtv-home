@@ -148,8 +148,8 @@ final class Surprise {
      * one line, why it suits in yellow, what it's about, and the pills: OK Play, Roll Again, Trailer.
      */
     private void build() {
-        Typeface heavy = c.getResources().getFont(R.font.outfit_extrabold), semi = c.getResources().getFont(R.font.inter_semibold),
-                regular = c.getResources().getFont(R.font.inter_regular);
+        Typeface heavy = Fonts.get(c, R.font.outfit_extrabold), semi = Fonts.get(c, R.font.inter_semibold),
+                regular = Fonts.get(c, R.font.inter_regular);
         this.semi = semi;
         this.regular = regular;
         overlay = new FrameLayout(c);

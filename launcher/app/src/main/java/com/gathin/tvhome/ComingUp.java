@@ -396,7 +396,7 @@ final class ComingUp {
         col.setPadding(h.px(4), 0, h.px(4), 0);
         LinearLayout top = new LinearLayout(h.a);
         top.setGravity(Gravity.BOTTOM);
-        TextView name = h.text(16, h.a.getResources().getFont(R.font.outfit_extrabold), Color.WHITE);
+        TextView name = h.text(16, Fonts.get(h.a, R.font.outfit_extrabold), Color.WHITE);
         name.setText(dayShort(d));
         top.addView(name);
         if (ChronoUnit.DAYS.between(today, d) == 1) {

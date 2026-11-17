@@ -290,7 +290,7 @@ final class EpisodeMap {
         this.host = host;
         this.width = width;
         this.height = height;
-        heavy = c.getResources().getFont(R.font.outfit_extrabold);
+        heavy = Fonts.get(c, R.font.outfit_extrabold);
         semi = home.semi;
         bold = Typeface.create(home.semi, Typeface.BOLD);
         regular = home.regular;

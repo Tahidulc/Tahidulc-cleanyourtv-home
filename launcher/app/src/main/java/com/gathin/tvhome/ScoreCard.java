@@ -1379,7 +1379,7 @@ final class ScoreCard {
         if (t != null) return t;
         int res = weight >= 900 ? R.font.outfit_black : weight >= 800 ? R.font.outfit_extrabold : weight >= 700 ? R.font.outfit_bold
                 : weight >= 600 ? R.font.outfit_semibold : R.font.outfit_medium;
-        try { t = c.getResources().getFont(res); } catch (RuntimeException e) { t = Typeface.create("sans-serif", weight >= 700 ? Typeface.BOLD : Typeface.NORMAL); }
+        try { t = Fonts.get(c, res); } catch (RuntimeException e) { t = Typeface.create("sans-serif", weight >= 700 ? Typeface.BOLD : Typeface.NORMAL); }
         outfits.put(weight, t);
         return t;
     }

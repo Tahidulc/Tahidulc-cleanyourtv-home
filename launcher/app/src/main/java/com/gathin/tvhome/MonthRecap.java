@@ -87,9 +87,9 @@ final class MonthRecap {
         shown = r;
         r.h = h;
         Context c = h.a;
-        r.heavy = c.getResources().getFont(R.font.outfit_extrabold);
-        r.semi = c.getResources().getFont(R.font.inter_semibold);
-        r.regular = c.getResources().getFont(R.font.inter_regular);
+        r.heavy = Fonts.get(c, R.font.outfit_extrabold);
+        r.semi = Fonts.get(c, R.font.inter_semibold);
+        r.regular = Fonts.get(c, R.font.inter_regular);
         r.overlay = new FrameLayout(c);
         r.overlay.setBackgroundColor(0xFF060928);
         r.overlay.setClickable(true);
@@ -404,7 +404,7 @@ final class MonthRecap {
         label.setText("YOUR " + f.month.toUpperCase(Locale.UK) + " ON TV");
         label.setLetterSpacing(0.28f);
         put(p, label, 120, 90, 1100, 26);
-        Typeface black = h.a.getResources().getFont(R.font.outfit_black);
+        Typeface black = Fonts.get(h.a, R.font.outfit_black);
         TextView hours = h.text(200, black, Color.WHITE);
         hours.setLetterSpacing(-0.04f);
         hours.setSingleLine(true);

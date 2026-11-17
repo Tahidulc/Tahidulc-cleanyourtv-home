@@ -53,7 +53,7 @@ final class F1Tower {
     private static TextView label, strip, place, liveTag;
     private static ImageView mark;
     private static float k;
-    private static final Map<String, Bitmap> logos = new HashMap<>();
+    private static final BitmapCache logos = new BitmapCache("f1", 4L * 1024 * 1024);
 
     /** One driver's line. */
     static final class Line {
@@ -626,7 +626,7 @@ final class F1Tower {
 
     private static Typeface inter(Context c) {
         try {
-            return c.getResources().getFont(R.font.inter_semibold);
+            return Fonts.get(c, R.font.inter_semibold);
         } catch (RuntimeException e) {
             return Typeface.DEFAULT_BOLD;
         }

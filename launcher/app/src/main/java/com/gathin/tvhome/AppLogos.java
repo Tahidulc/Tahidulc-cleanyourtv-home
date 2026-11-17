@@ -21,7 +21,9 @@ final class AppLogos {
     private AppLogos() { }
 
     /** {Bitmap, Boolean card}: the logo, and whether it is the banner as a card rather than a cut-out logo. */
-    private static final Map<String, Object[]> MADE = new HashMap<>();
+    private static final ByteLru<String, Object[]> MADE = new ByteLru<>("applogos", 12L * 1024 * 1024,
+            o -> o != null && o.length > 0 && o[0] instanceof Bitmap && !((Bitmap) o[0]).isRecycled()
+                    ? ((Bitmap) o[0]).getAllocationByteCount() : 0);
 
     static synchronized Object[] logo(Context c, String pkg) {
         if (MADE.containsKey(pkg)) return MADE.get(pkg);

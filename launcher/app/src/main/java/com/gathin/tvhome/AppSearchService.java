@@ -2652,20 +2652,49 @@ public class AppSearchService extends AccessibilityService {
     private static final int MOST_VIEWS = 250;
     private final android.os.Handler playerMain = new android.os.Handler(android.os.Looper.getMainLooper());
     private long guideUntil;
-    private final Runnable readPlayer = () -> {
-        long now = System.currentTimeMillis();
-        if (now < guideUntil) return;
-        try {
-            AccessibilityNodeInfo top = getRootInActiveWindow();
-            if (top == null || top.getPackageName() == null || !getString(R.string.scores_open_package).contentEquals(top.getPackageName())) return;
-            java.util.List<String> texts = new java.util.ArrayList<>();
-            texts(top, 0, texts, new int[]{MOST_VIEWS});
-            if (listLike(texts.size())) guideUntil = now + GUIDE_REST_MS;
-            OverlayPrompt.seen(this, texts);
-        } catch (RuntimeException ignored) {
-            // read again once it is still again
+    private final Runnable readPlayer = new Runnable() {
+        @Override public void run() {
+            long now = System.currentTimeMillis();
+            if (now < guideUntil) {
+                // Resting after a list or the guide: read once more as the rest ends (the guide may have been closed
+                // meanwhile), so the overlays come back to the channel without waiting for its next change.
+                playerMain.removeCallbacks(this);
+                playerMain.postDelayed(this, guideUntil - now + 200L);
+                return;
+            }
+            try {
+                AccessibilityNodeInfo top = getRootInActiveWindow();
+                if (top == null || top.getPackageName() == null || !getString(R.string.scores_open_package).contentEquals(top.getPackageName())) return;
+                java.util.List<String> texts = new java.util.ArrayList<>();
+                texts(top, 0, texts, new int[]{MOST_VIEWS});
+                if (listLike(texts.size())) {
+                    guideUntil = now + GUIDE_REST_MS;
+                    playerListAt = now;
+                } else {
+                    playerPlainAt = now;
+                }
+                OverlayPrompt.seen(AppSearchService.this, texts);
+            } catch (RuntimeException ignored) {
+                // read again once it is still again
+            }
         }
     };
+
+    /**
+     * When the player's screen (TiviMate's) was last read as its guide, a list or a menu (many words), and as its channel
+     * alone or with its banner: the overlays over the channel stand aside while the first is the newer (OverlayScope).
+     */
+    private static volatile long playerListAt, playerPlainAt;
+
+    /** Whether TiviMate's guide, a list or a menu is on its screen now, as last read; false without the helper. */
+    static boolean playerMenuUp() {
+        return instance != null && OverlayScope.menuUp(playerListAt, playerPlainAt);
+    }
+
+    /** The player has just come (back) to the front: taken as its channel full screen until its screen is read again. */
+    static void playerBack() {
+        playerPlainAt = Math.max(System.currentTimeMillis(), playerListAt + 1);
+    }
 
     /** Pure: a screen with this many words is a list or the guide, not a channel's banner (a dozen at most). */
     static boolean listLike(int words) {

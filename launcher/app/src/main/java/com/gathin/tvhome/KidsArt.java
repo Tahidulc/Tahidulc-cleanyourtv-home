@@ -141,7 +141,7 @@ final class KidsArt {
         }
         if (bare) return b;
         // The card's name (on two lines on a poster when it is two words), and "on YouTube".
-        Typeface heavy = c.getResources().getFont(R.font.outfit_extrabold);
+        Typeface heavy = Fonts.get(c, R.font.outfit_extrabold);
         p.setTypeface(heavy);
         p.setColor(0xFFFFFFFF);
         p.setTextAlign(Paint.Align.CENTER);
@@ -163,7 +163,7 @@ final class KidsArt {
             cv.drawText(name, w / 2f, ty, p);
         }
         p.clearShadowLayer();
-        p.setTypeface(c.getResources().getFont(R.font.inter_semibold));
+        p.setTypeface(Fonts.get(c, R.font.inter_semibold));
         p.setTextSize(unit * (poster ? 0.062f : 0.05f));
         p.setColor(0xF2FFFFFF);
         cv.drawText("on YouTube", w / 2f, ty + unit * (poster ? 0.11f : 0.085f), p);

@@ -79,8 +79,11 @@ final class SportCover {
 
     private static Handler main;
     private static final ExecutorService io = Executors.newSingleThreadExecutor();
-    /** Flags, photos and UFC's logo, by address, once fetched. */
-    private static final Map<String, Bitmap> pics = new HashMap<>();
+    /**
+     * Flags, photos and UFC's logo, by address, once fetched (null: looked for, none), held to a size in bytes: it was a
+     * map emptied only once it passed 80 of them, however big each was.
+     */
+    private static final BitmapCache pics = new BitmapCache("sportcover", 6L * 1024 * 1024);
 
     private static Context app;
     private static FrameLayout win;
@@ -458,7 +461,6 @@ final class SportCover {
             // none: the country's letters instead
         }
         synchronized (pics) {
-            if (pics.size() > 80) pics.clear();
             pics.put(url, b);
         }
         return b;
