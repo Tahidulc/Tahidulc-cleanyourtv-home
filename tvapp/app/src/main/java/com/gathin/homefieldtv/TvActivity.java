@@ -249,6 +249,11 @@ public final class TvActivity extends Activity {
         return top() == s;
     }
 
+    /** Whether s is on top and on the screen now (not while another app is in front). */
+    boolean showing(Screen s) {
+        return resumed && top() == s;
+    }
+
     /** The screen under s (null: none, or s isn't open). */
     Screen below(Screen s) {
         int i = stack.indexOf(s);
@@ -356,8 +361,8 @@ public final class TvActivity extends Activity {
         Library lib = Library.get(this);
         Channel c = live.channel();
         c = c != null && lib.byKey(c.key) != null ? lib.byKey(c.key) : lib.lastChannel();
-        // Settings → Categories and Parental control: never a hidden or locked channel started by itself.
-        return com.gathin.homefieldtv.prefs.Shown.playable(this, c, lib.all());
+        // Settings → Categories and Parental control: never a hidden or locked channel started by itself (at once).
+        return lib.playable(c);
     }
 
     // ---- where the screens go ----------------------------------------------------------------------------------

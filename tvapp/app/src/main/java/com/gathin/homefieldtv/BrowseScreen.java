@@ -141,13 +141,9 @@ final class BrowseScreen extends Screen implements Shelves.Host, PosterGrid.Host
         return it;
     }
 
+    /** A list's first max titles as posters, each made as it is first drawn or reached (PosterArt.Items), never all at once. */
     private List<PosterArt.Item> items(List<Catalog.Title> titles, int max) {
-        List<PosterArt.Item> out = new ArrayList<>(Math.min(max, titles.size()));
-        for (Catalog.Title t : titles) {
-            if (out.size() >= max) break;
-            out.add(item(t));
-        }
-        return out;
+        return new PosterArt.Items(titles.size() > max ? titles.subList(0, max) : titles, this::item);
     }
 
     private void fill() {

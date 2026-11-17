@@ -8,15 +8,12 @@ import android.widget.FrameLayout;
 
 import com.gathin.homefieldtv.engine.Catalog;
 import com.gathin.homefieldtv.engine.Channel;
-import com.gathin.homefieldtv.engine.Genres;
 import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.engine.Resume;
 
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 
 /**
  * Home, in the dark look of Films, TV shows and the guide: the rail down the left (Homefield's mark and the time, then
@@ -104,7 +101,8 @@ final class HomeScreen extends Screen implements Rows.Host, LiveTv.Listener {
     }
 
     @Override void channelsChanged() {
-        if (tv.isTop(this)) {
+        // Not while another app is in front: the lists made again then (a PIN locked again) mustn't start the mini TV.
+        if (tv.showing(this)) {
             Channel c = tv.channelToPlay();
             if (c != null) tv.live.play(c);
             else tv.live.forget();
@@ -127,23 +125,16 @@ final class HomeScreen extends Screen implements Rows.Host, LiveTv.Listener {
         List<Rows.Row> list = new ArrayList<>();
 
         List<Rows.Tile> onNow = new ArrayList<>(), sport = new ArrayList<>(), favs = new ArrayList<>();
-        Set<String> seen = new LinkedHashSet<>();
-        List<Channel> order = new ArrayList<>();
-        for (String k : lib.favourites()) {
-            Channel c = lib.byKey(k);
-            if (c != null) order.add(c);
-        }
-        order.addAll(lib.all());
         boolean guide = lib.hasGuide();
-        for (Channel c : order) {
-            if (!seen.add(c.key)) continue;
-            if (onNow.size() >= 24 && sport.size() >= 16) break;
+        // What's on now and the sport in it: found off the main thread (Library.onNow), the rows made again when it is.
+        Library.OnNow on = lib.onNow(now, this::fill);
+        for (Channel c : on.channels) {
             Guide.Schedule s = lib.schedule(c.key);
-            int i = s == null ? -1 : s.at(now);
-            if (guide && i < 0) continue;
-            Rows.Tile t = channelTile(lib, c, s, i, now);
-            if (onNow.size() < 24) onNow.add(t);
-            if (sport.size() < 16 && Genres.SPORT.equals(Genres.of(c.group, c.name))) sport.add(channelTile(lib, c, s, i, now));
+            onNow.add(channelTile(lib, c, s, s == null ? -1 : s.at(now), now));
+        }
+        for (Channel c : on.sport) {
+            Guide.Schedule s = lib.schedule(c.key);
+            sport.add(channelTile(lib, c, s, s == null ? -1 : s.at(now), now));
         }
         for (String k : lib.favourites()) {
             Channel c = lib.byKey(k);
@@ -337,8 +328,8 @@ final class HomeScreen extends Screen implements Rows.Host, LiveTv.Listener {
     }
 
     private void zap(int dir) {
-        // Settings → Categories and Parental control: past hidden categories and locked channels.
-        Channel c = com.gathin.homefieldtv.prefs.Shown.step(tv, Library.get(tv).all(), tv.live.channel(), dir);
+        // Settings → Categories and Parental control: past hidden categories and locked channels (found at once).
+        Channel c = Library.get(tv).step(tv.live.channel(), dir);
         if (c != null && !com.gathin.homefieldtv.prefs.Parental.blocks(tv, c)) tv.live.play(c);
     }
 

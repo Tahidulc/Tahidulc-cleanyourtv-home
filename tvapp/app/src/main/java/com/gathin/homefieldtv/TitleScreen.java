@@ -119,7 +119,9 @@ final class TitleScreen extends Screen implements DetailPage.Host {
         for (Catalog.Category c : Catalog.get(tv).categories(title.series)) {
             if (!c.name.equals(title.category)) continue;
             for (Catalog.Title t : c.titles) {
-                if (t == title || more.size() >= 30) continue;
+                // The first 30: never on through a category of thousands.
+                if (more.size() >= 30) break;
+                if (t == title) continue;
                 PosterArt.Item it = new PosterArt.Item(t);
                 it.genre = PosterArt.genreOf(t.category);
                 Catalog.Details read = Catalog.get(tv).cachedDetails(t);
