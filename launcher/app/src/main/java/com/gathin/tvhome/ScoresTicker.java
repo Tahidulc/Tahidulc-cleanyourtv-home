@@ -15,7 +15,6 @@ import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.util.LruCache;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -214,7 +213,8 @@ final class ScoresTicker {
     private final Runnable refresh = this::fetch;
     private final Runnable flip = this::nextPage;
     /** Logos at LOGO px, in memory and on disk (they change once a season, not once a minute). */
-    private final LruCache<String, Bitmap> logos = new LruCache<>(80);
+    /** Crests and logos, held to a size in bytes (it was 80 of them, however big each). */
+    private final BitmapCache logos = new BitmapCache("ticker", 8L * 1024 * 1024);
     private final ExecutorService logoIo = Executors.newFixedThreadPool(2);
     private final Map<String, List<ImageView>> waiting = new HashMap<>();
     private final File logoDir;
@@ -2002,7 +2002,7 @@ final class ScoresTicker {
             cv.drawBitmap(im, new android.graphics.Rect(keep, 0, w, h), new android.graphics.Rect(div + wide, 0, nw, h), null);
             android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
             p.setColor(android.graphics.Color.WHITE);
-            p.setTypeface(c.getResources().getFont(R.font.inter_semibold));
+            p.setTypeface(Fonts.get(c, R.font.inter_semibold));
             p.setTextSize((tB - tT + 1) * 1.38f);
             android.graphics.Rect bb = new android.graphics.Rect();
             p.getTextBounds("UHD", 0, 3, bb);

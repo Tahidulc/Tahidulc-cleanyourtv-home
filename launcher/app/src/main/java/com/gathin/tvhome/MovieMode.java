@@ -199,7 +199,7 @@ final class MovieMode {
         frame = new FrameLayout(c);
         frame.setBackgroundColor(Color.BLACK);
         overlay.addView(frame, new FrameLayout.LayoutParams(h.px(1920), h.px(1080)));
-        web = new WebView(c);
+        web = WebViews.made(new WebView(c));
         web.setBackgroundColor(Color.TRANSPARENT);
         web.setFocusable(false);
         WebSettings s = web.getSettings();
@@ -523,6 +523,7 @@ final class MovieMode {
             w.evaluateJavascript("CINEMA.stop()", null);
             w.removeJavascriptInterface("AndroidCinema");
             if (w.getParent() instanceof ViewGroup) ((ViewGroup) w.getParent()).removeView(w);
+            WebViews.gone(w);
             w.destroy();
         }
         FrameLayout o = overlay;

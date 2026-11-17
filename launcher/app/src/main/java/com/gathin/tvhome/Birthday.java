@@ -135,14 +135,14 @@ final class Birthday {
             }
             fun = new Confetti(c, kids, h.px(1000) / 1000f);
             overlay.addView(fun, new FrameLayout.LayoutParams(-1, -1));
-            TextView title = h.text(92, c.getResources().getFont(R.font.outfit_extrabold), Color.WHITE);
+            TextView title = h.text(92, Fonts.get(c, R.font.outfit_extrabold), Color.WHITE);
             title.setText("Happy birthday, " + name + "!");
             title.setGravity(Gravity.CENTER);
             title.setShadowLayer(h.px(18), 0, h.px(4), 0xAA000000);
             FrameLayout.LayoutParams tlp = new FrameLayout.LayoutParams(-1, -2, Gravity.TOP);
             tlp.topMargin = h.px(110);
             overlay.addView(title, tlp);
-            TextView sub = h.text(40, c.getResources().getFont(R.font.inter_semibold), 0xFFFFE27A);
+            TextView sub = h.text(40, Fonts.get(c, R.font.inter_semibold), 0xFFFFE27A);
             sub.setText((age.isEmpty() ? "" : age + " today  🎂   ") + "Have the best day!");
             sub.setGravity(Gravity.CENTER);
             sub.setShadowLayer(h.px(12), 0, h.px(3), 0xAA000000);

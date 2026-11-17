@@ -778,8 +778,33 @@ final class ClassicIntro {
         prepKey = key;
         prepKind = kind;
         prepAt = android.os.SystemClock.uptimeMillis();
+        // Let go after PREP_KEEP_MS whatever happens: tick() looked at its age only while the board showed a game, so one
+        // made ready before Home, another app or the board going off stayed in its unseen window (a whole web page, its
+        // 3D trophy and its sounds) for as long as the launcher ran.
+        handler().removeCallbacks(dropStale);
+        handler().postDelayed(dropStale, PREP_KEEP_MS + 1_000L);
         android.util.Log.i("Sport", "classic " + kind + " being made ready: " + key);
         return true;
+    }
+
+    private static final Runnable dropStale = () -> {
+        if (prep != null && android.os.SystemClock.uptimeMillis() - prepAt >= PREP_KEEP_MS) {
+            android.util.Log.i("Sport", "classic " + prepKind + " made ready but never shown: let go");
+            dropPrepared();
+        }
+    };
+
+    /** The pages alive now, made ready and showing (each a web view), for the self-check. */
+    static int alive() {
+        return (prep != null ? 1 : 0) + (view != null ? 1 : 0);
+    }
+
+    /** A memory warning (MemoryWatch): the pop-up made ready out of sight let go (made again for its moment). */
+    static void releaseHeld() {
+        if (prep != null) {
+            android.util.Log.i("Sport", "classic " + prepKind + " made ready: let go for memory");
+            dropPrepared();
+        }
     }
 
     /** The pop-up made ready for key, on the whole screen now (it plays as soon as it is ready, if it is not yet). */
@@ -870,6 +895,9 @@ final class ClassicIntro {
         if (trial) return;
         if (view != null) view.stop();
         else removeWindow();
+        // The one made ready out of sight goes too (made again when the board is back for its moment): kept, it held a
+        // whole web page in an unseen window with nothing left to show it.
+        dropPrepared();
     }
 
     /** Back while the line-ups are on: they fade away to the channel (from the key helpers, as the board's keys). */

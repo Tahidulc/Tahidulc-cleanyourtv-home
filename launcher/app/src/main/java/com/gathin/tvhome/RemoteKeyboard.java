@@ -63,7 +63,7 @@ final class RemoteKeyboard {
     RemoteKeyboard(Context c, Look look, String hint, boolean mic, int max) {
         this.look = look;
         this.max = max;
-        semi = c.getResources().getFont(R.font.inter_semibold);
+        semi = Fonts.get(c, R.font.inter_semibold);
         view = new LinearLayout(c);
         view.setOrientation(LinearLayout.VERTICAL);
         field = look.text(30, semi, 0xFF10157E);

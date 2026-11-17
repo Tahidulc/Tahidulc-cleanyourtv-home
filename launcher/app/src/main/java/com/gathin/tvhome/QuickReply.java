@@ -144,9 +144,9 @@ final class QuickReply {
             win = new FrameLayout(c);
             name = who.name.isEmpty() ? "them" : who.name;
             k = c.getResources().getDisplayMetrics().widthPixels / 1920f;
-            heavy = c.getResources().getFont(R.font.outfit_extrabold);
-            semi = c.getResources().getFont(R.font.inter_semibold);
-            regular = c.getResources().getFont(R.font.inter_regular);
+            heavy = Fonts.get(c, R.font.outfit_extrabold);
+            semi = Fonts.get(c, R.font.inter_semibold);
+            regular = Fonts.get(c, R.font.inter_regular);
 
             // The launcher's alert look: the navy box of Message the other TV, the message's purple label.
             box = new LinearLayout(c);

@@ -34,7 +34,7 @@ final class YouTubeBox {
     /** The player for one video, starting by itself; muted for a clip over the channel's own sound. */
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     static WebView make(Context c, String videoId, boolean muted, Events events) {
-        WebView w = new WebView(c);
+        WebView w = WebViews.made(new WebView(c));
         w.setBackgroundColor(Color.BLACK);
         WebSettings s = w.getSettings();
         s.setJavaScriptEnabled(true);
@@ -77,6 +77,9 @@ final class YouTubeBox {
         long[] start = {0};
         Runnable next = new Runnable() {
             @Override public void run() {
+                for (int i = root.getChildCount() - 1; i >= 0; i--) {
+                    if (root.getChildAt(i) instanceof WebView) WebViews.destroy((WebView) root.getChildAt(i), "Box");
+                }
                 root.removeAllViews();
                 if (at[0] >= ids.length) {
                     try { p.dismiss(); } catch (RuntimeException ignored) { }

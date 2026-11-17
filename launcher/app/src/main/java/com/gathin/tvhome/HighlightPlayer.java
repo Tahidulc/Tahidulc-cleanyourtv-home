@@ -114,8 +114,8 @@ final class HighlightPlayer implements TilePlayer.Film {
     void open(View card) {
         if (clips.isEmpty()) return;
         showing = true;
-        outfitBold = h.a.getResources().getFont(R.font.outfit_bold);
-        outfitHeavy = h.a.getResources().getFont(R.font.outfit_extrabold);
+        outfitBold = Fonts.get(h.a, R.font.outfit_bold);
+        outfitHeavy = Fonts.get(h.a, R.font.outfit_extrabold);
         build();
         float[] from = rectOf(card);
         frame.setPivotX(0f);

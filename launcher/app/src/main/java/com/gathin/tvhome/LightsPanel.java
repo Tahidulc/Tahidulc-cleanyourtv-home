@@ -177,7 +177,7 @@ final class LightsPanel {
         t.setText(s);
         t.setTextColor(color);
         t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
-        t.setTypeface(ctx.getResources().getFont(bold ? R.font.outfit_medium : R.font.outfit_regular));
+        t.setTypeface(Fonts.get(ctx, bold ? R.font.outfit_medium : R.font.outfit_regular));
         t.setSingleLine(true);
         return t;
     }

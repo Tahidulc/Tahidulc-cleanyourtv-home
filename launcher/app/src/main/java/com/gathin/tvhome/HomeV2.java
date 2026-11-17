@@ -22,7 +22,6 @@ import android.net.wifi.WifiManager;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.TextUtils;
-import android.util.LruCache;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -159,10 +158,7 @@ final class HomeV2 {
     final Handler main = new Handler(Looper.getMainLooper());
     final ExecutorService io = Executors.newFixedThreadPool(3);
     private final ExecutorService pics = Executors.newFixedThreadPool(6);
-    private final LruCache<String, Bitmap> cache = new LruCache<String, Bitmap>(
-            (int) Math.min(Runtime.getRuntime().maxMemory() / 6, 48L * 1024 * 1024)) {
-        @Override protected int sizeOf(String k, Bitmap b) { return b.getByteCount(); }
-    };
+    private final BitmapCache cache = new BitmapCache("home", BitmapCache.share(6, 48L * 1024 * 1024));
     private final Map<String, List<Tile>> rows = new HashMap<>();
     private final Map<String, Long> rowsAt = new HashMap<>();
     private final Map<String, String> logos = new HashMap<>();
@@ -385,6 +381,15 @@ final class HomeV2 {
 
     HomeV2(MainActivity activity) {
         a = activity;
+        current = new java.lang.ref.WeakReference<>(this);
+    }
+
+    /** The Home made last (held weakly: an activity gone is never kept for it), for memory warnings (MemoryWatch). */
+    private static java.lang.ref.WeakReference<HomeV2> current;
+
+    static HomeV2 current() {
+        java.lang.ref.WeakReference<HomeV2> r = current;
+        return r == null ? null : r.get();
     }
 
     // ---- building --------------------------------------------------------------------------------------------------
@@ -403,10 +408,10 @@ final class HomeV2 {
         int w = a.getResources().getDisplayMetrics().widthPixels, h = a.getResources().getDisplayMetrics().heightPixels;
         s = Math.max(w, h) / 1920f;
         // Inter for text, and its Display cut (tighter, finer) from 34 px up: the clean SF-style look.
-        regular = a.getResources().getFont(R.font.inter_regular);
-        semi = a.getResources().getFont(R.font.inter_semibold);
-        displayRegular = a.getResources().getFont(R.font.inter_display_regular);
-        displaySemi = a.getResources().getFont(R.font.inter_display_semibold);
+        regular = Fonts.get(a, R.font.inter_regular);
+        semi = Fonts.get(a, R.font.inter_semibold);
+        displayRegular = Fonts.get(a, R.font.inter_display_regular);
+        displaySemi = Fonts.get(a, R.font.inter_display_semibold);
         tmdbKey = Config.themeString(a, "tmdb_key", "").trim();
         lite = Config.themeFlag(a, "lite_home", false);
         dockMode = Config.themeFlag(a, "home_dock", true);
@@ -548,7 +553,7 @@ final class HomeV2 {
                     paint();
                 }
             });
-            scores.setTypeface(a.getResources().getFont(R.font.inter_ui));
+            scores.setTypeface(Fonts.get(a, R.font.inter_ui));
             scores.equalWidths(true);
             scores.showF1(Config.themeFlag(a, "f1_scores_bar", false));
             scores.showAlerts(!Config.themeFlag(a, "alerts_everywhere", false));
@@ -696,14 +701,14 @@ final class HomeV2 {
         TextClock time = new TextClock(a);
         time.setFormat24Hour("HH:mm");
         time.setFormat12Hour("HH:mm");
-        style(time, 82, a.getResources().getFont(R.font.inter_display_light), Color.WHITE);
+        style(time, 82, Fonts.get(a, R.font.inter_display_light), Color.WHITE);
         time.setLetterSpacing(-0.03f);
         time.setIncludeFontPadding(false);
         hm.addView(time);
         TextClock secs = new TextClock(a);
         secs.setFormat24Hour(":ss");
         secs.setFormat12Hour(":ss");
-        style(secs, 40, a.getResources().getFont(R.font.inter_display_light), 0xB3FFFFFF);
+        style(secs, 40, Fonts.get(a, R.font.inter_display_light), 0xB3FFFFFF);
         secs.setIncludeFontPadding(false);
         hm.addView(secs);
         // Same-width digits, in a box as wide as the widest time: the date and weather beside it never move.
@@ -797,7 +802,7 @@ final class HomeV2 {
         TextClock time = new TextClock(a);
         time.setFormat24Hour("HH:mm");
         time.setFormat12Hour("HH:mm");
-        style(time, 44, a.getResources().getFont(R.font.inter_display_light), Color.WHITE);
+        style(time, 44, Fonts.get(a, R.font.inter_display_light), Color.WHITE);
         time.setLetterSpacing(-0.02f);
         time.setIncludeFontPadding(false);
         time.setFontFeatureSettings("tnum");
@@ -1567,6 +1572,9 @@ final class HomeV2 {
 
     void resume() {
         onScreen = true;
+        // Back before YouTube's player was let go: kept; let go meanwhile and loaded before: loaded again out of sight.
+        main.removeCallbacks(dropPlayer);
+        if (rewarmPlayer && players != null && !players.warmed()) main.postDelayed(rewarm, REWARM_MS);
         GoalWatchService.laneHome = skin == null;
         main.removeCallbacks(shiftMesh);
         if (mesh && !lite) main.postDelayed(shiftMesh, MESH_EVERY_MS / 3);
@@ -1720,8 +1728,19 @@ final class HomeV2 {
         if (match != null) match.stop();
         // A slower TV (lite_home) lets the trailer player's web process go with Home, so the app opened from it (TiviMate,
         // Debrid Stream) has the memory: on a TCL with 2.4 GB they were closed for it again and again, and the launcher
-        // with them, taking its helper down.
-        if (players != null) { if (lite) players.destroy(); else players.stop(); }
+        // with them, taking its helper down. Every TV now: a minute after Home goes (a quick trip to an app and back
+        // keeps it), as YouTube's page kept all day grew the launcher's native memory (MemoryWatch, 5.34); loaded
+        // again out of sight a moment after Home comes back.
+        main.removeCallbacks(rewarm);
+        if (players != null) {
+            rewarmPlayer = !lite && players.warmed();
+            if (lite) players.destroy();
+            else {
+                players.stop();
+                main.removeCallbacks(dropPlayer);
+                main.postDelayed(dropPlayer, DROP_PLAYER_MS);
+            }
+        }
         playingTile = null;
         GoalWatchService.laneHome = false;
         // Pop-up mode's frame has its own pills for the alerts to stand in for: left to it.
@@ -1732,17 +1751,46 @@ final class HomeV2 {
         main.removeCallbacks(network);
     }
 
+    /** YouTube's player let go this long after Home goes; loaded again this long after Home comes back. */
+    private static final long DROP_PLAYER_MS = 60_000L, REWARM_MS = 4_000L;
+    /** Whether YouTube's player was loaded when Home went (it is loaded again when Home comes back). */
+    private boolean rewarmPlayer;
+    private final Runnable dropPlayer = this::dropPlayerNow, rewarm = this::rewarmNow;
+
+    private void dropPlayerNow() {
+        if (!onScreen && players != null) players.destroy();
+    }
+
+    private void rewarmNow() {
+        if (onScreen && players != null && !players.warmed()) players.warm();
+    }
+
     void destroy() {
         if (skin != null) skin.destroy();
+        main.removeCallbacks(dropPlayer);
+        main.removeCallbacks(rewarm);
+        // YouTube's player too, on every TV (only lite_home let it go before): kept, its page held this whole Home and
+        // its activity through its JavaScript bridge, for good.
+        if (players != null) players.destroy();
         io.shutdownNow();
         sportIo.shutdownNow();
         pics.shutdownNow();
+        meshIo.shutdownNow();
         cache.evictAll();
+        blurSource.evictAll();
         guide.close();
     }
 
     void trim() {
         cache.evictAll();
+        blurSource.evictAll();
+    }
+
+    /** A memory warning while Home is not on screen (MemoryWatch): YouTube's player let go at once. Main thread. */
+    void releaseHidden() {
+        if (onScreen) return;
+        main.removeCallbacks(dropPlayer);
+        if (players != null) players.destroy();
     }
 
     /** Home pressed: back to For you, first tile, guide closed. */
@@ -4673,7 +4721,8 @@ final class HomeV2 {
     /** "blur": the content's picture as the background; the small copies kept for it, and the one asked for now. */
     private boolean blurBg, showingPicture;
     private static final int BLUR_W = 128, BLUR_H = 72;
-    private final android.util.LruCache<String, Bitmap> blurSource = new android.util.LruCache<>(48);
+    /** The small copies kept for the blur (a few KB each), held to a size in bytes like every picture cache. */
+    private final BitmapCache blurSource = new BitmapCache("blur", 2L * 1024 * 1024);
     private Bitmap blurPic;
     private int blurAsked;
 

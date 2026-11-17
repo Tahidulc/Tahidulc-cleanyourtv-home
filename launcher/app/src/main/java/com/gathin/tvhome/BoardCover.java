@@ -85,8 +85,11 @@ final class BoardCover {
     static final float DIM = 0.7f;
     /** The readings kept for each game: one a poll (20 s apart while live), more than the longest wait. */
     static final int KEEP = 16;
-    /** The apps it shows over, each playing the channel full screen: TiviMate, Kleva TV, Homefield TV. */
-    static final String[] PLAYERS = {"ar.tvplayer.tv", "com.plaintextdev.klevaTv", "com.gathin.homefieldtv"};
+    /**
+     * The apps it shows over, each playing the channel full screen: TiviMate and Kleva TV (OverlayScope). Never Homefield
+     * TV any more (it was here to 5.33): it has its own scoreboard and logo cover, and ours went over them and its menus.
+     */
+    static final String[] PLAYERS = OverlayScope.PLAYERS;
     private static final String FILE = "board_cover";
 
     private static Handler main;
@@ -2664,9 +2667,14 @@ final class BoardCover {
     }
 
     private static long frontAt;
-    private static boolean frontOk = true;
+    private static boolean frontOk, frontWasPlayer;
 
-    /** Whether a channel app is in front (looked at every two seconds); true when that cannot be told. */
+    /**
+     * Whether a channel app is in front playing its channel full screen (looked at every two seconds; OverlayScope):
+     * TiviMate or Kleva TV, not Homefield TV, and not while TiviMate shows its guide, its channel list or a menu (its
+     * screen read by the search helper). Not when the app in front cannot be told (to 5.33 that counted as yes, so the
+     * overlays could come over anything then).
+     */
     static boolean playerInFront(Context c) {
         long now = SystemClock.uptimeMillis();
         if (now - frontAt < 2_000L) return frontOk;
@@ -2674,7 +2682,12 @@ final class BoardCover {
         String f = AppSearchService.front();
         // The launcher's own window in front over the app (a pop-up with the remote): the app below, by usage.
         if (f == null || f.equals(c.getPackageName())) f = usageFront(c);
-        frontOk = f == null || isPlayer(f);
+        boolean player = OverlayScope.isPlayer(f);
+        // Just come (back) to the player: taken as its channel full screen until its screen is read again.
+        if (player && !frontWasPlayer) AppSearchService.playerBack();
+        frontWasPlayer = player;
+        boolean menu = player && OverlayScope.TIVIMATE.equals(f) && AppSearchService.playerMenuUp();
+        frontOk = OverlayScope.inChannel(f, menu);
         return frontOk;
     }
 
@@ -2686,8 +2699,7 @@ final class BoardCover {
     }
 
     static boolean isPlayer(String pkg) {
-        for (String p : PLAYERS) if (p.equals(pkg)) return true;
-        return false;
+        return OverlayScope.isPlayer(pkg);
     }
 
     private static long usageFrom;
@@ -4994,16 +5006,10 @@ final class BoardCover {
 
     // ---- crests ----------------------------------------------------------------------------------------------------
 
-    private static android.util.LruCache<String, Bitmap> images;
+    private static BitmapCache images;
 
-    private static synchronized android.util.LruCache<String, Bitmap> images() {
-        if (images == null) {
-            images = new android.util.LruCache<String, Bitmap>(3 * 1024 * 1024) {
-                @Override protected int sizeOf(String k, Bitmap b) {
-                    return b.getByteCount();
-                }
-            };
-        }
+    private static synchronized BitmapCache images() {
+        if (images == null) images = new BitmapCache("board", 3L * 1024 * 1024);
         return images;
     }
 
@@ -5255,7 +5261,7 @@ final class BoardCover {
         hint = new TextView(c);
         hint.setTextSize(TypedValue.COMPLEX_UNIT_PX, 22f * u);
         hint.setTextColor(BoardBug.INK);
-        hint.setTypeface(c.getResources().getFont(R.font.inter_semibold));
+        hint.setTypeface(Fonts.get(c, R.font.inter_semibold));
         int px = Math.round(30 * u), py = Math.round(16 * u);
         hint.setPadding(px, py, px, py);
         GradientDrawable bg = new GradientDrawable();
@@ -5662,7 +5668,7 @@ final class BoardCover {
             TextView t = new TextView(soft);
             t.setTextColor(0xFFFFFFFF);
             t.setTextSize(TypedValue.COMPLEX_UNIT_PX, 21f * u);
-            t.setTypeface(c.getResources().getFont(R.font.inter_semibold));
+            t.setTypeface(Fonts.get(c, R.font.inter_semibold));
             t.setPadding(Math.round(20 * u), Math.round(8 * u), Math.round(36 * u), Math.round(8 * u));
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
             lp.topMargin = Math.round(3 * u);
@@ -5775,7 +5781,7 @@ final class BoardCover {
         TextView t = new TextView(soft);
         t.setTextColor(colour);
         t.setTextSize(TypedValue.COMPLEX_UNIT_PX, size * u);
-        t.setTypeface(c.getResources().getFont(R.font.inter_semibold));
+        t.setTypeface(Fonts.get(c, R.font.inter_semibold));
         t.setGravity(Gravity.CENTER);
         t.setSingleLine(true);
         t.setEllipsize(android.text.TextUtils.TruncateAt.END);

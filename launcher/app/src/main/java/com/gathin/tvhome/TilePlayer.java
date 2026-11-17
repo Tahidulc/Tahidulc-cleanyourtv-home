@@ -84,15 +84,97 @@ final class TilePlayer {
         this.c = c;
     }
 
+    /**
+     * What YouTube's page calls (on the web view's own thread). Held from native code for as long as the view lives, so
+     * it holds this player only weakly: a player (and the Home and activity behind it) is never kept alive by its page.
+     */
+    private static final class Bridge {
+        private final java.lang.ref.WeakReference<TilePlayer> to;
+
+        Bridge(TilePlayer p) {
+            to = new java.lang.ref.WeakReference<>(p);
+        }
+
+        private void run(java.util.function.Consumer<TilePlayer> what) {
+            TilePlayer p = to.get();
+            if (p != null) p.main.post(() -> what.accept(p));
+        }
+
+        @android.webkit.JavascriptInterface public void ready() {
+            run(TilePlayer::pageReady);
+        }
+        @android.webkit.JavascriptInterface public void playing() {
+            run(p -> { if (p.film != null) return; p.main.removeCallbacks(p.reveal); p.main.postDelayed(p.reveal, TITLE_MS); });
+        }
+        @android.webkit.JavascriptInterface public void waiting() {
+            // Loading or paused: YouTube draws its logo and spinner over the picture, so the trailer hides again.
+            run(p -> { if (p.film == null) p.covered(); });
+        }
+        @android.webkit.JavascriptInterface public void state(int s) {
+            run(p -> { if (p.film != null) p.film.state(s); });
+        }
+        @android.webkit.JavascriptInterface public void time(double at, double length) {
+            run(p -> { if (p.film != null) p.film.time(at, length); });
+        }
+        @android.webkit.JavascriptInterface public void refused(String id, int code) {
+            android.util.Log.i("TilePlayer", "video " + id + " refused by YouTube (" + code + ")");
+            run(p -> { if (p.film != null) p.film.failed(code); });
+        }
+        @android.webkit.JavascriptInterface public void ended() {
+            // A trailer run to its end: every picture it covered back (the widened poster's wide picture too, not
+            // only the narrow one: left hidden, the open poster showed just its narrow picture at its left).
+            run(p -> { if (p.film == null) p.stop(); });
+        }
+    }
+
+    private void pageReady() {
+        ready = true;
+        if (pending == null) return;
+        String id = pending;
+        pending = null;
+        if (pendingFilm) { pendingFilm = false; cueFilm(id); } else cue(id);
+    }
+
+    /**
+     * Its page let go once nothing has played for IDLE_MS (and when Home goes, HomeV2): YouTube's player kept loaded all
+     * day in this process grew its native memory (Chromium's, unseen by Java's tidy) for as long as the launcher ran.
+     * Made again for the next trailer, which then takes a moment longer.
+     */
+    static final long IDLE_MS = 3 * 60_000L;
+    private final WebViews.Idle idle = new WebViews.Idle(IDLE_MS);
+    private final Runnable idleCheck = this::idleCheck;
+
+    private void idleCheck() {
+        if (web == null) return;
+        long now = android.os.SystemClock.uptimeMillis();
+        if (tile == null && film == null && idle.due(now)) {
+            android.util.Log.i("TilePlayer", "YouTube's player let go: nothing played for " + (IDLE_MS / 60_000L) + " min");
+            dropWeb();
+            return;
+        }
+        long left = idle.left(now);
+        if (left != Long.MAX_VALUE) main.postDelayed(idleCheck, left + 500L);
+    }
+
+    /** Whether YouTube's player page is loaded now. */
+    boolean warmed() {
+        return web != null;
+    }
+
     /** Loads YouTube's player page now, out of sight, so the first trailer does not wait for it. */
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     void warm() {
         if (web != null) return;
         try {
-            web = new android.webkit.WebView(c);
+            web = WebViews.made(new android.webkit.WebView(c));
         } catch (RuntimeException e) {
             return;   // no WebView on this TV: no trailers
         }
+        ready = false;
+        // Warmed and not used yet: let go after IDLE_MS like any spell with nothing playing.
+        idle.free(android.os.SystemClock.uptimeMillis());
+        main.removeCallbacks(idleCheck);
+        main.postDelayed(idleCheck, IDLE_MS + 500L);
         android.webkit.WebSettings ws = web.getSettings();
         ws.setJavaScriptEnabled(true);
         ws.setMediaPlaybackRequiresUserGesture(false);
@@ -102,39 +184,7 @@ final class TilePlayer {
         web.setFocusableInTouchMode(false);
         web.setVerticalScrollBarEnabled(false);
         web.setHorizontalScrollBarEnabled(false);
-        web.addJavascriptInterface(new Object() {
-            @android.webkit.JavascriptInterface public void ready() {
-                main.post(() -> {
-                    ready = true;
-                    if (pending == null) return;
-                    String id = pending;
-                    pending = null;
-                    if (pendingFilm) { pendingFilm = false; cueFilm(id); } else cue(id);
-                });
-            }
-            @android.webkit.JavascriptInterface public void playing() {
-                main.post(() -> { if (film != null) return; main.removeCallbacks(reveal); main.postDelayed(reveal, TITLE_MS); });
-            }
-            @android.webkit.JavascriptInterface public void waiting() {
-                // Loading or paused: YouTube draws its logo and spinner over the picture, so the trailer hides again.
-                main.post(() -> { if (film == null) covered(); });
-            }
-            @android.webkit.JavascriptInterface public void state(int s) {
-                main.post(() -> { if (film != null) film.state(s); });
-            }
-            @android.webkit.JavascriptInterface public void time(double at, double length) {
-                main.post(() -> { if (film != null) film.time(at, length); });
-            }
-            @android.webkit.JavascriptInterface public void refused(String id, int code) {
-                android.util.Log.i("TilePlayer", "video " + id + " refused by YouTube (" + code + ")");
-                main.post(() -> { if (film != null) film.failed(code); });
-            }
-            @android.webkit.JavascriptInterface public void ended() {
-                // A trailer run to its end: every picture it covered back (the widened poster's wide picture too, not
-                // only the narrow one: left hidden, the open poster showed just its narrow picture at its left).
-                main.post(() -> { if (film == null) stop(); });
-            }
-        }, "Home");
+        web.addJavascriptInterface(new Bridge(this), "Home");
         String pkg = c.getPackageName();
         String html = "<!doctype html><html><head><meta name=viewport content='width=device-width,initial-scale=1'>"
                 + "<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}#p{position:absolute;inset:0;width:100%;height:100%;transform:scale(1.75)}iframe{pointer-events:none}</style>"
@@ -173,6 +223,7 @@ final class TilePlayer {
         stop();
         warm();
         if (web == null) return;
+        idle.use();
         tile = into;
         this.covers = covers;
         revealed = false;
@@ -198,6 +249,7 @@ final class TilePlayer {
         stop();
         warm();
         if (web == null) { f.failed(-1); return; }
+        idle.use();
         tile = into;
         film = f;
         web.setAlpha(1f);
@@ -365,6 +417,12 @@ final class TilePlayer {
         if (video != null && video.getParent() instanceof ViewGroup) ((ViewGroup) video.getParent()).removeView(video);
         video = null;
         tile = null;
+        // Nothing on the player now: let go once nothing has played for IDLE_MS.
+        if (idle.using()) idle.free(android.os.SystemClock.uptimeMillis());
+        if (web != null) {
+            main.removeCallbacks(idleCheck);
+            main.postDelayed(idleCheck, IDLE_MS + 500L);
+        }
     }
 
     boolean on(View t) {
@@ -376,8 +434,19 @@ final class TilePlayer {
         return tile == t && revealed;
     }
 
+    /** YouTube's page let go for good (made again by the next trailer). */
+    private void dropWeb() {
+        main.removeCallbacks(idleCheck);
+        android.webkit.WebView w = web;
+        web = null;
+        ready = false;
+        pending = null;
+        pendingFilm = false;
+        WebViews.destroy(w, "Home");
+    }
+
     void destroy() {
         stop();
-        if (web != null) { web.destroy(); web = null; ready = false; }
+        dropWeb();
     }
 }

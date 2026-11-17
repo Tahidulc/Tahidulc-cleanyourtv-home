@@ -9,7 +9,6 @@ import android.graphics.drawable.GradientDrawable;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.TextUtils;
-import android.util.LruCache;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -65,9 +64,7 @@ final class GuideV2 {
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final ExecutorService pics = Executors.newFixedThreadPool(3);
-    private final LruCache<String, Bitmap> cache = new LruCache<String, Bitmap>(16 * 1024 * 1024) {
-        @Override protected int sizeOf(String k, Bitmap b) { return b.getByteCount(); }
-    };
+    private final BitmapCache cache = new BitmapCache("guide", 16L * 1024 * 1024);
     private final Map<String, List<Show>> shows = new HashMap<>();
     private long readAt;
 

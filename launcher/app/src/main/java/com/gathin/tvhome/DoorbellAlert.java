@@ -143,7 +143,7 @@ final class DoorbellAlert {
         float s = c.getResources().getDisplayMetrics().widthPixels / 1920f;
         int w = Math.round(560 * s), ph = Math.round(w * 9f / 16f), band = Math.round(150 * s), m = Math.round(24 * s);
         float corner = 24 * s;
-        Typeface semi = c.getResources().getFont(R.font.inter_semibold), heavy = c.getResources().getFont(R.font.outfit_extrabold);
+        Typeface semi = Fonts.get(c, R.font.inter_semibold), heavy = Fonts.get(c, R.font.outfit_extrabold);
 
         FrameLayout win = new FrameLayout(c);
         LinearLayout card = new LinearLayout(c);

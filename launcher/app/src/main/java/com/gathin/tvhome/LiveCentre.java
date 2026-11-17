@@ -3179,6 +3179,7 @@ final class LiveCentre {
         FrameLayout box = bigBox;
         bigBox = null;
         if (web != null) {
+            WebViews.gone(web);
             web.loadUrl("about:blank");
             main.postDelayed(web::destroy, 400L);
         }
@@ -3339,9 +3340,7 @@ final class LiveCentre {
     }
 
     /** Every crest and league logo, ready to draw: read with the games and the tables, so none is waited for. */
-    private static final android.util.LruCache<String, Bitmap> crests = new android.util.LruCache<String, Bitmap>(6 * 1024 * 1024) {
-        @Override protected int sizeOf(String k, Bitmap b) { return b.getByteCount(); }
-    };
+    private static final BitmapCache crests = new BitmapCache("crests", 6L * 1024 * 1024);
 
     private static void loadCrest(ImageView v, String url) {
         if (url == null) return;

@@ -3809,9 +3809,9 @@ final class PagesV2 {
             sl.topMargin = px(22);
             c.addView(score, sl);
             ImageView hc = crest(), ac = crest();
-            android.graphics.Typeface outfit = h.a.getResources().getFont(R.font.outfit_bold);
+            android.graphics.Typeface outfit = Fonts.get(h.a, R.font.outfit_bold);
             TextView hn = h.text(36, outfit, Color.WHITE), an = h.text(36, outfit, Color.WHITE);
-            TextView n = h.text(88, h.a.getResources().getFont(R.font.outfit_extrabold), Color.WHITE);
+            TextView n = h.text(88, Fonts.get(h.a, R.font.outfit_extrabold), Color.WHITE);
             n.setLetterSpacing(-0.02f);
             n.setIncludeFontPadding(false);
             n.setText("v");
@@ -4408,7 +4408,7 @@ final class PagesV2 {
         private int tableTop, driverTop;
 
         /** The competitions' logos for the panel's tabs, by address, cut to their shape. */
-        private final Map<String, android.graphics.Bitmap> compLogos = new HashMap<>();
+        private final BitmapCache compLogos = new BitmapCache("comps", 4L * 1024 * 1024);
 
         /**
          * A tab as a competition's logo (and after it the words given, "‹ 1/8 ›", "Drivers"): its name only as what the

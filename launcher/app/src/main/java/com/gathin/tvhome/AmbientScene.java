@@ -118,8 +118,8 @@ final class AmbientScene {
         left.addView(wx, margins(10, 30, 0, 0));
         tomorrow = text(22, "sans-serif", 0xA6FFFFFF);
         left.addView(tomorrow, margins(10, 10, 0, 0));
-        prayerArc = new PrayerArc(c, k, true, c.getResources().getFont(R.font.outfit_extrabold),
-                c.getResources().getFont(R.font.inter_semibold), c.getResources().getFont(R.font.inter_regular));
+        prayerArc = new PrayerArc(c, k, true, Fonts.get(c, R.font.outfit_extrabold),
+                Fonts.get(c, R.font.inter_semibold), Fonts.get(c, R.font.inter_regular));
         LinearLayout.LayoutParams pa = new LinearLayout.LayoutParams(px(640), px(210));
         pa.setMargins(px(10), px(36), 0, 0);
         left.addView(prayerArc, pa);
