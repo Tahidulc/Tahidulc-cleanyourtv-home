@@ -23,7 +23,7 @@ public class LiveTextTest {
         assertEquals("17:40", LiveText.hm(at(17, 40), UTC));
         assertEquals("09:05", LiveText.hm(at(9, 5), UTC));
         assertEquals("00:00", LiveText.hm(at(0, 0), UTC));
-        assertEquals("17:40 – 18:45", LiveText.span(at(17, 40), at(18, 45), UTC));
+        assertEquals("17:40 — 18:45", LiveText.span(at(17, 40), at(18, 45), UTC));
         // British Summer Time is an hour on.
         long july = ZonedDateTime.of(2026, 7, 1, 17, 40, 0, 0, UTC).toInstant().toEpochMilli();
         assertEquals("18:40", LiveText.hm(july, ZoneId.of("Europe/London")));

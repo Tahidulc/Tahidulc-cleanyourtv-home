@@ -115,31 +115,31 @@ wordmark are Homefield; it carries no Sky logo or name.
   channel, the words fade in and rise into place a moment after, pages cross-fade into each other, and the poster or
   tile the remote is on grows a little inside a soft white ring. Opacity, a small move and scale only, nothing
   blurred, and each picture read once at the size it is shown, so it stays light on a TV with 1 GB of memory.
-- **Films and TV shows (dark):** a slim rail down the left (Homefield's mark, the time, Home, the TV guide, Films, TV
-  shows, Search, Settings). First every category at a glance: a row of posters a category (Continue watching and My
-  list first, then Your TorBox, then Recently added) under a big picture of whatever the remote is on: its backdrop, title, facts (★
-  rating, genre, running time, age rating), story and who is in it. Left from a row's first poster opens the side panel
-  of lists: All categories, all the films (or shows), Continue watching, My list, then each category with how many it
-  has; any of them but All categories shows as one grid of posters beside the panel.
-- **Posters**, wherever they show (the rows, the grids, More like this), as the phone draws them: a 2:3 card with
-  rounded corners whose foot fades into the poster's own colour, the title in bold over the fade with "Genre • ★ 8.2"
-  under it, "New" on the top left for a title the playlist added in the last fortnight, the best picture the family's
-  playlists have of it on the top right (4K, 1080p or 720p in a white chip, read from the names, with the Dolby Vision
-  or Atmos mark where a name says so), and the title and year under the card. The poster the remote is on grows a little
-  inside a white ring. One of the family's own TorBox titles has TorBox's green cloud on its top left, "New" beside it;
-  without a TMDB poster its card is drawn in a colour of its own with its title. Settings, Posters: Landscape makes every
-  card 16:9, as the phone's landscape posters: the title's
-  wide backdrop (TMDB's at w780, the poster where there is none), the title at the foot's left in at most half the
-  card's width (where the phone puts the title's logo; the TV has no logos), the genre and rating left-aligned under it,
-  the fade rising from a quarter of the way down, the same badges and chips, and the title and year under the card.
-- **A title (dark):** its backdrop filling the screen and its title large; Play (or Resume where it was left) with round
-  buttons beside it (My list's heart, from the start, the trailer in the TV's YouTube app); the playlist it is from (Your
-  TorBox for the family's own), its story and facts in the middle, who is in it on the right. Down from there: a series'
-  seasons as pills over one row of every episode, season after season (each with its still, "S1 E8", its title, two
-  lines of story, its length and when it was first shown; an episode only the family's TorBox has, with TorBox's cloud on
-  its still, in its place among the playlist's), the season's pill following the row and a season chosen sliding the
-  row to its first episode;
-  then the trailer, the cast in circles (initials, as the playlist gives no photos), and more from its category.
+- **Movies and TV shows:** the rail, then the categories down a column (My list and Continue watching in bold, then the
+  playlists' heading, which folds, with All movies or All TV shows, Your TorBox for the family's own titles no playlist
+  has, Recently added and every category; the remote's row held at one height), and the category the remote is on
+  beside it at once: a row of posters under its name and "1 / 25", under the big words of the poster the remote is on
+  (its title and year, the rating in a grey chip, the year, running time or seasons and genres, the cast, the director
+  and the story) with its backdrop on the right fading into the ground. Right (or OK) goes into the posters: the column
+  goes, the posters move to the left edge in rows of seven, and Search and Sort show at the top right (as in the
+  playlist, by name, newest first or best rated); Left from a row's first poster brings the column back, and OK on a
+  poster opens its page. An empty category shows the clapperboard and "No movies" (or "No TV shows").
+- **Posters**, wherever they show (Movies and TV shows, Search, My list, Home's rows, More like this): the poster with
+  rounded corners and a caption strip of the panel's colour under it with the title and year, cut short with "..", the
+  rating in an accent chip at the poster's foot; "New" on the top left for a title the playlist added in the last
+  fortnight, the best picture the family's playlists have of it on the top right (4K, 1080p or 720p in a white chip,
+  with the Dolby Vision or Atmos mark where a name says so), TorBox's green cloud on one of the family's own TorBox
+  titles (without a TMDB poster, a card in a colour of its own with its title), and how far through it is along the
+  poster's foot. Where the remote is, the strip takes the focus colour and a thin light edge goes round the card.
+  Settings, Appearance, Posters: Landscape makes every card 16:9, with the title's wide backdrop (TMDB's at w780, the
+  poster where there is none) and the same strip under it.
+- **A title:** its backdrop on the right fading into the ground, its words at the top left (title and year, rating,
+  facts, cast, director, story), and under them Play in the accent's pill, or Resume and Play from beginning where it
+  was left part-way (a series: Resume S2 E8, or Play S1 E1), then round buttons: the trailer (in the TV's YouTube app),
+  My list's bookmark and, once something was started, taking it off Continue watching. Down from there: a series'
+  seasons, each a row of 16:9 episodes ("E3. Its title", how far through along the still's foot, TorBox's cloud on one
+  only the family's TorBox has) under "Season 1" and "3 / 8", the remote's row under the title's words; then More like
+  this.
 - **Choose a source:** Play on a film's page (and From the start, and an episode chosen) first lists every source it
   has, as the phone's Choose a source: the family's own TorBox files of it, then the playlists' copies, each source
   under its own heading, each copy with its mark (TorBox's green with a cloud, a playlist's blue with a screen and its
@@ -173,51 +173,80 @@ wordmark are Homefield; it carries no Sky logo or name.
   hour, and when TorBox is turned on, checked or forgotten. Nothing is searched for or added to the account. The API key
   stays on this TV, is never shown again once saved and never written to the log, and goes only to TorBox: in its
   requests, and in a file's address as it starts.
-- **Search:** the rail, the letters beside it (the key the remote is on in amber), and the channels, films and TV
-  shows whose names have what is typed, on the right. Left from the letters goes on to the rail.
-- **Recordings and My list:** from the menu; for now their empty pages (Recordings' message, and My list's four lists
-  down a column, each with its message).
-- **Settings:** a panel down the right over the screen it was opened from, that screen dimmed: the sections as rows, OK
-  opening one as a page that slides in from the right with its name in the panel's band (Back goes back a page, then
-  closes the panel), a field typed in on a sheet rising from the foot: the playlists (all of them together or one, their expiry dates, and catch-up: "Catch-up: 120 channels
-  keep programmes for up to 7 days", or "Your provider keeps no catch-up for these channels"), adding an M3U playlist
-  or an Xtream Codes login, TorBox (on or off, its copies first or last, the API key typed as dots, Check with TorBox:
-  how many films and episodes it has ready, or TorBox's word why not, and Forget), reading them again, removing
-  everything (from this TV only), and the channel logos: on black tiles (each logo trimmed and set in the middle of a
-  black tile, a dark one turned light) or as the playlist gives them.
-  Colour theme: a primary colour (Indigo as it comes, Blue, Deep purple, Purple, Teal, Green, Red, Brown, Blue grey,
-  Grey or Black) with an accent (Blue as it comes, Red, Pink, Purple, Indigo, Cyan, Teal, Green, Lime, Yellow, Amber,
-  Orange or Deep orange), each a disc, the pair in use ticked and named under the section ("Indigo • Blue"); OK keeps
-  one (the screens start again in it, back on Settings). The themes from before are gone: a TV that had one comes up in
-  Indigo • Blue. Posters:
-  Portrait / Landscape. Live TV: subtitles on live TV (Off, From the channel or Automatic), their look and size, and
-  where the TV needs it the English speech model (downloaded from there on OK, with how far it has come, or "On this
-  TV"). Reminders: the ones set, soonest first (OK cancels one), and whether their card may pop up over other apps (OK
-  opens Android's page for it). Player: the buffer for live TV and for films, one Picture quality (Adaptive, which stays
-  on the channel picked and uses its own copies as seamless quality levels, or a fixed 4K, 1080p, 720p, SD or Data
-  saver), the decoders, the picture's shape (each channel keeps its own), matching the TV's frame rate, tunnelled
-  playback and how long the channel banner stays. Sound: passed through or decoded, two speakers, languages and the
-  sound's delay. Stream problems: reconnecting, the provider's adaptive stream and a playlist's own user agent. MENU (or
-  the remote's settings key) while watching brings up the player's menu: the picture's shape, the sound's delay and
-  track. General: the screen it starts on (Home, Live TV, the guide, films or TV shows) and starting when the TV starts.
-  Appearance: the clock, programme times, text size, live TV's channel tiles, the guide's rows, progress bars and
-  channel numbers. Remote, for live TV full screen: Up and Down, the channel keys' way round, OK and OK held, how long
-  the number keys wait, the channel before, and the colour keys. Guide: how often the guide and the playlists are read
-  again, reading them as the app starts, a time shift for a guide whose times are out, and more XMLTV guides that fill in
-  what the playlists' own leave out. Categories: the live categories hidden (out of the guide, Live TV, channel up and
-  down and Search; favourites stay), moved and renamed. Parental control: a four-number PIN, asked before a locked
-  category's or channel's programme plays (channels locked from their menu in Live TV, OK held), locked channels shown
-  or hidden, and Settings locked too. Backup: settings, playlists, favourites, recent channels, reminders and My list
-  saved to a file on the TV and in Downloads, and put back from this TV's backup or a file picked; never the TorBox key,
-  and nothing sent over the network. Sync: Sync now and when it last synced, and a switch
-  for each kind (playlists, favourites and recents, Continue watching, settings), passed on by the launcher on this TV
-  to the family's phones, tablets and other TVs; TorBox's key stays on each device. Updates: the version on this TV,
-  Check for updates (it also looks quietly as the app starts)
-  and when it last looked; when a newer Homefield TV has been put on this TV (update.json and the APK in the app's own
-  folder, files/update/), its name, what's new and Update now. The APK is checked first (its size, its SHA-256, that it
-  is Homefield TV, newer, and signed with the same key), then handed to Android's installer, which asks before it
-  updates; the first time, Android asks to let Homefield TV install apps. A dot on Settings shows one is waiting, and
-  What's new shows once after an update.
+- **Search:** from the menu (or Down held while watching): the microphone at the top left (voice search, where the TV
+  has it), the search field, and search's settings at the top right. Under them the searches made before as chips in
+  two columns, with a bin to clear them; OK on one searches it again. The keyboard floats at the bottom right while
+  typing, its strip suggesting names found, and what is typed is looked for as it is typed (once the typing rests for
+  180 ms, off the main thread): Movies, Channels and TV shows, each a row with the playlists it was found in as chips
+  (Your TorBox for the family's own titles), films and shows as posters, channels as tiles with their logo, name and
+  what's on. The results are dimmed while the remote is on the keyboard or the field. Back closes the keyboard, the
+  remote left on the field; Down goes on to the first row's playlists, then its results; OK on a channel watches it, on
+  a title opens its page. Settings, Other, Search: Show search history and Show favorite channels first.
+- **Recordings:** from the menu: the recordings by day, newest first, as History lists programmes (the programme, its
+  day and times, Scheduled, Recording, how many days it is kept, or Gone, and the channel), the one the remote is on
+  described in a card at the right, and "Recordings" at the top right with its settings' button. OK plays one that has
+  begun; Right, then OK on the bin, deletes one. The family's provider allows one stream at a time and Homefield TV
+  writes no video to the TV, so a recording is a programme kept from its channel's catch-up: chosen in the TV guide, it
+  plays from the provider's archive, from a few minutes before it to a few minutes after (Settings, Other, Recording),
+  for as long as the provider keeps it. A channel without catch-up can't be recorded, and the screen says so. Empty:
+  the record mark, "No recordings" and how to make one.
+- **My list:** from the menu: its four lists down a column (My TV programs, My reminders, My movies, My TV shows), the
+  one the remote is on beside it at once: the programmes added to My list from the TV guide each time they are on now
+  or to come, soonest first (OK on one on now watches it); the reminders set, soonest first (the bin cancels one); the
+  films and series on My list as posters under their words. An empty list shows the bookmark and "No programs" (or
+  reminders, movies, TV shows).
+- **Settings:** a panel down the right over the screen it was opened from, that screen dimmed, with the sections
+  General, Playlists, EPG, Appearance, Playback, Remote control, Parental controls, Other and About. OK opens one as a
+  page that slides in from the right with its name in the panel's band; Back goes back a page, then closes the panel.
+  Each row has its value under its name, a switch at the right where it is on or off, and section names are in the
+  accent; a choice opens its list with the one in use ticked; a field is typed on a keyboard over a sheet risen from
+  the foot, a password only ever as dots.
+  General: starting when the TV starts; the screen it starts on (Home, Live TV with the last channel, the TV guide,
+  Movies or TV shows); Back up data (settings, playlists, favourites, recent channels, reminders and My list saved to a
+  file on the TV and in Downloads; never the TorBox key, and nothing sent over the network) and Restore data (this TV's
+  backup or a file picked); Sync (Sync now and when it last synced, and a switch for each kind: playlists, favourites
+  and recents, Continue watching, settings, passed on by the launcher on this TV to the family's phones, tablets and
+  other TVs; TorBox's key stays on each device); and Remove everything (from this TV only).
+  Playlists: each playlist with its expiry date, opening on its own page (its name, its address or server and login,
+  the password as dots, its own user agent, using it alone or all of them together, removing it); TorBox (on or off, its
+  copies first or last, the API key typed as dots, Check with TorBox: how many films and episodes it has ready, or
+  TorBox's word why not, and Forget); adding an M3U playlist or an Xtream Codes login; Update all playlists and how
+  often; and catch-up ("Catch-up: 120 channels keep programmes for up to 7 days", or "Your provider keeps no catch-up
+  for these channels").
+  EPG: its sources (the playlists' own guides, then more XMLTV guides that fill in what they leave out), a time shift
+  for a guide whose times are out, how often it is read again and reading it as the app starts, Update EPG, Clear EPG,
+  and the latest update ("EPG is successfully updated for 16436 channels on 17/11/2026 08:34").
+  Appearance: TV guide (channel numbers, the guide's rows, progress bars); Player (the clock, 24-hour as it comes,
+  12-hour or off; how long the panels stay; live TV's channel tiles); Groups (how they are sorted, and the live
+  categories hidden, out of the guide, Live TV, channel up and down and Search with favourites staying, moved and
+  renamed); Logos (on black tiles, each trimmed and set in the middle with a dark one turned light, or as the playlist
+  gives them); Font size; Color theme: a primary colour (Indigo as it comes, Blue, Deep purple, Purple, Teal, Green,
+  Red, Brown, Blue grey, Grey or Black) with an accent (Blue as it comes, Red, Pink, Purple, Indigo, Cyan, Teal, Green,
+  Lime, Yellow, Amber, Orange or Deep orange), each a disc, the pair in use ticked and named ("Indigo • Blue"); OK keeps
+  one and the screens start again in it, back on Settings. The themes from before are gone: a TV that had one comes up
+  in Indigo • Blue. Then Posters (Portrait / Landscape) and Programme times (24-hour as it comes, or 12-hour).
+  Playback: the buffer for live TV and for films, the decoders, matching the TV's frame rate and tunnelled playback;
+  Picture: one Picture quality (Adaptive, which stays on the channel picked and uses its own copies as seamless quality
+  levels, or a fixed 4K, 1080p, 720p, SD or Data saver) and the picture's shape for channels and for films (Normal,
+  Full, Zoom, Zoom - 2.35:1, Reduced, 4:3, 16:9, 2.35:1; a channel can keep its own); Sound: passed through or decoded,
+  two speakers, languages and every channel's sound delay; Subtitles on live TV (Off, From the channel or Automatic),
+  their look and size, and where the TV needs it the English speech model (downloaded from there on OK, with how far
+  it has come, or "On this TV"); Stream problems: reconnecting and the provider's adaptive stream. MENU (or OK held)
+  while watching brings up the player's bar instead: its Display mode, Audio offset and Audio tracks change the shape,
+  the delay and the track for the channel, and its Settings opens this panel.
+  Remote control, Player: for live TV full screen, Up and Down, the channel keys' way round, OK and OK held, how long
+  the number keys wait, the channel before, and the colour keys.
+  Parental controls: a switch for a four-number PIN, asked before a locked category's or channel's programme plays
+  (channels locked from Channel options on the player's bar), locked channels shown or hidden, and Settings locked too.
+  Other: Search (Show search history, Show favorite channels first), Reminders (the ones set, soonest first, OK
+  cancelling one, and whether their card may pop up over other apps), Recording (minutes before a programme starts and
+  after it ends), VOD (Autoplay next episode) and Scoreboard.
+  About: the version, and Updates: Check for updates (it also looks quietly as the app starts) and when it last
+  looked; when a newer Homefield TV has been put on this TV (update.json and the APK in the app's own folder,
+  files/update/), its name, what's new and Update now. The APK is checked first (its size, its SHA-256, that it is
+  Homefield TV, newer, and signed with the same key), then handed to Android's installer, which asks before it updates;
+  the first time, Android asks to let Homefield TV install apps. A dot on Settings shows one is waiting, and What's new
+  shows once after an update, as a card over the screen.
 - **From the phone:** while Homefield TV is open (or playing), the family's phone can send it the channel it is
   watching (its Live TV's cast button). The TV makes itself known on the home network (`_homefieldtv._tcp`, with its
   name), listens on port 47830 when it is free (the phone tries it when the announcement doesn't reach it) and answers
