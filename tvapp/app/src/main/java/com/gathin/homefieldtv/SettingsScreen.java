@@ -21,9 +21,12 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Settings: the family's playlists (which are in use, when each runs out), adding an M3U address or an Xtream Codes
- * login with the on-screen keyboard (kept only when it gives live channels), reading everything again, and removing
- * everything from this TV. The password is never shown, only dots; an address shows only its server's name.
+ * Settings, in the dark look: the rail, the sections down a side panel beside it (as Films' lists), and the section the
+ * remote is on to the right under its name: the family's playlists (which are in use, when each runs out), adding an
+ * M3U address or an Xtream Codes login with the on-screen keyboard (kept only when it gives live channels, typed on a
+ * dark sheet that rises over the page), reading everything again, removing everything from this TV, and the rest. The
+ * password is never shown, only dots; an address shows only its server's name. Left from the sections goes on to the
+ * rail, as on every dark screen.
  */
 final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Host {
     private static final List<String> MENU = Arrays.asList("Your playlists", "Add an M3U playlist", "Add an Xtream Codes login",
@@ -32,7 +35,10 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
     static final int PLAYLISTS = 0, ADD_M3U = 1, ADD_XTREAM = 2, TORBOX = 3, REFRESH = 4, CLEAR = 5, LOGOS = 6, THEME = 7, POSTERS = 8,
             LIVE = 9, REMINDERS = 10, UPDATES = 11, SCOREBOARD = 12, SYNC = 13, ABOUT = 14;
 
-    private Strip strip;
+    /** Where the side panel of sections goes and where the section's page starts (design pixels). */
+    static final float PANEL_X = Rail.W, PANEL_W = SidePanel.W, PAGE_X = 616f, PAGE_W = 1224f;
+    private Rail rail;
+    private Frame frame;
     private ListPanel menu, content;
     private ThemePreview look;
     /** Settings' player, sound and stream sections (MoreSettings), after Updates. */
@@ -50,31 +56,36 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
 
     @Override View build() {
         FrameLayout f = new FrameLayout(tv);
-        strip = new Strip(tv);
+        f.setBackgroundColor(Dark.GROUND);
+        rail = new Rail(tv, Rail.SETTINGS);
+        frame = new Frame(tv);
         menu = new ListPanel(tv);
-        menu.x = 262f;
-        menu.y = 170f;
-        menu.w = 470f;
+        menu.pills = true;
+        menu.x = PANEL_X + 36f;
+        menu.y = 150f;
+        menu.w = PANEL_W - 72f;
+        menu.bottom = 1050f;
         menu.setHost(this);
         content = new ListPanel(tv);
-        content.x = 820f;
-        content.y = 170f;
-        content.w = 1040f;
+        content.x = PAGE_X;
+        content.y = 150f;
+        content.w = PAGE_W;
+        content.bottom = 1050f;
         content.setHost(this);
         look = new ThemePreview(tv);
         look.setVisibility(View.GONE);
         shade = new Shade(tv);
         keys = new Keyboard(tv, Keyboard.FULL);
-        keys.x = 494f;
-        keys.y = 478f;
+        keys.x = (Rail.W + 1920f) / 2f - keys.width() / 2f;
+        keys.y = Shade.TOP + 26f;
         keys.setHost(this);
         keys.setVisibility(View.GONE);
         shade.setVisibility(View.GONE);
-        f.addView(new Heading(tv), new FrameLayout.LayoutParams(-1, -1));
+        f.addView(frame, new FrameLayout.LayoutParams(-1, -1));
         f.addView(menu, new FrameLayout.LayoutParams(-1, -1));
         f.addView(content, new FrameLayout.LayoutParams(-1, -1));
         f.addView(look, new FrameLayout.LayoutParams(-1, -1));
-        f.addView(strip, new FrameLayout.LayoutParams(-1, -1));
+        f.addView(rail, new FrameLayout.LayoutParams(-1, -1));
         f.addView(shade, new FrameLayout.LayoutParams(-1, -1));
         f.addView(keys, new FrameLayout.LayoutParams(-1, -1));
         List<ListPanel.Item> items = new ArrayList<>();
@@ -108,7 +119,7 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
     }
 
     @Override void tick() {
-        strip.invalidate();
+        rail.invalidate();
     }
 
     @Override void channelsChanged() {
@@ -147,6 +158,8 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
 
     private void fillContent() {
         if (content == null) return;
+        ListPanel.Item at = menu.item();
+        frame.set(at == null ? "" : at.title);
         List<ListPanel.Item> out = new ArrayList<>();
         Library lib = Library.get(tv);
         if (MoreSettings.owns(section())) {
@@ -273,7 +286,7 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
                 out.add(new ListPanel.Item(null, ListPanel.NOTE, "Hold OK on a channel to add it to your favourites.", ""));
                 out.add(new ListPanel.Item(null, ListPanel.NOTE, "Type a channel's number to go straight to it.", ""));
                 out.add(new ListPanel.Item(null, ListPanel.NOTE, "Back from Home goes back to the TV you were watching.", ""));
-                out.add(new ListPanel.Item(null, ListPanel.NOTE, "Font: Carlito (SIL Open Font License).", ""));
+                out.add(new ListPanel.Item(null, ListPanel.NOTE, "Font: Outfit (SIL Open Font License).", ""));
                 break;
         }
         content.setItems(out);
@@ -381,6 +394,13 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
 
     @Override boolean key(int code, KeyEvent e) {
         if (editing) return keys.key(code, e);
+        if (rail.active()) {
+            if (code == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                fromRail();
+                return true;
+            }
+            return rail.key(code) || code == KeyEvent.KEYCODE_DPAD_LEFT;
+        }
         if (inContent) return content.key(code);
         boolean used = menu.key(code);
         if (used && code != KeyEvent.KEYCODE_DPAD_RIGHT && code != KeyEvent.KEYCODE_DPAD_LEFT) {
@@ -398,6 +418,12 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
             keys.ok();
             return;
         }
+        if (rail.active()) {
+            // Settings itself: back to the sections; anywhere else as the rail goes on every dark screen.
+            if (rail.focus == Rail.SETTINGS) fromRail();
+            else Rail.go(tv, rail.focus, Rail.SETTINGS);
+            return;
+        }
         if (inContent) {
             content.ok();
             return;
@@ -405,9 +431,19 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
         toContent();
     }
 
+    /** From the rail back to the sections. */
+    private void fromRail() {
+        rail.setActive(false);
+        menu.setActive(true);
+    }
+
     @Override boolean back() {
         if (editing) {
             closeKeys();
+            return true;
+        }
+        if (rail.active()) {
+            fromRail();
             return true;
         }
         if (inContent) {
@@ -640,7 +676,9 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
             return true;
         }
         if (list == menu && dir == Ui.LEFT) {
-            tv.pop();
+            // On to the rail, as on every dark screen.
+            menu.setActive(false);
+            rail.setActive(true);
             return true;
         }
         return true;
@@ -724,30 +762,47 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
         return true;
     }
 
-    /** The page's name. */
-    private static final class Heading extends View {
-        private final TextPaint p = Ui.paint(56, false, Ui.WHITE);
+    /** The side panel the sections lie on, with Settings over them, and the section's name over its page. */
+    private static final class Frame extends View {
+        private final Paint back = Dark.fill(Dark.PANEL), edge = Dark.fill(Dark.LINE);
+        private final TextPaint head = Dark.text(40, 600, Dark.TEXT);
+        private String title = "";
 
-        Heading(Context c) {
+        Frame(Context c) {
             super(c);
         }
 
+        void set(String section) {
+            String s = section == null ? "" : section;
+            if (s.equals(title)) return;
+            title = s;
+            invalidate();
+        }
+
         @Override protected void onDraw(Canvas c) {
-            c.drawText("Settings", Ui.f(262), Ui.f(120), p);
+            float x0 = Ui.f(PANEL_X), x1 = Ui.f(PANEL_X + PANEL_W);
+            c.drawRect(x0, 0, x1, getHeight(), back);
+            c.drawRect(x1 - Math.max(1f, Ui.f(1.5f)), 0, x1, getHeight(), edge);
+            c.drawText("Settings", x0 + Ui.f(40), Ui.f(100), head);
+            c.drawText(Ui.fit(title, head, Ui.f(PAGE_W)), Ui.f(PAGE_X), Ui.f(100), head);
         }
     }
 
-    /** The darkened screen behind the keyboard. */
+    /** The page darkened behind the keyboard, which sits on a dark sheet risen from the foot. */
     private static final class Shade extends View {
-        private final Paint p = Ui.fill(Ui.tint(0xFF0A3B86)), edge = Ui.fill(Ui.tint(0x804F92DA));
+        /** The sheet's top (design pixels). */
+        static final float TOP = 436f;
+        private final Paint dim = Dark.fill(0x99000000), sheet = Dark.fill(Dark.RAIL), edge = Dark.line(Dark.LINE, 1.5f);
 
         Shade(Context c) {
             super(c);
         }
 
         @Override protected void onDraw(Canvas c) {
-            c.drawRect(Ui.f(Strip.W), Ui.f(452), getWidth(), getHeight(), p);
-            c.drawRect(Ui.f(Strip.W), Ui.f(452), getWidth(), Ui.f(454), edge);
+            c.drawRect(0, 0, getWidth(), getHeight(), dim);
+            float l = Ui.f(Rail.W), t = Ui.f(TOP), rad = Ui.f(28);
+            c.drawRoundRect(l, t, getWidth() + rad, getHeight() + rad, rad, rad, sheet);
+            c.drawRoundRect(l, t, getWidth() + rad, getHeight() + rad, rad, rad, edge);
         }
     }
 }

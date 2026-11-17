@@ -114,6 +114,8 @@ public final class VodActivity extends Activity {
         super.onCreate(state);
         Ui.init(this);
         Theme.apply(this);
+        // Outfit for the bar and the menus, also when Android starts the player again on its own.
+        Dark.init(this);
         Pics.init(this);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         FrameLayout root = new FrameLayout(this);
@@ -676,15 +678,21 @@ public final class VodActivity extends Activity {
 
     // ---- the playback bar ---------------------------------------------------------------------------------------
 
+    /**
+     * The bar over a film or an episode, in the dark look of catch-up's: a dark scrim rising from the foot, the title,
+     * where it plays from, a thin bar across with the part watched in white and an amber knob (pause or play in it), the
+     * time watched under the knob, the length at the bar's end, the day and time and when it ends; and at an episode's
+     * end, the next one on a dark card.
+     */
     private final class Bar extends View {
-        private final Paint shade = new Paint(), line = Ui.fill(0x8CFFFFFF), done = Ui.fill(0xE6FFFFFF);
-        private final Paint knobRing = Ui.fill(Ui.tint(0xFF1F7FD4)), knob = Ui.fill(Ui.tint(0xFF35B6F7)), knobEdge = Ui.stroke(0x99FFFFFF, 2f);
-        private final Paint icon = Ui.fill(Ui.WHITE), cardBack = Ui.fill(Ui.tint(0xE6062A66));
-        private final TextPaint titleP = Ui.paint(32, true, Ui.WHITE), endP = Ui.paint(28, false, Ui.WHITE);
-        private final TextPaint goneP = Ui.paint(28, true, Ui.CYAN), dayP = Ui.paint(28, false, Ui.DIM), msgP = Ui.paint(34, false, Ui.WHITE);
-        private final TextPaint nextP = Ui.paint(30, false, Ui.WHITE), nextSmall = Ui.paint(24, false, Ui.DIM);
-        private final TextPaint factsP = Ui.paint(26, true, Ui.WHITE), hintP = Ui.paint(24, false, Ui.WHITE);
-        private final Paint hintFill = Ui.fill(Ui.WHITE);
+        private final Paint shade = new Paint(), line = Dark.fill(0x52FFFFFF), done = Dark.fill(0xF2FFFFFF);
+        private final Paint knob = Dark.fill(Dark.ACCENT), knobEdge = Dark.line(0xB3FFFFFF, 2f), icon = Dark.fill(Dark.ACCENT_INK);
+        private final Paint cardBack = Dark.fill(Dark.alpha(Dark.CARD, 0xF2)), cardEdge = Dark.line(Dark.LINE, 1.5f);
+        private final TextPaint titleP = Dark.text(34, 600, Dark.TEXT), endP = Dark.text(26, 500, Dark.SOFT);
+        private final TextPaint goneP = Dark.text(24, 600, Dark.TEXT), dayP = Dark.text(26, 500, Dark.SOFT), msgP = Dark.text(32, 500, Dark.TEXT);
+        private final TextPaint nextP = Dark.text(30, 600, Dark.TEXT), nextSmall = Dark.text(22, 400, Dark.SOFT), nextKicker = Dark.text(20, 700, Dark.ACCENT);
+        private final TextPaint factsP = Dark.text(24, 600, Dark.TEXT), hintP = Dark.text(22, 500, Dark.SOFT);
+        private final Paint hintFill = Dark.fill(Dark.SOFT);
         private final RectF r = new RectF();
         private final android.graphics.Path tri = new android.graphics.Path(), up = new android.graphics.Path();
         private float shadeFor = -1;
@@ -696,6 +704,8 @@ public final class VodActivity extends Activity {
             goneP.setShadowLayer(Ui.f(3), 0, 0, 0x99000000);
             factsP.setShadowLayer(Ui.f(3), 0, 0, 0x99000000);
             hintP.setShadowLayer(Ui.f(3), 0, 0, 0x99000000);
+            msgP.setShadowLayer(Ui.f(3), 0, 0, 0x99000000);
+            nextKicker.setLetterSpacing(0.08f);
         }
 
         @Override protected void onDraw(Canvas c) {
@@ -708,19 +718,21 @@ public final class VodActivity extends Activity {
                 Catalog.Episode next = details.after(episode);
                 if (next != null) {
                     r.set(Ui.f(1180), Ui.f(780), Ui.f(1860), Ui.f(960));
-                    c.drawRoundRect(r, Ui.f(6), Ui.f(6), cardBack);
-                    c.drawText("Up next  ·  OK to start it now", r.left + Ui.f(28), r.top + Ui.f(52), nextSmall);
+                    c.drawRoundRect(r, Ui.f(24), Ui.f(24), cardBack);
+                    c.drawRoundRect(r, Ui.f(24), Ui.f(24), cardEdge);
+                    c.drawText("UP NEXT", r.left + Ui.f(32), r.top + Ui.f(50), nextKicker);
                     c.drawText(Ui.fit("S" + next.season + " E" + next.number + (next.title.isEmpty() ? "" : "  " + next.title), nextP,
-                            r.width() - Ui.f(56)), r.left + Ui.f(28), r.top + Ui.f(104), nextP);
-                    c.drawText("Starts in a few seconds", r.left + Ui.f(28), r.top + Ui.f(148), nextSmall);
+                            r.width() - Ui.f(64)), r.left + Ui.f(32), r.top + Ui.f(102), nextP);
+                    c.drawText("Starts in a few seconds  ·  OK to start it now", r.left + Ui.f(32), r.top + Ui.f(146), nextSmall);
                 }
             }
             if (!barOn || player == null && !Exec.inline) return;
             if (shadeFor != hh) {
-                shade.setShader(new LinearGradient(0, hh * 0.62f, 0, hh, 0x00000000, 0xB3000000, Shader.TileMode.CLAMP));
+                shade.setShader(new LinearGradient(0, hh * 0.5f, 0, hh, new int[]{0x00000000, 0xB8000000, 0xF2000000},
+                        new float[]{0f, 0.42f, 1f}, Shader.TileMode.CLAMP));
                 shadeFor = hh;
             }
-            c.drawRect(0, hh * 0.62f, w, hh, shade);
+            c.drawRect(0, hh * 0.5f, w, hh, shade);
             String name = title == null ? "" : title.name + (episode == null ? "" : "  ·  S" + episode.season + " E" + episode.number
                     + (episode.title.isEmpty() ? "" : "  " + episode.title));
             name = Ui.fit(name, titleP, Ui.f(1400));
@@ -737,23 +749,22 @@ public final class VodActivity extends Activity {
             float p = known ? Math.max(0f, Math.min(1f, pos / (float) dur)) : 0f;
             float kx = x0 + (x1 - x0) * p;
             c.drawRect(x0, y - Ui.f(2), kx, y + Ui.f(2), done);
-            // The knob: play or pause in it, as the player is now.
-            c.drawCircle(kx, y, Ui.f(34), knobRing);
-            c.drawCircle(kx, y, Ui.f(26), knob);
-            c.drawCircle(kx, y, Ui.f(34), knobEdge);
+            // The knob, in amber: play or pause in it, as the player is now.
+            c.drawCircle(kx, y, Ui.f(24), knob);
+            c.drawCircle(kx, y, Ui.f(24), knobEdge);
             if (playing() && seekTo < 0) {
-                c.drawRect(kx - Ui.f(9), y - Ui.f(11), kx - Ui.f(3), y + Ui.f(11), icon);
-                c.drawRect(kx + Ui.f(3), y - Ui.f(11), kx + Ui.f(9), y + Ui.f(11), icon);
+                c.drawRect(kx - Ui.f(7), y - Ui.f(9), kx - Ui.f(2), y + Ui.f(9), icon);
+                c.drawRect(kx + Ui.f(2), y - Ui.f(9), kx + Ui.f(7), y + Ui.f(9), icon);
             } else {
                 tri.reset();
-                tri.moveTo(kx - Ui.f(7), y - Ui.f(12));
-                tri.lineTo(kx + Ui.f(12), y);
-                tri.lineTo(kx - Ui.f(7), y + Ui.f(12));
+                tri.moveTo(kx - Ui.f(5), y - Ui.f(10));
+                tri.lineTo(kx + Ui.f(10), y);
+                tri.lineTo(kx - Ui.f(5), y + Ui.f(10));
                 tri.close();
                 c.drawPath(tri, icon);
             }
             String gone = gone(pos);
-            c.drawText(gone, kx - goneP.measureText(gone) / 2f, y + Ui.f(76), goneP);
+            c.drawText(gone, kx - goneP.measureText(gone) / 2f, y + Ui.f(60), goneP);
             c.drawText(Ui.dayClock(System.currentTimeMillis()), Ui.f(90), Ui.f(1030), dayP);
             if (known && !playing()) {
                 String end = "Ends " + Ui.clock(System.currentTimeMillis() + (dur - pos));

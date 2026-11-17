@@ -4,29 +4,27 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.KeyEvent;
 import android.view.View;
-import android.view.ViewGroup;
 import android.widget.FrameLayout;
 
 import com.gathin.homefieldtv.engine.Catalog;
 import com.gathin.homefieldtv.engine.Channel;
-import com.gathin.homefieldtv.engine.Genres;
 import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.engine.Resume;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 /**
- * Home: the panel down the left (the wordmark, the time, the mini TV playing the channel last watched, the menu), the
- * big picture of whatever the remote is on, and rows under it: what's on now, Continue watching, the newest films and TV
- * shows from the family's playlist, sport on now.
+ * Home, in the dark look of Films, TV shows and the guide: the rail down the left (Homefield's mark and the time, then
+ * Home, the TV guide, Films, TV shows, Sports, Search and Settings, where the remote starts), the big picture of whatever
+ * the remote is on, the mini TV at the top right playing the channel last watched, and rows under them: what's on now,
+ * Continue watching, the family's own TorBox titles, the newest films and TV shows from the playlists, sport on now and
+ * the favourite channels.
  */
 final class HomeScreen extends Screen implements Rows.Host, LiveTv.Listener {
-    static final List<String> MENU = Arrays.asList("Home", "TV guide", "Movies", "TV shows", "Sports", "Search", "Settings");
-
-    private Panel panel;
+    private Rail rail;
+    private MiniTv mini;
     private Hero hero;
     private Rows rows;
     private boolean inMenu = true;
@@ -41,32 +39,31 @@ final class HomeScreen extends Screen implements Rows.Host, LiveTv.Listener {
 
     @Override View build() {
         FrameLayout f = new FrameLayout(tv);
-        panel = new Panel(tv);
-        panel.setItems(MENU, 0);
+        f.setBackgroundColor(Dark.GROUND);
+        rail = new Rail(tv, Rail.HOME);
+        // The remote starts on the rail, as on the old menu, and comes back to the icon it was on.
+        rail.keep = true;
+        rail.setActive(true);
+        mini = new MiniTv(tv);
         hero = new Hero(tv);
-        hero.textX = 557f;
-        hero.textY = 104f;
-        hero.textW = 860f;
-        hero.pic.set(Panel.W, 0f, 1920f, 600f);
         hero.titleLines = 2;
         hero.plotLines = 3;
-        hero.setTitleSize(62f);
+        hero.setTitleSize(72f);
         rows = new Rows(tv);
-        rows.left = 557f;
-        rows.top = 548f;
         rows.setHost(this);
         rows.setActive(false);
-        ViewGroup.LayoutParams m = new FrameLayout.LayoutParams(-1, -1);
-        f.addView(hero, m);
+        f.addView(hero.picture, new FrameLayout.LayoutParams(-1, -1));
+        f.addView(hero, new FrameLayout.LayoutParams(-1, -1));
         f.addView(rows, new FrameLayout.LayoutParams(-1, -1));
-        f.addView(panel, new FrameLayout.LayoutParams(-1, -1));
+        f.addView(mini, new FrameLayout.LayoutParams(-1, -1));
+        f.addView(rail, new FrameLayout.LayoutParams(-1, -1));
         fill();
         return f;
     }
 
     @Override void shown() {
         tv.live.addListener(this);
-        tv.live.place(panel.tvRect());
+        tv.live.place(mini.tvRect());
         Channel c = tv.channelToPlay();
         // Back here because the phone stopped what it sent: the mini TV stays off until the remote plays something.
         if (tv.takeMiniTvHeld()) tv.live.stop();
@@ -82,6 +79,7 @@ final class HomeScreen extends Screen implements Rows.Host, LiveTv.Listener {
 
     @Override public void liveChanged() {
         updateNote();
+        mini.invalidate();
     }
 
     private void updateNote() {
@@ -90,14 +88,15 @@ final class HomeScreen extends Screen implements Rows.Host, LiveTv.Listener {
         if (!lib.hasSource()) note = "Add your playlist in Settings to watch TV here.";
         else if (!lib.ready()) note = lib.busy() ? "Loading your channels…" : lib.status().isEmpty() ? "Loading your channels…" : lib.status();
         else note = "";
-        if (!note.equals(panel.note)) {
-            panel.note = note;
-            panel.invalidate();
+        if (!note.equals(mini.note)) {
+            mini.note = note;
+            mini.invalidate();
         }
     }
 
     @Override void tick() {
-        panel.invalidate();
+        rail.invalidate();
+        mini.invalidate();
         fill();
     }
 
@@ -177,7 +176,7 @@ final class HomeScreen extends Screen implements Rows.Host, LiveTv.Listener {
         rows.setRows(list);
         if (list.isEmpty() && !inMenu) {
             inMenu = true;
-            panel.setActive(true);
+            rail.setActive(true);
             rows.setActive(false);
         }
         showHero();
@@ -315,7 +314,7 @@ final class HomeScreen extends Screen implements Rows.Host, LiveTv.Listener {
                 enterRows();
                 return true;
             }
-            return panel.key(code) || code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_UP
+            return rail.key(code) || code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_UP
                     || code == KeyEvent.KEYCODE_DPAD_DOWN;
         }
         return rows.key(code);
@@ -323,7 +322,7 @@ final class HomeScreen extends Screen implements Rows.Host, LiveTv.Listener {
 
     private void enterRows() {
         inMenu = false;
-        panel.setActive(false);
+        rail.setActive(false);
         rows.setActive(true);
         showHero();
     }
@@ -339,28 +338,11 @@ final class HomeScreen extends Screen implements Rows.Host, LiveTv.Listener {
             rows.ok(false);
             return;
         }
-        switch (panel.focus) {
-            case 0:
-                if (!rows.isEmpty()) enterRows();
-                break;
-            case 1:
-                tv.openGuide(null);
-                break;
-            case 2:
-                tv.openBrowse(false);
-                break;
-            case 3:
-                tv.openBrowse(true);
-                break;
-            case 4:
-                tv.openGuide(Genres.SPORT);
-                break;
-            case 5:
-                tv.openSearch();
-                break;
-            default:
-                tv.openSettings();
-                break;
+        // Home into the rows; the rest as the rail does on every dark screen (Sports: the sports hub).
+        if (rail.focus == Rail.HOME) {
+            if (!rows.isEmpty()) enterRows();
+        } else {
+            Rail.go(tv, rail.focus, Rail.HOME);
         }
     }
 
@@ -372,7 +354,7 @@ final class HomeScreen extends Screen implements Rows.Host, LiveTv.Listener {
     @Override boolean back() {
         if (!inMenu) {
             inMenu = true;
-            panel.setActive(true);
+            rail.setActive(true);
             rows.setActive(false);
             showHero();
             return true;

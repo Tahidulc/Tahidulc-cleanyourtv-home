@@ -16,16 +16,17 @@ import com.gathin.homefieldtv.engine.Exec;
  * Settings, Theme: a small picture of the app in the theme the remote is on, under the list, changing as the remote
  * moves (each colour blending into the next over a quarter of a second): the guide's categories, its band with a
  * programme's times and what's left, three rows of programmes with the one the remote is on lit inside its ring and
- * the line at now, a poster with its New badge and picture chip, the buttons, and the tint the blue screens take.
+ * the line at now, a poster with its New badge and picture chip, the buttons, and one of Home's tiles to carry on
+ * from, how far through in the accent.
  */
 final class ThemePreview extends View {
     /** Where it lies (design pixels): under the theme list. */
-    static final float X = 820f, Y = 678f, W = 1040f, H = 328f;
+    static final float X = SettingsScreen.PAGE_X, Y = 678f, W = 1040f, H = 328f;
     private static final long BLEND_MS = 260;
 
     // A palette's colours, in this order.
     private static final int GROUND = 0, RAIL = 1, PANEL = 2, CARD = 3, CARD_HI = 4, ACCENT = 5, INK = 6, SOFT = 7, BADGE = 8,
-            RING = 9, DEEP0 = 10, DEEP1 = 11, DEEP2 = 12, BLUE_TOP = 13, BLUE_FOOT = 14, COUNT = 15;
+            RING = 9, DEEP0 = 10, DEEP1 = 11, DEEP2 = 12, COUNT = 13;
 
     private static final String[] CATEGORIES = {"All channels", "Favourites", "Sport", "Films", "News"};
     private static final String[][] ROWS = {{"Morning Mix", "The Evening Show", "Late Film"}, {"Kick-off Live", "Match Night", "Highlights"},
@@ -33,7 +34,7 @@ final class ThemePreview extends View {
     /** Where each row's middle programme starts, as a share of the row. */
     private static final float[] CUT = {0.34f, 0.46f, 0.30f};
     private static final String[] NUMBERS = {"101", "102", "103"};
-    private final RectF posterR = new RectF(), blueR = new RectF();
+    private final RectF posterR = new RectF(), tileR = new RectF();
     private String caption = "";
 
     private int[] from = palette(Theme.ALL[0]), to = from;
@@ -41,8 +42,8 @@ final class ThemePreview extends View {
     private final int[] now = new int[COUNT];
     private int shown = -1;
     private long start;
-    private LinearGradient posterShade, blueShade;
-    private int posterFor = 1, blueFor = 1;
+    private LinearGradient posterShade, tileShade;
+    private int posterFor = 1, tileFor = 1;
 
     private final Paint fill = Dark.fill(0), edge = Dark.line(0x26FFFFFF, 1.5f), ring = Dark.line(0xFFFFFFFF, 2.5f);
     private final Paint aired = Dark.fill(0x59000000), track = Dark.fill(0x40FFFFFF), shade = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -50,8 +51,8 @@ final class ThemePreview extends View {
     private final TextPaint titleP = Dark.text(28, 600, 0xFFFFFFFF), lineP = Dark.text(16, 500, Dark.MUTED);
     private final TextPaint cellP = Dark.text(16, 500, Dark.SOFT), cellOn = Dark.text(16, 600, 0xFFFFFFFF);
     private final TextPaint numP = Dark.text(16, 600, Dark.MUTED), badgeP = Dark.text(14, 700, 0), chipP = Dark.text(13, 800, 0xFF111114);
-    private final TextPaint buttonP = Dark.text(16, 600, 0), blueP = Ui.paint(22, true, Ui.WHITE), blueSub = Ui.paint(17, false, Ui.DIM);
-    private final TextPaint captionP = Ui.paint(24, false, Ui.DIM);
+    private final TextPaint buttonP = Dark.text(16, 600, 0), tileP = Dark.text(19, 600, 0xFFFFFFFF), tileSub = Dark.text(14, 500, Dark.SOFT);
+    private final TextPaint captionP = Dark.text(22, 500, Dark.MUTED);
     private final RectF r = new RectF();
 
     ThemePreview(Context c) {
@@ -89,8 +90,6 @@ final class ThemePreview extends View {
             int d = Theme.DEEP[k * 2];
             p[DEEP0 + k] = t.tintShare > 0f ? Theme.mix(d, t.tint, t.tintShare) : d;
         }
-        p[BLUE_TOP] = Theme.shift(0xFF0C4FAE, t.hue, t.sat, t.val);
-        p[BLUE_FOOT] = Theme.shift(0xFF06347C, t.hue, t.sat, t.val);
         return p;
     }
 
@@ -101,18 +100,18 @@ final class ThemePreview extends View {
         for (int i = 0; i < COUNT; i++) now[i] = Theme.mix(from[i], to[i], k);
     }
 
-    /** The poster's and the blue screens' shading for these colours (made again only when they change). */
-    private void shaders(RectF poster, RectF blue) {
+    /** The poster's and the tile's shading for these colours (made again only when they change). */
+    private void shaders(RectF poster, RectF tile) {
         int pk = now[DEEP1] * 31 * 31 + now[DEEP2] * 31 + now[GROUND];
         if (posterShade == null || pk != posterFor) {
             posterShade = new LinearGradient(0, poster.top, 0, poster.bottom, new int[]{now[DEEP1], now[DEEP2], now[GROUND]},
                     new float[]{0f, 0.6f, 1f}, Shader.TileMode.CLAMP);
             posterFor = pk;
         }
-        int bk = now[BLUE_TOP] * 31 + now[BLUE_FOOT];
-        if (blueShade == null || bk != blueFor) {
-            blueShade = new LinearGradient(blue.left, blue.top, blue.right, blue.bottom, now[BLUE_TOP], now[BLUE_FOOT], Shader.TileMode.CLAMP);
-            blueFor = bk;
+        int tk = now[DEEP0] * 31 + now[CARD_HI];
+        if (tileShade == null || tk != tileFor) {
+            tileShade = new LinearGradient(tile.left, tile.top, tile.right, tile.bottom, now[DEEP0], now[CARD_HI], Shader.TileMode.CLAMP);
+            tileFor = tk;
         }
     }
 
@@ -202,8 +201,8 @@ final class ThemePreview extends View {
         // A poster with its New badge and picture chip.
         float qx = X + 776, qy = Y + 22, qw = 112, qh = 168;
         posterR.set(box(qx, qy, qw, qh));
-        blueR.set(box(qx, Y + 204, W - (qx - X) - 16, 100));
-        shaders(posterR, blueR);
+        tileR.set(box(qx, Y + 204, W - (qx - X) - 16, 100));
+        shaders(posterR, tileR);
         fill.setColor(0xFFFFFFFF);
         fill.setShader(posterShade);
         c.drawRoundRect(posterR, Ui.f(9), Ui.f(9), fill);
@@ -227,11 +226,16 @@ final class ThemePreview extends View {
         buttonP.setColor(0xFFFFFFFF);
         drawCentred(c, "My list", ux, uw, qy + 76, buttonP);
 
-        // The blue screens' tint (Home, Search, Settings).
-        shade.setShader(blueShade);
-        c.drawRoundRect(blueR, Ui.f(12), Ui.f(12), shade);
-        c.drawText("Home", blueR.left + Ui.f(16), blueR.top + Ui.f(40), blueP);
-        c.drawText("Search, Settings", blueR.left + Ui.f(16), blueR.top + Ui.f(70), blueSub);
+        // One of Home's tiles to carry on from: its picture's shade, its title and where it was, how far through.
+        shade.setShader(tileShade);
+        c.drawRoundRect(tileR, Ui.f(12), Ui.f(12), shade);
+        c.drawText("Continue watching", tileR.left + Ui.f(14), tileR.top + Ui.f(52), tileP);
+        c.drawText("S2 E3  ·  21m left", tileR.left + Ui.f(14), tileR.top + Ui.f(76), tileSub);
+        float tx0 = tileR.left + Ui.f(14), tx1 = tileR.right - Ui.f(14), ty = tileR.bottom - Ui.f(12);
+        paint(0x40FFFFFF);
+        c.drawRect(tx0, ty, tx1, ty + Ui.f(3), fill);
+        paint(p[ACCENT]);
+        c.drawRect(tx0, ty, tx0 + (tx1 - tx0) * 0.62f, ty + Ui.f(3), fill);
 
         c.drawRoundRect(box(X, Y, W, H), Ui.f(18), Ui.f(18), edge);
         if (moving) postInvalidateOnAnimation();

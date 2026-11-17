@@ -9,7 +9,7 @@ import org.junit.Test;
 import java.util.HashSet;
 import java.util.Set;
 
-/** The colour themes: mixing and tinting, every theme readable on a TV, and a theme reaching the screens' colours. */
+/** The colour themes: mixing, every theme readable on a TV, and a theme reaching every screen's colours. */
 public class ThemeTest {
     @Test public void mixBlendsEachChannelAndKeepsTheFirstsAlpha() {
         assertEquals(0xFF808080, Theme.mix(0xFF000000, 0xFFFFFFFF, 0.5f));
@@ -18,20 +18,11 @@ public class ThemeTest {
         assertEquals(Theme.mix(0xFF102030, 0xFF203040, 1f), Theme.mix(0xFF102030, 0xFF203040, 3f));
     }
 
-    @Test public void homefieldLeavesTheBlueScreensAsTheyCame() {
+    @Test public void homefieldIsFirstWithItsAmber() {
         Theme home = Theme.ALL[0];
         assertEquals("Homefield", home.name);
-        assertEquals(0xFF0C4FAE, Theme.shift(0xFF0C4FAE, home.hue, home.sat, home.val));
-        assertEquals(0x804F92DA, Theme.shift(0x804F92DA, home.hue, home.sat, home.val));
-    }
-
-    @Test public void shiftMovesTheHueAndKeepsAlpha() {
-        int c = Theme.shift(0x800C4FAE, 158f, 1f, 0.5f);
-        assertEquals(0x80, c >>> 24);
-        float[] was = PosterArt.hsv(0x0C4FAE), now = PosterArt.hsv(c & 0xFFFFFF);
-        assertEquals(158f, now[0], 2f);
-        assertEquals(was[1], now[1], 0.03f);
-        assertEquals(was[2] * 0.5f, now[2], 0.02f);
+        assertEquals(0xFFFFB547, home.accent);
+        assertEquals(0xFF0E0E11, home.ground);
     }
 
     private static double luminance(int c) {
@@ -68,7 +59,8 @@ public class ThemeTest {
             assertEquals(t.accent, Dark.ACCENT);
             assertEquals(t.badge, Dark.BADGE);
             assertEquals(Theme.mix(Theme.DEEP[0], t.tint, t.tintShare), Dark.DEEP[0]);
-            assertEquals(Theme.shift(0xFF1163C8, t.hue, t.sat, t.val), Ui.BG_TOP);
+            assertEquals(t.panel, Dark.PANEL);
+            assertEquals(t.ring, Dark.RING);
             // Out of range: the first.
             Theme.apply(99);
             assertEquals(0, Theme.current());
@@ -77,13 +69,16 @@ public class ThemeTest {
         }
         assertEquals(0xFFFFB547, Dark.ACCENT);
         assertArrayEquals(Theme.DEEP, Dark.DEEP);
-        assertEquals(0xFF1163C8, Ui.BG_TOP);
-        assertEquals(0xFF2BB5F5, Ui.tint(0xFF2BB5F5));
+        assertEquals(0xFF0E0E11, Dark.GROUND);
     }
 
     @Test public void thePreviewDrawsATheme() {
-        int[] p = ThemePreview.palette(Theme.ALL[3]);
-        assertEquals(Theme.ALL[3].accent, p[5]);
-        assertEquals(Theme.shift(0xFF0C4FAE, Theme.ALL[3].hue, Theme.ALL[3].sat, Theme.ALL[3].val), p[13]);
+        Theme t = Theme.ALL[3];
+        int[] p = ThemePreview.palette(t);
+        assertEquals(13, p.length);
+        assertEquals(t.ground, p[0]);
+        assertEquals(t.cardHi, p[4]);
+        assertEquals(t.accent, p[5]);
+        assertEquals(Theme.mix(Theme.DEEP[0], t.tint, t.tintShare), p[10]);
     }
 }
