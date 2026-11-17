@@ -27,10 +27,10 @@ import java.util.Locale;
  */
 final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Host {
     private static final List<String> MENU = Arrays.asList("Your playlists", "Add an M3U playlist", "Add an Xtream Codes login",
-            "Refresh now", "Remove everything", "Channel logos", "Theme", "Posters", "Live TV", "Reminders", "Updates", "Scoreboard",
-            "Sync", "About");
-    static final int PLAYLISTS = 0, ADD_M3U = 1, ADD_XTREAM = 2, REFRESH = 3, CLEAR = 4, LOGOS = 5, THEME = 6, POSTERS = 7, LIVE = 8,
-            REMINDERS = 9, UPDATES = 10, SCOREBOARD = 11, SYNC = 12, ABOUT = 13;
+            "TorBox", "Refresh now", "Remove everything", "Channel logos", "Theme", "Posters", "Live TV", "Reminders", "Updates",
+            "Scoreboard", "Sync", "About");
+    static final int PLAYLISTS = 0, ADD_M3U = 1, ADD_XTREAM = 2, TORBOX = 3, REFRESH = 4, CLEAR = 5, LOGOS = 6, THEME = 7, POSTERS = 8,
+            LIVE = 9, REMINDERS = 10, UPDATES = 11, SCOREBOARD = 12, SYNC = 13, ABOUT = 14;
 
     private Strip strip;
     private ListPanel menu, content;
@@ -204,6 +204,9 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
                 out.add(field("pass", "Password", pass.isEmpty() ? "" : dots(pass.length()), ""));
                 out.add(new ListPanel.Item("add", ListPanel.TEXT, "Add this login", "It is kept only if it gives live channels"));
                 if (!status.isEmpty()) out.add(new ListPanel.Item(null, ListPanel.NOTE, status, ""));
+                break;
+            case TORBOX:
+                TorBoxSettings.fill(tv, out);
                 break;
             case REFRESH:
                 out.add(new ListPanel.Item("refresh", ListPanel.TEXT, "Read everything again now", "Channels, the guide, films and TV shows"));
@@ -496,6 +499,15 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
             case ADD_XTREAM:
                 if (t.equals("add")) add();
                 return;
+            case TORBOX: {
+                int at = content.focusIndex();
+                if (TorBoxSettings.chosen(tv, t, this::torboxChanged)) {
+                    fillContent();
+                    // The remote stays on a line there is (Check and Forget go with the key).
+                    content.setFocus(Math.min(at, Math.max(0, content.items().size() - 1)));
+                }
+                return;
+            }
             case LOGOS:
                 Pics.setTiles(tv, t.equals("tiles"));
                 fillContent();
@@ -635,11 +647,21 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
 
     // ---- typing a field in ------------------------------------------------------------------------------------
 
+    /** TorBox answered a check: its words on the section's lines, the remote where it was. */
+    private void torboxChanged() {
+        if (editing || content == null || section() != TORBOX) return;
+        int at = content.focusIndex();
+        fillContent();
+        content.setFocus(Math.min(at, Math.max(0, content.items().size() - 1)));
+    }
+
     private void openKeys(String field, String label) {
         editField = field;
         editing = true;
-        keys.label = label;
-        keys.secret = field.equals("pass") || field.startsWith("m:pin");
+        boolean torbox = field.equals(TorBoxSettings.FIELD);
+        keys.label = torbox ? "Your TorBox API key" : label;
+        // The TorBox key shows as dots, as a password does, and the one saved is never put back in the field.
+        keys.secret = field.equals("pass") || field.startsWith("m:pin") || torbox;
         keys.hint = field.equals("server") ? "http://" : "";
         keys.setText(value(field));
         keys.reset();
@@ -686,6 +708,11 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
             case "server": server = v; break;
             case "user": user = v; break;
             case "pass": pass = text; break;
+            case TorBoxSettings.FIELD:
+                // Kept and checked with TorBox; nothing of it stays on the keyboard.
+                TorBoxSettings.typed(tv, v, this::torboxChanged);
+                k.setText("");
+                break;
             default: break;
         }
         status = "";

@@ -1,7 +1,10 @@
 package com.gathin.homefieldtv;
 
 import com.gathin.homefieldtv.engine.Sources;
+import com.gathin.homefieldtv.prefs.General;
+import com.gathin.homefieldtv.prefs.Look;
 import com.gathin.homefieldtv.prefs.PlayerPrefs;
+import com.gathin.homefieldtv.prefs.RemoteKeys;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -9,17 +12,19 @@ import java.util.List;
 /**
  * Settings' own sections beside the playlists', as a TV player's settings go: Player (the buffer for live TV and for
  * films, the picture's quality — Adaptive or a fixed one —, the decoders, the picture's shape, matching the TV's refresh
- * rate, tunnelled playback, the channel banner), Sound (passed through or decoded, two speakers, languages, its delay)
- * and Stream problems (reconnecting, the provider's adaptive stream, a playlist's own user agent). Each line opens its
- * choices in place; a switch changes with OK.
+ * rate, tunnelled playback, the channel banner), Sound (passed through or decoded, two speakers, languages, its delay),
+ * Stream problems (reconnecting, the provider's adaptive stream, a playlist's own user agent), General (the screen it
+ * starts on, starting with the TV), Appearance (the clock, programme times, the words' size, the live screen's tiles, the
+ * guide's rows, progress bars, channel numbers) and Remote (Up and Down, OK, OK held, the number keys' wait, the channel
+ * before, the colour keys). Each line opens its choices in place; a switch changes with OK.
  *
- * SettingsScreen shows them after Updates (their sections' tags from BASE), hands them OK and Back, and opens its
+ * SettingsScreen shows them before About (their sections' tags from BASE), hands them OK and Back, and opens its
  * keyboard for what is typed (fields named "m:…").
  */
 final class MoreSettings {
     static final int BASE = 100;
-    static final int PLAYER = BASE, SOUND = BASE + 1, PROBLEMS = BASE + 2;
-    static final String[] NAMES = {"Player", "Sound", "Stream problems"};
+    static final int PLAYER = BASE, SOUND = BASE + 1, PROBLEMS = BASE + 2, GENERAL = BASE + 3, LOOK = BASE + 4, REMOTE = BASE + 5;
+    static final String[] NAMES = {"Player", "Sound", "Stream problems", "General", "Appearance", "Remote"};
     /** chosen(): nothing to focus after it. */
     static final int STAY = -1;
 
@@ -106,6 +111,15 @@ final class MoreSettings {
                 out.add(line("delay", "Sound delay", PlayerPrefs.delayWords(PlayerPrefs.delayMs(tv))));
                 out.add(new ListPanel.Item(null, ListPanel.NOTE, "Fine-tune the delay while watching, in the player's menu.", ""));
                 break;
+            case GENERAL:
+                general(out);
+                break;
+            case LOOK:
+                look(out);
+                break;
+            case REMOTE:
+                remote(out);
+                break;
             default:
                 out.add(line("retries", "When a channel drops", "Connect again: " + PlayerPrefs.RETRY_NAMES[PlayerPrefs.indexOf(
                         PlayerPrefs.RETRY_COUNTS, PlayerPrefs.retries(tv))] + "  ·  1, 2, 4, 8, then 10 seconds apart"));
@@ -125,6 +139,49 @@ final class MoreSettings {
                 }
                 break;
         }
+    }
+
+    /** General: the screen it starts on, and starting with the TV (with Android's own permission for it, where needed). */
+    private void general(List<ListPanel.Item> out) {
+        int s = General.start(tv);
+        String about = General.START_ABOUT[s];
+        out.add(line("start", "Start on", General.START_NAMES[s] + (about.isEmpty() ? "" : "  ·  " + about)));
+        out.add(toggle("boot", "Start when the TV starts", General.onBoot(tv), "Homefield TV opens as the TV finishes starting"));
+        if (General.onBoot(tv) && !General.mayOpenAtBoot(tv)) {
+            out.add(new ListPanel.Item("do:overlay", ListPanel.TEXT, "Allow it to open at start-up",
+                    "Android wants \"Display over other apps\" allowed for Homefield TV first"));
+        }
+        out.add(new ListPanel.Item(null, ListPanel.NOTE, "Start on is used when Homefield TV starts afresh, not when you come back to it.", ""));
+    }
+
+    /** Appearance: the clock, programme times, the words' size, the live screen's tiles, the guide, progress bars, numbers. */
+    private void look(List<ListPanel.Item> out) {
+        out.add(line("clock", "Clock", Look.CLOCK_NAMES[Look.clock] + "  ·  " + Look.CLOCK_ABOUT[Look.clock]));
+        int t = Look.times24 ? 0 : 1;
+        out.add(line("times", "Programme times", Look.TIMES_NAMES[t] + "  ·  " + Look.TIMES_ABOUT[t]));
+        out.add(line("text", "Text size", Look.TEXT_NAMES[Look.textSize]));
+        int tiles = Look.logos ? 1 : 0;
+        out.add(line("tiles", "Live TV's channel tiles", Look.TILES_NAMES[tiles] + "  ·  " + Look.TILES_ABOUT[tiles]));
+        out.add(line("rows", "Rows in the guide", Look.ROWS_NAMES[Look.rows] + "  ·  " + Look.ROWS_ABOUT[Look.rows]));
+        out.add(toggle("progress", "Progress bars", Look.progress, "How far through each programme is, in the guide and on live TV"));
+        out.add(toggle("numbers", "Channel numbers", Look.numbers, "Beside each channel in the guide and on live TV"));
+    }
+
+    /** Remote: for live TV full screen. */
+    private void remote(List<ListPanel.Item> out) {
+        out.add(line("updown", "Up and Down", RemoteKeys.UPDOWN_NAMES[RemoteKeys.upDown(tv)]));
+        out.add(line("direction", "Channel up and down", RemoteKeys.DIRECTION_NAMES[RemoteKeys.reversed(tv) ? 1 : 0]));
+        out.add(line("ok", "OK", RemoteKeys.ACTION_NAMES[RemoteKeys.ok(tv)]));
+        out.add(line("oklong", "OK held", RemoteKeys.ACTION_NAMES[RemoteKeys.okLong(tv)]
+                + "  ·  over a match, the scoreboard's menu first"));
+        out.add(line("wait", "Number keys wait", RemoteKeys.WAIT_NAMES[PlayerPrefs.indexOf(RemoteKeys.WAITS_MS, RemoteKeys.waitMs(tv))]
+                + "  ·  before changing channel"));
+        out.add(line("previous", "The channel before", RemoteKeys.PREVIOUS_NAMES[RemoteKeys.previous(tv)]));
+        out.add(new ListPanel.Item(null, ListPanel.HEADING, "Colour keys", ""));
+        for (int i = 0; i < RemoteKeys.COLOUR_NAMES.length; i++) {
+            out.add(line("colour." + i, RemoteKeys.COLOUR_NAMES[i], RemoteKeys.ACTION_NAMES[RemoteKeys.colour(tv, i)]));
+        }
+        out.add(new ListPanel.Item(null, ListPanel.NOTE, "These are for live TV full screen.", ""));
     }
 
     private static ListPanel.Item line(String key, String title, String sub) {
@@ -204,7 +261,65 @@ final class MoreSettings {
                 out.add(new ListPanel.Item("done", ListPanel.TEXT, "Done", ""));
                 return;
             }
+            case "start":
+                names = General.START_NAMES;
+                about = General.START_ABOUT;
+                chosen = General.start(tv);
+                break;
+            case "clock":
+                names = Look.CLOCK_NAMES;
+                about = Look.CLOCK_ABOUT;
+                chosen = Look.clock;
+                break;
+            case "times":
+                names = Look.TIMES_NAMES;
+                about = Look.TIMES_ABOUT;
+                chosen = Look.times24 ? 0 : 1;
+                break;
+            case "text":
+                names = Look.TEXT_NAMES;
+                chosen = Look.textSize;
+                break;
+            case "tiles":
+                names = Look.TILES_NAMES;
+                about = Look.TILES_ABOUT;
+                chosen = Look.logos ? 1 : 0;
+                break;
+            case "rows":
+                names = Look.ROWS_NAMES;
+                about = Look.ROWS_ABOUT;
+                chosen = Look.rows;
+                break;
+            case "updown":
+                names = RemoteKeys.UPDOWN_NAMES;
+                chosen = RemoteKeys.upDown(tv);
+                break;
+            case "direction":
+                names = RemoteKeys.DIRECTION_NAMES;
+                chosen = RemoteKeys.reversed(tv) ? 1 : 0;
+                break;
+            case "ok":
+                names = actionNames(RemoteKeys.OK_ACTIONS);
+                chosen = PlayerPrefs.indexOf(RemoteKeys.OK_ACTIONS, RemoteKeys.ok(tv));
+                break;
+            case "oklong":
+                names = actionNames(RemoteKeys.OK_LONG_ACTIONS);
+                chosen = PlayerPrefs.indexOf(RemoteKeys.OK_LONG_ACTIONS, RemoteKeys.okLong(tv));
+                break;
+            case "wait":
+                names = RemoteKeys.WAIT_NAMES;
+                chosen = PlayerPrefs.indexOf(RemoteKeys.WAITS_MS, RemoteKeys.waitMs(tv));
+                break;
+            case "previous":
+                names = RemoteKeys.PREVIOUS_NAMES;
+                chosen = RemoteKeys.previous(tv);
+                break;
             default:
+                if (key.startsWith("colour.")) {
+                    names = actionNames(RemoteKeys.COLOUR_ACTIONS);
+                    chosen = PlayerPrefs.indexOf(RemoteKeys.COLOUR_ACTIONS, RemoteKeys.colour(tv, colourOf(key)));
+                    break;
+                }
                 open = "";
                 return;
         }
@@ -220,6 +335,21 @@ final class MoreSettings {
     /** The sound delays offered in Settings (the player's menu goes 50 ms at a time). */
     static final int[] DELAYS = {-500, -400, -300, -200, -150, -100, -50, 0, 50, 100, 150, 200, 300, 400, 500};
 
+    private static String[] actionNames(int[] actions) {
+        String[] out = new String[actions.length];
+        for (int i = 0; i < actions.length; i++) out[i] = RemoteKeys.ACTION_NAMES[actions[i]];
+        return out;
+    }
+
+    /** "colour.2" → 2. */
+    private static int colourOf(String key) {
+        try {
+            return Math.max(0, Math.min(RemoteKeys.COLOUR_NAMES.length - 1, Integer.parseInt(key.substring(7))));
+        } catch (RuntimeException e) {
+            return 0;
+        }
+    }
+
     private static String title(String key) {
         switch (key) {
             case "buffer.live": return "Buffer for live TV";
@@ -231,7 +361,20 @@ final class MoreSettings {
             case "banner": return "Channel banner";
             case "retries": return "When a channel drops, try again";
             case "delay": return "Sound delay";
-            default: return "";
+            case "start": return "Start on";
+            case "clock": return "Clock";
+            case "times": return "Programme times";
+            case "text": return "Text size";
+            case "tiles": return "Live TV's channel tiles";
+            case "rows": return "Rows in the guide";
+            case "updown": return "Up and Down, full screen";
+            case "direction": return "Channel up and down";
+            case "ok": return "OK, full screen";
+            case "oklong": return "OK held, full screen";
+            case "wait": return "Number keys wait";
+            case "previous": return "The channel before";
+            default:
+                return key.startsWith("colour.") ? RemoteKeys.COLOUR_NAMES[colourOf(key)] + " key" : "";
         }
     }
 
@@ -279,6 +422,10 @@ final class MoreSettings {
             PlayerPrefs.setLanguages(tv, PlayerPrefs.toggleLanguage(PlayerPrefs.languages(tv), tag.substring(5)));
             return indexOfTag(before, tag);
         }
+        if (tag.equals("do:overlay")) {
+            overlaySettings();
+            return STAY;
+        }
         if (tag.equals("done")) {
             String was = open;
             open = "";
@@ -303,7 +450,22 @@ final class MoreSettings {
             case "passthrough": PlayerPrefs.setPassthrough(tv, !PlayerPrefs.passthrough(tv)); break;
             case "downmix": PlayerPrefs.setDownmix(tv, !PlayerPrefs.downmix(tv)); break;
             case "hls": PlayerPrefs.setHlsFirst(tv, !PlayerPrefs.hlsFirst(tv)); break;
+            case "boot": General.setOnBoot(tv, !General.onBoot(tv)); break;
+            case "progress": Look.setProgress(tv, !Look.progress); break;
+            case "numbers": Look.setNumbers(tv, !Look.numbers); break;
             default: break;
+        }
+    }
+
+    /** Android's own page for "Display over other apps", for Homefield TV (start at start-up); a word where the TV hasn't it. */
+    private void overlaySettings() {
+        android.content.Intent i = new android.content.Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                android.net.Uri.parse("package:" + tv.getPackageName()));
+        try {
+            tv.startActivity(i);
+        } catch (RuntimeException e) {
+            android.widget.Toast.makeText(tv, "This TV doesn't show that setting; it can be allowed from a computer over adb.",
+                    android.widget.Toast.LENGTH_LONG).show();
         }
     }
 
@@ -318,7 +480,27 @@ final class MoreSettings {
             case "banner": PlayerPrefs.setBannerSeconds(tv, PlayerPrefs.BANNER_SECONDS[i]); break;
             case "retries": PlayerPrefs.setRetries(tv, PlayerPrefs.RETRY_COUNTS[i]); break;
             case "delay": PlayerPrefs.setDelayMs(tv, DELAYS[i]); break;
-            default: break;
+            case "start": General.setStart(tv, i); break;
+            case "clock": Look.setClock(tv, i); break;
+            case "times": Look.setTimes24(tv, i == 0); break;
+            case "text":
+                if (i != Look.textSize) {
+                    Look.setTextSize(tv, i);
+                    // The words' size is set as the screens are made: made again, Settings open here.
+                    tv.restartLook(SettingsScreen.ABOUT + (LOOK - BASE));
+                }
+                break;
+            case "tiles": Look.setLogos(tv, i == 1); break;
+            case "rows": Look.setRows(tv, i); break;
+            case "updown": RemoteKeys.setUpDown(tv, i); break;
+            case "direction": RemoteKeys.setReversed(tv, i == 1); break;
+            case "ok": RemoteKeys.setOk(tv, RemoteKeys.OK_ACTIONS[i]); break;
+            case "oklong": RemoteKeys.setOkLong(tv, RemoteKeys.OK_LONG_ACTIONS[i]); break;
+            case "wait": RemoteKeys.setWaitMs(tv, RemoteKeys.WAITS_MS[i]); break;
+            case "previous": RemoteKeys.setPrevious(tv, i); break;
+            default:
+                if (key.startsWith("colour.")) RemoteKeys.setColour(tv, colourOf(key), RemoteKeys.COLOUR_ACTIONS[i]);
+                break;
         }
     }
 

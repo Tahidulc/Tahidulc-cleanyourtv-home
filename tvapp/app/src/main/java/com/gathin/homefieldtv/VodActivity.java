@@ -33,6 +33,7 @@ import com.gathin.homefieldtv.engine.Catalog;
 import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Resume;
 import com.gathin.homefieldtv.engine.Streams;
+import com.gathin.homefieldtv.engine.TorBox;
 import com.gathin.homefieldtv.prefs.Afr;
 import com.gathin.homefieldtv.prefs.Picture;
 import com.gathin.homefieldtv.prefs.PlayerPrefs;
@@ -43,6 +44,11 @@ import com.gathin.homefieldtv.prefs.PlayerSetup;
  * line with the play knob where it is, the time gone under it, the length at the end, the day and time. OK pauses and
  * plays, Left and Right go back and on (further the longer they are held), Back stops and keeps the place. At the end
  * of an episode the next one starts. The address is made from the login here and never kept or logged.
+ *
+ * It plays from every copy there is, tried in turn: the family's own TorBox files of it first (all of them found before
+ * anything plays, unless Settings put them last), then the playlist's copy and its copies in the other playlists. The bar
+ * shows where it is playing from (TorBox's green mark, a playlist's blue one); Up lists the copies, and another one
+ * chosen carries on from the same moment.
  */
 @OptIn(markerClass = UnstableApi.class)
 public final class VodActivity extends Activity {
@@ -56,8 +62,14 @@ public final class VodActivity extends Activity {
     private Catalog.Title title;
     private Catalog.Episode episode;
     private Catalog.Details details;
-    private Catalog.Play play;
-    private int backup;
+    /** Every copy it can play from, in the order tried; the one playing. */
+    private final java.util.List<Catalog.Play> plays = new java.util.ArrayList<>();
+    private int at;
+    /** The look in TorBox for this film or episode (a newer one makes an older answer moot). */
+    private int looking;
+    /** The copies listed (Up), to play from another one. */
+    private SourcePicker picker;
+    private final SourcePicker.Mark mark = new SourcePicker.Mark();
     private boolean asHls, barOn = true, ended, ready, nextQueued;
     /** Previews: where the bar shows it is, as no stream plays there. */
     static long previewPos, previewDur;
@@ -151,28 +163,68 @@ public final class VodActivity extends Activity {
 
     private void start() {
         Catalog cat = Catalog.get(this);
-        play = episode == null ? cat.play(title) : cat.play(title, episode);
-        if (play == null) {
+        Catalog.Play mine = episode == null ? cat.play(title) : cat.play(title, episode);
+        if (details == null) details = cat.cachedDetails(title);
+        error = "";
+        ended = false;
+        ready = false;
+        plays.clear();
+        int token = ++looking;
+        if (!TorBox.on(this)) {
+            begin(token, mine, new java.util.ArrayList<>());
+            return;
+        }
+        // TorBox's copies all found before anything plays, as they come first: at once from the library read lately.
+        if (!TorBox.fresh(this)) {
+            error = "Looking in your TorBox…";
+            bar.invalidate();
+        }
+        android.content.Context app = getApplicationContext();
+        Catalog.Title t = title;
+        Catalog.Episode e = episode;
+        Exec.io(() -> {
+            java.util.List<Catalog.Play> found = TorBox.plays(app, t, e);
+            Exec.main(() -> begin(token, mine, found));
+        });
+    }
+
+    /** The copies in the order they are tried (TorBox's first unless Settings say last), and the first one started. */
+    private void begin(int token, Catalog.Play mine, java.util.List<Catalog.Play> torbox) {
+        if (token != looking || isFinishing() || isDestroyed()) return;
+        plays.clear();
+        plays.addAll(TorBox.order(torbox, mine, TorBox.first(this)));
+        if (plays.isEmpty()) {
             error = "Its playlist has gone from this TV.";
             bar.invalidate();
             return;
         }
-        if (details == null) details = cat.cachedDetails(title);
-        backup = 0;
+        at = 0;
         error = "";
-        ended = false;
-        ready = false;
         prepare(true);
     }
 
     private Catalog.Play current() {
-        return backup > 0 && backup <= play.backups.size() ? play.backups.get(backup - 1) : play;
+        return plays.get(Math.max(0, Math.min(at, plays.size() - 1)));
     }
 
     private void prepare(boolean fresh) {
         if (Exec.inline) {
             ready = true;
             showBar();
+            return;
+        }
+        // A TorBox copy's address made only now (the key in it goes to TorBox alone); one that can't be is passed over.
+        Catalog.Play p = current();
+        String url = TorBox.ours(p.url) ? TorBox.address(this, p.url) : p.url;
+        if (url == null) {
+            if (at + 1 < plays.size()) {
+                at++;
+                prepare(true);
+            } else {
+                error = "TorBox is turned off or its key has gone. OK to try again.";
+                release();
+                bar.invalidate();
+            }
             return;
         }
         if (player == null) {
@@ -185,14 +237,13 @@ public final class VodActivity extends Activity {
             player.setVideoSurfaceView(surface);
             player.addListener(listener);
         }
-        Catalog.Play p = current();
-        if (fresh) asHls = Streams.looksHls(p.url);
+        if (fresh) asHls = Streams.looksHls(url);
         // The TV's refresh rate matched to this film (Settings → Player), read afresh for each one.
         if (probe != null) player.clearVideoFrameMetadataListener(probe);
         probe = PlayerPrefs.matchFrameRate(this) ? new Afr.Probe(this) : null;
         if (probe != null) player.setVideoFrameMetadataListener(probe);
-        long at = player.getCurrentPosition() > 0 && !fresh ? player.getCurrentPosition() : startAt;
-        player.setMediaSource(Streams.source(p.url, p.userAgent, p.referrer, asHls), at);
+        long from = player.getCurrentPosition() > 0 && !fresh ? player.getCurrentPosition() : startAt;
+        player.setMediaSource(Streams.source(url, p.userAgent, p.referrer, asHls), from);
         player.prepare();
         player.setPlayWhenReady(true);
         showBar();
@@ -290,7 +341,8 @@ public final class VodActivity extends Activity {
 
     @Override public boolean dispatchKeyEvent(KeyEvent e) {
         int code = e.getKeyCode();
-        // The player's menu takes the keys while it is open.
+        // The copies' list, then the player's menu, take the keys while open (the volume keys go on to the TV).
+        if (picker != null && picker.isOpen()) return picker.key(e) || super.dispatchKeyEvent(e);
         if (menu != null && menu.isOpen()) return menu.key(e);
         if (e.getAction() == KeyEvent.ACTION_UP) {
             if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT || code == KeyEvent.KEYCODE_MEDIA_REWIND
@@ -324,7 +376,7 @@ public final class VodActivity extends Activity {
                     return true;
                 }
                 if (player == null) {
-                    if (!error.isEmpty() && play != null) start();
+                    if (!error.isEmpty() && !plays.isEmpty()) start();
                     return true;
                 }
                 if (seekTo >= 0) {
@@ -356,10 +408,16 @@ public final class VodActivity extends Activity {
                 seek(1, e.getRepeatCount());
                 return true;
             case KeyEvent.KEYCODE_DPAD_UP:
+                // The copies it can play from, when there is more than one.
+                if (plays.size() > 1) {
+                    if (e.getRepeatCount() == 0) openPicker();
+                    return true;
+                }
+                toggleBar();
+                return true;
             case KeyEvent.KEYCODE_DPAD_DOWN:
             case KeyEvent.KEYCODE_INFO:
-                if (barOn && player != null && player.isPlaying()) hideBar.run();
-                else showBar();
+                toggleBar();
                 return true;
             case KeyEvent.KEYCODE_MENU:
             case KeyEvent.KEYCODE_SETTINGS:
@@ -368,6 +426,46 @@ public final class VodActivity extends Activity {
             default:
                 return super.dispatchKeyEvent(e);
         }
+    }
+
+    private void toggleBar() {
+        if (barOn && player != null && player.isPlaying()) hideBar.run();
+        else showBar();
+    }
+
+    /** The copies it can play from, the one playing ticked; another one chosen carries on from the same moment. */
+    private void openPicker() {
+        if (plays.size() < 2) return;
+        if (picker == null) {
+            picker = new SourcePicker(this);
+            ((ViewGroup) surface.getParent()).addView(picker, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT));
+        }
+        showBar();
+        picker.open(plays, at, this::switchTo);
+    }
+
+    /** Another copy chosen: it plays from the moment the one before had reached. */
+    private void switchTo(int i) {
+        if (i < 0 || i >= plays.size() || i == at && player != null && error.isEmpty()) return;
+        long pos = Exec.inline ? previewPos : player != null && player.getCurrentPosition() > 0 ? player.getCurrentPosition() : startAt;
+        at = i;
+        startAt = pos;
+        error = "";
+        ended = false;
+        ready = false;
+        prepare(true);
+    }
+
+    /** Previews: these copies as if found, the one at now playing; the list of them opened when asked. */
+    void previewSources(java.util.List<Catalog.Play> copies, int now, boolean list) {
+        plays.clear();
+        plays.addAll(copies);
+        at = now;
+        error = "";
+        ready = true;
+        showBar();
+        if (list) openPicker();
     }
 
     /** The player's menu over the film: its shape, the sound's delay and track. */
@@ -480,8 +578,9 @@ public final class VodActivity extends Activity {
                 prepare(false);
                 return;
             }
-            if (play != null && backup < play.backups.size()) {
-                backup++;
+            // The next copy (TorBox's others, then the playlists'), from where it was to start.
+            if (at + 1 < plays.size()) {
+                at++;
                 prepare(true);
                 return;
             }
@@ -508,8 +607,10 @@ public final class VodActivity extends Activity {
         private final TextPaint titleP = Ui.paint(32, true, Ui.WHITE), endP = Ui.paint(28, false, Ui.WHITE);
         private final TextPaint goneP = Ui.paint(28, true, Ui.CYAN), dayP = Ui.paint(28, false, Ui.DIM), msgP = Ui.paint(34, false, Ui.WHITE);
         private final TextPaint nextP = Ui.paint(30, false, Ui.WHITE), nextSmall = Ui.paint(24, false, Ui.DIM);
+        private final TextPaint factsP = Ui.paint(26, true, Ui.WHITE), hintP = Ui.paint(24, false, Ui.WHITE);
+        private final Paint hintFill = Ui.fill(Ui.WHITE);
         private final RectF r = new RectF();
-        private final android.graphics.Path tri = new android.graphics.Path();
+        private final android.graphics.Path tri = new android.graphics.Path(), up = new android.graphics.Path();
         private float shadeFor = -1;
 
         Bar(Context c) {
@@ -517,6 +618,8 @@ public final class VodActivity extends Activity {
             endP.setShadowLayer(Ui.f(3), 0, 0, 0x99000000);
             titleP.setShadowLayer(Ui.f(3), 0, 0, 0x99000000);
             goneP.setShadowLayer(Ui.f(3), 0, 0, 0x99000000);
+            factsP.setShadowLayer(Ui.f(3), 0, 0, 0x99000000);
+            hintP.setShadowLayer(Ui.f(3), 0, 0, 0x99000000);
         }
 
         @Override protected void onDraw(Canvas c) {
@@ -546,6 +649,7 @@ public final class VodActivity extends Activity {
                     + (episode.title.isEmpty() ? "" : "  " + episode.title));
             name = Ui.fit(name, titleP, Ui.f(1400));
             c.drawText(name, (w - titleP.measureText(name)) / 2f, Ui.f(860), titleP);
+            source(c, w);
 
             long dur = duration();
             long pos = seekTo >= 0 ? seekTo : position();
@@ -578,6 +682,39 @@ public final class VodActivity extends Activity {
             if (known && !playing()) {
                 String end = "Ends " + Ui.clock(System.currentTimeMillis() + (dur - pos));
                 c.drawText(end, w - Ui.f(90) - dayP.measureText(end), Ui.f(1030), dayP);
+            }
+        }
+
+        /**
+         * Over the title, where it is playing from (TorBox's green mark or the playlist's blue one) and what its name says
+         * ("1080p · MKV"), with Up for the other copies when there are more; nothing for a film with one copy only.
+         */
+        private void source(Canvas c, int w) {
+            // Not while the copies are listed: the list says it there.
+            if (plays.isEmpty() || plays.size() < 2 && !current().torbox || picker != null && picker.isOpen()) return;
+            Catalog.Play p = current();
+            float mh = Ui.f(36), my = Ui.f(804), most = Ui.f(380);
+            String facts = SourcePicker.facts(p), more = plays.size() > 1 ? "Change source" : "";
+            float mw = mark.width(mh, p.torbox, p.playlist, most);
+            float fw = facts.isEmpty() ? 0f : Ui.f(16) + factsP.measureText(facts);
+            float hw = more.isEmpty() ? 0f : Ui.f(40) + Ui.f(26) + hintP.measureText(more);
+            float x = (w - mw - fw - hw) / 2f;
+            mark.draw(c, x, my, mh, p.torbox, p.playlist, most);
+            x += mw;
+            if (!facts.isEmpty()) {
+                c.drawText(facts, x + Ui.f(16), my + Ui.f(9), factsP);
+                x += fw;
+            }
+            if (!more.isEmpty()) {
+                // A small triangle pointing up: the key that lists them.
+                float tx = x + Ui.f(40), s = Ui.f(9);
+                up.reset();
+                up.moveTo(tx, my - s);
+                up.lineTo(tx + s * 1.2f, my + s * 0.8f);
+                up.lineTo(tx - s * 1.2f, my + s * 0.8f);
+                up.close();
+                c.drawPath(up, hintFill);
+                c.drawText(more, tx + Ui.f(20), my + Ui.f(9), hintP);
             }
         }
 

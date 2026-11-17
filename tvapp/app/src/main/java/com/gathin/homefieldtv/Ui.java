@@ -85,7 +85,8 @@ final class Ui {
     static TextPaint paint(float size, boolean isBold, int color) {
         TextPaint p = new TextPaint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
         p.setTypeface(isBold ? bold : regular);
-        p.setTextSize(f(size));
+        // Settings → Appearance → Text size.
+        p.setTextSize(f(size) * com.gathin.homefieldtv.prefs.Look.text);
         p.setColor(color);
         return p;
     }
@@ -217,8 +218,14 @@ final class Ui {
     /** "3.00pm", "12.05am". */
     static String clock(long t) {
         ZonedDateTime z = at(t);
-        int h = z.getHour() % 12;
-        return (h == 0 ? 12 : h) + "." + (z.getMinute() < 10 ? "0" : "") + z.getMinute() + (z.getHour() < 12 ? "am" : "pm");
+        // "3.01pm", or "15:01" (Settings → Appearance → Clock).
+        return com.gathin.homefieldtv.prefs.Look.clock(z.getHour(), z.getMinute(),
+                com.gathin.homefieldtv.prefs.Look.clock == com.gathin.homefieldtv.prefs.Look.CLOCK_24);
+    }
+
+    /** The clock in a screen's corner: "" when Settings → Appearance → Clock is off. */
+    static String cornerClock(long t) {
+        return com.gathin.homefieldtv.prefs.Look.clock == com.gathin.homefieldtv.prefs.Look.CLOCK_OFF ? "" : clock(t);
     }
 
     /** "Wednesday". */

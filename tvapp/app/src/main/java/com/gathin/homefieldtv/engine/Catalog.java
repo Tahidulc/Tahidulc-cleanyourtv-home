@@ -141,6 +141,34 @@ public final class Catalog {
         return best;
     }
 
+    /** Pure: how a picture is named for picking a copy ("4K", "1080p", "720p", "SD"; "" for none). */
+    public static String pictureName(int picture) {
+        switch (picture) {
+            case PICTURE_4K: return "4K";
+            case PICTURE_1080: return "1080p";
+            case PICTURE_720: return "720p";
+            case PICTURE_SD: return "SD";
+            default: return "";
+        }
+    }
+
+    /**
+     * Pure: a file's kind from its name, its address or the provider's extension for it ("MKV", "MP4"), or "" for a
+     * stream or none.
+     */
+    public static String kindOf(String s) {
+        if (s == null) return "";
+        String u = s.trim().toLowerCase(Locale.ROOT);
+        int q = u.indexOf('?');
+        if (q >= 0) u = u.substring(0, q);
+        int dot = u.lastIndexOf('.'), slash = u.lastIndexOf('/');
+        String ext = dot < 0 ? (slash < 0 ? u : "") : dot < slash ? "" : u.substring(dot + 1);
+        switch (ext) {
+            case "mkv": case "mp4": case "avi": case "ts": case "m4v": case "mov": case "webm": return ext.toUpperCase(Locale.ROOT);
+            default: return "";
+        }
+    }
+
     /** Pure: a name saying Dolby Vision ("DV", "DoVi", "Dolby Vision"). */
     public static boolean dolbyVisionOf(String name) {
         List<String> w = words(name);
@@ -278,6 +306,15 @@ public final class Catalog {
     public static final class Play {
         public final String url, userAgent, referrer;
         public final List<Play> backups = new ArrayList<>(0);
+        /** For the source picker: TorBox's copy (else a playlist's), and the playlist's name ("" for TorBox's). */
+        public boolean torbox;
+        public String playlist = "";
+        /** The file's (or the playlist entry's) own name, and its size in bytes (0 when not known). */
+        public String name = "";
+        public long size;
+        /** The picture its name says (PICTURE_4K … PICTURE_SD, 0 when it says none), its file's kind ("MKV", "MP4", ""). */
+        public int picture;
+        public String kind = "";
 
         Play(String url, String userAgent, String referrer) {
             this.url = url;
@@ -1034,7 +1071,18 @@ public final class Catalog {
         if (t == null) return null;
         Sources.Entry src = Sources.get(app, t.source);
         if (src == null) return null;
-        Source s = src.source;
+        Play p = address(src.source, t, e);
+        if (p == null) return null;
+        // What the source picker says of it: its playlist, its name's picture, its file's kind.
+        p.playlist = src.name;
+        p.name = t.name;
+        p.picture = t.picture;
+        p.kind = kindOf(e != null ? e.ext : t.ext);
+        if (p.kind.isEmpty()) p.kind = kindOf(e != null ? e.url : t.url);
+        return p;
+    }
+
+    private static Play address(Source s, Title t, Episode e) {
         if (e != null) {
             if (!e.url.isEmpty()) return new Play(e.url, e.userAgent, e.referrer);
             if (!Source.XTREAM.equals(s.type)) return null;

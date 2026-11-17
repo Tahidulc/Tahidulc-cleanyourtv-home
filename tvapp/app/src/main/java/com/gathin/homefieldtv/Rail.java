@@ -103,7 +103,7 @@ final class Rail extends View {
         c.drawRect(Ui.f(W) - Math.max(1f, Ui.f(1.5f)), 0, Ui.f(W), h, edge);
         float s = Ui.f(52), x = (Ui.f(W) - s) / 2f;
         Dark.mark(c, x, Ui.f(46), s, amber, ink);
-        String t = Ui.clock(System.currentTimeMillis());
+        String t = Ui.cornerClock(System.currentTimeMillis());
         c.drawText(t, (Ui.f(W) - time.measureText(t)) / 2f, Ui.f(136), time);
         float cx = Ui.f(W / 2f);
         for (int i = 0; i < ICONS.length; i++) {
