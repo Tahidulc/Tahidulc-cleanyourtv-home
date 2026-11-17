@@ -24,22 +24,41 @@ final class Syncer {
     /** force: also TVs that failed a moment ago (Sync now, a new pairing). */
     static void syncAll(Context c, boolean force) {
         synchronized (LOCK) {
+            // The playlists, favourites, Continue watching and settings changed here go in first (LiveSync), ...
+            try {
+                LiveSync.export(c);
+            } catch (RuntimeException ignored) {
+                // the rest still syncs
+            }
+            boolean any = false, answered = false;
             for (JSONObject tv : Tvs.list(c)) {
                 if (tv.optString("token").isEmpty()) continue;
                 if (!force && tv.optLong("failedAt") > 0 && System.currentTimeMillis() - tv.optLong("failedAt") < 60_000L) continue;
-                syncOne(c, tv);
+                answered |= syncOne(c, tv);
+                any = true;
+            }
+            // ... and what came from the TVs is written back into this device's own stores. A kind taken in for the first
+            // time (a TV answered) has this device's own put in now; SyncStore's change brings the next sync in seconds.
+            if (!any) return;
+            try {
+                if (LiveSync.apply(c, answered)) LiveSync.export(c);
+            } catch (RuntimeException ignored) {
+                // the next sync tries again
             }
         }
     }
 
-    private static void syncOne(Context c, JSONObject tv) {
+    /** One TV: true when it answered. */
+    private static boolean syncOne(Context c, JSONObject tv) {
         SyncState st = new SyncState(tv.optLong("since"), tv.optLong("pushed"));
         long started = st.begin(System.currentTimeMillis());
+        boolean answered = false;
         try {
             JSONArray mine = SyncStore.changedSince(c, st.pushed);
             JSONObject body = new JSONObject().put("since", st.since).put("device", SyncStore.device()).put("items", mine);
             JSONObject r = call(c, tv, "/sync", body, 15_000);
             SyncStore.merge(c, r.optJSONArray("items"));
+            answered = true;
             st.done(started, r.optLong("now"));
             tv.put("since", st.since).put("pushed", st.pushed).put("synced", System.currentTimeMillis())
                     .put("error", "").put("failedAt", 0);
@@ -71,6 +90,7 @@ final class Syncer {
             }
         }
         Tvs.update(c, tv);
+        return answered;
     }
 
     /**

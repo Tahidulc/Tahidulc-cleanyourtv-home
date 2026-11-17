@@ -73,6 +73,8 @@ public final class TvActivity extends Activity {
         PosterArt.init(this);
         Pics.init(this);
         Cast.hello(this);
+        // The family's playlists, favourites, Continue watching and settings, through the launcher on this TV.
+        com.gathin.homefieldtv.sync.TvSync.start(this);
         FrameLayout root = new FrameLayout(this);
         screens = new FrameLayout(this);
         video = new FrameLayout(this);

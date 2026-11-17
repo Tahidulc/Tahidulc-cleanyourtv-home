@@ -42,6 +42,11 @@ final class SyncHub {
     static final String MYLIST = "mylist", RATING = "rating", FILMNIGHT = "filmnight", MUTE = "mute", REMINDER = "reminder",
             CLUBS = "clubs";
     private static final Set<String> TYPES = new HashSet<>(Arrays.asList(MYLIST, RATING, FILMNIGHT, MUTE, REMINDER, CLUBS));
+    static {
+        TYPES.addAll(SyncRules.RELAYED);
+    }
+    /** A relayed item's data in a snapshot: its JSON as it came, under a name no store's data has. */
+    private static final String RAW = "\u0000raw";
     private static final String CLUBS_ID = SyncRules.id(CLUBS, "starred");
     private static final String PREFS = "sync_hub";
     private static final long PEER_DELAY_MS = 10_000L, PEER_EVERY_MS = 10 * 60_000L, FIND_EVERY_MS = 3600_000L;
@@ -61,6 +66,30 @@ final class SyncHub {
 
     private static SharedPreferences prefs(Context c) {
         return c.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+    }
+
+    /** The relayed kinds (SyncRules.RELAYED) as they came, by item id: in the app's own storage, never on /sdcard. */
+    private static SharedPreferences relay(Context c) {
+        return c.getApplicationContext().getSharedPreferences("sync_relay", Context.MODE_PRIVATE);
+    }
+
+    /** Homefield TV's token on this TV (SyncTokenProvider hands it over): made once, then kept. */
+    static synchronized String appToken(Context c) {
+        String t = prefs(c).getString("app_token", null);
+        if (t == null || t.length() < 32) {
+            byte[] b = new byte[16];
+            new java.security.SecureRandom().nextBytes(b);
+            StringBuilder hex = new StringBuilder();
+            for (byte x : b) hex.append(String.format("%02x", x));
+            t = hex.toString();
+            prefs(c).edit().putString("app_token", t).apply();
+        }
+        return t;
+    }
+
+    /** Whether a call carries Homefield TV's token (only ever taken from the TV itself: DeliveryLink checks loopback). */
+    static boolean isAppToken(Context c, String given) {
+        return SyncRules.sameToken(prefs(c).getString("app_token", null), given);
     }
 
     /**
@@ -161,6 +190,13 @@ final class SyncHub {
         Map<String, Object> clubs = new LinkedHashMap<>();
         clubs.put("teams", new ArrayList<>(Arrays.asList(starredClubs(c))));
         out.put(CLUBS_ID, clubs);
+        // The relayed kinds as they came (the phones' playlists, favourites, resume points and settings).
+        for (Map.Entry<String, ?> e : relay(c).getAll().entrySet()) {
+            if (!(e.getValue() instanceof String)) continue;
+            Map<String, Object> d = new LinkedHashMap<>();
+            d.put(RAW, e.getValue());
+            out.put(e.getKey(), d);
+        }
         return out;
     }
 
@@ -220,16 +256,23 @@ final class SyncHub {
 
     /** Every item that reached this TV after since (its clock), tombstones included, but those in skip. */
     static synchronized JSONArray changedSince(Context c, long since, Set<String> skip) {
+        return changedSince(c, since, skip, false);
+    }
+
+    /** The same; trusted: the caller has a token (a phone, a tablet, Homefield TV), so the playlists go too. */
+    static synchronized JSONArray changedSince(Context c, long since, Set<String> skip, boolean trusted) {
         Map<String, Map<String, Object>> snap = scan(c);
         JSONArray out = new JSONArray();
         for (String id : SyncRules.since(metas(c), since)) {
             SyncRules.Meta m = metas(c).get(id);
             if (m == null || (skip != null && skip.contains(id + "@" + m.updated + "@" + m.from))) continue;
             int bar = id.indexOf('|');
+            if (bar <= 0 || !SyncRules.shared(id.substring(0, bar), trusted)) continue;
             try {
                 Map<String, Object> d = m.deleted ? null : snap.get(id);
+                JSONObject data = d == null ? new JSONObject() : d.containsKey(RAW) ? new JSONObject((String) d.get(RAW)) : toJson(d);
                 out.put(new JSONObject().put("type", id.substring(0, bar)).put("key", id.substring(bar + 1))
-                        .put("data", d == null ? new JSONObject() : toJson(d)).put("updated", m.updated).put("deleted", m.deleted || d == null)
+                        .put("data", data).put("updated", m.updated).put("deleted", m.deleted || d == null)
                         .put("from", m.from));
             } catch (Exception ignored) {
                 // that one left out
@@ -243,16 +286,24 @@ final class SyncHub {
      * received ones as "id@updated@from", to leave out of the reply.
      */
     static synchronized Set<String> merge(Context c, JSONArray items) {
+        return merge(c, items, false);
+    }
+
+    /** The same; trusted: from a caller with a token, so its playlists are taken in too (never from a TV on its own). */
+    static synchronized Set<String> merge(Context c, JSONArray items, boolean trusted) {
         Set<String> received = new HashSet<>();
         if (items == null || items.length() == 0) return received;
         scan(c);
         Map<String, JSONObject> applied = new LinkedHashMap<>();
         List<Object[]> lookups = new ArrayList<>();
+        SharedPreferences.Editor relayEdit = relay(c).edit();
+        Map<String, Integer> relayCounts = relayCounts(c);
         for (int i = 0; i < items.length(); i++) {
             JSONObject in = items.optJSONObject(i);
             if (in == null) continue;
             String type = in.optString("type"), key = in.optString("key");
             if (!TYPES.contains(type) || key.isEmpty() || key.length() > 200) continue;
+            if (!SyncRules.shared(type, trusted)) continue;
             String id = SyncRules.id(type, key);
             long updated = in.optLong("updated");
             String from = in.optString("from");
@@ -263,11 +314,16 @@ final class SyncHub {
             if (CLUBS.equals(type) && updated == 0 && !deleted) continue;
             JSONObject data = in.optJSONObject("data");
             try {
-                if (apply(c, type, key, data == null ? new JSONObject() : data, deleted, lookups)) applied.put(id, in);
+                JSONObject d = data == null ? new JSONObject() : data;
+                boolean took = SyncRules.RELAYED.contains(type) ? applyRelay(c, type, key, d, deleted, relayEdit, relayCounts)
+                        : apply(c, type, key, d, deleted, lookups);
+                if (took) applied.put(id, in);
             } catch (RuntimeException e) {
-                android.util.Log.w("SyncHub", "could not apply " + id + ": " + e);
+                android.util.Log.w("SyncHub", "could not apply a " + type + " item: " + e.getClass().getSimpleName());
             }
         }
+        // Written before the snapshot below reads them back.
+        relayEdit.commit();
         if (applied.isEmpty()) return received;
         // Each one noted as it now is here, with the time and the device it came with, so it is not taken for a change
         // made here.
@@ -290,6 +346,37 @@ final class SyncHub {
             worker.post(() -> markOnApps(c, lookups));
         }
         return received;
+    }
+
+    /** How many of each relayed kind are kept now. */
+    private static Map<String, Integer> relayCounts(Context c) {
+        Map<String, Integer> out = new HashMap<>();
+        for (String id : relay(c).getAll().keySet()) {
+            int bar = id.indexOf('|');
+            if (bar > 0) out.merge(id.substring(0, bar), 1, Integer::sum);
+        }
+        return out;
+    }
+
+    /** One relayed item kept as it came (or let go for a tombstone); false when there was nothing to write. */
+    private static boolean applyRelay(Context c, String type, String key, JSONObject d, boolean deleted, SharedPreferences.Editor edit,
+                                      Map<String, Integer> counts) {
+        String id = SyncRules.id(type, key);
+        SharedPreferences r = relay(c);
+        boolean known = r.contains(id);
+        if (deleted) {
+            if (!known) return false;
+            edit.remove(id);
+            counts.merge(type, -1, Integer::sum);
+            return true;
+        }
+        String raw = d.toString();
+        Integer had = counts.get(type);
+        if (!SyncRules.relayFits(type, key, raw.length(), known, had == null ? 0 : had)) return false;
+        if (raw.equals(r.getString(id, null))) return false;
+        edit.putString(id, raw);
+        if (!known) counts.merge(type, 1, Integer::sum);
+        return true;
     }
 
     /** One item written to its store; false when there was nothing to write. */
@@ -429,7 +516,8 @@ final class SyncHub {
         SharedPreferences pr = prefs(c);
         long sent = pr.getLong("sent." + host, 0), since = pr.getLong("since." + host, 0);
         long stamp = System.currentTimeMillis();
-        JSONArray out = changedSince(c, sent, null);
+        // Between TVs on their own (no token): never the playlists' logins, either way.
+        JSONArray out = changedSince(c, sent, null, false);
         String body;
         try {
             body = new JSONObject().put("since", since).put("device", TvLink.myName(c)).put("items", out).toString();
@@ -439,7 +527,7 @@ final class SyncHub {
         String[] r = post(host, "/sync", body, 1500, 10_000);
         if (r == null || !"200".equals(r[0])) return;
         JSONObject reply = json(r[1]);
-        merge(c, reply.optJSONArray("items"));
+        merge(c, reply.optJSONArray("items"), false);
         pr.edit().putLong("since." + host, reply.optLong("now", since)).putLong("sent." + host, stamp).apply();
     }
 

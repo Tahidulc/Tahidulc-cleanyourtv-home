@@ -316,11 +316,14 @@ final class DeliveryLink {
             case "/sync": {
                 // The phone app (its token) or one of the house's TVs (no token, from an address known as one): its
                 // changes merged in, then every item that changed here after its "since" (this TV's clock).
-                boolean phone = paired(token);
+                // Homefield TV on this same TV: its token (SyncTokenProvider), taken only from the TV itself.
+                boolean app = !paired(token) && s.getInetAddress().isLoopbackAddress() && SyncHub.isAppToken(context, token);
+                boolean phone = paired(token) || app;
                 if (!phone && !SyncHub.houseTv(context, s.getInetAddress().getHostAddress())) { reply(s, 401, "{\"error\":\"not paired\"}"); return; }
-                Set<String> got = SyncHub.merge(context, json.optJSONArray("items"));
+                // A caller with a token gets (and gives) the playlists too; another TV on its own never does.
+                Set<String> got = SyncHub.merge(context, json.optJSONArray("items"), phone);
                 long now = System.currentTimeMillis();
-                org.json.JSONArray out = SyncHub.changedSince(context, json.optLong("since"), got);
+                org.json.JSONArray out = SyncHub.changedSince(context, json.optLong("since"), got, phone);
                 reply(s, 200, new JSONObject().put("now", now).put("items", out).toString());
                 return;
             }
