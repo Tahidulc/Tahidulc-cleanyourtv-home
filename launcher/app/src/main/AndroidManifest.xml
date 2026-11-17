@@ -253,6 +253,15 @@
             </intent-filter>
         </service>
 
+        <!-- Homefield TV on this TV asks here for its sync token (SYNC.md). Only an app signed with this app's own key is
+             answered: SyncTokenProvider compares the caller's signing certificate when called, which is what a
+             signature permission checks, without that permission's trap when Homefield TV was installed first. -->
+        <provider
+            android:name=".SyncTokenProvider"
+            android:authorities="com.gathin.tvhome.sync"
+            android:exported="true"
+            tools:ignore="ExportedContentProvider" />
+
         <!-- tools/theme.sh writes the theme through this where the shell can't reach Android/data;
              see ThemeProvider. WRITE_SECURE_SETTINGS: the adb shell has it, ordinary apps don't. -->
         <provider

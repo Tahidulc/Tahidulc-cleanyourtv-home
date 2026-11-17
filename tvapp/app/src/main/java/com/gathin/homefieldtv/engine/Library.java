@@ -168,7 +168,17 @@ public final class Library {
         if (now) f.add(c.key);
         prefs().edit().putString("favourites", new JSONArray(f).toString()).apply();
         changed();
+        com.gathin.homefieldtv.sync.TvSync.changed();
         return now;
+    }
+
+    /** Favourites and recent channels as the family's other devices have them (sync.TvLiveSync); null leaves either be. */
+    public void setPicks(List<String> favourites, List<String> recent) {
+        SharedPreferences.Editor e = prefs().edit();
+        if (favourites != null) e.putString("favourites", new JSONArray(favourites).toString());
+        if (recent != null) e.putString("recent", RecentChannels.join(recent));
+        e.apply();
+        changed();
     }
 
     /** The channel last watched on this TV, or the first one when none has been. */
@@ -185,6 +195,7 @@ public final class Library {
         SharedPreferences p = prefs();
         List<String> recent = RecentChannels.add(RecentChannels.parse(p.getString("recent", "")), c.key);
         p.edit().putString("last", c.key).putString("recent", RecentChannels.join(recent)).apply();
+        com.gathin.homefieldtv.sync.TvSync.changed();
     }
 
     /**

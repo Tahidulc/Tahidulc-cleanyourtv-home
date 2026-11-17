@@ -77,6 +77,12 @@ public final class Groups {
         changed(c);
     }
 
+    /** The hidden and favourite categories as another of the family's devices has them (sync). */
+    static void replace(Context c, Set<String> hidden, List<String> favourites) {
+        prefs(c).edit().putStringSet(HIDDEN, new HashSet<>(hidden)).putString(FAVS, new JSONArray(favourites).toString()).apply();
+        changed(c);
+    }
+
     /** Everything shown again and no favourites (Live TV's Remove everything). */
     static void clear(Context c) {
         prefs(c).edit().clear().apply();

@@ -104,12 +104,25 @@ wordmark are Homefield; it carries no Sky logo or name.
   it was first shown), the season's pill following the row and a season chosen sliding the row to its first episode;
   then the trailer, the cast in circles (initials, as the playlist gives no photos), and more from its category.
 - **Player:** the playback bar. OK pauses and plays, Left and Right go back and on (faster when held), Back keeps the
-  place, and a series goes on to the next episode.
+  place, and a series goes on to the next episode. It plays from every copy there is, tried in turn: the family's own
+  TorBox files of the film or episode first (all of them found before anything plays, unless Settings put them last),
+  then the playlist's copy and its copies in the other playlists. Over the title, where it is playing from: TorBox's
+  green mark with a cloud, or the playlist's blue one with a screen and the playlist's name, and what the copy's name
+  says ("1080p · MKV"). Up lists every copy (each source under its own heading, the picture and file kind beside its
+  mark, the file's name and size under it, the one playing ticked); another one chosen carries on from the same moment.
+- **TorBox:** films and episodes already in the family's own TorBox account (its finished torrents, usenet and web
+  downloads) play as copies beside the playlists', matched by their names: the title, with its year no more than a year
+  apart, and a series' season and episode (from the file's name, its folders or its download's name). Every version is
+  offered, the surest first: 1080p, then 4K, then 720p; one under 20 GB before a bigger one; MKV and MP4 before AVI and
+  the like. Nothing is searched for or added to the account. The API key stays on this TV, is never shown again once
+  saved and never written to the log, and goes only to TorBox: in its requests, and in a file's address as it starts.
 - **Search:** channels, films and TV shows, typed on the on-screen keyboard.
 - **Settings:** the playlists (all of them together or one, their expiry dates, and catch-up: "Catch-up: 120 channels
   keep programmes for up to 7 days", or "Your provider keeps no catch-up for these channels"), adding an M3U playlist
-  or an Xtream Codes login, reading them again, removing everything, and the channel logos: on black tiles (each logo
-  trimmed and set in the middle of a black tile, a dark one turned light) or as the playlist gives them.
+  or an Xtream Codes login, TorBox (on or off, its copies first or last, the API key typed as dots, Check with TorBox:
+  how many films and episodes it has ready, or TorBox's word why not, and Forget), reading them again, removing
+  everything (from this TV only), and the channel logos: on black tiles (each logo trimmed and set in the middle of a
+  black tile, a dark one turned light) or as the playlist gives them.
   Theme: Homefield (as it came), Midnight blue, Emerald, Crimson or Graphite, each with its own ground, panels, cards,
   accent, focus rings, guide
   colours and badges, and a tint for the blue screens; a picture of the app under the list takes each theme's colours
@@ -123,7 +136,13 @@ wordmark are Homefield; it carries no Sky logo or name.
   playback and how long the channel banner stays. Sound: passed through or decoded, two speakers, languages and the
   sound's delay. Stream problems: reconnecting, the provider's adaptive stream and a playlist's own user agent. MENU (or
   the remote's settings key) while watching brings up the player's menu: the picture's shape, the sound's delay and
-  track. Updates: the version on this TV, Check for updates (it also looks quietly as the app starts)
+  track. General: the screen it starts on (Home, Live TV, the guide, films or TV shows) and starting when the TV starts.
+  Appearance: the clock, programme times, text size, live TV's channel tiles, the guide's rows, progress bars and
+  channel numbers. Remote, for live TV full screen: Up and Down, the channel keys' way round, OK and OK held, how long
+  the number keys wait, the channel before, and the colour keys. Sync: Sync now and when it last synced, and a switch
+  for each kind (playlists, favourites and recents, Continue watching, settings), passed on by the launcher on this TV
+  to the family's phones, tablets and other TVs; TorBox's key stays on each device. Updates: the version on this TV,
+  Check for updates (it also looks quietly as the app starts)
   and when it last looked; when a newer Homefield TV has been put on this TV (update.json and the APK in the app's own
   folder, files/update/), its name, what's new and Update now. The APK is checked first (its size, its SHA-256, that it
   is Homefield TV, newer, and signed with the same key), then handed to Android's installer, which asks before it
@@ -149,9 +168,13 @@ adb shell content insert --uri content://com.gathin.homefieldtv.setup/xtream \
 adb shell content insert --uri content://com.gathin.homefieldtv.setup/m3u --bind name:s:Home --bind url:s:'http://…'
 adb shell content query --uri content://com.gathin.homefieldtv.setup/playlists
 adb shell content delete --uri content://com.gathin.homefieldtv.setup/playlists/p1
+adb shell content insert --uri content://com.gathin.homefieldtv.setup/torbox --bind key:s:KEY
+adb shell content delete --uri content://com.gathin.homefieldtv.setup/torbox
 ```
 
 The login stays in the app's private storage on that TV. It is never logged, and the app shows the password only as dots.
+TorBox's API key is kept the same way and checked with TorBox at once: the answer is how many films and episodes it has
+ready, or TorBox's word why not.
 
 ## Building
 
@@ -176,3 +199,4 @@ The APK is `app/build/outputs/apk/release/app-release.apk`, signed with the debu
 | 1.6 | Catch-up: programmes from the provider's archive (Xtream Codes' tv_archive in the server's time zone, M3U catchup, catchup-days and catchup-source of every kind) and the programme on now from its start. The guide goes back into the archive's programmes with a small circle arrow on each (OK plays one; Back comes back to now); the channel banner has Watch from the start; a bar across the programme with the live edge, the time in a bubble as it moves, Left and Right 10 seconds a press and faster held, OK to pause, Up to go live, on into the next programme. OK held in the guide and on live TV brings up a small menu (watch, from the start, favourites). Settings says how many channels keep programmes and for how long. Sports hub and scoreboard in the player: Sports in the menu with today's games, a page for each (score, clock, events, live stats, line-ups) held back to the channel, and the scoreboard over a match with its alerts, pop-ups and line-ups, and a Scoreboard section in Settings. |
 | 1.7 | Subtitles on live TV and catch-up, for every channel: Off (as it starts), From the channel (DVB subtitles where the channel puts them, subtitle playlists, captions) or Automatic, made on the TV from what's said as it's said, with a channel's own showing instead when it plainly sends some. In the channel's menu (OK held, Subtitles) and Settings, Live TV, with their look (white with an outline, on a black box, yellow) and size. The words sit near the foot, move up above the banner and the catch-up bar, and go under the live screen's rows. Automatic uses the TV's own speech recognition where it has it (Android 13 and later), else asks before a one-time download of Vosk's small English model (about 40 MB, about 70 MB on the TV; Apache 2.0, with JNA); nothing heard leaves the TV. |
 | 1.8 | Reminders: in the guide, OK held on a programme to come, Remind me, and a bell on its block; a minute before it starts a card pops up over whatever is on the TV, other apps too (the channel's logo, the title, "Starts in 1 min"): OK opens the channel, Back puts it away, gone after about 20 seconds. Display over other apps asked for once, with a notification instead where it isn't allowed; never wakes a TV that is off; kept after a restart; listed in Settings, Reminders. Player settings: buffer size, Picture quality (Adaptive keeps you on your channel as the quality follows your connection), decoder, aspect and zoom, frame-rate matching, sound passthrough and delay; the channel banner's time; the player's menu on MENU. |
+| 1.9 | TorBox in Movies and TV shows: films and episodes already in the family's own TorBox account play as copies beside the playlists', every version of them, all found before anything plays and tried first (or last, as Settings say); nothing is searched for or added. The player's bar shows where it plays from (TorBox's green mark with a cloud, a playlist's blue one with a screen) and Up lists every copy to change source while watching, from the same moment. Settings, TorBox: on or off, first or last, the API key (typed as dots, or sent from a computer over adb), Check and Forget. Settings: start screen, start with the TV, clock and text size, guide rows, what OK, the colour keys and the number keys do. Sync: your playlists, favourite channels, categories, recents, Continue watching and shared settings follow you between your phones, tablets and this TV (needs the TV launcher 5.32); Remove everything resets this TV only. A reminder due while the TV's screen is off now waits and shows once it is on, while its programme has only just begun. |

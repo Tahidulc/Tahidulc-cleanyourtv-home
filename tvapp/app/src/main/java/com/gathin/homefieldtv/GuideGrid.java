@@ -465,9 +465,9 @@ final class GuideGrid extends View {
             // Settings → Appearance: progress bars (the part already shown), and times only in rows tall enough.
             float airedTo = s.start[i] < now && com.gathin.homefieldtv.prefs.Look.progress ? xAt(Math.min(now, s.stop[i])) : -1f;
             boolean archived = s.stop[i] <= now && s.start[i] >= kept;
+            boolean bell = reminders && s.start[i] > now && Reminders.has(getContext(), ch.key, s.start[i]);
             String span = com.gathin.homefieldtv.prefs.Look.rows == com.gathin.homefieldtv.prefs.Look.ROWS_MORE ? ""
                     : LiveText.span(s.start[i], s.stop[i]);
-            boolean bell = reminders && s.start[i] > now && Reminders.has(getContext(), ch.key, s.start[i]);
             drawBlock(c, x0, top, x1, bottom, span, s.title[i], deep(s.title[i]), airedTo, focused, s.start[i] < winStart,
                     archived, bell);
             if (focused) drewFocus = true;

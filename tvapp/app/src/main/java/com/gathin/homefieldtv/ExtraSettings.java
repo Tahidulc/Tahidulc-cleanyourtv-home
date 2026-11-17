@@ -210,7 +210,7 @@ final class ExtraSettings {
             out.add(new ListPanel.Item("restore:" + which, ListPanel.TEXT, restoreName(which), "Made " + when(k.contents.made) + "  ·  " + sizes(k)));
         }
         out.add(new ListPanel.Item("do:pick", ListPanel.TEXT, "Choose a backup file", "From Downloads or a USB stick, where this TV has a file chooser"));
-        out.add(new ListPanel.Item(null, ListPanel.NOTE, "A backup holds your playlists' logins: keep its file to yourself.", ""));
+        out.add(new ListPanel.Item(null, ListPanel.NOTE, "A backup holds your playlists' logins and TorBox key: keep its file to yourself.", ""));
         out.add(new ListPanel.Item(null, ListPanel.NOTE, "Restoring puts everything back as it was in the backup, then starts the screens again.", ""));
     }
 

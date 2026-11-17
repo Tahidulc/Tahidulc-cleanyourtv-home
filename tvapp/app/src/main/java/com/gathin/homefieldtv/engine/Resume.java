@@ -92,12 +92,34 @@ public final class Resume {
             if (out.size() < MAX) out.add(o);
         }
         prefs(c).edit().putString("points", json(out)).apply();
+        com.gathin.homefieldtv.sync.TvSync.changed();
+    }
+
+    /**
+     * Where a film or episode is up to on another of the family's devices (sync.TvLiveSync): in its place by when it was
+     * watched, the title's other point gone, and not sent back as a change made here.
+     */
+    public static synchronized void adopt(Context c, Point p) {
+        List<Point> out = new ArrayList<>();
+        boolean placed = false;
+        for (Point o : all(c)) {
+            if (o.title.equals(p.title)) continue;
+            if (!placed && p.at >= o.at) {
+                out.add(p);
+                placed = true;
+            }
+            out.add(o);
+        }
+        if (!placed) out.add(p);
+        while (out.size() > MAX) out.remove(out.size() - 1);
+        prefs(c).edit().putString("points", json(out)).apply();
     }
 
     public static synchronized void remove(Context c, String title) {
         List<Point> out = new ArrayList<>();
         for (Point o : all(c)) if (!o.title.equals(title)) out.add(o);
         prefs(c).edit().putString("points", json(out)).apply();
+        com.gathin.homefieldtv.sync.TvSync.changed();
     }
 
     public static synchronized void clear(Context c) {

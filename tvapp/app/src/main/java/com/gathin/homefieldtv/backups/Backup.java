@@ -17,7 +17,7 @@ import java.util.Set;
 
 /**
  * Settings → Backup's file: everything the family set on this TV, as one JSON document. The playlists (with their
- * logins), favourites, recent and last channels, reminders, My List and where films were left off, and every setting:
+ * logins) and the TorBox key, favourites, recent and last channels, reminders, My List and where films were left off, and every setting:
  * player, sound, stream problems, general, appearance, remote, guide, categories, parental control (the PIN as its
  * hash), live subtitles, the scoreboard, sports competitions and their timing. Not the channels, the guide or the
  * pictures: those are read again from the providers. Each settings file is kept whole, with each value's type, so a
@@ -31,7 +31,7 @@ public final class Backup {
 
     /** The settings files a backup carries (SharedPreferences names), and nothing else. */
     static final List<String> FILES = Collections.unmodifiableList(Arrays.asList(
-            "live_sources", "live_source", "live_tv", "reminders", "reminders_ui", "my_list", "resume",
+            "live_sources", "live_source", "torbox", "live_tv", "reminders", "reminders_ui", "my_list", "resume",
             "player", "look", "general", "remote", "guide", "live_groups", "parental",
             "live_subs", "scoreboard", "sports_competitions", "in_step"));
 

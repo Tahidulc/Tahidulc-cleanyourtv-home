@@ -121,6 +121,12 @@ final class Hidden {
         return all(c).keySet();
     }
 
+    /** The hidden channels as another of the family's devices has them (sync): key to name, in their order. */
+    static void replace(Context c, Map<String, String> hidden) {
+        save(c, hidden);
+        Library.get(c).hiddenChanged();
+    }
+
     private static void save(Context c, Map<String, String> m) {
         prefs(c).edit().putString(KEY, new JSONObject(m).toString()).apply();
         Library.get(c).hiddenChanged();

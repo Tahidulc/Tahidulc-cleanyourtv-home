@@ -122,6 +122,8 @@ public final class Sources {
         }
         if (!replaced) all.add(e);
         save(c, all);
+        // The family's other devices get it at the next sync, in a few seconds (sync.LiveSync).
+        com.gathin.tvhomephone.sync.SyncStartup.soon();
         return e;
     }
 
@@ -145,6 +147,7 @@ public final class Sources {
         Vod.forget(c, id);
         PlaylistHealth.forget(c, id);
         if (id.equals(active(c))) setActive(c, ALL);
+        com.gathin.tvhomephone.sync.SyncStartup.soon();
     }
 
     public static synchronized void clear(Context c) {

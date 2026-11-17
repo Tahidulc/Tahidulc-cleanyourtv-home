@@ -76,6 +76,8 @@ public final class TvActivity extends Activity {
         PosterArt.init(this);
         Pics.init(this);
         Cast.hello(this);
+        // The family's playlists, favourites, Continue watching and settings, through the launcher on this TV.
+        com.gathin.homefieldtv.sync.TvSync.start(this);
         FrameLayout root = new FrameLayout(this);
         screens = new FrameLayout(this);
         video = new FrameLayout(this);
@@ -110,8 +112,8 @@ public final class TvActivity extends Activity {
         // Reminders' alarm made again (Android forgets it when the app is updated or stopped).
         ReminderAlarm.schedule(this);
         // Settings → General → Start on: Live TV, the guide, films or TV shows over Home (not over What's new, a cast or
-        // a reminder's channel still waiting for the playlists).
-        if (fresh && reminderKey == null && top() instanceof HomeScreen) StartUp.open(this);
+        // the channel a reminder's card was for, still waiting for the channels to be read).
+        if (fresh && top() instanceof HomeScreen && reminderKey == null) StartUp.open(this);
     }
 
     /** The phone stopped what it sent: Home comes back without its mini TV playing, once. */
