@@ -51,6 +51,15 @@ wordmark are Homefield; it carries no Sky logo or name.
   ("a one-time download of about 40 MB, about 70 MB on the TV") and only then fetches Vosk's small English model into
   the app's own storage, its progress where the words go. The sound is heard on the TV, by a copy taken in the
   player's sound chain; nothing heard leaves the TV. A channel's own tracks stay off while nothing shows them.
+- **Reminders:** in the guide, OK held on a programme to come gives Remind me (Cancel reminder once one is set), and a
+  bell on its block and "Reminder set" under it. A minute before it starts, a card comes up at the top right over
+  whatever is on the TV, other apps too: the channel's logo on its tile, "Starts in 1 min" (then "Starting now"), the
+  title, the channel and its time, and what the keys do. It takes the remote after a second and a half; OK opens Homefield
+  TV on the channel, Back puts it away, any other key lets it go, and it goes by itself after about 20 seconds. Over
+  other apps where Android lets Homefield TV (Display over other apps, asked for once, when the first reminder is set,
+  with a way to Android's page); otherwise a notification that asks to come up as the same card. Its alarm is exact
+  where Android allows it and never wakes the TV: a TV that is off stays off, and a card is shown only up to a few
+  minutes after the start. Reminders are kept on the TV and made again after a restart and an update.
 - **Catch-up:** a programme from the provider's archive: an Xtream Codes login's streams marked as kept (for the days
   the server says, its times in the server's own time zone; the older timeshift.php address when the newer one
   doesn't answer), and an M3U playlist's catchup, catchup-days and catchup-source (default, append, shift, Flussonic
@@ -107,7 +116,14 @@ wordmark are Homefield; it carries no Sky logo or name.
   as the remote moves through them, and OK keeps one (the screens start again in it, back on Settings). Posters:
   Portrait / Landscape. Live TV: subtitles on live TV (Off, From the channel or Automatic), their look and size, and
   where the TV needs it the English speech model (downloaded from there on OK, with how far it has come, or "On this
-  TV"). Updates: the version on this TV, Check for updates (it also looks quietly as the app starts)
+  TV"). Reminders: the ones set, soonest first (OK cancels one), and whether their card may pop up over other apps (OK
+  opens Android's page for it). Player: the buffer for live TV and for films, one Picture quality (Adaptive, which stays
+  on the channel picked and uses its own copies as seamless quality levels, or a fixed 4K, 1080p, 720p, SD or Data
+  saver), the decoders, the picture's shape (each channel keeps its own), matching the TV's frame rate, tunnelled
+  playback and how long the channel banner stays. Sound: passed through or decoded, two speakers, languages and the
+  sound's delay. Stream problems: reconnecting, the provider's adaptive stream and a playlist's own user agent. MENU (or
+  the remote's settings key) while watching brings up the player's menu: the picture's shape, the sound's delay and
+  track. Updates: the version on this TV, Check for updates (it also looks quietly as the app starts)
   and when it last looked; when a newer Homefield TV has been put on this TV (update.json and the APK in the app's own
   folder, files/update/), its name, what's new and Update now. The APK is checked first (its size, its SHA-256, that it
   is Homefield TV, newer, and signed with the same key), then handed to Android's installer, which asks before it
@@ -159,3 +175,4 @@ The APK is `app/build/outputs/apk/release/app-release.apk`, signed with the debu
 | 1.5 | Updates from inside the app: Settings, Updates shows the version on this TV, Check for updates and when it last looked. A newer version put on this TV (update.json and the APK in the app's own folder) is offered once its size, SHA-256, package, version and signing key check out: its name, what's new and Update now, which hands it to Android's installer (Android asks first; the first time it asks to let Homefield TV install apps). A dot on Settings while one waits; it looks quietly as the app starts; What's new once after an update. From the phone: its Stop lets go of the channel it sent, and the TV listens on port 47830 when it is free. |
 | 1.6 | Catch-up: programmes from the provider's archive (Xtream Codes' tv_archive in the server's time zone, M3U catchup, catchup-days and catchup-source of every kind) and the programme on now from its start. The guide goes back into the archive's programmes with a small circle arrow on each (OK plays one; Back comes back to now); the channel banner has Watch from the start; a bar across the programme with the live edge, the time in a bubble as it moves, Left and Right 10 seconds a press and faster held, OK to pause, Up to go live, on into the next programme. OK held in the guide and on live TV brings up a small menu (watch, from the start, favourites). Settings says how many channels keep programmes and for how long. Sports hub and scoreboard in the player: Sports in the menu with today's games, a page for each (score, clock, events, live stats, line-ups) held back to the channel, and the scoreboard over a match with its alerts, pop-ups and line-ups, and a Scoreboard section in Settings. |
 | 1.7 | Subtitles on live TV and catch-up, for every channel: Off (as it starts), From the channel (DVB subtitles where the channel puts them, subtitle playlists, captions) or Automatic, made on the TV from what's said as it's said, with a channel's own showing instead when it plainly sends some. In the channel's menu (OK held, Subtitles) and Settings, Live TV, with their look (white with an outline, on a black box, yellow) and size. The words sit near the foot, move up above the banner and the catch-up bar, and go under the live screen's rows. Automatic uses the TV's own speech recognition where it has it (Android 13 and later), else asks before a one-time download of Vosk's small English model (about 40 MB, about 70 MB on the TV; Apache 2.0, with JNA); nothing heard leaves the TV. |
+| 1.8 | Reminders: in the guide, OK held on a programme to come, Remind me, and a bell on its block; a minute before it starts a card pops up over whatever is on the TV, other apps too (the channel's logo, the title, "Starts in 1 min"): OK opens the channel, Back puts it away, gone after about 20 seconds. Display over other apps asked for once, with a notification instead where it isn't allowed; never wakes a TV that is off; kept after a restart; listed in Settings, Reminders. Player settings: buffer size, Picture quality (Adaptive keeps you on your channel as the quality follows your connection), decoder, aspect and zoom, frame-rate matching, sound passthrough and delay; the channel banner's time; the player's menu on MENU. |
