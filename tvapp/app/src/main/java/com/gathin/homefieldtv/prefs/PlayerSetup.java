@@ -56,13 +56,14 @@ public final class PlayerSetup {
         return new ExoPlayer.Builder(app, renderers(app, extra)).setLoadControl(load(app, live)).setTrackSelector(selector);
     }
 
-    /** Settings → Player → Picture quality on the track selector: Auto adapts, Highest keeps the best, Data saver caps it. */
+    /**
+     * Settings → Player → Picture quality on an HLS stream's own versions, as the phone does: Adaptive follows the
+     * connection (Data saver no higher than 720p); a fixed quality holds the best version at or under it and stays there.
+     */
     static void quality(DefaultTrackSelector.Parameters.Builder p, int quality) {
-        if (quality == PlayerPrefs.QUALITY_HIGHEST) {
-            p.setForceHighestSupportedBitrate(true);
-        } else if (quality == PlayerPrefs.QUALITY_SAVER) {
-            p.setMaxVideoSize(1024, 576).setMaxVideoBitrate(2_000_000);
-        }
+        int h = PlayerPrefs.maxHeight(PlayerPrefs.cap(quality));
+        if (h != Integer.MAX_VALUE) p.setMaxVideoSize(Integer.MAX_VALUE, h);
+        if (!PlayerPrefs.adaptive(quality)) p.setForceHighestSupportedBitrate(true);
     }
 
     /** The buffer Settings chose for live TV or for films and episodes. */

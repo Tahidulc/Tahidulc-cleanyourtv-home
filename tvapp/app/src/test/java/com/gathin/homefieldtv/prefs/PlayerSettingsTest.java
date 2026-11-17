@@ -114,14 +114,34 @@ public class PlayerSettingsTest {
     }
 
     @Test public void reconnectingWaitsLongerEachTime() {
-        assertEquals(1000L, PlayerPrefs.backoffMs(1));
-        assertEquals(2000L, PlayerPrefs.backoffMs(2));
-        assertEquals(4000L, PlayerPrefs.backoffMs(3));
-        assertEquals(8000L, PlayerPrefs.backoffMs(4));
-        // Then 8 s apart for as long as it keeps trying, never more (and no overflow).
-        assertEquals(8000L, PlayerPrefs.backoffMs(5));
-        assertEquals(8000L, PlayerPrefs.backoffMs(100_000));
-        assertEquals(1000L, PlayerPrefs.backoffMs(0));
+        // Staying on the stream: 1, 2, 4, 8, then 10 s apart for as long as it keeps trying (no overflow).
+        long[] stay = {1000, 2000, 4000, 8000, 10_000, 10_000};
+        for (int i = 0; i < stay.length; i++) assertEquals(stay[i], Abr.retryDelay(i + 1, true));
+        assertEquals(10_000L, Abr.retryDelay(100_000, true));
+        // The quick tries before another copy: 1 then 2 s (never more than 8).
+        assertEquals(1000L, Abr.retryDelay(1, false));
+        assertEquals(2000L, Abr.retryDelay(2, false));
+        assertEquals(8000L, Abr.retryDelay(9, false));
+        // A try back up: 45 s, then twice as long after each that didn't hold, up to 15 minutes.
+        long[] up = {45_000, 90_000, 180_000, 360_000, 720_000, 900_000, 900_000};
+        for (int i = 0; i < up.length; i++) assertEquals(up[i], Abr.upAfter(i));
+    }
+
+    @Test public void aStepDownBeforeThePictureFreezes() {
+        // The buffer draining a second at a time, under 2.5 s: down now.
+        assertTrue(Abr.draining(new long[]{5000, 4200, 3500, 2900, 2300}));
+        // Steady, growing, still deep, or not much lost: not yet.
+        assertFalse(Abr.draining(new long[]{2300, 2300, 2300, 2300, 2300}));
+        assertFalse(Abr.draining(new long[]{4000, 3000, 3300, 2600, 2200}));
+        assertFalse(Abr.draining(new long[]{7000, 6000, 5000, 4000, 3000}));
+        assertFalse(Abr.draining(new long[]{3000, 2900, 2800, 2600, 2400}));
+        // A fifth of a second's wobble allowed.
+        assertTrue(Abr.draining(new long[]{4000, 3500, 3600, 2800, 2400}));
+        // Stalls: three in a minute, or one of 5 s.
+        long now = 1_000_000L;
+        assertTrue(Abr.struggling(new long[]{now - 50_000, now - 30_000, now - 1000}, 3, now, 1000));
+        assertFalse(Abr.struggling(new long[]{now - 90_000, now - 30_000, now - 1000}, 3, now, 1000));
+        assertTrue(Abr.struggling(new long[]{now - 1000}, 1, now, 5000));
     }
 
     @Test public void theProvidersHlsFormOfAnMpegTsChannel() {
@@ -142,24 +162,94 @@ public class PlayerSettingsTest {
         assertFalse(Adaptive.notOffered(PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT));
     }
 
-    @Test public void backupCopiesBestPictureFirst() {
-        Channel hdOther = new Channel("p2:x:1", "UK: Harbour Sports 1 HD", "UK Sports", "", "http://example.invalid/a", "", "", "", 101);
-        Channel sdOther = new Channel("p3:x:1", "UK: Harbour Sports 1 SD", "UK Sports", "", "http://example.invalid/b", "", "", "", 101);
-        Channel fhdGroup = new Channel("x:7", "UK: Harbour Sports 1 FHD", "UK Sports Backup", "", "http://example.invalid/c", "", "", "", 907);
-        Channel hdGroup = new Channel("x:8", "UK: Harbour Sports 1 HD", "UK Sports Backup", "", "http://example.invalid/d", "", "", "", 908);
-        // Each once (one found both ways), the best picture first, equal pictures in their order.
-        assertEquals(Arrays.asList(fhdGroup, hdOther, hdGroup, sdOther),
-                Adaptive.bestFirst(Arrays.asList(hdOther, sdOther), Arrays.asList(fhdGroup, hdGroup, hdOther)));
-        assertEquals(Collections.emptyList(), Adaptive.bestFirst(null, null));
+    private static Channel ch(String key, String name, String group) {
+        return new Channel(key, name, group, "", "http://example.invalid/" + key.replace(':', '-'), "", "", "", 101);
     }
 
-    @Test public void backupCopiesInOtherGroups() {
-        Channel main = new Channel("x:1", "UK: Harbour Sports 1 HD", "UK Sports", "", "http://example.invalid/1", "", "", "", 101);
-        Channel backup = new Channel("x:2", "UK: Harbour Sports 1 HD", "UK Sports Backup", "", "http://example.invalid/2", "", "", "", 901);
-        Channel sd = new Channel("x:3", "UK: Harbour Sports 1 SD", "UK Sports SD", "", "http://example.invalid/3", "", "", "", 902);
-        Channel other = new Channel("x:4", "UK: Harbour Sports 2 HD", "UK Sports", "", "http://example.invalid/4", "", "", "", 102);
-        List<Channel> found = Backups.more(Arrays.asList(main, other, sd, backup), main);
-        // The same picture first, then another; never itself or another channel.
-        assertEquals(Arrays.asList(backup, sd), found);
+    @Test public void theChannelsVersions() {
+        Channel hd = ch("x:1", "UK: Harbour Sports 1 HD", "UK Sports");
+        Channel hdThere = ch("p2:x:1", "UK: Harbour Sports 1 HD", "UK Sports");
+        hd.alternates.add(hdThere);
+        Channel fhd = ch("x:7", "UK: Harbour Sports 1 FHD", "UK Sports");
+        Channel fhdFavourite = ch("x:8", "Harbour Sports 1 FHD", "Sport");
+        Channel sd = ch("x:3", "UK: Harbour Sports 1 SD", "UK Sports SD");
+        Channel uhd = ch("x:9", "UK: Harbour Sports 1 4K", "UK 4K");
+        Channel backupFeed = ch("x:10", "UK: Harbour Sports 1 HD Backup", "UK Sports");
+        Channel other = ch("x:4", "UK: Harbour Sports 2 HD", "UK Sports");
+        List<Channel> all = Arrays.asList(hd, other, fhd, sd, backupFeed, fhdFavourite, uhd);
+        // One version a quality, best first; a favourite first at its quality; never a backup feed or another channel.
+        assertEquals(Arrays.asList(uhd, fhdFavourite, hd, sd), Ladder.variants(all, hd, Collections.singleton("x:8")));
+        // Without favourites: the one tagged British, else the first found.
+        assertEquals(Arrays.asList(uhd, fhd, hd, sd), Ladder.variants(all, hd, Collections.emptySet()));
+        // A channel with no other versions: itself.
+        assertEquals(Collections.singletonList(other), Ladder.variants(all, other, Collections.emptySet()));
+    }
+
+    @Test public void whichVersionPictureQualityPlays() {
+        Channel hd = ch("x:1", "UK: Harbour Sports 1 HD", "UK Sports");
+        Channel uhd = ch("x:9", "UK: Harbour Sports 1 4K", ""), fhd = ch("x:7", "UK: Harbour Sports 1 FHD", "");
+        Channel sd = ch("x:3", "UK: Harbour Sports 1 SD", "");
+        List<Channel> v = Arrays.asList(uhd, fhd, hd, sd);
+        // Adaptive: the one picked; a fixed quality: its version.
+        assertEquals(2, Ladder.of(v, hd, PlayerPrefs.QUALITY_ADAPTIVE).rung());
+        assertEquals(0, Ladder.of(v, hd, 4).rung());
+        assertEquals(1, Ladder.of(v, hd, 3).rung());
+        assertEquals(2, Ladder.of(v, hd, 2).rung());
+        assertEquals(3, Ladder.of(v, hd, 0).rung());
+        // Data saver: the one picked when it is 720p or under, else the best under 720p.
+        assertEquals(2, Ladder.of(v, hd, PlayerPrefs.QUALITY_SAVER).rung());
+        assertEquals(2, Ladder.of(v, fhd, PlayerPrefs.QUALITY_SAVER).rung());
+        // A fixed quality the channel lacks: the nearest under it, else the lowest.
+        assertEquals(0, Ladder.of(Arrays.asList(hd, sd), hd, 3).rung());
+        assertEquals(1, Ladder.of(Arrays.asList(uhd, fhd), fhd, 0).rung());
+    }
+
+    @Test public void stepsBetweenVersionsAndPlaylists() {
+        Channel hd = ch("x:1", "UK: Harbour Sports 1 HD", "UK Sports");
+        Channel hdThere = ch("p2:x:1", "UK: Harbour Sports 1 HD", "UK Sports");
+        hd.alternates.add(hdThere);
+        Channel fhd = ch("x:7", "UK: Harbour Sports 1 FHD", "UK Sports"), sd = ch("x:3", "UK: Harbour Sports 1 SD", "UK Sports");
+        Ladder l = Ladder.of(Arrays.asList(fhd, hd, sd), hd, PlayerPrefs.QUALITY_ADAPTIVE);
+        assertEquals(hd, l.stream());
+        assertFalse(l.canUp());
+        // A failure: the same version from the other playlist, then none left there.
+        assertTrue(l.nextAlt());
+        assertEquals(hdThere, l.stream());
+        assertFalse(l.nextAlt());
+        // A step down, then back up to the version picked (never above it in Adaptive).
+        l.down();
+        assertEquals(sd, l.stream());
+        assertEquals(Ladder.SD, l.level());
+        assertFalse(l.canDown());
+        assertTrue(l.canUp());
+        l.up();
+        assertEquals(hd, l.stream());
+        assertFalse(l.canUp());
+        // The channel alone: its other playlists' copies still behind it.
+        Ladder one = Ladder.single(hd);
+        assertTrue(one.nextAlt());
+        assertEquals(hdThere, one.stream());
+        // Found while it played the other playlist's copy: that stream kept.
+        l.at(l.picked(), 1);
+        assertEquals(hdThere, l.stream());
+    }
+
+    @Test public void theQualityBadgeAndChoices() {
+        assertEquals("4K", Ladder.badge(2160, Ladder.HD));
+        assertEquals("FHD", Ladder.badge(1080, Ladder.HD));
+        assertEquals("HD", Ladder.badge(720, Ladder.FHD));
+        assertEquals("SD", Ladder.badge(576, Ladder.FHD));
+        assertEquals("FHD", Ladder.badge(0, Ladder.FHD));
+        assertEquals("", Ladder.badge(0, Ladder.PLAIN));
+        assertTrue(PlayerPrefs.adaptive(PlayerPrefs.QUALITY_ADAPTIVE));
+        assertTrue(PlayerPrefs.adaptive(PlayerPrefs.QUALITY_SAVER));
+        assertFalse(PlayerPrefs.adaptive(3));
+        assertEquals(4, PlayerPrefs.cap(PlayerPrefs.QUALITY_ADAPTIVE));
+        assertEquals(2, PlayerPrefs.cap(PlayerPrefs.QUALITY_SAVER));
+        assertEquals(720, PlayerPrefs.maxHeight(PlayerPrefs.cap(PlayerPrefs.QUALITY_SAVER)));
+        assertEquals(1080, PlayerPrefs.maxHeight(3));
+        assertEquals(576, PlayerPrefs.maxHeight(0));
+        assertEquals(PlayerPrefs.QUALITY_CHOICES.length, PlayerPrefs.QUALITY_NAMES.length);
+        assertEquals(PlayerPrefs.QUALITY_CHOICES.length, PlayerPrefs.QUALITY_ABOUT.length);
     }
 }

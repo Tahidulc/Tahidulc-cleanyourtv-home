@@ -12,23 +12,25 @@ import org.robolectric.RobolectricTestRunner;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
 
-/** A dropped channel as Homefield TV comes: it stays on the channel and connects it again; a backup copy only when asked. */
+/** A dropped channel as Homefield TV comes: Adaptive, staying on the channel picked; a fixed quality only when chosen. */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 34)
 public class StreamDropTest {
-    @Test public void stayingOnTheChannelIsTheDefault() {
+    @Test public void adaptiveIsTheDefault() {
         Context c = RuntimeEnvironment.getApplication();
-        assertFalse("never another copy unless Settings say so", PlayerPrefs.switchToBackup(c));
+        assertEquals(PlayerPrefs.QUALITY_ADAPTIVE, PlayerPrefs.quality(c));
+        assertTrue(PlayerPrefs.adaptive(PlayerPrefs.quality(c)));
         assertEquals("keeps connecting the same stream", -1, PlayerPrefs.retries(c));
-        assertEquals(PlayerPrefs.QUALITY_AUTO, PlayerPrefs.quality(c));
         assertTrue(PlayerPrefs.hlsFirst(c));
         assertEquals(PlayerPrefs.NORMAL, PlayerPrefs.buffer(c, true));
         assertEquals(PlayerPrefs.NORMAL, PlayerPrefs.buffer(c, false));
 
-        PlayerPrefs.setSwitchToBackup(c, true);
-        assertTrue(PlayerPrefs.switchToBackup(c));
-        PlayerPrefs.setSwitchToBackup(c, false);
-        assertFalse(PlayerPrefs.switchToBackup(c));
+        // A fixed quality is the way to hold one stream; something unknown is Adaptive again.
+        PlayerPrefs.setQuality(c, 3);
+        assertEquals(3, PlayerPrefs.quality(c));
+        assertFalse(PlayerPrefs.adaptive(PlayerPrefs.quality(c)));
+        PlayerPrefs.setQuality(c, 7);
+        assertEquals(PlayerPrefs.QUALITY_ADAPTIVE, PlayerPrefs.quality(c));
     }
 
     @Test public void aPlaylistWhoseHlsFailedGoesBackToMpegTs() {

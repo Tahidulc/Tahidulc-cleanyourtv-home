@@ -239,38 +239,57 @@ public final class PlayerPrefs {
         prefs(c).edit().putInt("retries", n).apply();
     }
 
-    /**
-     * When a stream fails: Off (the default) stays on the channel, reconnecting the same stream and letting the picture
-     * adapt to the connection; On switches to the channel's backup copy in the family's other playlists and groups (the
-     * best picture first) once this one has been tried again a little, as Homefield did before.
-     */
-    public static boolean switchToBackup(Context c) {
-        return prefs(c).getBoolean("backup.switch", false);
-    }
-
-    public static void setSwitchToBackup(Context c, boolean on) {
-        prefs(c).edit().putBoolean("backup.switch", on).apply();
-    }
-
-    /** Pure: how long before connecting again, attempt 1, 2, 3…: 1, 2, 4, then 8 s each time. */
-    public static long backoffMs(int attempt) {
-        return 1000L << Math.max(0, Math.min(3, attempt - 1));
-    }
-
     // ---- picture quality ------------------------------------------------------------------------------------------
 
-    public static final int QUALITY_AUTO = 0, QUALITY_HIGHEST = 1, QUALITY_SAVER = 2;
-    public static final String[] QUALITY_NAMES = {"Auto", "Highest", "Data saver"};
-    public static final String[] QUALITY_ABOUT = {"Adapts to the connection: down at once when it slows, up once it's steady",
-            "Always the stream's best picture", "At most 576p and about 2 Mbit/s"};
+    /**
+     * Settings → Player → Picture quality, the one control for it (as the phone's, Homefield 5.22). Adaptive (the
+     * default): the channel picked stays on screen while its picture follows the connection through the channel's own
+     * versions (its FHD, HD and SD, each version's copies in the other playlists), stepping down before a freeze and back
+     * up once steady (Ladder, Abr). Data saver: the same, never above 720p. A fixed quality (4K, 1080p, 720p, SD): that
+     * version (the nearest under it when the channel has none), only connected again when it drops, never another copy.
+     * The values are Names' levels (4 UHD, 3 FHD, 2 HD, 0 SD), ADAPTIVE and SAVER.
+     */
+    public static final int QUALITY_ADAPTIVE = -1, QUALITY_SAVER = -2;
+    public static final int[] QUALITY_CHOICES = {QUALITY_ADAPTIVE, 4, 3, 2, 0, QUALITY_SAVER};
+    public static final String[] QUALITY_NAMES = {"Adaptive", "4K", "1080p", "720p", "SD", "Data saver"};
+    public static final String[] QUALITY_ABOUT = {
+            "The channel stays on screen while its picture follows the connection: down before it freezes, back up once steady",
+            "The channel's 4K version, else its best; when it drops, the same stream again",
+            "The channel's 1080p version, or the nearest under it; when it drops, the same stream again",
+            "The channel's 720p version, or the nearest under it; when it drops, the same stream again",
+            "The channel's SD version, or its lowest; when it drops, the same stream again",
+            "Adaptive, never above 720p"};
 
-    /** For streams that come in several pictures (most HLS channels): which the player picks. */
     public static int quality(Context c) {
-        return clamp(prefs(c).getInt("quality", QUALITY_AUTO), 0, 2);
+        int q = prefs(c).getInt("quality", QUALITY_ADAPTIVE);
+        for (int v : QUALITY_CHOICES) if (v == q) return q;
+        return QUALITY_ADAPTIVE;
     }
 
     public static void setQuality(Context c, int q) {
         prefs(c).edit().putInt("quality", q).apply();
+    }
+
+    /** Pure: whether a choice follows the connection (Adaptive, Data saver) rather than holding one version. */
+    public static boolean adaptive(int quality) {
+        return quality == QUALITY_ADAPTIVE || quality == QUALITY_SAVER;
+    }
+
+    /** Pure: the highest level a choice lets the picture go to (Names' levels, 4 UHD … 0 SD). */
+    public static int cap(int quality) {
+        if (quality == QUALITY_ADAPTIVE) return 4;
+        if (quality == QUALITY_SAVER) return 2;
+        return Math.max(0, Math.min(4, quality));
+    }
+
+    /** Pure: the tallest picture an HLS stream may pick at a level (its own variants, for a stream that has them). */
+    public static int maxHeight(int level) {
+        switch (level) {
+            case 4: return Integer.MAX_VALUE;
+            case 3: return 1080;
+            case 2: case 1: return 720;
+            default: return 576;
+        }
     }
 
     /** The provider's adaptive (HLS) stream tried first for a channel given as MPEG-TS, kept only where it plays. */

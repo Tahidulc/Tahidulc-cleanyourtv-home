@@ -8,10 +8,10 @@ import java.util.List;
 
 /**
  * Settings' own sections beside the playlists', as a TV player's settings go: Player (the buffer for live TV and for
- * films, what happens when a stream fails, the picture's quality, the decoders, the picture's shape, matching the TV's
- * refresh rate, tunnelled playback, the channel banner), Sound (passed through or decoded, two speakers, languages, its
- * delay) and Stream problems (reconnecting, the provider's adaptive stream, a playlist's own user agent). Each line
- * opens its choices in place; a switch changes with OK.
+ * films, the picture's quality — Adaptive or a fixed one —, the decoders, the picture's shape, matching the TV's refresh
+ * rate, tunnelled playback, the channel banner), Sound (passed through or decoded, two speakers, languages, its delay)
+ * and Stream problems (reconnecting, the provider's adaptive stream, a playlist's own user agent). Each line opens its
+ * choices in place; a switch changes with OK.
  *
  * SettingsScreen shows them after Updates (their sections' tags from BASE), hands them OK and Back, and opens its
  * keyboard for what is typed (fields named "m:…").
@@ -79,10 +79,8 @@ final class MoreSettings {
                 out.add(line("buffer.vod", "Buffer for films and episodes", PlayerPrefs.BUFFER_NAMES[PlayerPrefs.buffer(tv, false)]
                         + "  ·  " + PlayerPrefs.BUFFER_ABOUT[PlayerPrefs.buffer(tv, false)]));
                 out.add(new ListPanel.Item(null, ListPanel.NOTE, PlayerPrefs.BUFFER_HINT, ""));
-                out.add(line("failover", "When a stream fails", FAILOVER_NAMES[PlayerPrefs.switchToBackup(tv) ? 1 : 0] + "  ·  "
-                        + FAILOVER_ABOUT[PlayerPrefs.switchToBackup(tv) ? 1 : 0]));
-                out.add(line("quality", "Picture quality", PlayerPrefs.QUALITY_NAMES[PlayerPrefs.quality(tv)] + "  ·  "
-                        + PlayerPrefs.QUALITY_ABOUT[PlayerPrefs.quality(tv)]));
+                int q = PlayerPrefs.indexOf(PlayerPrefs.QUALITY_CHOICES, PlayerPrefs.quality(tv));
+                out.add(line("quality", "Picture quality", PlayerPrefs.QUALITY_NAMES[q] + "  ·  " + PlayerPrefs.QUALITY_ABOUT[q]));
                 out.add(line("decoder", "Decoder", PlayerPrefs.DECODER_NAMES[PlayerPrefs.decoder(tv)] + "  ·  "
                         + PlayerPrefs.DECODER_ABOUT[PlayerPrefs.decoder(tv)]));
                 out.add(line("aspect", "Picture for channels", PlayerPrefs.ASPECT_NAMES[PlayerPrefs.aspect(tv)] + "  ·  "
@@ -110,10 +108,11 @@ final class MoreSettings {
                 break;
             default:
                 out.add(line("retries", "When a channel drops", "Connect again: " + PlayerPrefs.RETRY_NAMES[PlayerPrefs.indexOf(
-                        PlayerPrefs.RETRY_COUNTS, PlayerPrefs.retries(tv))] + "  ·  1, 2, 4, then 8 seconds apart"));
+                        PlayerPrefs.RETRY_COUNTS, PlayerPrefs.retries(tv))] + "  ·  1, 2, 4, 8, then 10 seconds apart"));
                 out.add(toggle("hls", "The provider's adaptive stream", PlayerPrefs.hlsFirst(tv),
                         "HLS tried first for a channel given as MPEG-TS, kept only where it plays"));
-                out.add(new ListPanel.Item(null, ListPanel.NOTE, "Switching to a backup copy instead: Player → When a stream fails.", ""));
+                out.add(new ListPanel.Item(null, ListPanel.NOTE, "Picture quality Adaptive: a channel that drops is tried twice at once, "
+                        + "then its copy in another playlist, then a step down, all as the same channel; then these tries.", ""));
                 List<Sources.Entry> all = Sources.list(tv);
                 if (!all.isEmpty()) out.add(new ListPanel.Item(null, ListPanel.HEADING, "User agent", ""));
                 for (Sources.Entry e : all) {
@@ -163,15 +162,10 @@ final class MoreSettings {
                 about = PlayerPrefs.DECODER_ABOUT;
                 chosen = PlayerPrefs.decoder(tv);
                 break;
-            case "failover":
-                names = FAILOVER_NAMES;
-                about = FAILOVER_ABOUT;
-                chosen = PlayerPrefs.switchToBackup(tv) ? 1 : 0;
-                break;
             case "quality":
                 names = PlayerPrefs.QUALITY_NAMES;
                 about = PlayerPrefs.QUALITY_ABOUT;
-                chosen = PlayerPrefs.quality(tv);
+                chosen = PlayerPrefs.indexOf(PlayerPrefs.QUALITY_CHOICES, PlayerPrefs.quality(tv));
                 break;
             case "aspect":
                 names = PlayerPrefs.ASPECT_NAMES;
@@ -223,12 +217,6 @@ final class MoreSettings {
         if (key.startsWith("buffer")) out.add(new ListPanel.Item(null, ListPanel.NOTE, PlayerPrefs.BUFFER_HINT, ""));
     }
 
-    /** Settings → Player → When a stream fails. */
-    static final String[] FAILOVER_NAMES = {"Stay on the channel and adapt", "Switch to a backup copy"};
-    static final String[] FAILOVER_ABOUT = {
-            "The same channel connected again, its picture adapting to your connection; never another copy",
-            "After a few tries, its copy in your other playlists or groups, the best picture first"};
-
     /** The sound delays offered in Settings (the player's menu goes 50 ms at a time). */
     static final int[] DELAYS = {-500, -400, -300, -200, -150, -100, -50, 0, 50, 100, 150, 200, 300, 400, 500};
 
@@ -237,7 +225,6 @@ final class MoreSettings {
             case "buffer.live": return "Buffer for live TV";
             case "buffer.vod": return "Buffer for films and episodes";
             case "decoder": return "Decoder";
-            case "failover": return "When a stream fails";
             case "quality": return "Picture quality";
             case "aspect": return "Picture for channels";
             case "aspect.vod": return "Picture for films and episodes";
@@ -325,8 +312,7 @@ final class MoreSettings {
             case "buffer.live": PlayerPrefs.setBuffer(tv, true, i); break;
             case "buffer.vod": PlayerPrefs.setBuffer(tv, false, i); break;
             case "decoder": PlayerPrefs.setDecoder(tv, i); break;
-            case "failover": PlayerPrefs.setSwitchToBackup(tv, i == 1); break;
-            case "quality": PlayerPrefs.setQuality(tv, i); break;
+            case "quality": PlayerPrefs.setQuality(tv, PlayerPrefs.QUALITY_CHOICES[i]); break;
             case "aspect": PlayerPrefs.setAspect(tv, i); break;
             case "aspect.vod": PlayerPrefs.setVodAspect(tv, i); break;
             case "banner": PlayerPrefs.setBannerSeconds(tv, PlayerPrefs.BANNER_SECONDS[i]); break;
