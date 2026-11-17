@@ -46,7 +46,7 @@ final class CatchupScreen extends Screen implements LiveTv.Listener {
     private final Handler h = new Handler(Looper.getMainLooper());
     private final Runnable apply = this::applyMove;
     private final Runnable hideBar = () -> {
-        if (!tv.live.held() && target < 0 && tv.live.state() != LiveTv.FAILED) Fade.show(bar, false, 220);
+        if (!tv.live.held() && target < 0 && tv.live.state() != LiveTv.FAILED) bar(false);
     };
     private final Runnable leave = () -> {
         if (tv.isTop(this)) tv.pop();
@@ -142,7 +142,7 @@ final class CatchupScreen extends Screen implements LiveTv.Listener {
             case KeyEvent.KEYCODE_INFO:
                 if (bar.getVisibility() == View.VISIBLE && !tv.live.held() && target < 0) {
                     h.removeCallbacks(hideBar);
-                    Fade.show(bar, false, 220);
+                    bar(false);
                 } else {
                     showBar();
                 }
@@ -211,9 +211,15 @@ final class CatchupScreen extends Screen implements LiveTv.Listener {
 
     private void showBar() {
         h.removeCallbacks(hideBar);
-        Fade.show(bar, true, 160);
+        bar(true);
         bar.invalidate();
         if (!Exec.inline) h.postDelayed(hideBar, BAR_MS);
+    }
+
+    /** The bar in or out; subtitles over the picture kept above it while it is up. */
+    private void bar(boolean on) {
+        Fade.show(bar, on, on ? 160 : 220);
+        tv.live.subs.room(true, on ? 640f : -1f);
     }
 
     /** The programme on the channel at t: {start, end, its place in the guide (-1: none; then the hour round t)}. */

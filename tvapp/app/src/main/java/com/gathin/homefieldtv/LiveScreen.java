@@ -46,7 +46,9 @@ import java.util.Map;
  *
  * Catch-up: where the provider keeps the programme on now in its archive (or the stream's own window reaches back to
  * its start), the banner has "Watch from the start" over the logo (Left goes to it; the rewind key too), and the live
- * screen tags it. OK held brings up a small menu for the channel: watch it, from the start, add it to the favourites.
+ * screen tags it. OK held brings up a small menu for the channel: watch it, from the start, add it to the favourites;
+ * and, for the channel playing, Subtitles: Off, From the channel or Automatic (LiveSubs), which ask before fetching the
+ * speech model where the TV needs it.
  */
 final class LiveScreen extends Screen implements LiveTv.Listener {
     private static final long BANNER_MS = 6000, CHOOSING_MS = 9000, BROWSE_MS = 12000;
@@ -78,6 +80,8 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
     private final Runnable hide = () -> setMode(NONE);
     private final Runnable digitsDone = this::tuneDigits;
     private final Runnable askPicture = this::askPicture;
+    /** Automatic subtitles want the speech model: the family asked here first (LiveSubs). */
+    private final LiveSubs.Asker asker = this::askModel;
 
     /** A category's row on the live screen. */
     static final class Row {
@@ -151,6 +155,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
             return;
         }
         tv.live.addListener(this);
+        tv.live.subs.asker = asker;
         tv.live.place(tv.fullScreen());
         if (start != null) {
             tv.live.play(start);
@@ -164,6 +169,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
 
     @Override void hidden() {
         board.stop();
+        if (tv.live.subs.asker == asker) tv.live.subs.asker = null;
         tv.live.removeListener(this);
         h.removeCallbacks(hide);
         h.removeCallbacks(digitsDone);
@@ -210,6 +216,8 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
         else h.removeCallbacks(askPicture);
         Fade.show(banner, m == BANNER, 180);
         Fade.show(browse, m == BROWSE, 220);
+        // Subtitles: above the banner while it is up (its row of recent channels, or not), gone under the rows.
+        tv.live.subs.room(m != BROWSE, m == BANNER ? (recent.isEmpty() ? 690f : 500f) : -1f);
         banner.invalidate();
     }
 
@@ -264,6 +272,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
         if (fromTheStart(c) != null) items.add(new String[]{"start", "Watch from the start"});
         boolean fav = Library.get(tv).isFavourite(c);
         items.add(new String[]{"fav", fav ? "Remove from favourites" : "Add to favourites"});
+        if (playing) items.add(new String[]{"subs", "Subtitles: " + LiveSubs.MODES[LiveSubs.mode(tv)]});
         long now = System.currentTimeMillis();
         Guide.Schedule s = Library.get(tv).schedule(c.key);
         int i = s == null ? -1 : s.at(now);
@@ -277,6 +286,9 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
                 case "start":
                     startOver(c);
                     break;
+                case "subs":
+                    openSubs();
+                    break;
                 default: {
                     boolean on = Library.get(tv).toggleFavourite(c);
                     android.widget.Toast.makeText(tv, on ? c.name + " added to your favourites" : c.name + " taken off your favourites",
@@ -285,6 +297,37 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
                     break;
                 }
             }
+        });
+    }
+
+    /** The menu's Subtitles: Off, From the channel or Automatic, for every channel; the one chosen ticked. */
+    private void openSubs() {
+        int now = LiveSubs.mode(tv);
+        List<String[]> items = new ArrayList<>();
+        for (int i = 0; i < LiveSubs.MODES.length; i++) {
+            items.add(new String[]{"mode:" + i, LiveSubs.MODES[i], i == now ? PopMenu.CHOSEN : ""});
+        }
+        h.removeCallbacks(hide);
+        menu.open("Subtitles", tv.live.subs.about(), items, 680f, 360f, key -> {
+            tv.live.subs.setMode(key.charAt(key.length() - 1) - '0');
+            if (mode != NONE && !menu.isOpen()) setMode(mode);
+        });
+    }
+
+    /** Automatic subtitles where the TV has no speech recognition of its own: the speech model fetched only on a yes. */
+    private void askModel() {
+        if (menu == null || menu.isOpen()) {
+            // Something else is up: asked next time.
+            tv.live.subs.askLater();
+            return;
+        }
+        List<String[]> items = new ArrayList<>();
+        items.add(new String[]{"get", "Download it"});
+        items.add(new String[]{"no", "Not now"});
+        h.removeCallbacks(hide);
+        menu.ask("Automatic subtitles", LiveSubs.askLine(), items, key -> {
+            if (key.equals("get")) tv.live.subs.fetch();
+            if (mode != NONE) setMode(mode);
         });
     }
 

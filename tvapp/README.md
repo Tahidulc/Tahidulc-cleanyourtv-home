@@ -40,6 +40,17 @@ wordmark are Homefield; it carries no Sky logo or name.
   same channel in another playlist, then again. Where the provider keeps the programme on now in its archive (or the
   stream itself reaches back to its start), the banner has Watch from the start over the logo (Left from the row, or
   the remote's rewind key) and the live screen says so; holding OK brings up the channel's menu.
+- **Subtitles:** over full-screen live TV and catch-up only (not the small pictures on Home and in the guide), for
+  every channel: Off (as it starts), From the channel (the subtitles a channel sends: DVB subtitles where it puts them,
+  its subtitle playlists, captions) or Automatic, made on the TV from what's said as it's said, a channel's own showing
+  instead when it plainly sends some (a bare captions track every stream is given doesn't count). Chosen from the
+  channel's menu (OK held, Subtitles, the one chosen ticked) or Settings, Live TV, with their look (white with an
+  outline, white on a black box, yellow) and size. The words keep about 40 letters to a line near the foot, move up
+  above the banner and the catch-up bar while they are up, and go while the live screen's rows are up. Automatic uses
+  the TV's own on-device speech recognition where it has it (Android 13 and later); where it hasn't, it asks first
+  ("a one-time download of about 40 MB, about 70 MB on the TV") and only then fetches Vosk's small English model into
+  the app's own storage, its progress where the words go. The sound is heard on the TV, by a copy taken in the
+  player's sound chain; nothing heard leaves the TV. A channel's own tracks stay off while nothing shows them.
 - **Catch-up:** a programme from the provider's archive: an Xtream Codes login's streams marked as kept (for the days
   the server says, its times in the server's own time zone; the older timeshift.php address when the newer one
   doesn't answer), and an M3U playlist's catchup, catchup-days and catchup-source (default, append, shift, Flussonic
@@ -94,7 +105,9 @@ wordmark are Homefield; it carries no Sky logo or name.
   accent, focus rings, guide
   colours and badges, and a tint for the blue screens; a picture of the app under the list takes each theme's colours
   as the remote moves through them, and OK keeps one (the screens start again in it, back on Settings). Posters:
-  Portrait / Landscape. Updates: the version on this TV, Check for updates (it also looks quietly as the app starts)
+  Portrait / Landscape. Live TV: subtitles on live TV (Off, From the channel or Automatic), their look and size, and
+  where the TV needs it the English speech model (downloaded from there on OK, with how far it has come, or "On this
+  TV"). Updates: the version on this TV, Check for updates (it also looks quietly as the app starts)
   and when it last looked; when a newer Homefield TV has been put on this TV (update.json and the APK in the app's own
   folder, files/update/), its name, what's new and Update now. The APK is checked first (its size, its SHA-256, that it
   is Homefield TV, newer, and signed with the same key), then handed to Android's installer, which asks before it
@@ -145,3 +158,4 @@ The APK is `app/build/outputs/apk/release/app-release.apk`, signed with the debu
 | 1.4 | Colour themes in Settings, Theme: Homefield (as it came), Midnight blue, Emerald, Crimson and Graphite, each with its own ground, panels, cards, accent, focus rings, guide colours and New badge, and the blue screens tinted to match; a picture of the app under the list changes as the remote moves through them, and the one chosen is kept. Settings, Posters: Portrait / Landscape: landscape cards are 16:9 with the title's backdrop, as the phone's. The family's phone can send the channel it is watching to the TV while Homefield TV is open: played only when the TV's own playlists have it, from the home network only. |
 | 1.5 | Updates from inside the app: Settings, Updates shows the version on this TV, Check for updates and when it last looked. A newer version put on this TV (update.json and the APK in the app's own folder) is offered once its size, SHA-256, package, version and signing key check out: its name, what's new and Update now, which hands it to Android's installer (Android asks first; the first time it asks to let Homefield TV install apps). A dot on Settings while one waits; it looks quietly as the app starts; What's new once after an update. From the phone: its Stop lets go of the channel it sent, and the TV listens on port 47830 when it is free. |
 | 1.6 | Catch-up: programmes from the provider's archive (Xtream Codes' tv_archive in the server's time zone, M3U catchup, catchup-days and catchup-source of every kind) and the programme on now from its start. The guide goes back into the archive's programmes with a small circle arrow on each (OK plays one; Back comes back to now); the channel banner has Watch from the start; a bar across the programme with the live edge, the time in a bubble as it moves, Left and Right 10 seconds a press and faster held, OK to pause, Up to go live, on into the next programme. OK held in the guide and on live TV brings up a small menu (watch, from the start, favourites). Settings says how many channels keep programmes and for how long. Sports hub and scoreboard in the player: Sports in the menu with today's games, a page for each (score, clock, events, live stats, line-ups) held back to the channel, and the scoreboard over a match with its alerts, pop-ups and line-ups, and a Scoreboard section in Settings. |
+| 1.7 | Subtitles on live TV and catch-up, for every channel: Off (as it starts), From the channel (DVB subtitles where the channel puts them, subtitle playlists, captions) or Automatic, made on the TV from what's said as it's said, with a channel's own showing instead when it plainly sends some. In the channel's menu (OK held, Subtitles) and Settings, Live TV, with their look (white with an outline, on a black box, yellow) and size. The words sit near the foot, move up above the banner and the catch-up bar, and go under the live screen's rows. Automatic uses the TV's own speech recognition where it has it (Android 13 and later), else asks before a one-time download of Vosk's small English model (about 40 MB, about 70 MB on the TV; Apache 2.0, with JNA); nothing heard leaves the TV. |

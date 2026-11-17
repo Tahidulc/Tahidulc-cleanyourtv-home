@@ -21,12 +21,18 @@ import androidx.media3.common.Format;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.common.Timeline;
+import androidx.media3.common.Tracks;
 import androidx.media3.common.VideoSize;
+import androidx.media3.common.audio.AudioProcessor;
+import androidx.media3.common.text.CueGroup;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.audio.AudioSink;
+import androidx.media3.exoplayer.audio.DefaultAudioSink;
 
+import com.gathin.homefieldtv.captions.AudioTap;
 import com.gathin.homefieldtv.engine.Catchup;
 import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Exec;
@@ -46,6 +52,9 @@ import java.util.List;
  * <p>Behind live (catch-up): a programme from the provider's archive (Catchup), asked for again from wherever the remote
  * moves it to, going on into the next programme when one ends and back to live at the live edge; or, for a stream
  * whose own window reaches back minutes (HLS with a long window), a move inside it.
+ *
+ * <p>Subtitles over the full-screen picture (LiveSubs): the channel's own from the player's cues, or automatic ones made
+ * on the TV from a copy of the sound taken in the player's sound chain (TAP).
  */
 @OptIn(markerClass = UnstableApi.class)
 final class LiveTv {
@@ -62,6 +71,8 @@ final class LiveTv {
     static float previewFps;
     /** Previews: the time the picture behind live is of. */
     static long previewShown = -1;
+    /** The player's sound, heard by automatic subtitles while they listen (LiveSubs); one player at a time. */
+    static final AudioTap TAP = new AudioTap();
 
     interface Listener {
         void liveChanged();
@@ -90,6 +101,8 @@ final class LiveTv {
     private final List<Listener> listeners = new ArrayList<>();
     private final Rect where = new Rect();
     private final Timeline.Window tw = new Timeline.Window();
+    /** Subtitles over the full-screen picture: the channel's own, or made on this TV (Automatic). */
+    final LiveSubs subs;
     private ExoPlayer player;
     private Channel cur;
     private int alt, retries, state = IDLE;
@@ -131,6 +144,7 @@ final class LiveTv {
         note.setGravity(Gravity.CENTER);
         note.setVisibility(View.GONE);
         layer.addView(note, new FrameLayout.LayoutParams(1, 1));
+        subs = new LiveSubs(c, layer);
     }
 
     void addListener(Listener l) {
@@ -147,6 +161,7 @@ final class LiveTv {
             where.setEmpty();
             picture.setVisibility(View.GONE);
             note.setVisibility(View.GONE);
+            subs.frame(where, 0, 0, 0, 0);
             return;
         }
         where.set(r);
@@ -192,6 +207,7 @@ final class LiveTv {
         np.topMargin = where.top;
         note.setLayoutParams(np);
         note.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, Math.max(Ui.f(22), where.height() / 14f));
+        subs.frame(where, x, y, w, hh);
     }
 
     Channel channel() {
@@ -256,6 +272,7 @@ final class LiveTv {
         arc = null;
         inWindow = false;
         held = false;
+        if (!same) subs.channelChanged();
         cur = c;
         alt = 0;
         retries = 0;
@@ -284,6 +301,7 @@ final class LiveTv {
             arc.played = false;
         }
         inWindow = false;
+        subs.detach();
         if (player != null) {
             player.removeListener(listener);
             player.release();
@@ -476,8 +494,13 @@ final class LiveTv {
     private void ensure() {
         if (player != null) return;
         // The TV's own decoders first; FFmpeg for the sound it can't play (AC-3, E-AC-3, MP2), which UK channels carry.
-        DefaultRenderersFactory renderers = new DefaultRenderersFactory(app)
-                .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+        // The sound goes on to the speaker as ever; automatic subtitles hear a copy while they listen (TAP).
+        DefaultRenderersFactory renderers = new DefaultRenderersFactory(app) {
+            @Override protected AudioSink buildAudioSink(@NonNull Context c, boolean floatOut, boolean trackParams) {
+                return new DefaultAudioSink.Builder(c).setEnableFloatOutput(floatOut).setEnableAudioTrackPlaybackParams(trackParams)
+                        .setAudioProcessors(new AudioProcessor[]{TAP}).build();
+            }
+        }.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
                 .setEnableDecoderFallback(true);
         // A channel starts as soon as a second is in (two after a stall).
         DefaultLoadControl load = new DefaultLoadControl.Builder().setBufferDurationsMs(15_000, 50_000, 1_000, 2_000).build();
@@ -486,6 +509,7 @@ final class LiveTv {
                 .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true);
         player.addListener(listener);
         if (picture instanceof SurfaceView) player.setVideoSurfaceView((SurfaceView) picture);
+        subs.attach(player);
     }
 
     private void prepare() {
@@ -649,6 +673,15 @@ final class LiveTv {
         @Override public void onIsPlayingChanged(boolean playing) {
             // Paused or played on behind live: the bar and its knob drawn again.
             if (behind()) set(state);
+        }
+
+        @Override public void onTracksChanged(@NonNull Tracks tracks) {
+            // Whether the channel sends subtitles of its own: shown, or listened for (LiveSubs).
+            if (player != null) subs.tracksChanged();
+        }
+
+        @Override public void onCues(@NonNull CueGroup cues) {
+            subs.cues(cues.cues);
         }
 
         @Override public void onVideoSizeChanged(@NonNull VideoSize size) {
