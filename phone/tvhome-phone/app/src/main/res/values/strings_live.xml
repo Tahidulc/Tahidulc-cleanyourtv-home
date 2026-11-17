@@ -55,7 +55,8 @@
     <string name="live_test_save">Test and save</string>
     <string name="live_refresh_now">Refresh now</string>
     <string name="live_remove">Remove</string>
-    <string name="live_remove_ask">Remove every playlist, their channels and your Live TV favourites from this phone?</string>
+    <string name="live_remove_ask">Remove every playlist, their channels and your Live TV favourites from this phone? Only from this phone: your tablet, the TVs and Homefield TV keep theirs. Playlists sync is switched off here so they don\'t come straight back; switch it on again in Settings, Sync.</string>
+    <string name="live_removed_here">Removed from this phone only. Playlists sync is off here: switch it on in Settings, Sync to have the family\'s playlists again.</string>
     <string name="live_checking">Checking…</string>
     <string name="live_none">No playlist yet: add your own.</string>
     <string name="live_saved">%1$s · %2$d channels · guide for %3$d · updated %4$s</string>

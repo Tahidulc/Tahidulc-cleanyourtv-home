@@ -57,7 +57,7 @@ public final class LiveSync {
      * A kind switched on (again) starts afresh: at its next sync this device first takes in what the family has, keeping
      * its own as well, and only then sends its own, so nothing changed elsewhere meanwhile is overwritten.
      */
-    public static void setOn(Context c, String kind, boolean on) {
+    public static synchronized void setOn(Context c, String kind, boolean on) {
         kinds(c).edit().putBoolean(kind, on).apply();
         if (!on) return;
         SharedPreferences.Editor b = base(c).edit(), s = sent(c).edit();
@@ -68,6 +68,46 @@ public final class LiveSync {
         }
         b.apply();
         s.apply();
+        if (PLAYLISTS.equals(kind)) {
+            // The family's playlists can come again; the films and episodes not found before are looked for again.
+            kinds(c).edit().remove(RESET).apply();
+            tried(c).edit().clear().apply();
+        }
+    }
+
+    /** Set by Remove everything, which switched Playlists sync off on this device; gone when it is switched on again. */
+    private static final String RESET = "off_by_remove_everything";
+
+    /** Whether Playlists sync is off here because Remove everything switched it off (Settings, Sync says so). */
+    public static boolean offByRemoveEverything(Context c) {
+        return !on(c, PLAYLISTS) && kinds(c).getBoolean(RESET, false);
+    }
+
+    /**
+     * Remove everything (Live TV's settings) for this device only. clear (what it removes: the playlists, their channels,
+     * favourites, categories) runs with the sync held still, so none of it goes out as a removal: the family keep theirs.
+     * Playlists sync is switched off so the family's playlists don't come straight back; switched on again, they are taken
+     * in as on a new device. The live data starts afresh too: the family's is taken in at the next sync before anything of
+     * this device's is sent. A single playlist removed on purpose still goes everywhere (export's tombstone).
+     */
+    public static synchronized void removeEverything(Context c, Runnable clear) {
+        // apply(): what is read next, on any thread, sees it at once; written out before the app could stop.
+        kinds(c).edit().putBoolean(PLAYLISTS, false).putBoolean(RESET, true).apply();
+        SharedPreferences.Editor b = base(c).edit(), s = sent(c).edit();
+        for (String type : TYPES) {
+            if (SETTING.equals(type)) continue;
+            b.remove(type);
+            for (String id : sent(c).getAll().keySet()) if (id.startsWith(type + "|")) s.remove(id);
+        }
+        b.apply();
+        s.apply();
+        tried(c).edit().clear().apply();
+        clear.run();
+    }
+
+    /** Resume points looked for here and not found, with when each was watched: not looked for again until it changes. */
+    private static SharedPreferences tried(Context c) {
+        return c.getApplicationContext().getSharedPreferences("sync_resume_tried", Context.MODE_PRIVATE);
     }
 
     /** The types whose family things this device has taken in at least once: until then it sends none of its own. */
@@ -490,6 +530,8 @@ public final class LiveSync {
         Map<String, VodHistory.Entry> here = new HashMap<>();
         for (VodHistory.Entry e : LiveSyncHooks.resume(c)) if (e.name != null && !e.name.isEmpty()) here.put(SyncKeys.resume(e.tv, e.name), e);
         int adopted = 0;
+        // With no playlist here there is nothing to look in (not noted as tried: the playlists may come back).
+        boolean any = !Sources.list(c).isEmpty();
         for (JSONObject it : items) {
             String key = it.optString("key");
             VodHistory.Entry e = here.get(key);
@@ -505,9 +547,9 @@ public final class LiveSync {
                 if (at > e.at && (e.position != d.optLong("pos") || e.season != d.optInt("s") || e.episode != d.optInt("e"))) {
                     LiveSyncHooks.moveTo(c, e, d.optInt("s"), d.optInt("e"), d.optLong("pos"), d.optLong("dur"), at);
                 }
-            } else if (adopted < ADOPT_MAX && System.currentTimeMillis() - at < 30L * 24 * 3600_000L) {
+            } else if (any && adopted < ADOPT_MAX && System.currentTimeMillis() - at < 30L * 24 * 3600_000L) {
                 // Looked for once per point: one this device's playlists don't have isn't looked for at every sync.
-                SharedPreferences tried = c.getApplicationContext().getSharedPreferences("sync_resume_tried", Context.MODE_PRIVATE);
+                SharedPreferences tried = tried(c);
                 if (tried.getLong(key, 0) == at) continue;
                 adopted++;
                 boolean found = LiveSyncHooks.adopt(c, d.optString("name"), d.optString("year"), d.optString("alt"), d.optInt("tmdb"),

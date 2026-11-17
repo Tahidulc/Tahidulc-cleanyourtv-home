@@ -70,8 +70,8 @@ and passes them on like the rest.
   the first 12 bytes of SHA-256 of the kind and where it is (`xtream`, the server without its scheme or end slash in
   lower case, the user name; or `m3u` and the address), never the password: the same playlist has the same key on
   every device, whatever it is called there, and keeps it when its password changes. A playlist added on one device
-  appears on the others with its login, so it is never typed in again; one removed is a tombstone and goes everywhere
-  (also "Remove everything" on Homefield TV, while Playlists is switched on).
+  appears on the others with its login, so it is never typed in again; one removed on its own is a tombstone and goes
+  everywhere. Remove everything is different: it resets one device only (below).
 - **livefav** / **liverecent**: one `list` item each, the channels as `{pl, ch}`: the playlist's key and the channel's
   own key there (`x:<stream id>` for Xtream, `<tvg-id>|<name>` for M3U), so a channel is found whatever place its
   playlist has on a device (Live TV keys a later playlist's channels `p1:…`, `p2:…`). A device puts its own channels into
@@ -110,6 +110,15 @@ logs, prints or shows a login, a token or an item's data, and each keeps its cop
 kind just switched on again) sends none of it until a TV has answered: it takes the family's in first, keeps its own
 as well (its favourites after the family's, its playlists beside theirs, nothing removed), and only then sends what
 the family hasn't got. So a new device never overwrites the others with what it had before.
+
+**Remove everything resets one device.** Live TV's Remove everything on a phone or tablet, and Settings, Remove
+everything on Homefield TV, clear that device's playlists and live data (channels, guide, favourites, categories; on
+Homefield TV also where films were left) and nothing else anywhere: no removal is sent, so the family's other devices
+keep theirs. While it clears, the sync is held still, and this device's record of what it sent is forgotten, so nothing
+it had can later go out as a removal. Playlists sync is switched off on that device, so the family's playlists don't
+flow straight back; its confirmation says so, and Settings, Sync says it was switched off by Remove everything. Switched
+on again, the family's playlists are taken in as on a new device (the first-sync rule above), with their favourites. The
+other kinds stay on and start afresh the same way. Removing one playlist on purpose still goes everywhere.
 
 **Switches.** Settings, Sync on the phone and the tablet, and Settings, Sync on Homefield TV: Playlists, Favourites &
 recents (with the categories on the phones), Continue watching and Settings, all on to begin with. A kind switched off

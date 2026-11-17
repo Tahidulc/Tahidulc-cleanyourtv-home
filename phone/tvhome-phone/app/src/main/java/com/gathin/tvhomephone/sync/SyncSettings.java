@@ -82,7 +82,8 @@ public final class SyncSettings {
         row.setPadding(0, Ui.dp(c, 8), 0, Ui.dp(c, 8));
         LinearLayout words = Ui.column(c);
         words.addView(Ui.text(c, name, 16, 0xFFFFFFFF, true));
-        words.addView(Ui.text(c, what, 13, Ui.DIM, false));
+        TextView sub = Ui.text(c, said(c, kind, what), 13, Ui.DIM, false);
+        words.addView(sub);
         row.addView(words, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         boolean[] on = {LiveSync.on(c, kind)};
         com.google.android.material.button.MaterialButton b = Ui.pill(c, on[0] ? "On" : "Off", true, null);
@@ -92,10 +93,17 @@ public final class SyncSettings {
             LiveSync.setOn(c, kind, on[0]);
             b.setText(on[0] ? "On" : "Off");
             b.setAlpha(on[0] ? 1f : 0.55f);
+            sub.setText(said(c, kind, what));
         });
         b.setContentDescription(name + " sync");
         row.addView(b);
         return row;
+    }
+
+    /** What a kind's line says: Playlists switched off by Live TV's Remove everything says so. */
+    private static String said(Context c, String kind, String what) {
+        return LiveSync.PLAYLISTS.equals(kind) && LiveSync.offByRemoveEverything(c)
+                ? "Off since Remove everything on this phone: switch on to take in the family's playlists again" : what;
     }
 
     private static void fill(Fragment host, LinearLayout list, Runnable repaint) {

@@ -162,6 +162,41 @@ public class LiveSyncDevicesTest {
         assertNotNull(SyncStore.get(c, LiveSync.PLAYLIST, key));
     }
 
+    @Test public void removeEverythingClearsThisPhoneOnlyAndSwitchesPlaylistsOff() throws Exception {
+        Sources.put(c, null, "Family", XTREAM);
+        LiveSyncHooks.setPicks(c, Arrays.asList("x:42"), Arrays.asList("x:42"));
+        LiveSyncHooks.setGroups(c, new java.util.HashSet<>(Arrays.asList("Adult")), Arrays.asList("Sports"));
+        firstSync();
+        String key = LiveSync.keyOf(XTREAM);
+        assertNotNull(SyncStore.get(c, LiveSync.PLAYLIST, key));
+        // What Live TV's Remove everything clears (Library.clear), with the sync held still.
+        LiveSync.removeEverything(c, () -> {
+            Sources.clear(c);
+            LiveSyncHooks.setPicks(c, new java.util.ArrayList<>(), new java.util.ArrayList<>());
+            LiveSyncHooks.setGroups(c, new java.util.HashSet<>(), new java.util.ArrayList<>());
+        });
+        assertFalse(LiveSync.on(c, LiveSync.PLAYLISTS));
+        assertTrue(LiveSync.offByRemoveEverything(c));
+        // The next syncs: nothing goes out as a removal, and the family's playlist doesn't come straight back.
+        LiveSync.export(c);
+        assertTrue(LiveSync.apply(c, true));
+        LiveSync.export(c);
+        for (String type : new String[]{LiveSync.PLAYLIST, LiveSync.LIVEFAV, LiveSync.LIVECAT, LiveSync.LIVERECENT, LiveSync.RESUME}) {
+            for (JSONObject it : SyncStore.items(c, type)) assertFalse(type + " " + it.optString("key"), it.optBoolean("deleted"));
+        }
+        assertNotNull(SyncStore.get(c, LiveSync.PLAYLIST, key));
+        assertTrue(SyncStore.get(c, LiveSync.LIVECAT, "groups").getJSONArray("hidden").toString().contains("Adult"));
+        assertEquals(1, SyncStore.get(c, LiveSync.LIVEFAV, "list").getJSONArray("channels").length());
+        assertTrue(Sources.list(c).isEmpty());
+        // Switched on again: the family's playlist is taken in, login and all, as on a new device.
+        LiveSync.setOn(c, LiveSync.PLAYLISTS, true);
+        assertFalse(LiveSync.offByRemoveEverything(c));
+        assertTrue(LiveSync.apply(c, true));
+        assertEquals(1, Sources.list(c).size());
+        assertEquals(XTREAM.pass, Sources.list(c).get(0).source.pass);
+        assertEquals(Arrays.asList("x:42"), LiveSyncHooks.favourites(c));
+    }
+
     @Test public void favouritesFollowTheirPlaylistWhateverItsPlaceHere() throws Exception {
         Sources.put(c, null, "Family", XTREAM);
         LiveSyncHooks.setPicks(c, Arrays.asList("x:42", "x:7"), Arrays.asList("x:7"));
