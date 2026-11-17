@@ -49,7 +49,8 @@ import java.util.Map;
  * its start), the banner has "Watch from the start" over the logo (Left goes to it; the rewind key too), and the live
  * screen tags it. OK held brings up a small menu for the channel: watch it, from the start, add it to the favourites;
  * and, for the channel playing, Subtitles: Off, From the channel or Automatic (LiveSubs), which ask before fetching the
- * speech model where the TV needs it.
+ * speech model where the TV needs it. MENU (or the remote's settings key) brings up the player's menu instead
+ * (PlayerMenu: the picture's shape, the sound's delay and track); while either is up it has the remote to itself.
  */
 final class LiveScreen extends Screen implements LiveTv.Listener {
     private static final long BANNER_MS = 6000, CHOOSING_MS = 9000, BROWSE_MS = 12000;
@@ -339,8 +340,8 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
 
     /** Automatic subtitles where the TV has no speech recognition of its own: the speech model fetched only on a yes. */
     private void askModel() {
-        if (menu == null || menu.isOpen()) {
-            // Something else is up: asked next time.
+        if (menu == null || menu.isOpen() || playerMenu != null && playerMenu.isOpen()) {
+            // A menu is up (this one or the player's): asked next time, so the two never share the remote.
             tv.live.subs.askLater();
             return;
         }

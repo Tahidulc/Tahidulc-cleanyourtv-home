@@ -103,6 +103,28 @@ final class Dark {
         c.drawPath(REPLAY, fill);
     }
 
+    private static final Path BELL = new Path();
+    private static final RectF BELL_DOME = new RectF();
+
+    /**
+     * A reminder's mark: a bell, filled, centred on (cx, cy) and about 2r tall (screen pixels): its dome and flared
+     * body, the rim across its foot, the clapper under it and the little knob on top.
+     */
+    static void bell(Canvas c, float cx, float cy, float r, Paint fill) {
+        BELL.reset();
+        BELL_DOME.set(cx - r * 0.62f, cy - r * 0.86f, cx + r * 0.62f, cy + r * 0.36f);
+        BELL.moveTo(cx - r * 0.86f, cy + r * 0.52f);
+        BELL.lineTo(cx - r * 0.62f, cy + r * 0.22f);
+        BELL.lineTo(cx - r * 0.62f, cy - r * 0.24f);
+        BELL.arcTo(BELL_DOME, 180f, 180f, false);
+        BELL.lineTo(cx + r * 0.62f, cy + r * 0.22f);
+        BELL.lineTo(cx + r * 0.86f, cy + r * 0.52f);
+        BELL.close();
+        c.drawPath(BELL, fill);
+        c.drawCircle(cx, cy + r * 0.74f, r * 0.2f, fill);
+        c.drawCircle(cx, cy - r * 0.9f, r * 0.13f, fill);
+    }
+
     // ---- people ---------------------------------------------------------------------------------------------------
 
     private static final int[] FACES = {0xFF5B6CFF, 0xFFE0703A, 0xFF2E9D72, 0xFF9B5DE5, 0xFF1F9AA8, 0xFFC0485A, 0xFFB08A1E, 0xFF5E7186};
