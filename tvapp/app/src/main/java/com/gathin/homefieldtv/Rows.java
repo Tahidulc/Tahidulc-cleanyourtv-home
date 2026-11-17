@@ -3,40 +3,51 @@ package com.gathin.homefieldtv;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
-import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.RectF;
-import android.graphics.Shader;
 import android.os.SystemClock;
-import android.text.StaticLayout;
 import android.text.TextPaint;
 import android.view.KeyEvent;
 import android.view.View;
 
+import com.gathin.homefieldtv.engine.Catalog;
+import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Exec;
+import com.gathin.homefieldtv.engine.Guide;
+import com.gathin.homefieldtv.engine.Library;
+import com.gathin.homefieldtv.prefs.Look;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Rows of posters and pictures, one under another, drawn by one view: the row the remote is on sits at the same height
- * with its highlight at the left, the row sliding along under it as it moves; the rows above fade away under the big
- * picture. Only what is on screen is drawn, so a catalogue of thousands costs no more than a dozen.
+ * Home's rows in the dark look, one under another, drawn by one view as Films' and TV shows' rows are (Shelves): the
+ * row the remote is on sits under the big picture with the remote's tile lifted inside a white ring, the row sliding
+ * along under it; the rows above fade away under the picture and the next one peeks in below. Three kinds of tile: a
+ * channel's, as the live screen draws them (a picture of what's on with the channel's logo, else the logo on its
+ * black tile; the programme's title, a line about it and how far through it is in amber; the channel's number and
+ * name and what's left under it), a wide one to carry on from (its picture, its title and where it was over the foot,
+ * how far through), and a poster (PosterArt, as everywhere). Only what is in sight is drawn, so a catalogue of
+ * thousands costs no more than a dozen.
  */
 final class Rows extends View {
-    static final int POSTER = 0, WIDE = 1, CHANNEL = 2, EPISODE = 3;
+    static final int POSTER = 0, WIDE = 1, CHANNEL = 2;
 
     static final class Tile {
         final Object item;
         String picture = "", fallback = "", logo = "", title = "", subtitle = "";
         float progress = -1f;
-        /** One of the family's own TorBox titles (no playlist has it): TorBox's cloud on its top left. */
+        /** One of the family's own TorBox titles (no playlist has it): its poster carries TorBox's cloud (PosterArt). */
         boolean torbox;
-        private String fitT, fitS;
+        private PosterArt.Item art;
+        // A channel's words fitted to its tile, for the programme starting at fitAt and the minute fitMinute; a wide
+        // tile's for the width fitW.
+        private String fitT, fitS, fitName, fitLeft;
+        private long fitAt = Long.MIN_VALUE, fitMinute = -1;
         private float fitW = -1f;
-        private StaticLayout card, under;
 
         Tile(Object item) {
             this.item = item;
@@ -49,11 +60,19 @@ final class Rows extends View {
         final List<Tile> tiles;
         int focus;
         float x;
+        /** What each tile's lift is kept by: the same across new rows of the same title, so nothing grows again. */
+        private Object[] keys;
 
         Row(String title, int kind, List<Tile> tiles) {
             this.title = title == null ? "" : title;
             this.kind = kind;
             this.tiles = tiles;
+        }
+
+        Object key(int i) {
+            if (keys == null || keys.length <= i) keys = keys == null ? new Object[Math.max(8, i + 1)] : Arrays.copyOf(keys, Math.max(i + 1, keys.length * 2));
+            if (keys[i] == null) keys[i] = new Object();
+            return keys[i];
         }
     }
 
@@ -66,30 +85,41 @@ final class Rows extends View {
         boolean edge(int dir);
     }
 
+    /** A portrait poster's width, a channel's and a wide tile's size, the gap between them, the heading's room (design px). */
+    static final float POSTER_W = Shelves.POSTER_W, TILE_W = 384f, TILE_H = 216f, GAP = 26f, HEAD = 58f, AFTER = 34f;
+    /** The room under a channel's tile for its number and name. */
+    private static final float NAME = 46f, RADIUS = 16f, LIFT = PosterArt.LIFT;
+
     private final List<Row> rows = new ArrayList<>();
     private int row;
     private boolean active = true;
     private Host host;
-    /** The rows' left edge and where the row the remote is on starts (design pixels). */
-    float left = 262f, top = 440f;
-    /** The rows above the one the remote is on fade away (under a big picture). */
-    boolean hideAbove = true;
-    private float scrollY, topTo = -1f;
+    /** The rows' left edge and where the row the remote is on starts, its heading (design pixels). */
+    float left = Billboard.TEXT_X, top = 600f;
+    private float scrollY;
     private long last;
+    /** The remote has rested on the row: its channels' programme pictures are asked for (ProgrammePictures). */
+    private boolean settled = Exec.inline;
+    private final Runnable rest = () -> {
+        settled = true;
+        invalidate();
+    };
 
-    private final Glow glow = new Glow();
-    private final TextPaint headP = Ui.paint(36, false, Ui.WHITE), capP = Ui.paint(27, false, Ui.WHITE);
-    private final TextPaint subP = Ui.paint(22, false, Ui.DIM), cardP = Ui.paint(30, true, Ui.WHITE);
-    private final TextPaint underP = Ui.paint(26, false, Ui.WHITE), underDim = Ui.paint(22, false, Ui.FAINT);
-    private final Paint bmp = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG), track = Ui.fill(0x55FFFFFF);
-    private final Paint bar = Ui.fill(Ui.CYAN), cardBack = new Paint(Paint.ANTI_ALIAS_FLAG), shade = new Paint();
-    private final Paint tileBack = Ui.fill(com.gathin.broadcast.LogoTile.GROUND);
-    private final RectF r = new RectF(), f = new RectF();
-    private float shadeFor = -1f, cardFor = -1f;
+    private final Lift lift = new Lift();
+    private final PosterArt art;
+    private final TextPaint headP = Dark.text(30, 600, Dark.TEXT);
+    private final TextPaint tTitle = Dark.text(25, 600, Dark.TEXT), tLine = Dark.text(19, 400, Dark.SOFT);
+    private final TextPaint nameP = Dark.text(21, 500, Dark.MUTED), nameOn = Dark.text(21, 600, Dark.SOFT);
+    private final TextPaint leftP = Dark.text(19, 500, Dark.MUTED), logoName = Dark.text(28, 700, Dark.TEXT);
+    private final Paint bmp = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG), black = Dark.fill(0xFF000000);
+    private final Paint card = Dark.fill(Dark.CARD), track = Dark.fill(0x40FFFFFF), bar = Dark.fill(Dark.ACCENT);
+    private final Paint ring = Dark.line(Dark.alpha(Dark.RING, 0xE6), 3f);
+    private final RectF r = new RectF();
     private final Runnable redraw = this::invalidate;
 
     Rows(Context c) {
         super(c);
+        art = new PosterArt(PosterArt.cardWidth(Ui.f(POSTER_W)));
     }
 
     void setHost(Host h) {
@@ -98,29 +128,17 @@ final class Rows extends View {
 
     // ---- sizes (design pixels) ----------------------------------------------------------------------------------
 
-    static float tileW(int kind) {
-        return kind == POSTER ? 230f : kind == EPISODE ? 384f : 420f;
+    private float tileW(int kind) {
+        return kind == POSTER ? art.w / Ui.s : TILE_W;
     }
 
-    static float tileH(int kind) {
-        return kind == POSTER ? 345f : kind == EPISODE ? 216f : 236f;
+    /** A tile and what is under it. */
+    private float tileH(int kind) {
+        return kind == POSTER ? art.tileH() / Ui.s : kind == CHANNEL ? TILE_H + NAME : TILE_H;
     }
 
-    private static float gap(int kind) {
-        return kind == POSTER ? 24f : 26f;
-    }
-
-    /** The row's title above it, with room for the highlight's glow under the writing. */
-    private static float head(Row r) {
-        return r.title.isEmpty() ? 0f : r.kind == POSTER ? 80f : 72f;
-    }
-
-    private static float under(int kind) {
-        return kind == EPISODE ? 78f : 0f;
-    }
-
-    static float height(Row r) {
-        return head(r) + tileH(r.kind) + under(r.kind) + (r.kind == POSTER ? 34f : 40f);
+    private float height(Row r) {
+        return HEAD + tileH(r.kind) + AFTER;
     }
 
     // ---- what it shows ------------------------------------------------------------------------------------------
@@ -139,6 +157,7 @@ final class Rows extends View {
             if (o != null) {
                 n.focus = Math.max(0, Math.min(o.focus, n.tiles.size() - 1));
                 n.x = Math.max(0, Math.min(o.x, n.tiles.size() - 1));
+                n.keys = o.keys;
             }
             if (n.title.equals(was)) at = i;
             rows.add(n);
@@ -162,42 +181,14 @@ final class Rows extends View {
         return row < rows.size() ? rows.get(row) : null;
     }
 
-    int rowIndex() {
-        return row;
-    }
-
     Tile tile() {
         Row r = row();
         return r == null || r.tiles.isEmpty() ? null : r.tiles.get(Math.min(r.focus, r.tiles.size() - 1));
     }
 
-    void focusRow(int i) {
-        if (i < 0 || i >= rows.size()) return;
-        row = i;
-        changed();
-    }
-
     void setActive(boolean on) {
         active = on;
-        invalidate();
-    }
-
-    /** The rows' top moved to a new place, gliding there (at once in previews). */
-    void moveTop(float to) {
-        if (topTo < 0) topTo = top;
-        topTo = to;
-        if (Exec.inline) top = to;
-        invalidate();
-    }
-
-    boolean active() {
-        return active;
-    }
-
-    /** Where the row the remote is on starts on screen, for the strip's chevron (design pixels). */
-    float focusTop() {
-        Row r = row();
-        return top + (r == null ? 0 : head(r));
+        moved();
     }
 
     private float targetY() {
@@ -206,9 +197,22 @@ final class Rows extends View {
         return y;
     }
 
-    private void changed() {
+    /** The remote moved: the pictures wait for it to rest again. */
+    private void moved() {
+        removeCallbacks(rest);
+        settled = Exec.inline;
+        if (!Exec.inline) postDelayed(rest, ProgrammePictures.REST_MS);
         invalidate();
+    }
+
+    private void changed() {
+        moved();
         if (host != null) host.focused(row(), tile());
+    }
+
+    @Override protected void onDetachedFromWindow() {
+        removeCallbacks(rest);
+        super.onDetachedFromWindow();
     }
 
     // ---- the remote ---------------------------------------------------------------------------------------------
@@ -265,12 +269,6 @@ final class Rows extends View {
         last = now;
         float k = Exec.inline ? 1f : 1f - (float) Math.exp(-dt / 75.0);
         boolean moving = false;
-        if (topTo >= 0 && Math.abs(topTo - top) > 0.5f) {
-            top += (topTo - top) * k;
-            moving = true;
-        } else if (topTo >= 0) {
-            top = topTo;
-        }
         float target = targetY();
         if (Math.abs(target - scrollY) > 0.5f) {
             scrollY += (target - scrollY) * k;
@@ -292,165 +290,197 @@ final class Rows extends View {
 
     @Override protected void onDraw(Canvas c) {
         boolean moving = step();
+        Row on = row();
+        moving |= lift.step(active && on != null && !on.tiles.isEmpty() ? on.key(Math.min(on.focus, on.tiles.size() - 1)) : null);
         float topPx = Ui.f(top);
         float y = topPx - scrollY;
+        long now = System.currentTimeMillis();
         for (int i = 0; i < rows.size(); i++) {
             Row x = rows.get(i);
             float h = Ui.f(height(x));
             if (y > getHeight()) break;
             if (y + h > 0) {
                 float alpha = 1f;
-                if (hideAbove && y < topPx - 1) alpha = Math.max(0f, 1f - (topPx - y) / (h * 0.6f));
-                if (alpha > 0.01f) drawRow(c, x, y, (int) (alpha * 255), i == row);
+                if (y < topPx - 1) alpha = Math.max(0f, 1f - (topPx - y) / (h * 0.5f));
+                if (alpha > 0.01f) drawRow(c, x, y, (int) (alpha * 255), i == row, now);
             }
             y += h;
         }
         if (moving) postInvalidateOnAnimation();
     }
 
-    private void drawRow(Canvas c, Row x, float y, int a, boolean focusedRow) {
+    private void drawRow(Canvas c, Row x, float y, int a, boolean focusedRow, long now) {
         float x0 = Ui.f(left);
         if (!x.title.isEmpty()) {
             headP.setAlpha(a);
-            c.drawText(Ui.fit(x.title, headP, getWidth() - x0 - Ui.f(40)), x0, y + Ui.f(40), headP);
+            c.drawText(Ui.fit(x.title, headP, getWidth() - x0 - Ui.f(60)), x0, y + Ui.f(36), headP);
         }
         int k = x.kind;
-        float ty = y + Ui.f(head(x)), tw = Ui.px(tileW(k)), th = Ui.px(tileH(k)), pitch = tw + Ui.f(gap(k));
-        c.save();
-        c.clipRect(x0 - Ui.f(26), ty - Ui.f(34), getWidth(), ty + th + Ui.f(under(k)) + Ui.f(34));
+        float ty = y + Ui.f(HEAD), tw = Ui.f(tileW(k)), pitch = tw + Ui.f(GAP);
         int n = x.tiles.size();
         int from = Math.max(0, (int) Math.floor(x.x) - 1);
         int to = Math.min(n - 1, from + (int) Math.ceil((getWidth() - x0) / pitch) + 2);
-        boolean focusHere = focusedRow && active;
+        // The tile the remote is on grows into its lift and ring as the one it left settles back (both drawn last, over).
+        int lifted = -1, settling = -1;
+        Object leaving = lift.leaving();
         for (int i = from; i <= to; i++) {
-            if (focusHere && i == x.focus) continue;
             float tx = x0 + (i - x.x) * pitch;
-            if (tx + tw < x0 - Ui.f(4)) continue;
-            drawTile(c, x.tiles.get(i), k, tx, ty, tw, th, a);
+            if (tx + tw < 0) continue;
+            float l = x.keys == null ? 0f : lift.of(x.key(i));
+            if (l > 0f) {
+                if (x.key(i) == leaving) settling = i;
+                else lifted = i;
+                continue;
+            }
+            drawTile(c, x, x.tiles.get(i), tx, ty, 0f, a, focusedRow, now);
         }
-        if (focusHere && x.focus < n) {
-            float tx = x0 + (x.focus - x.x) * pitch;
-            float sc = k == POSTER ? 1.08f : 1.06f;
-            float cx = tx + tw / 2f, cy = ty + th / 2f;
-            f.set(cx - tw * sc / 2f - Ui.f(11), cy - th * sc / 2f - Ui.f(11), cx + tw * sc / 2f + Ui.f(11),
-                    cy + th * sc / 2f + Ui.f(11) + (k == EPISODE ? Ui.f(under(k)) : 0f));
-            glow.draw(c, f);
-            c.save();
-            c.scale(sc, sc, cx, cy);
-            drawTile(c, x.tiles.get(x.focus), k, tx, ty, tw, th, a);
-            c.restore();
-        }
-        c.restore();
+        if (settling >= 0) drawTile(c, x, x.tiles.get(settling), x0 + (settling - x.x) * pitch, ty, lift.of(x.key(settling)), a, focusedRow, now);
+        if (lifted >= 0) drawTile(c, x, x.tiles.get(lifted), x0 + (lifted - x.x) * pitch, ty, lift.of(x.key(lifted)), a, focusedRow, now);
+        // The next posters along asked for early, so the row slides on to pictures.
+        if (focusedRow && k == POSTER) for (int i = to + 1; i <= Math.min(n - 1, to + 4); i++) art.prefetch(art(x.tiles.get(i)), null);
     }
 
-    private void drawTile(Canvas c, Tile t, int k, float x, float y, float w, float h, int a) {
-        int iw = Math.round(w), ih = Math.round(h);
-        bmp.setAlpha(a);
-        r.set(x, y, x + w, y + h);
-        Bitmap b = null;
-        if (k != CHANNEL) {
-            b = Pics.get(t.picture, iw, ih, Pics.CROP, redraw);
-            if (b == null && !t.fallback.isEmpty()) b = Pics.get(t.fallback, iw, ih, Pics.CROP, redraw);
+    private void drawTile(Canvas c, Row row, Tile t, float x, float y, float l, int a, boolean focusedRow, long now) {
+        if (row.kind == POSTER) {
+            PosterArt.Item it = art(t);
+            if (it != null) art.draw(c, it, x, y, l, a, redraw);
+            return;
         }
+        float w = Ui.f(TILE_W), h = Ui.f(TILE_H), rad = Ui.f(RADIUS);
+        c.save();
+        if (l > 0f) {
+            float s = 1f + (LIFT - 1f) * l;
+            c.scale(s, s, x + w / 2f, y + h / 2f);
+        }
+        r.set(x, y, x + w, y + h);
+        if (row.kind == CHANNEL) channel(c, t, x, y, w, h, rad, a, focusedRow && active && settled, now);
+        else wide(c, t, x, y, w, h, rad, a);
+        if (l > 0f) {
+            ring.setAlpha(Math.round(a * 0.9f * l));
+            Dark.ring(c, r, rad, ring);
+        }
+        c.restore();
+        if (row.kind == CHANNEL) under(c, t, x, y + h + (LIFT - 1f) * h / 2f * l, w, l > 0.5f, a);
+    }
+
+    /** A poster's look: its genre (its page's when read, else its category's) and its wide picture where known. */
+    private PosterArt.Item art(Tile t) {
+        if (t.art == null && t.item instanceof Catalog.Title) {
+            Catalog.Title title = (Catalog.Title) t.item;
+            PosterArt.Item it = new PosterArt.Item(title);
+            Catalog.Details d = Catalog.get(getContext()).cachedDetails(title);
+            String g = d != null ? PosterArt.firstGenre(d.genre) : "";
+            it.genre = g.isEmpty() ? PosterArt.genreOf(title.category) : g;
+            if (d != null) it.backdrop = d.backdrop;
+            t.art = it;
+        }
+        return t.art;
+    }
+
+    /** A channel's tile: what's on, as the live screen's tiles show it. */
+    private void channel(Canvas c, Tile t, float x, float y, float w, float h, float rad, int a, boolean ask, long now) {
+        Channel ch = t.item instanceof Channel ? (Channel) t.item : null;
+        Guide.Schedule s = ch == null ? null : Library.get(getContext()).schedule(ch.key);
+        int i = s == null ? -1 : s.at(now);
+        // Settings → Appearance → Channel tiles: Channel logos leaves the programme's picture out.
+        String url = i < 0 || Look.logos ? "" : ask ? ProgrammePictures.get(getContext(), ch, s, i, redraw) : ProgrammePictures.peek(ch, s, i);
+        Bitmap pic = url == null || url.isEmpty() ? null : Pics.get(url, Math.round(w), Math.round(h), Pics.CARD, redraw);
+        int logoMode = Pics.tiles ? Pics.READY : Pics.FIT;
+        bmp.setAlpha(a);
+        if (pic != null) {
+            c.drawBitmap(pic, null, r, bmp);
+            Bitmap logo = Pics.get(t.logo, Ui.px(130), Ui.px(48), logoMode, redraw);
+            if (logo != null) c.drawBitmap(logo, x + Ui.f(16), y + Ui.f(14), bmp);
+        } else {
+            black.setAlpha(a);
+            c.drawRoundRect(r, rad, rad, black);
+            Bitmap logo = Pics.get(t.logo, Ui.px(200), Ui.px(70), logoMode, redraw);
+            if (logo != null) {
+                c.drawBitmap(logo, x + (w - logo.getWidth()) / 2f, y + Ui.f(72) - logo.getHeight() / 2f, bmp);
+            } else if (ch != null) {
+                logoName.setAlpha(a);
+                String nm = Ui.fit(ch.name, logoName, w - Ui.f(32));
+                c.drawText(nm, x + (w - logoName.measureText(nm)) / 2f, y + Ui.f(82), logoName);
+            }
+        }
+        // What's on, a line about it (else its times), how far through; under the tile the channel and what's left.
+        long at = i >= 0 ? s.start[i] : Long.MIN_VALUE + 1, minute = now / 60_000L;
+        float room = w - Ui.f(32);
+        if (t.fitAt != at || t.fitW != room) {
+            String title = i >= 0 ? s.title[i] : t.title;
+            String about = i < 0 ? (s == null ? "No programme information" : "Nothing in the guide now")
+                    : s.desc[i].isEmpty() ? LiveText.span(s.start[i], s.stop[i]) : s.desc[i];
+            t.fitT = Ui.fit(title, tTitle, room);
+            t.fitS = Ui.fit(about, tLine, room);
+            t.fitAt = at;
+            t.fitW = room;
+            t.fitMinute = -1;
+        }
+        if (t.fitMinute != minute && ch != null) {
+            t.fitLeft = i >= 0 ? LiveText.left(now, s.stop[i]) : "";
+            float lw = t.fitLeft.isEmpty() ? 0f : leftP.measureText(t.fitLeft) + Ui.f(16);
+            t.fitName = Ui.fit((Look.numbers ? Library.get(getContext()).number(ch) + "  " : "") + ch.name, nameOn, w - lw);
+            t.fitMinute = minute;
+        }
+        tTitle.setAlpha(a);
+        tLine.setAlpha(a);
+        c.drawText(t.fitT, x + Ui.f(16), y + h - Ui.f(46), tTitle);
+        c.drawText(t.fitS, x + Ui.f(16), y + h - Ui.f(21), tLine);
+        if (i >= 0 && Look.progress) {
+            float bx = x + Ui.f(16), by = y + h - Ui.f(10);
+            track.setAlpha(a * 0x40 / 255);
+            bar.setAlpha(a);
+            c.drawRect(bx, by, bx + room, by + Ui.f(3), track);
+            c.drawRect(bx, by, bx + room * LiveText.progress(now, s.start[i], s.stop[i]), by + Ui.f(3), bar);
+        }
+    }
+
+    /** Under a channel's tile: its number and name, and what's left of what's on (fitted as the tile was drawn). */
+    private void under(Canvas c, Tile t, float x, float y, float w, boolean on, int a) {
+        if (t.fitName == null) return;
+        TextPaint np = on ? nameOn : nameP;
+        np.setAlpha(a);
+        float base = y + Ui.f(32);
+        c.drawText(t.fitName, x, base, np);
+        if (!t.fitLeft.isEmpty()) {
+            leftP.setAlpha(a);
+            c.drawText(t.fitLeft, x + w - leftP.measureText(t.fitLeft), base, leftP);
+        }
+    }
+
+    /** A wide tile to carry on from: its picture, its title and where it was over the foot, how far through. */
+    private void wide(Canvas c, Tile t, float x, float y, float w, float h, float rad, int a) {
+        Bitmap b = Pics.get(t.picture, Math.round(w), Math.round(h), Pics.CARD, redraw);
+        if (b == null && !t.fallback.isEmpty()) b = Pics.get(t.fallback, Math.round(w), Math.round(h), Pics.CARD, redraw);
+        bmp.setAlpha(a);
         if (b != null) {
             c.drawBitmap(b, null, r, bmp);
         } else {
-            card(c, t, k, x, y, w, h, a);
+            card.setAlpha(a);
+            c.drawRoundRect(r, rad, rad, card);
         }
-        if (k == WIDE || k == CHANNEL) caption(c, t, k, x, y, w, h, a);
-        if (t.torbox) {
-            float d = Ui.f(34);
-            SourcePicker.badge(c, x + Ui.f(10) + d / 2f, y + Ui.f(10) + d / 2f, d, a);
+        float room = w - Ui.f(32);
+        if (t.fitW != room || t.fitT == null) {
+            t.fitT = Ui.fit(t.title, tTitle, room);
+            t.fitS = Ui.fit(t.subtitle, tLine, room);
+            t.fitW = room;
+        }
+        tTitle.setAlpha(a);
+        tLine.setAlpha(a);
+        boolean two = !t.fitS.isEmpty();
+        float base = y + h - Ui.f(t.progress >= 0f ? 21 : 16);
+        if (two) {
+            c.drawText(t.fitT, x + Ui.f(16), base - Ui.f(27), tTitle);
+            c.drawText(t.fitS, x + Ui.f(16), base, tLine);
+        } else {
+            c.drawText(t.fitT, x + Ui.f(16), base, tTitle);
         }
         if (t.progress >= 0f) {
-            float bh = Ui.f(5);
-            track.setAlpha(a * 0x55 / 255);
+            float bx = x + Ui.f(16), by = y + h - Ui.f(10);
+            track.setAlpha(a * 0x40 / 255);
             bar.setAlpha(a);
-            c.drawRect(x, y + h - bh, x + w, y + h, track);
-            c.drawRect(x, y + h - bh, x + w * Math.max(0.02f, Math.min(1f, t.progress)), y + h, bar);
+            c.drawRect(bx, by, bx + room, by + Ui.f(3), track);
+            c.drawRect(bx, by, bx + room * Math.max(0.02f, Math.min(1f, t.progress)), by + Ui.f(3), bar);
         }
-        if (k == EPISODE) {
-            if (t.under == null) t.under = Ui.layout(t.title, underP, Math.round(w), 2);
-            underP.setAlpha(a);
-            Ui.draw(c, t.under, x, y + h + Ui.f(10));
-            if (!t.subtitle.isEmpty()) {
-                underDim.setAlpha(a * 0x9E / 255);
-                c.drawText(Ui.fit(t.subtitle, underDim, w), x, y + h + Ui.f(10) + t.under.getHeight() + Ui.f(24), underDim);
-            }
-        }
-    }
-
-    /** No picture: the guide's blue, the title or the channel's logo on it. */
-    private void card(Canvas c, Tile t, int k, float x, float y, float w, float h, int a) {
-        if (cardFor != h) {
-            cardBack.setShader(new LinearGradient(0, 0, 0, h, Ui.CARD_LIGHT, Ui.CARD, Shader.TileMode.CLAMP));
-            cardFor = h;
-        }
-        cardBack.setAlpha(a);
-        c.save();
-        c.translate(x, y);
-        // A channel's card on its black tile (Pics.tiles), the logo made ready for black.
-        boolean tile = k == CHANNEL && Pics.tiles;
-        if (tile) {
-            tileBack.setAlpha(a);
-            c.drawRect(0, 0, w, h, tileBack);
-        } else {
-            c.drawRect(0, 0, w, h, cardBack);
-        }
-        if (k == CHANNEL) {
-            Bitmap logo = Pics.get(t.logo, Math.round(w * 0.6f), Math.round(h * 0.4f), tile ? Pics.READY : Pics.FIT, redraw);
-            if (logo != null) {
-                bmp.setAlpha(a);
-                c.drawBitmap(logo, (w - logo.getWidth()) / 2f, h * 0.36f - logo.getHeight() / 2f, bmp);
-            } else {
-                String name = t.subtitle.isEmpty() ? t.title : t.subtitle;
-                cardP.setAlpha(a);
-                String s = Ui.fit(name, cardP, w - Ui.f(40));
-                c.drawText(s, (w - cardP.measureText(s)) / 2f, h * 0.36f + Ui.f(10), cardP);
-            }
-        } else if (k != WIDE) {
-            if (t.card == null) t.card = Ui.layout(t.title, cardP, Math.round(w - Ui.f(36)), 4);
-            cardP.setAlpha(a);
-            Ui.draw(c, t.card, Ui.f(18), (h - t.card.getHeight()) / 2f);
-        }
-        c.restore();
-    }
-
-    /** The writing along the foot of a wide picture, on a dark fade. */
-    private void caption(Canvas c, Tile t, int k, float x, float y, float w, float h, int a) {
-        if (shadeFor != h) {
-            shade.setShader(new LinearGradient(0, h * 0.42f, 0, h, 0x00000000, 0xE0000000, Shader.TileMode.CLAMP));
-            shadeFor = h;
-        }
-        shade.setAlpha(a);
-        c.save();
-        c.translate(x, y);
-        c.drawRect(0, h * 0.42f, w, h, shade);
-        float tw = w - Ui.f(32);
-        if (t.fitW != tw) {
-            t.fitT = Ui.fit(t.title, capP, tw);
-            t.fitS = Ui.fit(t.subtitle, subP, tw);
-            t.fitW = tw;
-        }
-        boolean two = !t.fitS.isEmpty();
-        float base = h - Ui.f(t.progress >= 0 ? 20 : 16);
-        capP.setAlpha(a);
-        subP.setAlpha(a * 0xD9 / 255);
-        if (two) {
-            c.drawText(t.fitS, Ui.f(16), base, subP);
-            c.drawText(t.fitT, Ui.f(16), base - Ui.f(30), capP);
-        } else {
-            c.drawText(t.fitT, Ui.f(16), base, capP);
-        }
-        if (k == WIDE && !t.logo.isEmpty()) {
-            // The channel's logo over the picture: on its own small black tile (Pics.tiles).
-            Bitmap logo = Pics.tiles ? Pics.get(t.logo, Ui.px(100), Ui.px(56), Pics.TILE, redraw)
-                    : Pics.get(t.logo, Ui.px(170), Ui.px(44), Pics.FIT, redraw);
-            if (logo != null) {
-                bmp.setAlpha(a);
-                c.drawBitmap(logo, Ui.f(16), base - Ui.f(two ? 64 : 34) - logo.getHeight(), bmp);
-            }
-        }
-        c.restore();
     }
 }

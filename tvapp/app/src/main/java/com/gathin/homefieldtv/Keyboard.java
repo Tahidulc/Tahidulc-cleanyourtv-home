@@ -13,9 +13,11 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * The on-screen keyboard, for the remote: letters for Search, and a fuller one (digits, capitals, the marks web
- * addresses use) for a playlist's address and login. A keyboard plugged into the TV, or adb's input text, types into
- * it too. A password shows as dots.
+ * The on-screen keyboard, for the remote, in the dark look of the PIN pad: letters for Search, and a fuller one (digits,
+ * capitals, the marks web addresses use) for a playlist's address and login. Its name over a dark field with an amber
+ * caret, keys as dark rounded cards, the one the remote is on in amber inside a white ring (quietly lit while the remote
+ * is elsewhere on the screen). A keyboard plugged into the TV, or adb's input text, types into it too. A password shows
+ * as dots.
  */
 final class Keyboard extends View {
     interface Host {
@@ -54,11 +56,13 @@ final class Keyboard extends View {
     private int fr, fk;
     private Host host;
 
-    private final Glow glow = new Glow();
-    private final TextPaint keyP = Ui.paint(32, false, Ui.WHITE), keyOn = Ui.paint(32, true, Ui.WHITE), smallKey = Ui.paint(26, false, Ui.WHITE);
-    private final TextPaint labelP = Ui.paint(26, false, Ui.DIM), fieldP = Ui.paint(36, false, Ui.WHITE), hintP = Ui.paint(32, false, Ui.FAINT);
-    private final Paint keyBack = Ui.fill(0x21FFFFFF), fieldBack = Ui.fill(Ui.tint(0x40062A66)), fieldLine = Ui.stroke(0x80FFFFFF, 1.5f);
-    private final Paint caret = Ui.fill(Ui.CYAN);
+    private final TextPaint keyP = Dark.text(30, 500, Dark.TEXT), keyOn = Dark.text(30, 700, Dark.ACCENT_INK);
+    private final TextPaint smallKey = Dark.text(23, 600, Dark.SOFT), smallOn = Dark.text(23, 700, Dark.ACCENT_INK);
+    private final TextPaint labelP = Dark.text(32, 600, Dark.TEXT), fieldP = Dark.text(34, 500, Dark.TEXT), hintP = Dark.text(30, 400, Dark.FAINT);
+    private final Paint keyBack = Dark.fill(Dark.alpha(Dark.TEXT, 0x14)), keyLit = Dark.fill(Dark.ACCENT), keyQuiet = Dark.fill(Dark.CARD_HI);
+    private final Paint ring = Dark.line(Dark.alpha(Dark.RING, 0xE6), 2.5f);
+    private final Paint fieldBack = Dark.fill(Dark.CARD), fieldLine = Dark.line(Dark.alpha(Dark.TEXT, 0x33), 1.5f);
+    private final Paint caret = Dark.fill(Dark.ACCENT);
     private final RectF r = new RectF();
 
     Keyboard(Context c, int kind) {
@@ -118,7 +122,7 @@ final class Keyboard extends View {
     private static final float KEY_H = 64f, ROW_GAP = 10f;
 
     float keysTop() {
-        return y + (showField ? 142f : 0f);
+        return y + (showField ? 156f : 0f);
     }
 
     float width() {
@@ -227,23 +231,24 @@ final class Keyboard extends View {
     @Override protected void onDraw(Canvas c) {
         float left = Ui.f(x);
         if (showField) {
-            if (!label.isEmpty()) c.drawText(label, left, Ui.f(y + 28), labelP);
-            r.set(left, Ui.f(y + 44), left + Ui.f(width()), Ui.f(y + 120));
-            c.drawRect(r, fieldBack);
-            c.drawRect(r, fieldLine);
+            if (!label.isEmpty()) c.drawText(label, left, Ui.f(y + 34), labelP);
+            r.set(left, Ui.f(y + 52), left + Ui.f(width()), Ui.f(y + 128));
+            c.drawRoundRect(r, Ui.f(16), Ui.f(16), fieldBack);
+            c.drawRoundRect(r, Ui.f(16), Ui.f(16), fieldLine);
             String shown = secret ? dots(text.length()) : text;
-            float room = r.width() - Ui.f(48);
+            float room = r.width() - Ui.f(52);
             // The end of a long address stays in view.
             while (shown.length() > 1 && fieldP.measureText(shown) > room) shown = shown.substring(1);
+            float base = Ui.f(y + 102);
             if (shown.isEmpty() && !hint.isEmpty()) {
-                c.drawText(Ui.fit(hint, hintP, room), left + Ui.f(22), Ui.f(y + 94), hintP);
+                c.drawText(Ui.fit(hint, hintP, room), left + Ui.f(24), base, hintP);
             } else {
-                c.drawText(shown, left + Ui.f(22), Ui.f(y + 94), fieldP);
+                c.drawText(shown, left + Ui.f(24), base, fieldP);
             }
-            float cx = left + Ui.f(22) + (shown.isEmpty() ? 0 : fieldP.measureText(shown) + Ui.f(3));
-            c.drawRect(cx, Ui.f(y + 60), cx + Ui.f(3), Ui.f(y + 104), caret);
+            float cx = left + Ui.f(24) + (shown.isEmpty() ? 0 : fieldP.measureText(shown) + Ui.f(3));
+            c.drawRoundRect(cx, Ui.f(y + 68), cx + Ui.f(3), Ui.f(y + 112), Ui.f(1.5f), Ui.f(1.5f), caret);
         }
-        float top = Ui.f(keysTop()), unit = Ui.f(keyW() + gap());
+        float top = Ui.f(keysTop()), unit = Ui.f(keyW() + gap()), rad = Ui.f(14);
         for (int ri = 0; ri < rows.size(); ri++) {
             Key[] row = rows.get(ri);
             float ky = top + ri * Ui.f(KEY_H + ROW_GAP);
@@ -252,13 +257,12 @@ final class Keyboard extends View {
                 Key k = row[ki];
                 float kx = left + u * unit;
                 r.set(kx, ky, kx + k.units * unit - Ui.f(gap()), ky + Ui.f(KEY_H));
-                boolean on = ri == fr && ki == fk;
-                if (on && active) glow.draw(c, r);
-                else if (on) glow.box(c, r);
-                else c.drawRoundRect(r, Ui.f(4), Ui.f(4), keyBack);
+                boolean on = ri == fr && ki == fk, lit = on && active;
+                c.drawRoundRect(r, rad, rad, lit ? keyLit : on ? keyQuiet : keyBack);
+                if (lit) Dark.ring(c, r, rad, ring);
                 String l = k.action == CHAR && caps ? k.label.toUpperCase(Locale.ROOT) : k.label;
                 if (k.action == CAPS && caps) l = "AA";
-                TextPaint p = k.units > 1 ? smallKey : on ? keyOn : keyP;
+                TextPaint p = k.units > 1 ? (lit ? smallOn : smallKey) : lit ? keyOn : keyP;
                 c.drawText(l, r.centerX() - p.measureText(l) / 2f, r.centerY() + p.getTextSize() * 0.34f, p);
                 u += k.units;
             }

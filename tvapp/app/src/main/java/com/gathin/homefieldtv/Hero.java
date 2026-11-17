@@ -4,69 +4,74 @@ import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
-import android.graphics.RectF;
-import android.os.SystemClock;
 import android.text.StaticLayout;
 import android.text.TextPaint;
 import android.view.View;
 
-import com.gathin.homefieldtv.engine.Exec;
+import java.util.Locale;
 
 /**
- * The big picture at the top of Home, Movies and TV shows, with what the remote is on written over its faded left side:
- * a label or logo, the title, stars and running time, a few lines of synopsis. The picture is faded once when it arrives
- * (kept, so moving back and forth costs nothing) rather than blended every frame.
+ * The big picture at the top of Home, in the dark look of Films and TV shows (Billboard): whatever the remote is on,
+ * its wide picture on the right fading into the dark (a Backdrop under this view, cross-fading into the next one's as
+ * the remote moves), and at the left a small line over its title (a film's category, or a channel's logo), the title
+ * large, a line of facts (the amber star and its rating, the running time, year and genres, the age rating in its box)
+ * and a few lines of its story. The writing fades and rises into place a moment after the remote moves to another one.
  */
 final class Hero extends View {
-    /** Where the writing goes (design pixels). */
-    float textX = 262f, textY = 85f, textW = 780f;
-    /** Where the picture goes (design pixels). */
-    final RectF pic = new RectF(880f, 0f, 1920f, 560f);
-    int titleLines = 1, plotLines = 4;
-    float titleSize = 56f;
+    /** Where the writing goes (design pixels): the small line's baseline at textY. */
+    float textX = Billboard.TEXT_X, textY = 104f, textW = Billboard.TEXT_W;
+    int titleLines = 2, plotLines = 3;
+    float titleSize = 72f;
+    /** The picture, drawn under this view (the screen adds it first); a wide one only. */
+    final Backdrop picture;
 
-    private String chip = "", logo = "", title = "", meta = "", plot = "", picture = "";
-    /** An age rating ("12", "PG"), shown in an outlined box after the line under the title. */
+    private String chip = "", logo = "", title = "", meta = "", plot = "";
+    /** An age rating ("12", "PG"), shown in an outlined box after the facts. */
     String badge = "";
     private float rating;
-    private boolean tall;
-    private long shownAt;
-
-    private final TextPaint chipP = Ui.paint(22, true, Ui.WHITE), metaP = Ui.paint(30, false, Ui.WHITE);
-    private final TextPaint plotP = Ui.paint(30, false, Ui.DIM);
-    private TextPaint titleP = Ui.paint(56, false, Ui.WHITE);
-    private final Paint chipBack = Ui.fill(0x38FFFFFF), starOn = Ui.fill(Ui.WHITE), starOff = Ui.fill(0x55FFFFFF);
-    private final Paint badgeLine = Ui.stroke(Ui.WHITE, 1.5f);
-    private final TextPaint badgeP = Ui.paint(22, true, Ui.WHITE);
-    private final Paint fade = new Paint(Paint.FILTER_BITMAP_FLAG);
-    private final RectF r = new RectF();
     private StaticLayout titleL, plotL;
+
+    private final TextPaint chipP = Dark.text(24, 500, Dark.MUTED), metaP = Dark.text(25, 500, Dark.SOFT);
+    private final TextPaint plotP = Dark.text(27, 400, 0xE6FFFFFF), ageP = Dark.text(19, 700, Dark.SOFT);
+    private TextPaint titleP = title(72f);
+    private final Paint star = Dark.fill(Dark.ACCENT), ageBox = Dark.line(0x99FFFFFF, 1.5f);
+    private final Paint bmp = new Paint(Paint.FILTER_BITMAP_FLAG);
     private final Runnable redraw = this::invalidate;
 
     Hero(Context c) {
         super(c);
+        picture = new Backdrop(c, Billboard.PIC_LEFT, 0f, 1920f - Billboard.PIC_LEFT, Billboard.PIC_BOTTOM, Pics.DARK);
+    }
+
+    private static TextPaint title(float size) {
+        TextPaint p = Dark.text(size, 700, Dark.TEXT);
+        p.setLetterSpacing(-0.01f);
+        return p;
     }
 
     void setTitleSize(float size) {
         titleSize = size;
-        titleP = Ui.paint(size, false, Ui.WHITE);
+        titleP = title(size);
     }
 
-    /** What to show; picture "" for none, tall when it is a poster rather than a wide backdrop. */
+    /**
+     * What to show: a small line (or a channel's logo), the title, the facts, a rating out of ten (0 for none), the
+     * story, and its picture ("" for none). A tall picture (a poster) is not drawn: the dark screens show wide ones only.
+     */
     void show(String chipText, String logoUrl, String titleText, String metaText, float outOfTen, String plotText, String pictureUrl,
               boolean isTall) {
-        String pu = pictureUrl == null ? "" : pictureUrl;
-        if (!pu.equals(picture)) shownAt = SystemClock.uptimeMillis();
+        String t = titleText == null ? "" : titleText, l = logoUrl == null ? "" : logoUrl;
+        boolean other = !t.equals(title) || !l.equals(logo);
         chip = chipText == null ? "" : chipText;
-        logo = logoUrl == null ? "" : logoUrl;
-        title = titleText == null ? "" : titleText;
+        logo = l;
+        title = t;
         meta = metaText == null ? "" : metaText;
         rating = outOfTen;
         plot = plotText == null ? "" : plotText;
-        picture = pu;
-        tall = isTall;
-        titleL = Ui.layout(title, titleP, Ui.px(textW), titleLines);
+        picture.set(isTall || pictureUrl == null ? "" : pictureUrl);
+        titleL = t.isEmpty() ? null : Ui.layout(t, titleP, Ui.px(textW), titleLines);
         plotL = plot.isEmpty() ? null : Ui.layout(plot, plotP, Ui.px(textW), plotLines);
+        if (other) Fade.in(this);
         invalidate();
     }
 
@@ -75,57 +80,46 @@ final class Hero extends View {
     }
 
     @Override protected void onDraw(Canvas c) {
-        drawPicture(c);
-        float x = Ui.f(textX), y = Ui.f(textY);
+        float x = Ui.f(textX), y;
         if (!logo.isEmpty()) {
-            // The channel's logo, on its black tile (Pics.tiles).
-            Bitmap b = Pics.tiles ? Pics.get(logo, Ui.px(150), Ui.px(70), Pics.TILE, redraw)
-                    : Pics.get(logo, Ui.px(300), Ui.px(70), Pics.FIT, redraw);
-            if (b != null) c.drawBitmap(b, x, y + (Ui.f(70) - b.getHeight()) / 2f, fade);
-            y += Ui.f(84);
-        } else if (!chip.isEmpty()) {
-            float w = chipP.measureText(chip) + Ui.f(24);
-            r.set(x, y, x + w, y + Ui.f(36));
-            c.drawRoundRect(r, Ui.f(4), Ui.f(4), chipBack);
-            c.drawText(chip, x + Ui.f(12), y + Ui.f(26), chipP);
-            y += Ui.f(48);
+            // A channel: its logo (made ready for black where Settings put the logos on tiles) over what's on.
+            float top = Ui.f(textY - 44), h = Ui.f(72);
+            Bitmap b = Pics.get(logo, Ui.px(220), Ui.px(72), Pics.tiles ? Pics.READY : Pics.FIT, redraw);
+            if (b != null) c.drawBitmap(b, x, top + (h - b.getHeight()) / 2f, bmp);
+            y = top + h + Ui.f(16);
+        } else {
+            if (!chip.isEmpty()) c.drawText(Ui.fit(chip, chipP, Ui.f(textW)), x, Ui.f(textY), chipP);
+            y = Ui.f(textY + 24);
         }
         if (titleL != null) {
             Ui.draw(c, titleL, x, y);
-            y += titleL.getHeight() + Ui.f(10);
+            y += titleL.getHeight() + Ui.f(22);
         }
         if (rating > 0 || !meta.isEmpty() || !badge.isEmpty()) {
-            float base = y + Ui.f(30);
-            float mx = x;
-            if (rating > 0) mx += Ui.stars(c, x, base, Ui.f(28), rating, starOn, starOff) + Ui.f(14);
-            String m = Ui.fit(meta, metaP, Ui.f(textW) - (mx - x) - Ui.f(80));
-            c.drawText(m, mx, base, metaP);
-            mx += metaP.measureText(m) + Ui.f(16);
-            if (!badge.isEmpty()) {
-                String b = badge.length() > 5 ? badge.substring(0, 5) : badge;
-                float bw = badgeP.measureText(b) + Ui.f(14);
-                r.set(mx, base - Ui.f(25), mx + bw, base + Ui.f(5));
-                c.drawRoundRect(r, Ui.f(3), Ui.f(3), badgeLine);
-                c.drawText(b, mx + Ui.f(7), base - Ui.f(2), badgeP);
+            float base = y + Ui.f(10), mx = x;
+            if (rating > 0) {
+                Dark.icon(c, Dark.STAR, mx + Ui.f(11), base - Ui.f(8), Ui.f(22), star, star);
+                String r = String.format(Locale.UK, "%.1f", Math.min(10f, rating));
+                c.drawText(r, mx + Ui.f(28), base, metaP);
+                mx += Ui.f(28) + metaP.measureText(r);
+                if (!meta.isEmpty()) {
+                    c.drawText(" · ", mx, base, metaP);
+                    mx += metaP.measureText(" · ");
+                }
             }
-            y = base + Ui.f(16);
+            if (!meta.isEmpty()) {
+                String m = Ui.fit(meta, metaP, Ui.f(textW) - (mx - x) - Ui.f(80));
+                c.drawText(m, mx, base, metaP);
+                mx += metaP.measureText(m) + Ui.f(14);
+            }
+            if (!badge.isEmpty()) {
+                String a = badge.length() > 5 ? badge.substring(0, 5) : badge;
+                float aw = ageP.measureText(a) + Ui.f(14);
+                c.drawRoundRect(mx, base - Ui.f(22), mx + aw, base + Ui.f(5), Ui.f(4), Ui.f(4), ageBox);
+                c.drawText(a, mx + Ui.f(7), base - Ui.f(1), ageP);
+            }
+            y = base + Ui.f(24);
         }
-        if (plotL != null) Ui.draw(c, plotL, x, y + Ui.f(4));
-    }
-
-    private void drawPicture(Canvas c) {
-        if (picture.isEmpty()) return;
-        int ph = Ui.px(pic.height());
-        int pw = tall ? Math.round(ph * 2f / 3f) : Ui.px(pic.width());
-        // Faded into the blue as it is loaded, off the main thread.
-        Bitmap f = Pics.get(picture, pw, ph, tall ? Pics.FADE_TALL : Pics.FADE, redraw);
-        if (f == null) return;
-        float left = Ui.f(pic.right) - pw, top = Ui.f(pic.top);
-        long age = SystemClock.uptimeMillis() - shownAt;
-        int alpha = Exec.inline ? 255 : (int) Math.min(255, age * 255 / 220);
-        fade.setAlpha(alpha);
-        c.drawBitmap(f, left, top, fade);
-        fade.setAlpha(255);
-        if (alpha < 255) postInvalidateOnAnimation();
+        if (plotL != null) Ui.draw(c, plotL, x, y);
     }
 }

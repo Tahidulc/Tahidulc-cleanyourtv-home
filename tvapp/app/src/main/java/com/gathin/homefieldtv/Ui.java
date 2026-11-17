@@ -4,7 +4,6 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Path;
-import android.graphics.Typeface;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
@@ -19,59 +18,20 @@ import java.time.format.TextStyle;
 import java.util.Locale;
 
 /**
- * The look shared by every screen: sizes drawn for a 1920 x 1080 screen and scaled to the TV's, the typeface, the
- * blues, and times written the way the guide writes them ("3.00pm", "Wednesday, 3.01pm").
+ * What every screen shares: sizes drawn for a 1920 x 1080 screen and scaled to the TV's, words cut to fit and laid out
+ * in lines, chevrons and stars, and times written the way the guide writes them ("3.00pm", "Wednesday, 3.01pm"). The
+ * colours and the typeface are the dark look's (Dark, Theme).
  */
 final class Ui {
     private Ui() {}
 
     /** Screen pixels for one design pixel. */
     static float s = 1f;
-    static Typeface regular = Typeface.DEFAULT, bold = Typeface.DEFAULT_BOLD;
-
-    // The blues, from the guide's own screens: tinted to the theme (Theme) as the app starts.
-    static int BG_TOP = 0xFF1163C8, BG_BOTTOM = 0xFF0A50AE;
-    static int PANEL_TOP = 0xFF2A6CB8, PANEL_BOTTOM = 0xFF0B4C9E, STRIP = 0xFF0A4594, EDGE = 0xFF4F92DA;
-    static int NAVY = 0xFF0A2B68, CARD = 0xFF154E9C, CARD_LIGHT = 0xFF2563B4;
-    static final int WHITE = 0xFFFFFFFF, DIM = 0xD9FFFFFF, FAINT = 0x9EFFFFFF;
-    static int CYAN = 0xFF2BB5F5;
-    static final int AMBER = 0xFFFFC233;
-    static final int CELL = 0x24FFFFFF, CELL_NOW = 0x3AFFFFFF;
-    private static float tintHue = -1f, tintSat = 1f, tintVal = 1f;
-
-    /** The blue screens tinted to a theme (hue below 0 and shares of 1: Sky Q's own blues). */
-    static void tint(float hue, float sat, float val) {
-        tintHue = hue;
-        tintSat = sat;
-        tintVal = val;
-        BG_TOP = tint(0xFF1163C8);
-        BG_BOTTOM = tint(0xFF0A50AE);
-        PANEL_TOP = tint(0xFF2A6CB8);
-        PANEL_BOTTOM = tint(0xFF0B4C9E);
-        STRIP = tint(0xFF0A4594);
-        EDGE = tint(0xFF4F92DA);
-        NAVY = tint(0xFF0A2B68);
-        CARD = tint(0xFF154E9C);
-        CARD_LIGHT = tint(0xFF2563B4);
-        CYAN = tint(0xFF2BB5F5);
-    }
-
-    /** One of the blue screens' own colours, tinted to the theme. */
-    static int tint(int colour) {
-        return Theme.shift(colour, tintHue, tintSat, tintVal);
-    }
 
     static void init(Context c) {
         DisplayMetrics dm = c.getResources().getDisplayMetrics();
         int w = Math.max(dm.widthPixels, dm.heightPixels);
         s = w > 0 ? w / 1920f : 1f;
-        try {
-            regular = c.getResources().getFont(R.font.carlito_regular);
-            bold = c.getResources().getFont(R.font.carlito_bold);
-        } catch (RuntimeException e) {
-            regular = Typeface.DEFAULT;
-            bold = Typeface.DEFAULT_BOLD;
-        }
     }
 
     static int px(float design) {
@@ -80,15 +40,6 @@ final class Ui {
 
     static float f(float design) {
         return design * s;
-    }
-
-    static TextPaint paint(float size, boolean isBold, int color) {
-        TextPaint p = new TextPaint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
-        p.setTypeface(isBold ? bold : regular);
-        // Settings → Appearance → Text size.
-        p.setTextSize(f(size) * com.gathin.homefieldtv.prefs.Look.text);
-        p.setColor(color);
-        return p;
     }
 
     static Paint fill(int color) {
@@ -188,25 +139,6 @@ final class Ui {
         }
         p.close();
         return p;
-    }
-
-    /** Stars out of five for a rating out of ten, drawn from x; the width they took. */
-    static float stars(Canvas c, float x, float baseline, float size, float outOfTen, Paint on, Paint off) {
-        float r = size * 0.5f, cy = baseline - size * 0.38f, step = size * 1.08f;
-        float five = Math.max(0f, Math.min(5f, outOfTen / 2f));
-        for (int i = 0; i < 5; i++) {
-            float cx = x + r + i * step;
-            Path p = star(cx, cy, r);
-            c.drawPath(p, off);
-            float part = Math.max(0f, Math.min(1f, five - i));
-            if (part > 0f) {
-                c.save();
-                c.clipRect(cx - r, cy - r, cx - r + 2 * r * (part >= 0.75f ? 1f : part >= 0.25f ? 0.5f : 0f), cy + r);
-                c.drawPath(p, on);
-                c.restore();
-            }
-        }
-        return 5 * step;
     }
 
     // ---- times, as the guide writes them -----------------------------------------------------------------------

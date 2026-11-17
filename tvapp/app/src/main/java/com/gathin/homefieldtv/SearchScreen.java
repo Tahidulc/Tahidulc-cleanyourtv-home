@@ -15,11 +15,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Search: the letters on the left, and as they are typed, the family's channels, films and TV shows whose names have
- * them, on the right. OK on a channel watches it, on a title opens its page.
+ * Search, in the dark look: the rail, the letters beside it, and as they are typed, the family's channels, films and
+ * TV shows whose names have them, on the right. OK on a channel watches it, on a title opens its page; Left from the
+ * letters goes on to the rail, as on every dark screen.
  */
 final class SearchScreen extends Screen implements Keyboard.Host, ListPanel.Host {
-    private Strip strip;
+    private Rail rail;
     private Keyboard keys;
     private ListPanel results;
     private boolean inResults;
@@ -32,21 +33,22 @@ final class SearchScreen extends Screen implements Keyboard.Host, ListPanel.Host
 
     @Override View build() {
         FrameLayout f = new FrameLayout(tv);
-        strip = new Strip(tv);
+        f.setBackgroundColor(Dark.GROUND);
+        rail = new Rail(tv, Rail.SEARCH);
         keys = new Keyboard(tv, Keyboard.SEARCH);
-        keys.x = 262f;
-        keys.y = 64f;
+        keys.x = 170f;
+        keys.y = 60f;
         keys.label = "Search";
         keys.hint = "Channels, films and TV shows";
         keys.setHost(this);
         results = new ListPanel(tv);
-        results.x = 1000f;
-        results.y = 108f;
-        results.w = 860f;
+        results.x = 930f;
+        results.y = 112f;
+        results.w = 930f;
         results.setHost(this);
         f.addView(keys, new FrameLayout.LayoutParams(-1, -1));
         f.addView(results, new FrameLayout.LayoutParams(-1, -1));
-        f.addView(strip, new FrameLayout.LayoutParams(-1, -1));
+        f.addView(rail, new FrameLayout.LayoutParams(-1, -1));
         search();
         return f;
     }
@@ -67,7 +69,7 @@ final class SearchScreen extends Screen implements Keyboard.Host, ListPanel.Host
     }
 
     @Override void tick() {
-        strip.invalidate();
+        rail.invalidate();
     }
 
     @Override void channelsChanged() {
@@ -123,17 +125,30 @@ final class SearchScreen extends Screen implements Keyboard.Host, ListPanel.Host
     // ---- the remote ---------------------------------------------------------------------------------------------
 
     @Override boolean key(int code, KeyEvent e) {
+        if (rail.active()) {
+            if (code == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                toKeys();
+                return true;
+            }
+            return rail.key(code) || code == KeyEvent.KEYCODE_DPAD_LEFT;
+        }
         if (inResults) return results.key(code);
         return keys.key(code, e);
     }
 
     @Override void ok() {
+        if (rail.active()) {
+            // Search itself: back to the letters; anywhere else as the rail goes on every dark screen.
+            if (rail.focus == Rail.SEARCH) toKeys();
+            else Rail.go(tv, rail.focus, Rail.SEARCH);
+            return;
+        }
         if (inResults) results.ok();
         else keys.ok();
     }
 
     @Override boolean back() {
-        if (inResults) {
+        if (rail.active() || inResults) {
             toKeys();
             return true;
         }
@@ -142,6 +157,7 @@ final class SearchScreen extends Screen implements Keyboard.Host, ListPanel.Host
 
     private void toKeys() {
         inResults = false;
+        rail.setActive(false);
         results.setActive(false);
         keys.setActive(true);
     }
@@ -161,7 +177,8 @@ final class SearchScreen extends Screen implements Keyboard.Host, ListPanel.Host
             return true;
         }
         if (dir == Ui.LEFT) {
-            tv.pop();
+            keys.setActive(false);
+            rail.setActive(true);
             return true;
         }
         return true;

@@ -43,12 +43,11 @@ final class Pics {
     private Pics() {}
 
     /**
-     * CROP fills the size (posters, backdrops); FIT keeps the whole picture inside it (logos); FADE and FADE_TALL are
-     * CROP faded into the blue on the left and at the foot, for the big picture at the top of a screen. TILE is a
-     * channel's logo on its black tile, the size given (LogoTile); READY is FIT with the logo made ready for black (for a
-     * screen that draws the black itself).
+     * CROP fills the size (posters, backdrops); FIT keeps the whole picture inside it (logos). TILE is a channel's logo
+     * on its black tile, the size given (LogoTile); READY is FIT with the logo made ready for black (for a screen that
+     * draws the black itself).
      */
-    static final int CROP = 0, FIT = 1, FADE = 2, FADE_TALL = 3, TILE = 4, READY = 5;
+    static final int CROP = 0, FIT = 1, TILE = 4, READY = 5;
     /**
      * POSTER is a poster card as the dark screens draw it (PosterArt): CROP with its corners rounded and its foot faded
      * into the poster's own colour, all done once as it loads. DARK is CROP faded into the dark ground on the left and at
@@ -275,7 +274,7 @@ final class Pics {
             if (mode == POSTER || mode == POSTER_WIDE) return poster(url, out, mode == POSTER_WIDE);
             if (mode == CARD) return card(out);
             if (mode == DARK || mode == DARK_FULL) return darkFade(out, mode == DARK_FULL);
-            return mode == CROP ? out : fadeOut(out, mode == FADE_TALL);
+            return out;
         }
         float sc = Math.min(w / (float) src.getWidth(), h / (float) src.getHeight());
         sc = Math.min(sc, 2.5f);
@@ -348,29 +347,6 @@ final class Pics {
         Paint dim = new Paint();
         dim.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_ATOP));
         dim.setColor(0x38000000);
-        c.drawRect(0, 0, w, h, dim);
-        return out;
-    }
-
-    /** A picture faded into the blue on its left and at its foot (the big picture at the top of a screen). */
-    private static Bitmap fadeOut(Bitmap src, boolean tall) {
-        int w = src.getWidth(), h = src.getHeight();
-        Bitmap out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
-        Canvas c = new Canvas(out);
-        c.drawBitmap(src, 0, 0, null);
-        src.recycle();
-        Paint m = new Paint();
-        m.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_IN));
-        m.setShader(new LinearGradient(0, 0, w * (tall ? 0.42f : 0.48f), 0, new int[]{0x00000000, 0x80000000, 0xFF000000},
-                new float[]{0f, 0.45f, 1f}, Shader.TileMode.CLAMP));
-        c.drawRect(0, 0, w, h, m);
-        m.setShader(new LinearGradient(0, h * 0.5f, 0, h, new int[]{0xFF000000, 0x99000000, 0x00000000},
-                new float[]{0f, 0.55f, 1f}, Shader.TileMode.CLAMP));
-        c.drawRect(0, h * 0.5f, w, h, m);
-        // A touch darker overall, as the guide's own pictures sit back behind their writing.
-        Paint dim = new Paint();
-        dim.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_ATOP));
-        dim.setColor(Ui.tint(0x26062A66));
         c.drawRect(0, 0, w, h, dim);
         return out;
     }

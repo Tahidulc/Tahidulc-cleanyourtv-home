@@ -24,6 +24,8 @@ final class Rail extends View {
     final int page;
     int focus;
     private boolean active;
+    /** Home's menu: the remote comes back to the icon it was on (every other page's rail starts on its own icon). */
+    boolean keep;
 
     private final Paint back = Dark.fill(Dark.RAIL), edge = Dark.fill(Dark.LINE), amber = Dark.fill(Dark.ACCENT);
     private final Paint ink = Dark.fill(Dark.ACCENT_INK), on = Dark.fill(0xFFFFFFFF), tag = Dark.fill(0xF2FFFFFF);
@@ -41,7 +43,7 @@ final class Rail extends View {
 
     void setActive(boolean a) {
         active = a;
-        if (a) focus = Math.max(0, page);
+        if (a && !keep) focus = Math.max(0, page);
         invalidate();
     }
 

@@ -68,10 +68,9 @@ public final class TvActivity extends Activity {
         // Settings → Appearance, read before any screen draws; and whether this start is a fresh one (General → Start on).
         com.gathin.homefieldtv.prefs.Look.load(this);
         boolean fresh = state == null && reopenSettings < 0;
-        // The theme's colours before any screen is made; the blue screens' ground tinted to match.
+        // The theme's colours before any screen is made, its dark ground behind them all.
         Theme.apply(this);
-        getWindow().setBackgroundDrawable(new android.graphics.drawable.GradientDrawable(
-                android.graphics.drawable.GradientDrawable.Orientation.TL_BR, new int[]{Ui.tint(0xFF0C4FAE), Ui.tint(0xFF06347C)}));
+        getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Dark.GROUND));
         Dark.init(this);
         PosterArt.init(this);
         Pics.init(this);

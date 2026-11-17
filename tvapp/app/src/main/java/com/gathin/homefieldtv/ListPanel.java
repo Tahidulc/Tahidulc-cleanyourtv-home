@@ -16,8 +16,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * A list down part of the screen (search results, Settings): headings, lines with a small picture, a title and a line
- * under it, and the highlight on one of them. It scrolls to keep the highlight in view.
+ * A list down part of the screen (search results, Settings), in the dark look of the side panel: small headings in
+ * grey, lines with a small picture (a poster, or a channel's logo on its black tile), a title and a line under it, and
+ * where the remote is a white card with dark writing (a quieter one while the remote is elsewhere on the screen). Pills
+ * makes a menu of it, as the side panel's: one line each, a chevron at its end. It scrolls to keep the remote in view.
  */
 final class ListPanel extends View {
     static final int TEXT = 0, POSTER = 1, LOGO = 2, HEADING = 3, NOTE = 4;
@@ -52,6 +54,8 @@ final class ListPanel extends View {
 
     /** Where it goes (design pixels). */
     float x = 820f, y = 80f, w = 1060f, bottom = 1060f;
+    /** A menu (Settings' sections): one line a item in a pill, a chevron at its end, no lines under them. */
+    boolean pills;
     private final List<Item> items = new ArrayList<>();
     private int focus = -1;
     private boolean active;
@@ -59,29 +63,36 @@ final class ListPanel extends View {
     private float scroll, scrollTo;
     private long last;
 
-    private final Glow glow = new Glow();
-    private final TextPaint titleP = Ui.paint(30, false, Ui.WHITE), titleOn = Ui.paint(30, true, Ui.WHITE);
-    private final TextPaint subP = Ui.paint(24, false, Ui.FAINT), headP = Ui.paint(26, true, Ui.DIM), noteP = Ui.paint(26, false, Ui.DIM);
-    private final Paint line = Ui.fill(0x1FFFFFFF), logoBack = Ui.fill(Ui.tint(0x33062A66)), bmp = new Paint(Paint.FILTER_BITMAP_FLAG);
-    private final Paint tileBack = Ui.fill(com.gathin.broadcast.LogoTile.GROUND), dot = Ui.fill(Dark.ACCENT);
+    private static final int INK = 0xFF111114, INK_SOFT = 0xFF4A4A50;
+    private final TextPaint titleP = Dark.text(28, 500, Dark.TEXT), titleOn = Dark.text(28, 600, INK), titleQuiet = Dark.text(28, 600, Dark.TEXT);
+    private final TextPaint subP = Dark.text(22, 400, Dark.MUTED), subOn = Dark.text(22, 500, INK_SOFT);
+    private final TextPaint pillP = Dark.text(26, 500, Dark.SOFT), pillOn = Dark.text(26, 600, INK);
+    private final TextPaint headP = Dark.text(22, 600, Dark.MUTED), noteP = Dark.text(25, 400, Dark.SOFT);
+    private final Paint card = Dark.fill(0xFFFFFFFF), quiet = Dark.fill(0x1FFFFFFF), line = Dark.fill(Dark.LINE);
+    private final Paint logoBack = Dark.fill(Dark.CARD), bmp = new Paint(Paint.FILTER_BITMAP_FLAG);
+    private final Paint tileBack = Dark.fill(com.gathin.broadcast.LogoTile.GROUND), dot = Dark.fill(Dark.ACCENT);
+    private final Paint chevron = Dark.line(Dark.FAINT, 2f), chevronOn = Dark.line(INK_SOFT, 2f);
     private final RectF r = new RectF();
     private final Runnable redraw = this::invalidate;
 
     ListPanel(Context c) {
         super(c);
+        headP.setLetterSpacing(0.02f);
     }
 
     void setHost(Host h) {
         host = h;
     }
 
-    static float height(Item it) {
+    /** A line's height (design pixels). */
+    float height(Item it) {
+        if (pills && it.kind == TEXT) return 64f;
         switch (it.kind) {
-            case HEADING: return 64f;
-            case NOTE: return 52f;
-            case POSTER: return 112f;
-            case LOGO: return 96f;
-            default: return it.subtitle.isEmpty() ? 76f : 92f;
+            case HEADING: return 62f;
+            case NOTE: return 48f;
+            case POSTER: return 116f;
+            case LOGO: return 100f;
+            default: return it.subtitle.isEmpty() ? 76f : 96f;
         }
     }
 
@@ -206,54 +217,74 @@ final class ListPanel extends View {
             Item it = items.get(i);
             float h = height(it);
             if (top > bottom) break;
-            if (top + h >= y - 20) drawItem(c, it, i == focus, top, h);
+            // A faint rule between two lines of choices, none next to the one the remote is on.
+            boolean rule = i + 1 < items.size() && items.get(i + 1).focusable() && i != focus && i + 1 != focus;
+            if (top + h >= y - 20) drawItem(c, it, i == focus, top, h, rule);
             top += h;
         }
         c.restore();
         if (moving) postInvalidateOnAnimation();
     }
 
-    private void drawItem(Canvas c, Item it, boolean on, float top, float h) {
+    private void drawItem(Canvas c, Item it, boolean on, float top, float h, boolean rule) {
         float left = Ui.f(x), right = Ui.f(x + w);
         if (it.kind == HEADING) {
             c.drawText(Ui.fit(it.title, headP, right - left), left, Ui.f(top + 44), headP);
             return;
         }
         if (it.kind == NOTE) {
-            c.drawText(Ui.fit(it.title, noteP, right - left), left, Ui.f(top + 34), noteP);
+            c.drawText(Ui.fit(it.title, noteP, right - left), left, Ui.f(top + 32), noteP);
             return;
         }
-        r.set(left - Ui.f(12), Ui.f(top + 4), right + Ui.f(12), Ui.f(top + h - 4));
-        if (on && active) glow.draw(c, r);
-        else if (on) glow.box(c, r);
-        else c.drawRect(left, Ui.f(top + h - 1), right, Ui.f(top + h), line);
-        float tx = left + Ui.f(10);
+        boolean lit = on && active, quietOn = on && !active;
+        if (pills) {
+            drawPill(c, it, lit, quietOn, top, h, left, right);
+            return;
+        }
+        r.set(left - Ui.f(16), Ui.f(top + 4), right + Ui.f(16), Ui.f(top + h - 4));
+        if (lit) c.drawRoundRect(r, Ui.f(18), Ui.f(18), card);
+        else if (quietOn) c.drawRoundRect(r, Ui.f(18), Ui.f(18), quiet);
+        else if (rule) c.drawRect(left, Ui.f(top + h) - Math.max(1f, Ui.f(1)), right, Ui.f(top + h), line);
+        float tx = left + Ui.f(8);
         if (it.kind == POSTER) {
             float pw = Ui.f(64), ph = Ui.f(96);
-            Bitmap b = Pics.get(it.picture, Math.round(pw), Math.round(ph), Pics.CROP, redraw);
-            r.set(tx, Ui.f(top + 8), tx + pw, Ui.f(top + 8) + ph);
+            Bitmap b = Pics.get(it.picture, Math.round(pw), Math.round(ph), Pics.POSTER, redraw);
+            r.set(tx, Ui.f(top) + (Ui.f(h) - ph) / 2f, tx + pw, Ui.f(top) + (Ui.f(h) + ph) / 2f);
             if (b != null) c.drawBitmap(b, null, r, bmp);
-            else c.drawRect(r, logoBack);
+            else c.drawRoundRect(r, Ui.f(6), Ui.f(6), logoBack);
             tx += pw + Ui.f(24);
         } else if (it.kind == LOGO) {
             float lw = Ui.f(128), lh = Ui.f(72);
             r.set(tx, Ui.f(top) + (Ui.f(h) - lh) / 2f, tx + lw, Ui.f(top) + (Ui.f(h) + lh) / 2f);
-            // A channel's logo on its black tile (Pics.tiles), else on the guide's blue.
+            // A channel's logo on its black tile (Pics.tiles), else on a dark card.
             boolean tile = Pics.tiles;
-            if (tile) c.drawRoundRect(r, Math.min(lw, lh) * 0.12f, Math.min(lw, lh) * 0.12f, tileBack);
-            else c.drawRect(r, logoBack);
+            c.drawRoundRect(r, Ui.f(10), Ui.f(10), tile ? tileBack : logoBack);
             Bitmap b = tile ? Pics.get(it.picture, Math.round(lw), Math.round(lh), Pics.TILE, redraw)
-                    : Pics.get(it.picture, Math.round(lw - Ui.f(12)), Math.round(lh - Ui.f(12)), Pics.FIT, redraw);
+                    : Pics.get(it.picture, Math.round(lw - Ui.f(16)), Math.round(lh - Ui.f(16)), Pics.FIT, redraw);
             if (b != null) c.drawBitmap(b, r.centerX() - b.getWidth() / 2f, r.centerY() - b.getHeight() / 2f, bmp);
             tx += lw + Ui.f(24);
         }
         float room = right - tx - Ui.f(16) - (it.dot ? Ui.f(30) : 0);
-        TextPaint tp = on ? titleOn : titleP;
+        TextPaint tp = lit ? titleOn : quietOn ? titleQuiet : titleP;
         float mid = Ui.f(top + h / 2);
         String title = Ui.fit(it.title, tp, room);
         float base = it.subtitle.isEmpty() ? mid + Ui.f(10) : mid - Ui.f(4);
         c.drawText(title, tx, base, tp);
-        if (!it.subtitle.isEmpty()) c.drawText(Ui.fit(it.subtitle, subP, room), tx, mid + Ui.f(28), subP);
-        if (it.dot) c.drawCircle(tx + tp.measureText(title) + Ui.f(18), base - Ui.f(11), Ui.f(7), dot);
+        if (!it.subtitle.isEmpty()) c.drawText(Ui.fit(it.subtitle, lit ? subOn : subP, room), tx, mid + Ui.f(28), lit ? subOn : subP);
+        if (it.dot) c.drawCircle(tx + tp.measureText(title) + Ui.f(18), base - Ui.f(10), Ui.f(7), dot);
+    }
+
+    /** A menu's line: a pill, white where the remote is, its words, a dot for something waiting, a chevron. */
+    private void drawPill(Canvas c, Item it, boolean lit, boolean quietOn, float top, float h, float left, float right) {
+        r.set(left - Ui.f(14), Ui.f(top + 6), right + Ui.f(14), Ui.f(top + h - 6));
+        if (lit) c.drawRoundRect(r, r.height() / 2f, r.height() / 2f, card);
+        else if (quietOn) c.drawRoundRect(r, r.height() / 2f, r.height() / 2f, quiet);
+        TextPaint p = lit ? pillOn : pillP;
+        float tx = left + Ui.f(10), room = right - tx - Ui.f(34) - (it.dot ? Ui.f(30) : 0);
+        String title = Ui.fit(it.title, p, room);
+        float base = Ui.f(top + h / 2f + 9);
+        c.drawText(title, tx, base, p);
+        if (it.dot) c.drawCircle(tx + p.measureText(title) + Ui.f(18), base - Ui.f(10), Ui.f(7), dot);
+        Ui.chevron(c, right - Ui.f(14), Ui.f(top + h / 2f), Ui.f(7), Ui.RIGHT, lit ? chevronOn : chevron);
     }
 }
