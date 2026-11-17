@@ -133,9 +133,14 @@ public final class LiveSync {
         return SyncKeys.playlist(s.type, s.m3uUrl, s.server, s.user);
     }
 
+    /** Pure: only IPTV playlists (an M3U address, an Xtream Codes login) are shared; any other source, TorBox's key above all, never. */
+    static boolean shared(Source s) {
+        return Source.M3U.equals(s.type) || Source.XTREAM.equals(s.type);
+    }
+
     private static Map<String, JSONObject> playlists(Context c) {
         Map<String, JSONObject> out = new LinkedHashMap<>();
-        for (Sources.Entry e : Sources.list(c)) out.put(keyOf(e.source), playlistData(e.name, e.source));
+        for (Sources.Entry e : Sources.list(c)) if (shared(e.source)) out.put(keyOf(e.source), playlistData(e.name, e.source));
         return out;
     }
 
@@ -397,7 +402,7 @@ public final class LiveSync {
             }
             if (d == null) continue;
             Source s = sourceOf(d);
-            if (!s.usable() || !key.equals(keyOf(s))) continue;
+            if (!shared(s) || !s.usable() || !key.equals(keyOf(s))) continue;
             if (e == null) Sources.put(c, null, d.optString("name"), s);
             else if (!playlistData(e.name, e.source).toString().equals(playlistData(d.optString("name"), s).toString())) {
                 Sources.put(c, e.id, d.optString("name"), s);

@@ -55,6 +55,9 @@ public class LiveSyncTest {
         assertFalse(m.contains("other-Pass") || m.contains("lists.example"));
         // A Source says nothing of itself in words either.
         assertFalse(String.valueOf(XTREAM).contains("s3cret"));
+        // Only IPTV playlists are shared: nothing else (TorBox's key) ever goes as a playlist.
+        assertTrue(LiveSync.shared(XTREAM) && LiveSync.shared(M3U));
+        assertFalse(LiveSync.shared(new Source("torbox", "", "", "", "", "a-key")));
     }
 
     @Test public void titlesAreKeyedAlikeOnEveryDevice() {
