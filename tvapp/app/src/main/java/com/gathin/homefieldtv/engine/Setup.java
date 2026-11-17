@@ -21,10 +21,13 @@ import java.util.concurrent.TimeUnit;
  * adb shell content insert --uri content://com.gathin.homefieldtv.setup/m3u --bind name:s:Home --bind url:s:'http://…'
  * adb shell content query --uri content://com.gathin.homefieldtv.setup/playlists
  * adb shell content delete --uri content://com.gathin.homefieldtv.setup/playlists/p1
+ * adb shell content insert --uri content://com.gathin.homefieldtv.setup/torbox --bind key:s:KEY
+ * adb shell content delete --uri content://com.gathin.homefieldtv.setup/torbox
  * </pre>
  *
  * A playlist is kept only when it gives live channels, as in Settings. The answer is the channel count or why it didn't
- * work; nothing here writes the address or the login anywhere but the app's own private storage.
+ * work; nothing here writes the address or the login anywhere but the app's own private storage. TorBox's API key is
+ * kept and checked with TorBox: the answer is how many films and episodes it has ready, or TorBox's word why not.
  */
 public final class Setup extends ContentProvider {
     @Override public boolean onCreate() {
@@ -35,6 +38,7 @@ public final class Setup extends ContentProvider {
         Context c = getContext();
         if (c == null || v == null) throw new IllegalArgumentException("Nothing to add");
         String kind = uri.getLastPathSegment();
+        if ("torbox".equals(kind)) return torbox(c, uri, v.getAsString("key"));
         Source s;
         if ("xtream".equals(kind)) {
             s = new Source(Source.XTREAM, null, v.getAsString("guide"), v.getAsString("server"), v.getAsString("user"), v.getAsString("pass"));
@@ -43,7 +47,7 @@ public final class Setup extends ContentProvider {
             s = new Source(Source.M3U, v.getAsString("url"), v.getAsString("guide"), null, null, null);
             if (!s.usable()) throw new IllegalArgumentException("Give the playlist's url");
         } else {
-            throw new IllegalArgumentException("Use …/xtream or …/m3u");
+            throw new IllegalArgumentException("Use …/xtream, …/m3u or …/torbox");
         }
         CountDownLatch done = new CountDownLatch(1);
         int[] count = {0};
@@ -64,6 +68,20 @@ public final class Setup extends ContentProvider {
                 .appendPath(count[0] + "-channels").build();
     }
 
+    /** TorBox's API key from a computer: kept and checked with TorBox (on adb's own thread, never the main one). */
+    private static Uri torbox(Context c, Uri uri, String key) {
+        if (key == null || key.trim().isEmpty()) throw new IllegalArgumentException("Give key");
+        TorBox.setKey(c, key);
+        int n;
+        try {
+            n = TorBox.check(c);
+        } catch (java.io.IOException e) {
+            // TorBox's own words: never the address or the key.
+            throw new IllegalStateException(e.getMessage());
+        }
+        return new Uri.Builder().scheme("content").authority(uri.getAuthority()).appendPath("torbox").appendPath(n + "-ready").build();
+    }
+
     @Override public Cursor query(Uri uri, String[] projection, String selection, String[] selectionArgs, String sortOrder) {
         Context c = getContext();
         MatrixCursor out = new MatrixCursor(new String[]{"id", "name", "kind", "expiry"});
@@ -79,6 +97,11 @@ public final class Setup extends ContentProvider {
         Context c = getContext();
         if (c == null) return 0;
         String last = uri.getLastPathSegment();
+        if ("torbox".equals(last)) {
+            boolean had = TorBox.hasKey(c);
+            TorBox.forget(c);
+            return had ? 1 : 0;
+        }
         if ("all".equals(last)) {
             int n = Sources.list(c).size();
             Library.get(c).clear();

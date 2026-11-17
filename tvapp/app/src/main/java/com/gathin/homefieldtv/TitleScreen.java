@@ -11,6 +11,7 @@ import android.widget.Toast;
 import com.gathin.homefieldtv.engine.Catalog;
 import com.gathin.homefieldtv.engine.MyList;
 import com.gathin.homefieldtv.engine.Resume;
+import com.gathin.homefieldtv.engine.TorBox;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -41,6 +42,8 @@ final class TitleScreen extends Screen implements DetailPage.Host {
         details = Catalog.get(tv).cachedDetails(title);
         fill();
         if (details == null) ask();
+        // The family's TorBox read meanwhile (when it is in use), so that Play finds its copies at once.
+        TorBox.warm(tv);
         return f;
     }
 
