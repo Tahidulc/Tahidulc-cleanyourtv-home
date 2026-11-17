@@ -20,6 +20,7 @@ import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.Library;
+import com.gathin.homefieldtv.engine.Reminders;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -445,11 +446,13 @@ final class GuideGrid extends View {
         float gap = Ui.f(GAP);
         if (s == null) {
             // No guide for this channel: one block across.
-            drawBlock(c, Ui.f(PROG_X), top, Ui.f(RIGHT) - gap, bottom, "No programme information", ch.name, Dark.CARD, -1f, here, false, false);
+            drawBlock(c, Ui.f(PROG_X), top, Ui.f(RIGHT) - gap, bottom, "No programme information", ch.name, Dark.CARD, -1f, here, false,
+                    false, false);
             return;
         }
         // Catch-up: how far back the provider's archive of this channel goes (MAX_VALUE: it keeps none).
         long kept = Catchup.earliest(ch, now);
+        boolean reminders = Reminders.any(getContext());
         boolean drewFocus = false;
         for (int i = 0; i < s.start.length; i++) {
             if (s.stop[i] <= winStart) continue;
@@ -459,23 +462,26 @@ final class GuideGrid extends View {
             boolean focused = here && s.start[i] <= cursor && cursor < s.stop[i];
             float airedTo = s.start[i] < now ? xAt(Math.min(now, s.stop[i])) : -1f;
             boolean archived = s.stop[i] <= now && s.start[i] >= kept;
+            boolean bell = reminders && s.start[i] > now && Reminders.has(getContext(), ch.key, s.start[i]);
             drawBlock(c, x0, top, x1, bottom, LiveText.span(s.start[i], s.stop[i]), s.title[i], deep(s.title[i]), airedTo,
-                    focused, s.start[i] < winStart, archived);
+                    focused, s.start[i] < winStart, archived, bell);
             if (focused) drewFocus = true;
         }
         if (here && !drewFocus) {
             // Nothing in the guide at that time: the half hour the remote is on, lit.
             long a = cursor - cursor % HALF, b = a + HALF;
-            drawBlock(c, xAt(Math.max(a, winStart)), top, xAt(Math.min(b, winEnd)) - gap, bottom, "", "", Dark.CARD, -1f, true, false, false);
+            drawBlock(c, xAt(Math.max(a, winStart)), top, xAt(Math.min(b, winEnd)) - gap, bottom, "", "", Dark.CARD, -1f, true, false,
+                    false, false);
         }
     }
 
     /**
      * One programme's block: its colour (amber where the remote is), the part already shown, its times over its title,
-     * and catch-up's mark at its top right for a programme that has been shown and is in the provider's archive.
+     * and at its top right catch-up's mark for a programme that has been shown and is in the provider's archive, or a
+     * bell for one to come with a reminder set.
      */
     private void drawBlock(Canvas c, float x0, float top, float x1, float bottom, String span, String title, int colour,
-                           float airedTo, boolean focused, boolean cut, boolean archived) {
+                           float airedTo, boolean focused, boolean cut, boolean archived, boolean bell) {
         r.set(x0, top, x1, bottom);
         float rad = Ui.f(8);
         boolean amber = focused && active;
@@ -505,8 +511,9 @@ final class GuideGrid extends View {
         }
         float room = x1 - tx - Ui.f(10);
         if (room < Ui.f(28)) return;
-        boolean mark = archived && x1 - x0 > Ui.f(64);
-        if (mark) Dark.replay(c, x1 - Ui.f(20), top + Ui.f(21), Ui.f(8), amber ? markInk : markLine, amber ? markInkFill : markFill);
+        boolean mark = (archived || bell) && x1 - x0 > Ui.f(64);
+        if (mark && archived) Dark.replay(c, x1 - Ui.f(20), top + Ui.f(21), Ui.f(8), amber ? markInk : markLine, amber ? markInkFill : markFill);
+        else if (mark) Dark.bell(c, x1 - Ui.f(20), top + Ui.f(21), Ui.f(10), amber ? markInkFill : markFill);
         c.save();
         c.clipRect(x0, top, x1, bottom);
         TextPaint sp = amber ? spanInk : spanP, tp = amber ? titleInk : titleP;
@@ -575,6 +582,7 @@ final class GuideGrid extends View {
                 if (archived) lx = tag(c, "Catch-up", lx, ly, true);
             } else {
                 lx = tag(c, LiveText.startsIn(now, s.start[i]), lx, ly, false);
+                if (Reminders.has(getContext(), ch.key, s.start[i])) lx = tag(c, "Reminder set", lx, ly, true);
             }
         } else {
             String none = s == null ? "No programme information" : "Nothing in the guide at this time";

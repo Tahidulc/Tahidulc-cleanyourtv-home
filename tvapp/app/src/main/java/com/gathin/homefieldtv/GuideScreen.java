@@ -12,6 +12,7 @@ import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Genres;
 import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.Library;
+import com.gathin.homefieldtv.engine.Reminders;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -25,9 +26,10 @@ import java.util.Set;
  * Recently watched, the guide's own kinds, then the playlist's groups, each with how many channels it has); at the top
  * the programme the remote is on (its title, channel, times and story) with its picture at the top right; then the
  * grid, with a strip under the channel's row about that programme. OK watches the channel, or plays a programme
- * already shown from the provider's archive (catch-up); OK held brings up a small menu (watch it live, from the start,
- * the favourites); Back from the past comes back to now; the number keys go to a channel. No mini TV here: the stream
- * is let go until a channel is chosen.
+ * already shown from the provider's archive (catch-up); OK held brings up a small menu (Remind me or Cancel reminder for
+ * a programme to come, watch it live, from the start, the favourites); a programme with a reminder has a bell; Back from
+ * the past comes back to now; the number keys go to a channel. No mini TV here: the stream is let go until a channel is
+ * chosen.
  */
 final class GuideScreen extends Screen implements GuideGrid.Host {
     private static final int RAIL = 0, PANEL = 1, GRID = 2;
@@ -313,7 +315,10 @@ final class GuideScreen extends Screen implements GuideGrid.Host {
         }
     }
 
-    /** OK held on a programme: a small menu (watch it live, from its start, the channel in the favourites or out). */
+    /**
+     * OK held on a programme: a small menu (a reminder for one to come, set or cancelled; watch it live, from its start;
+     * the channel in the favourites or out).
+     */
     @Override void okLong() {
         if (menu.isOpen()) return;
         if (area != GRID) {
@@ -328,7 +333,11 @@ final class GuideScreen extends Screen implements GuideGrid.Host {
         int i = grid.programme();
         boolean shown = p != null && p[1] <= now, onNow = p != null && p[0] <= now && now < p[1];
         boolean archived = p != null && Catchup.has(c, p[0], now);
+        // A programme to come (and in the guide): a reminder a minute before it starts, or the one set taken off.
+        boolean later = p != null && p[0] > now && i >= 0 && s != null;
+        boolean reminded = later && Reminders.has(tv, c.key, p[0]);
         List<String[]> items = new ArrayList<>();
+        if (later) items.add(reminded ? new String[]{"unremind", "Cancel reminder"} : new String[]{"remind", "Remind me"});
         if (shown && archived) items.add(new String[]{"start", "Watch it"});
         if (onNow && archived && now - p[0] >= LiveTv.LIVE_EDGE_MS) items.add(new String[]{"start", "Watch from the start"});
         items.add(new String[]{"live", shown && archived ? "Watch " + c.name + " live" : "Watch " + c.name});
@@ -338,6 +347,15 @@ final class GuideScreen extends Screen implements GuideGrid.Host {
         String line = p == null ? c.name : Ui.day(p[0], now) + ", " + LiveText.span(p[0], p[1]) + "  ·  " + c.name;
         menu.open(title, line, items, 760f, 360f, key -> {
             switch (key) {
+                case "remind":
+                    remind(c, title, p[0], p[1]);
+                    break;
+                case "unremind":
+                    Reminders.remove(tv, c.key, p[0]);
+                    ReminderAlarm.schedule(tv);
+                    android.widget.Toast.makeText(tv, "Reminder cancelled: " + title, android.widget.Toast.LENGTH_SHORT).show();
+                    grid.invalidate();
+                    break;
                 case "start":
                     if (p != null) tv.watchFrom(c, p[0], p[1]);
                     break;
@@ -350,6 +368,30 @@ final class GuideScreen extends Screen implements GuideGrid.Host {
                             android.widget.Toast.LENGTH_SHORT).show();
                     break;
                 }
+            }
+        });
+    }
+
+    /** A reminder set: kept, its alarm made, a bell on the programme; the card over other apps asked for once. */
+    private void remind(Channel c, String title, long start, long end) {
+        Reminders.add(tv, new Reminders.Reminder(c.key, c.name, c.logo, title, start, end));
+        ReminderAlarm.schedule(tv);
+        android.widget.Toast.makeText(tv, "Reminder set: " + title + ", " + Ui.day(start, System.currentTimeMillis()) + " "
+                + LiveText.hm(start), android.widget.Toast.LENGTH_SHORT).show();
+        grid.invalidate();
+        if (ReminderCard.shouldAsk(tv)) askOverApps();
+    }
+
+    /** The first reminder: whether its card may pop up over other apps (Android's own page), asked once. */
+    private void askOverApps() {
+        ReminderCard.asked(tv);
+        List<String[]> items = new ArrayList<>();
+        items.add(new String[]{"open", "Open Android's page"});
+        items.add(new String[]{"no", "Not now"});
+        menu.ask("Reminders over other apps", ReminderCard.ASK, items, key -> {
+            if (key.equals("open") && !ReminderCard.openSettings(tv)) {
+                android.widget.Toast.makeText(tv, "This TV has no such page: reminders come as a notification instead",
+                        android.widget.Toast.LENGTH_LONG).show();
             }
         });
     }

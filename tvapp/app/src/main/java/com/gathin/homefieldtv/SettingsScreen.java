@@ -27,9 +27,10 @@ import java.util.Locale;
  */
 final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Host {
     private static final List<String> MENU = Arrays.asList("Your playlists", "Add an M3U playlist", "Add an Xtream Codes login",
-            "Refresh now", "Remove everything", "Channel logos", "Theme", "Posters", "Live TV", "Updates", "Scoreboard", "About");
+            "Refresh now", "Remove everything", "Channel logos", "Theme", "Posters", "Live TV", "Reminders", "Updates", "Scoreboard",
+            "About");
     static final int PLAYLISTS = 0, ADD_M3U = 1, ADD_XTREAM = 2, REFRESH = 3, CLEAR = 4, LOGOS = 5, THEME = 6, POSTERS = 7, LIVE = 8,
-            UPDATES = 9, SCOREBOARD = 10, ABOUT = 11;
+            REMINDERS = 9, UPDATES = 10, SCOREBOARD = 11, ABOUT = 12;
 
     private Strip strip;
     private ListPanel menu, content;
@@ -233,6 +234,9 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
             }
             case LIVE:
                 LiveSettings.fill(tv, out);
+                break;
+            case REMINDERS:
+                ReminderSettings.fill(tv, out);
                 break;
             case UPDATES:
                 updates(out);
@@ -522,6 +526,15 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
                 if (LiveSettings.chosen(tv, t)) {
                     fillContent();
                     content.setFocus(at);
+                }
+                return;
+            }
+            case REMINDERS: {
+                int at = content.focusIndex();
+                if (ReminderSettings.chosen(tv, t)) {
+                    fillContent();
+                    // The remote stays on a line there is (one cancelled goes).
+                    content.setFocus(Math.min(at, Math.max(0, content.items().size() - 1)));
                 }
                 return;
             }
