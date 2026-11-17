@@ -35,6 +35,8 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
     private Strip strip;
     private ListPanel menu, content;
     private ThemePreview look;
+    /** Settings' player, sound and stream sections (MoreSettings), after Updates. */
+    private MoreSettings more;
     private Keyboard keys;
     private Shade shade;
     private boolean inContent, editing, confirm;
@@ -77,6 +79,8 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
         f.addView(keys, new FrameLayout.LayoutParams(-1, -1));
         List<ListPanel.Item> items = new ArrayList<>();
         for (int i = 0; i < MENU.size(); i++) items.add(new ListPanel.Item(i, ListPanel.TEXT, MENU.get(i), ""));
+        more = new MoreSettings(tv, (field, label, value, secret) -> openKeys(field, label));
+        MoreSettings.addSections(items, ABOUT);
         items.get(UPDATES).dot = Updates.waiting(tv);
         menu.setItems(items);
         menu.setActive(true);
@@ -145,6 +149,12 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
         if (content == null) return;
         List<ListPanel.Item> out = new ArrayList<>();
         Library lib = Library.get(tv);
+        if (MoreSettings.owns(section())) {
+            more.fill(section(), out);
+            content.setItems(out);
+            look.setVisibility(View.GONE);
+            return;
+        }
         switch (section()) {
             case PLAYLISTS: {
                 if (!sub.isEmpty()) {
@@ -369,6 +379,7 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
             status = "";
             sub = "";
             confirm = false;
+            more.reset();
             fillContent();
         }
         return used;
@@ -392,6 +403,13 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
             return true;
         }
         if (inContent) {
+            // A player, sound or stream setting's choices closed, the remote back on that setting.
+            int line = MoreSettings.owns(section()) ? more.back(section()) : MoreSettings.STAY;
+            if (line != MoreSettings.STAY) {
+                fillContent();
+                content.setFocus(line);
+                return true;
+            }
             if (!sub.isEmpty() || confirm) {
                 sub = "";
                 confirm = false;
@@ -438,6 +456,14 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
         Library lib = Library.get(tv);
         if (t.startsWith("f:")) {
             openKeys(t.substring(2), item.title);
+            return;
+        }
+        if (MoreSettings.owns(section())) {
+            int line = more.chosen(section(), t, content.items());
+            if (line != MoreSettings.STAY) {
+                fillContent();
+                content.setFocus(more.isOpen() ? more.focus(content.items()) : line);
+            }
             return;
         }
         switch (section()) {
@@ -591,7 +617,7 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
         editField = field;
         editing = true;
         keys.label = label;
-        keys.secret = field.equals("pass");
+        keys.secret = field.equals("pass") || field.startsWith("m:pin");
         keys.hint = field.equals("server") ? "http://" : "";
         keys.setText(value(field));
         keys.reset();
@@ -609,6 +635,7 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
     }
 
     private String value(String field) {
+        if (field.startsWith("m:")) return more.value(field.substring(2));
         switch (field) {
             case "name": return name;
             case "url": return url;
@@ -624,6 +651,12 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
 
     @Override public void done(Keyboard k, String text) {
         String v = text.trim();
+        if (editField.startsWith("m:")) {
+            more.typed(editField.substring(2), v);
+            status = "";
+            closeKeys();
+            return;
+        }
         switch (editField) {
             case "name": name = v; break;
             case "url": url = v; break;

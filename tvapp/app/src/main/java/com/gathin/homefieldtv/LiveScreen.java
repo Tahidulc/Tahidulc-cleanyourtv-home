@@ -48,7 +48,8 @@ import java.util.Map;
  * its start), the banner has "Watch from the start" over the logo (Left goes to it; the rewind key too), and the live
  * screen tags it. OK held brings up a small menu for the channel: watch it, from the start, add it to the favourites;
  * and, for the channel playing, Subtitles: Off, From the channel or Automatic (LiveSubs), which ask before fetching the
- * speech model where the TV needs it.
+ * speech model where the TV needs it. MENU (or the remote's settings key) brings up the player's menu instead
+ * (PlayerMenu: the picture's shape, the sound's delay and track); while either is up it has the remote to itself.
  */
 final class LiveScreen extends Screen implements LiveTv.Listener {
     private static final long BANNER_MS = 6000, CHOOSING_MS = 9000, BROWSE_MS = 12000;
@@ -71,6 +72,8 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
     private Backdrop browseBack;
     private BrowseInfo info;
     private BrowseRows rows;
+    /** The player's menu (MENU or the settings key): the picture's shape for this channel, the sound's delay and track. */
+    private PlayerMenu playerMenu;
     /** The scoreboard over a match (BoardLayer): it takes the remote first while its menu or its card is up. */
     private BoardLayer board;
     /** The live screen's rows (the playlist's groups) and where the remote is in them. */
@@ -140,7 +143,25 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
         root.addView(board, new FrameLayout.LayoutParams(-1, -1));
         root.addView(browse, new FrameLayout.LayoutParams(-1, -1));
         root.addView(banner, new FrameLayout.LayoutParams(-1, -1));
+        playerMenu = new PlayerMenu(tv, new PlayerMenu.Target() {
+            @Override public androidx.media3.common.Player player() {
+                return tv.live.player();
+            }
+
+            @Override public int aspect() {
+                Channel c = tv.live.channel();
+                return com.gathin.homefieldtv.prefs.PlayerPrefs.aspectFor(tv, c == null ? null : c.key);
+            }
+
+            @Override public void aspect(int mode) {
+                Channel c = tv.live.channel();
+                if (c == null) return;
+                com.gathin.homefieldtv.prefs.PlayerPrefs.setAspectFor(tv, c.key, mode);
+                tv.live.refit();
+            }
+        });
         root.addView(menu, new FrameLayout.LayoutParams(-1, -1));
+        root.addView(playerMenu, new FrameLayout.LayoutParams(-1, -1));
         return root;
     }
 
@@ -168,6 +189,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
     }
 
     @Override void hidden() {
+        if (playerMenu != null) playerMenu.close();
         board.stop();
         if (tv.live.subs.asker == asker) tv.live.subs.asker = null;
         tv.live.removeListener(this);
@@ -208,7 +230,8 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
             recent = Library.get(tv).recent(tv.live.channel());
             if (pick >= recent.size()) pick = recent.size() - 1;
             if (pick == START_OVER && fromTheStart(tv.live.channel()) == null) pick = -1;
-            h.postDelayed(hide, pick != -1 ? CHOOSING_MS : BANNER_MS);
+            // How long it stays: Settings → Player → Channel banner.
+            h.postDelayed(hide, pick != -1 ? CHOOSING_MS : com.gathin.homefieldtv.prefs.PlayerPrefs.bannerMs(tv, BANNER_MS));
         } else {
             pick = -1;
         }
@@ -230,12 +253,12 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
         return all.get(((i + dir) % all.size() + all.size()) % all.size());
     }
 
-    /** A channel now: the banner comes up on it. */
+    /** A channel now: the banner comes up on it (unless Settings → Player → Channel banner is off). */
     private void tune(Channel c) {
         if (c == null) return;
         pick = -1;
         tv.live.play(c);
-        setMode(BANNER);
+        setMode(com.gathin.homefieldtv.prefs.PlayerPrefs.bannerSeconds(tv) <= 0 ? NONE : BANNER);
     }
 
     /**
@@ -316,8 +339,8 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
 
     /** Automatic subtitles where the TV has no speech recognition of its own: the speech model fetched only on a yes. */
     private void askModel() {
-        if (menu == null || menu.isOpen()) {
-            // Something else is up: asked next time.
+        if (menu == null || menu.isOpen() || playerMenu != null && playerMenu.isOpen()) {
+            // A menu is up (this one or the player's): asked next time, so the two never share the remote.
             tv.live.subs.askLater();
             return;
         }
@@ -462,7 +485,14 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
     // ---- the remote ---------------------------------------------------------------------------------------------
 
     @Override boolean key(int code, KeyEvent e) {
+        // The player's menu takes the D-pad while it is open; MENU or the settings key opens it.
+        if (playerMenu != null && playerMenu.isOpen()) return playerMenu.key(code);
         if (menu != null && menu.isOpen()) return menu.key(code);
+        if (code == KeyEvent.KEYCODE_MENU || code == KeyEvent.KEYCODE_SETTINGS) {
+            setMode(NONE);
+            playerMenu.open();
+            return true;
+        }
         if (board.key(code)) return true;
         if (code >= KeyEvent.KEYCODE_0 && code <= KeyEvent.KEYCODE_9) {
             digits += (char) ('0' + code - KeyEvent.KEYCODE_0);
@@ -527,6 +557,10 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
     }
 
     @Override void ok() {
+        if (playerMenu != null && playerMenu.isOpen()) {
+            playerMenu.close();
+            return;
+        }
         if (menu != null && menu.isOpen()) {
             menu.ok();
             return;
@@ -558,7 +592,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
     }
 
     @Override void okLong() {
-        if (menu != null && menu.isOpen()) return;
+        if (menu != null && menu.isOpen() || playerMenu != null && playerMenu.isOpen()) return;
         // Over a match with nothing else up: the scoreboard's menu, as OK held over TiviMate on the launcher.
         if (mode == NONE && board.okLong()) return;
         Channel c = mode == BROWSE ? browseChannel() : mode == BANNER && pick >= 0 && pick < recent.size() ? recent.get(pick) : tv.live.channel();
@@ -566,6 +600,10 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
     }
 
     @Override boolean back() {
+        if (playerMenu != null && playerMenu.isOpen()) {
+            playerMenu.close();
+            return true;
+        }
         if (menu != null && menu.isOpen()) {
             menu.close();
             if (mode != NONE) setMode(mode);

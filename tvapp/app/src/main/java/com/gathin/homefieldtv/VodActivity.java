@@ -27,14 +27,16 @@ import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.common.VideoSize;
 import androidx.media3.common.util.UnstableApi;
-import androidx.media3.exoplayer.DefaultLoadControl;
-import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.ExoPlayer;
 
 import com.gathin.homefieldtv.engine.Catalog;
 import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Resume;
 import com.gathin.homefieldtv.engine.Streams;
+import com.gathin.homefieldtv.prefs.Afr;
+import com.gathin.homefieldtv.prefs.Picture;
+import com.gathin.homefieldtv.prefs.PlayerPrefs;
+import com.gathin.homefieldtv.prefs.PlayerSetup;
 
 /**
  * A film or an episode from the family's own playlist, full screen, with the guide's playback bar: the title, a thin
@@ -64,6 +66,10 @@ public final class VodActivity extends Activity {
     private int seekSteps;
     private String error = "";
     private long videoAspectW, videoAspectH;
+    /** Settings → Player → Match frame rate: the film's rate being read. */
+    private Afr.Probe probe;
+    /** The player's menu (MENU or the settings key): the picture's shape, the sound's delay and track. */
+    private PlayerMenu menu;
 
     private final Runnable hideBar = () -> {
         barOn = false;
@@ -170,11 +176,8 @@ public final class VodActivity extends Activity {
             return;
         }
         if (player == null) {
-            DefaultRenderersFactory renderers = new DefaultRenderersFactory(this)
-                    .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
-                    .setEnableDecoderFallback(true);
-            DefaultLoadControl load = new DefaultLoadControl.Builder().setBufferDurationsMs(20_000, 60_000, 1_500, 3_000).build();
-            player = new ExoPlayer.Builder(this, renderers).setLoadControl(load)
+            // As Settings → Player and Sound say (films' and episodes' own buffer).
+            player = PlayerSetup.builder(this, false)
                     .setSeekBackIncrementMs(10_000).setSeekForwardIncrementMs(10_000).build();
             player.setAudioAttributes(new AudioAttributes.Builder().setUsage(C.USAGE_MEDIA)
                     .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true);
@@ -184,6 +187,10 @@ public final class VodActivity extends Activity {
         }
         Catalog.Play p = current();
         if (fresh) asHls = Streams.looksHls(p.url);
+        // The TV's refresh rate matched to this film (Settings → Player), read afresh for each one.
+        if (probe != null) player.clearVideoFrameMetadataListener(probe);
+        probe = PlayerPrefs.matchFrameRate(this) ? new Afr.Probe(this) : null;
+        if (probe != null) player.setVideoFrameMetadataListener(probe);
         long at = player.getCurrentPosition() > 0 && !fresh ? player.getCurrentPosition() : startAt;
         player.setMediaSource(Streams.source(p.url, p.userAgent, p.referrer, asHls), at);
         player.prepare();
@@ -219,6 +226,8 @@ public final class VodActivity extends Activity {
 
     private void release() {
         h.removeCallbacksAndMessages(null);
+        probe = null;
+        Afr.reset(this);
         if (player != null) {
             player.removeListener(listener);
             player.release();
@@ -258,12 +267,9 @@ public final class VodActivity extends Activity {
         View root = (View) surface.getParent();
         int w = root.getWidth(), hh = root.getHeight();
         if (w == 0 || hh == 0) return;
-        int sw = w, sh = hh;
-        if (videoAspectW > 0 && videoAspectH > 0) {
-            float va = videoAspectW / (float) videoAspectH, ra = w / (float) hh;
-            if (va > ra) sh = Math.round(w / va);
-            else sw = Math.round(hh * va);
-        }
+        // The shape Settings or the player's menu chose for films (Fit, Fill, Zoom, 16:9, 4:3).
+        int[] p = Picture.place(PlayerPrefs.vodAspect(this), (int) videoAspectW, (int) videoAspectH, 0, 0, w, hh);
+        int sw = p[2], sh = p[3];
         FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) surface.getLayoutParams();
         if (lp.width != sw || lp.height != sh) {
             lp.width = sw;
@@ -284,6 +290,8 @@ public final class VodActivity extends Activity {
 
     @Override public boolean dispatchKeyEvent(KeyEvent e) {
         int code = e.getKeyCode();
+        // The player's menu takes the keys while it is open.
+        if (menu != null && menu.isOpen()) return menu.key(e);
         if (e.getAction() == KeyEvent.ACTION_UP) {
             if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT || code == KeyEvent.KEYCODE_MEDIA_REWIND
                     || code == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD) {
@@ -353,9 +361,36 @@ public final class VodActivity extends Activity {
                 if (barOn && player != null && player.isPlaying()) hideBar.run();
                 else showBar();
                 return true;
+            case KeyEvent.KEYCODE_MENU:
+            case KeyEvent.KEYCODE_SETTINGS:
+                if (e.getRepeatCount() == 0) openMenu();
+                return true;
             default:
                 return super.dispatchKeyEvent(e);
         }
+    }
+
+    /** The player's menu over the film: its shape, the sound's delay and track. */
+    private void openMenu() {
+        if (menu == null) {
+            menu = new PlayerMenu(this, new PlayerMenu.Target() {
+                @Override public androidx.media3.common.Player player() {
+                    return player;
+                }
+
+                @Override public int aspect() {
+                    return PlayerPrefs.vodAspect(VodActivity.this);
+                }
+
+                @Override public void aspect(int mode) {
+                    PlayerPrefs.setVodAspect(VodActivity.this, mode);
+                    fitSurface();
+                }
+            });
+            ((ViewGroup) surface.getParent()).addView(menu, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT));
+        }
+        menu.open();
     }
 
     private static boolean isOk(int code) {
