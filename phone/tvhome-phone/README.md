@@ -641,3 +641,11 @@ Live TV, "Adapt quality to the connection", on by default; off, the exact stream
 is 5.21's picture following the connection on the channel picked; a fixed quality (4K, 1080p, 720p, SD) is the way to
 turn that off, that resolution playing on and reconnecting when the connection drops. 5.21's separate "Adapt quality
 to the connection" switch, which said the same thing twice, is gone.
+
+**Everything in step on every device (5.23).** The phones, tablets and Homefield TV now share, through the TVs (launcher
+5.32 and later), the family's playlists with their logins (only ever between paired devices), favourite channels,
+hidden, favourite and reordered categories, recent channels, where each film and episode is up to, and the settings
+that make sense everywhere (posters, subtitles, scoreboard looks, alert kinds); device-only ones (buffer, decoder,
+layout) and TorBox's key stay on each device. Settings → Sync has a switch for each kind, all on. A device new to a kind
+takes the family's first, so nothing is overwritten. Remove everything resets this device only and switches its
+Playlists sync off; removing one playlist removes it everywhere. SYNC.md has the details.
