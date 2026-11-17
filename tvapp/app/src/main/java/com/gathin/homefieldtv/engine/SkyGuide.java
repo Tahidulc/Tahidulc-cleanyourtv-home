@@ -53,6 +53,13 @@ public final class SkyGuide {
     };
     private static final Object READING = new Object();
 
+    /** Android is short of memory: the days of programmes read so far let go (read again when wanted). */
+    public static void trim() {
+        synchronized (days) {
+            days.clear();
+        }
+    }
+
     /** The picture of what a channel shows at a time (its title helps pick it), "" when Sky has none for it. */
     public static void picture(Context c, String channelName, long at, String title, Callback cb) {
         Context app = c.getApplicationContext();

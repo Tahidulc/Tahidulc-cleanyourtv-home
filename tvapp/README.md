@@ -23,15 +23,20 @@ wordmark are Homefield; it carries no Sky logo or name.
   Your TorBox (the family's own TorBox films and shows that no playlist has, newest first, each with TorBox's cloud),
   New films, New TV shows (the posters as everywhere), Sport on now and favourite channels.
 - **TV guide:** as the family's other app has it. At the top left the preview, 640 by 360, playing the channel last
-  watched (or the programme from the archive Back came from); to its right the programme the remote is on: its title, a
-  star for a favourite channel, its times ("10:00 — 11:00") with a bar and the minutes left for one on now ("16 min"),
-  the playlist and the group at the right, and all it says about it. Under it the date and the clock in the light
+  watched (or the programme from the archive Back came from); to its right, on a panel of its own, the programme the
+  remote is on: its title, a star for a favourite channel, its times ("10:00 — 11:00") with a bar and the minutes left
+  for one on now ("16 min"), the picture's frames a second for the channel playing ("50 FPS", or as last seen on a
+  channel watched before), the playlist and the group at the right, and all it says about it; behind the words, across
+  the panel's right-hand part, the programme's picture (Sky's public UK guide, else the channel's logo on a ground
+  tinted by its own colour), faded into the panel from the left and the foot, cross-fading to the next programme's as
+  the remote moves (Left, Right, Up, Down), the pictures either side read ahead. Under it the date and the clock in the light
   accent, the times every half hour and a dot at the time now; then a row a channel, 88 high: its number, its logo on its
   tile and its name, a ▶ on the channel in the preview and the archive's mark on one whose provider keeps an archive; its
   programmes in neutral cells, the part already shown a little lighter, the remote's row lighter still and its cell in
   the accent, their titles in two lines; a bell on a programme with a reminder. Up and Down move a row, the rows sliding
   so the remote's stays third from the top; Left and Right go along the programmes, the times paging so the remote's
-  starts at the left; the channel keys page the rows, rewind and fast forward the times (back into an archive too).
+  starts at the left (both glide on the display's own clock, and on smoothly while a key is held, never starting over);
+  the channel keys page the rows, rewind and fast forward the times (back into an archive too).
   Left from the programme on now brings in the menu's rail and the groups beside it, pushing the guide right: the
   playlist's Favourites, All channels and Recently watched, its groups in Settings, Categories' order and names (hidden
   and locked-away ones left out), then the guide's own categories; the guide shows a group as soon as the remote is on
@@ -53,8 +58,11 @@ wordmark are Homefield; it carries no Sky logo or name.
 - **Live TV:** full screen, the picture alone. A channel changed to brings up the info card at the foot for the channel banner's
   seconds (Settings, Player; 6 as it comes), and INFO brings it up too: a card in the playback panel's colour with the
   channel's logo and name, the programme's title, the date and the clock, its times with a bar and the minutes left,
-  the playlist and the group, chips for the picture and the sound as the player has them (FHD, 50 FPS, STEREO), two
-  lines about it and what's next. CH+ and CH− bring up the next or previous channel's card without leaving the channel
+  the playlist and the group, chips for the picture and the sound as the player has them (FHD, 50 FPS, STEREO; the
+  frames a second as the stream says them, else counted from the frames it shows over a few seconds and taken to the
+  usual rate: 24, 25, 30, 50 or 60, left out until they are known, and kept for each channel), two lines about it and
+  what's next, and behind its words, across its right-hand part, the programme's picture as the guide's panel has it,
+  cross-fading as Up, Down, CH+, CH− and INFO bring up another channel's card. CH+ and CH− bring up the next or previous channel's card without leaving the channel
   (OK then changes to it); Up and Down change channel (Settings, Remote can make them bring up the live screen's rows of
   channels instead, as Homefield TV came); Right goes back to the channel watched last; the number keys go to a channel,
   the number in a box at the top right. OK brings up the overlay: the card at the top, a line across the foot for how

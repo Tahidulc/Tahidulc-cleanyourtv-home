@@ -93,7 +93,7 @@ final class RecordingsScreen extends Screen implements ProgrammeList.Host, Dialo
 
     @Override View build() {
         FrameLayout f = new FrameLayout(tv);
-        f.setBackgroundColor(Palette.GROUND);
+        // No ground of its own: the window's (TvActivity) is the screen's, so it is filled once, not twice.
         rail = new Rail(tv, Rail.RECORDINGS);
         list = new ProgrammeList(tv);
         list.setHost(this);

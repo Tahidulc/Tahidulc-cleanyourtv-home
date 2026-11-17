@@ -1,6 +1,5 @@
 package com.gathin.homefieldtv;
 
-import android.animation.ValueAnimator;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.os.Handler;
@@ -66,9 +65,11 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
     private int area = GRID;
     /** The list in the grid: ALL, FAV, RECENT, or GENRE / GROUP and its name. */
     private String shown = ALL;
-    /** The rail and the groups column in (1) or out (0), the guide pushed right by them; and its animation. */
+    /** The rail and the groups column in (1) or out (0), the guide pushed right by them, gliding (its unit: the push). */
     private float reveal;
-    private ValueAnimator push;
+    private final Glide pushing = new Glide(Math.max(GroupsPanel.SLIDE_MS, Rail.DRAWER_MS), Rail.W + GroupsPanel.W);
+    /** Steps the push and the drawer's edge each frame (Choreographer's time) while either moves. */
+    private android.animation.TimeAnimator push;
     /** The playlists' names by their channels' key prefix. */
     private final Map<String, String> playlists = new HashMap<>();
     private final List<String> listed = new ArrayList<>();
@@ -81,6 +82,8 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
     private long[] menuTimes;
     private final Handler h = new Handler(Looper.getMainLooper());
     private final Runnable digitsDone = this::jump;
+    /** The remote has rested on a programme: its picture asked for, and its neighbours' read ahead. */
+    private final Runnable rested = this::rested;
     private final RectF tmp = new RectF();
 
     /** The list shown last forgotten: the next guide opens on all the channels (a test's own channels gone). */
@@ -95,11 +98,12 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
     }
 
     @Override View build() {
+        // No ground of its own: the window's (TvActivity) is the guide's, so the screen is filled once, not twice.
         FrameLayout f = new FrameLayout(tv);
-        f.setBackgroundColor(Palette.GROUND);
         Library lib = Library.get(tv);
         content = new FrameLayout(tv);
         band = new GuideBand(tv, lib);
+        band.live = tv.live;
         grid = new GuideGrid(tv, lib);
         grid.setHost(this);
         content.addView(band, new FrameLayout.LayoutParams(-1, -1));
@@ -123,6 +127,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
         area = grid.count() == 0 ? GROUPS : GRID;
         waiting = area == GROUPS;
         reveal = area == GRID ? 0f : 1f;
+        pushing.jump(reveal);
         groups.setActive(area == GROUPS);
         grid.setActive(area == GRID);
         place();
@@ -239,12 +244,24 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
     @Override void hidden() {
         tv.live.removeListener(this);
         h.removeCallbacks(digitsDone);
+        h.removeCallbacks(rested);
         if (menu.isOpen()) menu.close();
     }
 
+    /** What the guide shows of the player (the ▶ on its channel, its frames a second): drawn again only when it changes. */
+    private String liveKey = "";
+    private int liveFps = -1;
+
     @Override public void liveChanged() {
+        Channel c = tv.live.channel();
+        String k = c == null ? "" : c.key;
+        int fps = tv.live.fps();
+        // A stall, a reconnect or a step in quality says nothing new to the guide: nothing is drawn again for it.
+        if (k.equals(liveKey) && fps == liveFps) return;
+        if (!k.equals(liveKey)) grid.invalidate();
+        liveKey = k;
+        liveFps = fps;
         band.invalidate();
-        grid.invalidate();
     }
 
     @Override void tick() {
@@ -294,24 +311,28 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
         return dialog.getVisibility() == View.VISIBLE;
     }
 
-    /** The groups (and the rail) in or out over GroupsPanel.SLIDE_MS, the guide pushed along; also follows the drawer. */
+    /**
+     * The groups (and the rail) in or out over GroupsPanel.SLIDE_MS, the guide pushed along; also follows the drawer.
+     * A glide stepped each frame on the display's clock: sent back the other way half way, it turns smoothly.
+     */
     private void animatePush(float to) {
-        if (push != null) push.cancel();
         if (Exec.inline) {
+            pushing.jump(to);
             reveal = to;
             place();
             return;
         }
-        float from = reveal;
-        ValueAnimator a = ValueAnimator.ofFloat(0f, 1f);
-        a.setDuration(Math.max(GroupsPanel.SLIDE_MS, Rail.DRAWER_MS));
-        a.setInterpolator(Fade.EASE);
-        a.addUpdateListener(v -> {
-            reveal = from + (to - from) * (Float) v.getAnimatedValue();
-            place();
-        });
-        push = a;
-        a.start();
+        pushing.to(to);
+        if (push == null) {
+            push = new android.animation.TimeAnimator();
+            push.setTimeListener((anim, total, dt) -> {
+                boolean moving = pushing.step();
+                reveal = Math.max(0f, Math.min(1f, pushing.value()));
+                place();
+                if (!moving && !rail.moving()) anim.end();
+            });
+        }
+        if (!push.isStarted()) push.start();
     }
 
     private void toGrid() {
@@ -347,6 +368,33 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
     @Override public void moved() {
         Channel ch = grid.channel();
         band.show(ch, grid.programme(), grid.times(), ch != null && Library.get(tv).isFavourite(ch), ch == null ? "" : whereFrom(ch));
+        h.removeCallbacks(rested);
+        h.postDelayed(rested, ProgrammePictures.REST_MS);
+    }
+
+    /**
+     * The remote has rested: the programme's picture asked for, and the pictures a move from here would want read
+     * ahead (the programmes before and after on this channel, what is on at the same time on the channels above and
+     * below), so the next move cross-fades at once.
+     */
+    private void rested() {
+        band.settled();
+        Library lib = Library.get(tv);
+        Channel ch = grid.channel();
+        if (ch == null) return;
+        long t = grid.cursor();
+        Guide.Schedule s = lib.schedule(ch.key);
+        int i = s == null ? -1 : s.at(t);
+        if (i >= 0) {
+            band.art.prefetch(ch, s, i + 1);
+            band.art.prefetch(ch, s, i - 1);
+        }
+        for (int d = -1; d <= 1; d += 2) {
+            Channel n = grid.channelAt(d);
+            if (n == null) continue;
+            Guide.Schedule ns = lib.schedule(n.key);
+            band.art.prefetch(n, ns, ns == null ? -1 : ns.at(t));
+        }
     }
 
     @Override public void leftEdge() {

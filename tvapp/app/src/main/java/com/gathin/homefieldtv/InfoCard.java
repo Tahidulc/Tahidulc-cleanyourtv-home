@@ -35,11 +35,19 @@ import java.util.List;
  * </pre>
  *
  * One card draws for one view (its logos ask that view to draw again when they come). Lines are laid out once for a
- * programme and kept.
+ * programme and kept, and the words a frame writes are kept words (Words) cut from kept widths (TextFit).
+ *
+ * <p>As the family asked (as the guide's details have it), the card carries the picture of the programme it is about
+ * behind its words, across its right-hand part (PanelArt: Sky's picture of it, else the channel's logo on its own tinted
+ * ground), faded into the card's colour from the left and the foot; a channel changed to (Up, Down), the next or
+ * previous one's card (CH+, CH−) and INFO cross-fade to their picture in 200 ms. It is asked for once the card rests on a
+ * programme, and the pictures of the channels either side are read ahead then, so holding Up or Down finds them ready.
  */
 final class InfoCard {
     static final float X = 120f, W = 1680f, H = 281f, FOOT_Y = 767f, TOP_Y = 32f, RADIUS = 16f;
     static final float LOGO_X = 152f, LOGO_W = 180f, LOGO_H = 104f, TEXT_X = 456f;
+    /** The programme's picture's box across the card's right-hand part (design pixels). */
+    static final float ART_W = 620f;
 
     private final View owner;
     private final Runnable redraw;
@@ -52,7 +60,17 @@ final class InfoCard {
     private final RectF r = new RectF();
     /** Laid out once: the channel's name (for nameKey), what the programme is about (for descKey). */
     private String nameKey = "", descKey = "", whereKey = "", whereText = "";
+    private long descStart = Long.MIN_VALUE;
     private StaticLayout nameL, descL;
+    /** The programme's picture behind the words, and the programme it is of (asked for once the card rests on it). */
+    private final PanelArt art;
+    private String artKey = "";
+    private long artStart = Long.MIN_VALUE;
+    private Channel artCh;
+    private Guide.Schedule artS;
+    private int artI = -1;
+    private final Runnable settle = this::settle;
+    private final TextFit titles = new TextFit(titleP, 64), whites = new TextFit(whiteP, 96), greys = new TextFit(greyP, 96);
 
     InfoCard(View owner) {
         this.owner = owner;
@@ -60,6 +78,25 @@ final class InfoCard {
         iconLine.setStyle(Paint.Style.STROKE);
         iconLine.setStrokeCap(Paint.Cap.ROUND);
         iconLine.setStrokeJoin(Paint.Join.ROUND);
+        art = new PanelArt(owner, ART_W, H, 0.75f);
+    }
+
+    /**
+     * The card has rested on a programme: its picture asked for, and the programmes on now on the channels either side
+     * of it read ahead (Up, Down, CH+ and CH− go there next).
+     */
+    private void settle() {
+        if (artCh == null) return;
+        art.show(artCh, artS, artI, true, false);
+        owner.invalidate();
+        Library lib = Library.get(owner.getContext());
+        long now = System.currentTimeMillis();
+        for (int d = -1; d <= 1; d += 2) {
+            Channel n = lib.step(artCh, d);
+            if (n == null || n.key.equals(artCh.key)) continue;
+            Guide.Schedule ns = lib.schedule(n.key);
+            art.prefetch(n, ns, ns == null ? -1 : ns.at(now));
+        }
     }
 
     /**
@@ -73,6 +110,21 @@ final class InfoCard {
         r.set(Ui.f(X), Ui.f(top), Ui.f(X + W), Ui.f(top + H));
         card.setColor(Palette.PLAYBACK);
         c.drawRoundRect(r, Ui.f(RADIUS), Ui.f(RADIUS), card);
+        // The programme's picture across the card's right-hand part (cross-fading when it is another programme's).
+        Guide.Schedule s = Library.get(ctx).schedule(ch.key);
+        int i = s == null ? -1 : s.at(at);
+        long st = i >= 0 ? s.start[i] : Long.MIN_VALUE;
+        if (!ch.key.equals(artKey) || st != artStart) {
+            artKey = ch.key;
+            artStart = st;
+            artCh = ch;
+            artS = s;
+            artI = i;
+            art.show(ch, s, i, false, false);
+            owner.removeCallbacks(settle);
+            owner.postDelayed(settle, ProgrammePictures.REST_MS);
+        }
+        if (art.draw(c, Ui.f(X + W - ART_W), Ui.f(top))) owner.postInvalidateOnAnimation();
 
         // The channel: its logo, its name under it.
         Bitmap logo = Pics.get(ch.logo, Ui.px(LOGO_W), Ui.px(LOGO_H), Pics.tiles ? Pics.READY : Pics.FIT, redraw);
@@ -91,25 +143,26 @@ final class InfoCard {
         Ui.draw(c, nameL, lx, Ui.f(top + 168f));
 
         // The programme.
-        Guide.Schedule s = Library.get(ctx).schedule(ch.key);
-        int i = s == null ? -1 : s.at(at);
         float x0 = Ui.f(TEXT_X), right = Ui.f(X + W - 34f), base = Ui.f(top + 65f);
-        String date = Ui.dateClock(now);
+        String date = Words.dateClock(now);
         dateP.setColor(Palette.TEXT1);
-        float dw = dateP.measureText(date);
+        if (!date.equals(dateFor)) {
+            dateFor = date;
+            dateW = dateP.measureText(date);
+        }
+        float dw = dateW;
         c.drawText(date, right - dw, base, dateP);
         titleP.setColor(Palette.TEXT1);
-        String title = i >= 0 ? s.title[i] : ch.name;
-        c.drawText(Ui.fit(title, titleP, right - dw - Ui.f(40) - x0), x0, base, titleP);
+        titles.line(c, i >= 0 ? s.title[i] : ch.name, x0, base, right - dw - Ui.f(40) - x0);
 
         // Its times, how far it is (or the archive's mark and its length), where the channel is from, the chips.
         float y = Ui.f(top + 118f), x = x0;
         greyP.setColor(Palette.TEXT2);
         whiteP.setColor(Palette.TEXT1);
         if (i >= 0) {
-            String span = LiveText.span(s.start[i], s.stop[i]);
+            String span = Words.span(s.start[i], s.stop[i]);
             c.drawText(span, x, y, greyP);
-            x += greyP.measureText(span) + Ui.f(25);
+            x += greys.width(span) + Ui.f(25);
             String mins;
             if (archived) {
                 iconLine.setColor(Palette.TEXT2);
@@ -117,26 +170,24 @@ final class InfoCard {
                 iconFill.setColor(Palette.TEXT2);
                 Dark.icon(c, Dark.HISTORY, x + Ui.f(14), y - Ui.f(10), Ui.f(28), iconLine, iconFill);
                 x += Ui.f(28) + Ui.f(24);
-                mins = minutes(s.stop[i] - s.start[i]);
+                mins = Words.minutes(s.stop[i] - s.start[i]);
             } else {
                 Bars.thin(c, x, y - Ui.f(10), Ui.f(80), Ui.f(6), LiveText.progress(now, s.start[i], s.stop[i]));
                 x += Ui.f(80) + Ui.f(24);
-                mins = s.stop[i] > now ? minutes(s.stop[i] - now) : "";
+                mins = s.stop[i] > now ? Words.minutes(s.stop[i] - now) : "";
             }
             if (!mins.isEmpty()) {
                 c.drawText(mins, x, y, greyP);
-                x += greyP.measureText(mins) + Ui.f(40);
+                x += greys.width(mins) + Ui.f(40);
             }
         } else {
             String none = s == null ? "No programme information" : "Nothing in the guide now";
             c.drawText(none, x, y, greyP);
-            x += greyP.measureText(none) + Ui.f(40);
+            x += greys.width(none) + Ui.f(40);
         }
         String where = where(ctx, ch);
         if (!where.isEmpty()) {
-            String w = Ui.fit(where, whiteP, Math.max(Ui.f(120), right - x - Ui.f(200)));
-            c.drawText(w, x, y, whiteP);
-            x += whiteP.measureText(w) + Ui.f(40);
+            x += whites.line(c, where, x, y, Math.max(Ui.f(120), right - x - Ui.f(200))) + Ui.f(40);
         }
         if (chips != null) {
             for (String chip : chips) {
@@ -148,23 +199,26 @@ final class InfoCard {
 
         // What it is about, then what's next.
         if (i >= 0 && !s.desc[i].isEmpty()) {
-            String k = ch.key + "|" + s.start[i];
-            if (!k.equals(descKey) || descL == null) {
+            if (!ch.key.equals(descKey) || s.start[i] != descStart || descL == null) {
                 descP.setColor(Palette.TEXT2);
                 descL = lines(s.desc[i], descP, Ui.px(W - (TEXT_X - X) - 40f), 2, 33f / 26f);
-                descKey = k;
+                descKey = ch.key;
+                descStart = s.start[i];
             }
             Ui.draw(c, descL, x0, Ui.f(top + 137f));
         }
         int n = s == null ? -1 : i >= 0 ? (i + 1 < s.start.length ? i + 1 : -1) : s.after(at);
         if (n >= 0) {
             float ny = Ui.f(top + 248f);
-            String sp = LiveText.span(s.start[n], s.stop[n]);
+            String sp = Words.span(s.start[n], s.stop[n]);
             c.drawText(sp, x0, ny, greyP);
-            float nx = x0 + greyP.measureText(sp) + Ui.f(25);
-            c.drawText(Ui.fit(s.title[n], whiteP, right - nx), nx, ny, whiteP);
+            float nx = x0 + greys.width(sp) + Ui.f(25);
+            whites.line(c, s.title[n], nx, ny, right - nx);
         }
     }
+
+    private String dateFor;
+    private float dateW;
 
     /** "29 min", "1 h 5 min": what is left of a programme, or its whole length, as the card writes it. */
     static String minutes(long ms) {

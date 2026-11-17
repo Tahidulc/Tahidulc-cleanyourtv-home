@@ -303,7 +303,7 @@ final class Dark {
                 c.drawPath(p, solid);
                 break;
             case STAR:
-                c.drawPath(Ui.star(cx, cy, h * 0.9f), solid);
+                Ui.drawStar(c, cx, cy, h * 0.9f, solid);
                 break;
             case FOLDER:
                 p.moveTo(cx - h * 0.85f, cy - h * 0.55f);
@@ -361,7 +361,7 @@ final class Dark {
                 c.drawPath(p, stroke);
                 break;
             case STAR_LINE:
-                c.drawPath(Ui.star(cx, cy, h * 0.9f), stroke);
+                Ui.drawStar(c, cx, cy, h * 0.9f, stroke);
                 break;
             case GEAR: {
                 // Eight teeth round the wheel, a hole in its middle.

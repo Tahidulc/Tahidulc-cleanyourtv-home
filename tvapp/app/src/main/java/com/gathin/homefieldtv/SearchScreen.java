@@ -91,7 +91,7 @@ final class SearchScreen extends Screen implements Keyboard.Host {
 
     @Override View build() {
         FrameLayout f = new FrameLayout(tv);
-        f.setBackgroundColor(Palette.GROUND);
+        // No ground of its own: the window's (TvActivity) is the screen's, so it is filled once, not twice.
         page = new Page(tv);
         keys = new Keyboard(tv, Keyboard.SEARCH);
         keys.x = 1148f;

@@ -38,18 +38,30 @@ public final class Channel {
     public Channel(String key, String name, String group, String logo, String url, String tvgId, String userAgent,
                    String referrer, int number, String catchup, String catchupSource, int archiveDays, String zone) {
         this.key = key;
-        this.name = name == null ? "" : name;
-        this.group = group == null ? "" : group;
-        this.logo = logo == null ? "" : logo;
-        this.url = url == null ? "" : url;
-        this.tvgId = tvgId == null ? "" : tvgId;
-        this.userAgent = userAgent == null ? "" : userAgent;
-        this.referrer = referrer == null ? "" : referrer;
+        this.name = own(name);
+        // What thousands of channels share (their group, the playlist's user agent, the archive's kind and time zone):
+        // one copy each, however many channels say it; and one empty string for all that say nothing.
+        this.group = shared(group);
+        this.logo = own(logo);
+        this.url = own(url);
+        this.tvgId = own(tvgId);
+        this.userAgent = shared(userAgent);
+        this.referrer = shared(referrer);
         this.number = number;
-        this.catchup = catchup == null ? "" : catchup;
-        this.catchupSource = catchupSource == null ? "" : catchupSource;
+        this.catchup = shared(catchup);
+        this.catchupSource = shared(catchupSource);
         this.archiveDays = this.catchup.isEmpty() ? 0 : Math.max(0, archiveDays);
-        this.zone = zone == null ? "" : zone;
+        this.zone = shared(zone);
+    }
+
+    /** A string of its own, or the one empty string. */
+    static String own(String s) {
+        return s == null || s.isEmpty() ? "" : s;
+    }
+
+    /** A string many channels say: the one copy of it (Java's own pool, which lets go of what nothing holds). */
+    static String shared(String s) {
+        return s == null || s.isEmpty() ? "" : s.intern();
     }
 
     /** The same channel under another key (a playlist's prefix before it). */

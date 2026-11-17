@@ -127,8 +127,19 @@ final class LiveTv {
     private int videoW, videoH, rawW, rawH;
     /** This stream is the provider's HLS form of an MPEG-TS address (Adaptive), not yet seen playing; or it failed. */
     private boolean hlsTried, hlsRefused, everReady;
-    /** Settings → Player → Match frame rate: this stream's rate being read, while it is full screen. */
-    private Afr.Probe probe;
+    /**
+     * The picture's frames a second (the player's one frame listener): the stream's own, or measured from its frames
+     * (FpsMeter); 0 until known. precise keeps 23.976 and 29.97 for Settings → Player → Match frame rate.
+     */
+    private final FpsMeter meter = new FpsMeter(this::measured);
+    private int fpsStream = -1, fps;
+    private float precise;
+    /** A stream that played this long steadily starts its tries again from the first (one that keeps dropping waits longer each time). */
+    private static final long STEADY_MS = 10_000L;
+    /** Behind the live window: put back to live this many times in a row at most, then taken as dropped. */
+    private int behindLive;
+    /** Settings → Player → Picture quality, as last read (it is asked each second while a channel plays). */
+    private int quality = -1;
     /** Catch-up: the archive playing (null: the live stream), moved back in the live stream's own window, paused. */
     private Archive arc;
     private boolean inWindow, held;
@@ -150,6 +161,11 @@ final class LiveTv {
     private long stallSince, upTriedAt;
 
     private final Runnable retry = this::prepare;
+    /** Played steadily for STEADY_MS: the tries start from the first again. */
+    private final Runnable steady = () -> {
+        retries = 0;
+        behindLive = 0;
+    };
     private final Runnable bufferTick = this::bufferTick;
     private final Runnable upCheck = this::tryUp;
     private final Runnable stallStep = this::stallStep;
@@ -225,15 +241,31 @@ final class LiveTv {
     private void frameRate() {
         android.app.Activity a = layer.getContext() instanceof android.app.Activity ? (android.app.Activity) layer.getContext() : null;
         if (player == null || !full() || !PlayerPrefs.matchFrameRate(app)) {
-            if (probe != null && player != null) player.clearVideoFrameMetadataListener(probe);
-            probe = null;
             Afr.reset(a);
             return;
         }
-        if (probe != null || a == null) return;
-        probe = new Afr.Probe(a);
-        player.setVideoFrameMetadataListener(probe);
-        probe.format(player.getVideoFormat());
+        if (precise > 0f) Afr.match(a, precise);
+    }
+
+    /** The meter's answer for a stream (the main thread): kept for this stream and, live, for its channel (FrameRates). */
+    private void measured(int stream, float rate) {
+        if (stream != meter.stream() || player == null) return;
+        fpsStream = stream;
+        precise = rate;
+        fps = FpsMeter.chip(rate);
+        if (arc == null && !inWindow && cur != null && fps > 0) FrameRates.put(app, cur.key, fps);
+        frameRate();
+        tell();
+    }
+
+    /**
+     * The picture's frames a second, whole (24, 25, 30, 50, 60) as the chips show them: this stream's once known; before
+     * that, live, as last seen on the channel (FrameRates); 0 when not known (no chip).
+     */
+    int fps() {
+        if (Exec.inline) return cur == null ? 0 : FpsMeter.chip(previewFps);
+        if (fps > 0 && fpsStream == meter.stream()) return fps;
+        return cur != null && arc == null && !inWindow ? FrameRates.of(app, cur.key) : 0;
     }
 
     /** The picture placed again (its shape changed in the player's menu). */
@@ -258,6 +290,7 @@ final class LiveTv {
 
     /** Settings' or the bar's picture quality changed: the channel's versions chosen again, at once. */
     void requality() {
+        quality = -1;
         if (cur == null || arc != null || inWindow) return;
         tryAgain();
     }
@@ -290,6 +323,11 @@ final class LiveTv {
             History.add(app, new History.Entry(cur.key, title, start, i >= 0 ? s.stop[i] : 0L, System.currentTimeMillis(), behind()));
         }
         h.postDelayed(historyTick, 2_000L);
+    }
+
+    /** The player's buffer ahead now (ms), for the memory log; 0 when nothing plays. Main thread. */
+    long buffered() {
+        return player == null ? 0 : Math.max(0, player.getTotalBufferedDuration());
     }
 
     /** The player now, for the player's menu (its sound tracks); null when nothing plays. */
@@ -325,11 +363,13 @@ final class LiveTv {
             picture.setLayoutParams(lp);
         }
         FrameLayout.LayoutParams np = (FrameLayout.LayoutParams) note.getLayoutParams();
-        np.width = where.width();
-        np.height = where.height();
-        np.leftMargin = where.left;
-        np.topMargin = where.top;
-        note.setLayoutParams(np);
+        if (np.width != where.width() || np.height != where.height() || np.leftMargin != where.left || np.topMargin != where.top) {
+            np.width = where.width();
+            np.height = where.height();
+            np.leftMargin = where.left;
+            np.topMargin = where.top;
+            note.setLayoutParams(np);
+        }
         note.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, Math.max(Ui.f(22), where.height() / 14f));
         subs.frame(where, x, y, w, hh);
     }
@@ -370,14 +410,14 @@ final class LiveTv {
             if (f != null) {
                 w = f.width;
                 hh = f.height;
-                fps = f.frameRate;
             }
             if (w <= 0 || hh <= 0) {
                 w = rawW;
                 hh = rawH;
             }
         }
-        return new String[]{LiveText.size(w, hh), LiveText.fps(fps), "", String.valueOf(Math.max(0, hh))};
+        // The frames a second as the chips show them ("50 FPS"): known, or left out (never a guess).
+        return new String[]{LiveText.size(w, hh), FrameRates.chip(cur == null ? 0 : fps()), "", String.valueOf(Math.max(0, hh))};
     }
 
     /**
@@ -401,7 +441,7 @@ final class LiveTv {
                 held = false;
                 player.seekToDefaultPosition();
                 player.setPlayWhenReady(true);
-                set(state);
+                tell();
             }
             if (!where.isEmpty()) picture.setVisibility(View.VISIBLE);
             return;
@@ -439,7 +479,7 @@ final class LiveTv {
         h.removeCallbacks(stallStep);
         stepDone();
         stallSince = 0;
-        probe = null;
+        h.removeCallbacks(steady);
         Afr.reset(layer.getContext() instanceof android.app.Activity ? (android.app.Activity) layer.getContext() : null);
         if (arc != null && player != null) {
             // Picked up again where it got to.
@@ -573,6 +613,7 @@ final class LiveTv {
                 picture.setVisibility(View.VISIBLE);
             }
             set(PLAYING);
+            tell();
             return;
         }
         // Inside the live stream's own window: a move, nothing asked for again.
@@ -581,7 +622,7 @@ final class LiveTv {
             inWindow = true;
             player.seekTo(Math.max(0, t - w[0]));
             player.setPlayWhenReady(!held);
-            set(state);
+            tell();
             return;
         }
         Channel src = Catchup.source(c);
@@ -592,7 +633,7 @@ final class LiveTv {
             if (d != C.TIME_UNSET && t >= arc.from && t < arc.from + d - 5000) {
                 player.seekTo(t - arc.from);
                 player.setPlayWhenReady(!held);
-                set(state);
+                tell();
                 return;
             }
         }
@@ -620,7 +661,7 @@ final class LiveTv {
     void hold(boolean pause) {
         held = pause;
         if (player != null) player.setPlayWhenReady(!pause);
-        if (Exec.inline || player != null) set(state);
+        if (Exec.inline || player != null) tell();
     }
 
     /** After a stop, the archive asked for again from where it got to. */
@@ -655,6 +696,8 @@ final class LiveTv {
                 .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true);
         player.addListener(listener);
         if (picture instanceof SurfaceView) player.setVideoSurfaceView((SurfaceView) picture);
+        // The picture's frames a second, for its chip and Match frame rate (one listener, on the player's thread).
+        player.setVideoFrameMetadataListener(meter);
         subs.attach(player);
     }
 
@@ -700,10 +743,11 @@ final class LiveTv {
         h.postDelayed(stallCheck, 2000);
         h.removeCallbacks(bufferTick);
         if (arc == null) h.postDelayed(bufferTick, 1000);
-        // A new stream: its frame rate read again.
-        if (probe != null) player.clearVideoFrameMetadataListener(probe);
-        probe = null;
-        frameRate();
+        // A new stream: its frame rate read again (its channel's last one shows meanwhile).
+        meter.reset();
+        fps = 0;
+        precise = 0f;
+        h.removeCallbacks(steady);
     }
 
     // ---- Picture quality: the channel's versions -----------------------------------------------------------------
@@ -751,9 +795,15 @@ final class LiveTv {
         });
     }
 
+    /** Settings → Player → Picture quality is Adaptive or Data saver (read once, again when it changes). */
+    private boolean adaptiveQuality() {
+        if (quality < 0) quality = PlayerPrefs.quality(app);
+        return PlayerPrefs.adaptive(quality);
+    }
+
     /** Adaptive (or Data saver): the picture follows the connection through the channel's versions, live, as it plays on. */
     private boolean adaptive() {
-        return ladder != null && arc == null && !inWindow && !held && PlayerPrefs.adaptive(PlayerPrefs.quality(app));
+        return ladder != null && arc == null && !inWindow && !held && adaptiveQuality();
     }
 
     /**
@@ -863,7 +913,8 @@ final class LiveTv {
             return;
         }
         stepDone();
-        if (ladder != null && PlayerPrefs.adaptive(PlayerPrefs.quality(app))) {
+        h.removeCallbacks(steady);
+        if (ladder != null && adaptiveQuality()) {
             if (retries < Abr.QUICK_TRIES) {
                 retries++;
                 set(RETRYING);
@@ -956,29 +1007,50 @@ final class LiveTv {
         set(FAILED);
     }
 
+    /**
+     * The player's state now: the screens are told only when it changes (a stall, a reconnect or a step in quality
+     * flips it often while a connection struggles; telling them each time would draw every overlay again for nothing).
+     */
     private void set(int s) {
+        if (s == state) return;
         state = s;
         if (s == PLAYING) {
             h.removeCallbacks(historyTick);
             h.post(historyTick);
         }
         showNote();
-        for (Listener l : new ArrayList<>(listeners)) l.liveChanged();
+        tell();
     }
+
+    /** The screens told that something of the picture changed (its state, behind live, paused, its frames a second). */
+    private void tell() {
+        for (int i = listeners.size() - 1; i >= 0; i--) {
+            if (i < listeners.size()) listeners.get(i).liveChanged();
+        }
+    }
+
+    private String noteText = "";
 
     private void showNote() {
         String t = state == RETRYING ? "Reconnecting…"
                 : state == FAILED ? (arc != null ? "This programme couldn't be played from the provider's archive"
                 : "This channel isn't working right now") : "";
-        note.setText(t);
-        note.setVisibility(t.isEmpty() || where.isEmpty() ? View.GONE : View.VISIBLE);
+        if (!t.equals(noteText)) {
+            noteText = t;
+            note.setText(t);
+        }
+        int vis = t.isEmpty() || where.isEmpty() ? View.GONE : View.VISIBLE;
+        if (note.getVisibility() != vis) note.setVisibility(vis);
     }
 
     private final Player.Listener listener = new Player.Listener() {
         @Override public void onPlaybackStateChanged(int s) {
             if (player == null) return;
             if (s == Player.STATE_READY) {
-                retries = 0;
+                // Its tries start from the first again only once it has played steadily for a while: a stream that
+                // drops as soon as it starts waits longer each time (1, 2, 4, 8, 10 s), never a loop of quick tries.
+                h.removeCallbacks(steady);
+                h.postDelayed(steady, STEADY_MS);
                 bufferingSince = 0;
                 everReady = true;
                 stepDone();
@@ -1010,12 +1082,14 @@ final class LiveTv {
                 archiveFailed(e);
                 return;
             }
-            if (e.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
-                // Paused or moved back past the start of the stream's window: live again.
+            if (e.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW && behindLive < 3) {
+                // Paused or moved back past the start of the stream's window: live again (a few times running at
+                // most: a stream that keeps falling behind is taken as dropped, and tried again with its waits).
+                behindLive++;
                 inWindow = false;
                 player.seekToDefaultPosition();
                 player.prepare();
-                set(state);
+                tell();
                 return;
             }
             // The provider's HLS form never played: its MPEG-TS at once; HLS left alone for the whole playlist a while
@@ -1036,7 +1110,7 @@ final class LiveTv {
 
         @Override public void onIsPlayingChanged(boolean playing) {
             // Paused or played on behind live: the bar and its knob drawn again.
-            if (behind()) set(state);
+            if (behind()) tell();
         }
 
         @Override public void onTracksChanged(@NonNull Tracks tracks) {
