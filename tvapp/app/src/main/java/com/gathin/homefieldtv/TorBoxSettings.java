@@ -2,6 +2,7 @@ package com.gathin.homefieldtv;
 
 import android.content.Context;
 
+import com.gathin.homefieldtv.engine.Catalog;
 import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.TorBox;
 
@@ -48,6 +49,8 @@ final class TorBoxSettings {
         switch (tag) {
             case "on":
                 TorBox.setOn(tv, !TorBox.wanted(tv));
+                // Its own titles in the rows, or gone from them.
+                Catalog.get(tv).ownTitles();
                 return true;
             case "first":
                 TorBox.setFirst(tv, !TorBox.first(tv));
@@ -58,6 +61,7 @@ final class TorBoxSettings {
             case "forget":
                 TorBox.forget(tv);
                 said = "";
+                Catalog.get(tv).ownTitles();
                 return true;
             default:
                 return false;
@@ -91,6 +95,8 @@ final class TorBoxSettings {
                 checking = false;
                 said = w;
                 changed.run();
+                // The library just read: its own titles into the rows.
+                Catalog.get(app).ownTitles();
             });
         });
     }

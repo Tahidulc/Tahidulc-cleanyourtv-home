@@ -32,6 +32,8 @@ final class Rows extends View {
         final Object item;
         String picture = "", fallback = "", logo = "", title = "", subtitle = "";
         float progress = -1f;
+        /** One of the family's own TorBox titles (no playlist has it): TorBox's cloud on its top left. */
+        boolean torbox;
         private String fitT, fitS;
         private float fitW = -1f;
         private StaticLayout card, under;
@@ -356,6 +358,10 @@ final class Rows extends View {
             card(c, t, k, x, y, w, h, a);
         }
         if (k == WIDE || k == CHANNEL) caption(c, t, k, x, y, w, h, a);
+        if (t.torbox) {
+            float d = Ui.f(34);
+            SourcePicker.badge(c, x + Ui.f(10) + d / 2f, y + Ui.f(10) + d / 2f, d, a);
+        }
         if (t.progress >= 0f) {
             float bh = Ui.f(5);
             track.setAlpha(a * 0x55 / 255);

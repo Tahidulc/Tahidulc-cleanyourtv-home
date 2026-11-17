@@ -358,11 +358,16 @@ final class SourcePicker extends View {
 
         /** A cloud s across, centred on (cx, cy): three puffs on a flat foot. */
         private void cloud(Canvas c, float cx, float cy, float s) {
-            c.drawCircle(cx - s * 0.2f, cy + s * 0.06f, s * 0.2f, glyph);
-            c.drawCircle(cx + s * 0.03f, cy - s * 0.08f, s * 0.27f, glyph);
-            c.drawCircle(cx + s * 0.26f, cy + s * 0.08f, s * 0.18f, glyph);
+            cloud(c, cx, cy, s, glyph, box);
+        }
+
+        /** The same in a paint given (on the main thread: box is any rectangle to draw with). */
+        static void cloud(Canvas c, float cx, float cy, float s, Paint p, RectF box) {
+            c.drawCircle(cx - s * 0.2f, cy + s * 0.06f, s * 0.2f, p);
+            c.drawCircle(cx + s * 0.03f, cy - s * 0.08f, s * 0.27f, p);
+            c.drawCircle(cx + s * 0.26f, cy + s * 0.08f, s * 0.18f, p);
             box.set(cx - s * 0.4f, cy + s * 0.04f, cx + s * 0.44f, cy + s * 0.26f);
-            c.drawRoundRect(box, s * 0.11f, s * 0.11f, glyph);
+            c.drawRoundRect(box, s * 0.11f, s * 0.11f, p);
         }
 
         /** A screen s across, centred on (cx, cy): an outlined picture on a short stand. */
@@ -372,5 +377,24 @@ final class SourcePicker extends View {
             c.drawRoundRect(box, s * 0.08f, s * 0.08f, glyphLine);
             c.drawLine(cx - s * 0.2f, cy + s * 0.38f, cx + s * 0.2f, cy + s * 0.38f, glyphLine);
         }
+    }
+
+    private static final Paint BADGE = new Paint(Paint.ANTI_ALIAS_FLAG), BADGE_INK = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private static final RectF BADGE_BOX = new RectF();
+
+    static {
+        BADGE.setColor(TORBOX);
+        BADGE_INK.setColor(0xFFFFFFFF);
+    }
+
+    /**
+     * The round green TorBox badge with its cloud, d across, centred on (cx, cy), at an opacity: on a poster or an
+     * episode of the family's own that no playlist has. On the main thread.
+     */
+    static void badge(Canvas c, float cx, float cy, float d, int alpha) {
+        BADGE.setAlpha(alpha);
+        BADGE_INK.setAlpha(alpha);
+        c.drawCircle(cx, cy, d / 2f, BADGE);
+        Mark.cloud(c, cx, cy + d * 0.02f, d * 0.62f, BADGE_INK, BADGE_BOX);
     }
 }
