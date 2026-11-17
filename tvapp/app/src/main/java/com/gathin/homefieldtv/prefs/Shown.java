@@ -9,6 +9,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 
 /**
@@ -21,7 +22,7 @@ public final class Shown {
     private Shown() {}
 
     /** Goes up with every change to what is hidden or locked, for the lists made from it to be made again. */
-    private static volatile int version;
+    private static final AtomicInteger version = new AtomicInteger();
     /** Told of each change, on the thread that made it (Library makes its lists again off the main thread). */
     private static final List<Runnable> listeners = new CopyOnWriteArrayList<>();
 
@@ -30,11 +31,11 @@ public final class Shown {
     private static volatile boolean shownOpen;
 
     public static int version() {
-        return version;
+        return version.get();
     }
 
     static void changed() {
-        version++;
+        version.incrementAndGet();
         for (Runnable r : listeners) r.run();
     }
 
@@ -87,13 +88,13 @@ public final class Shown {
 
         /** Whether it still says what is hidden and locked now. */
         public boolean current() {
-            return version == Shown.version && open == Parental.open();
+            return version == Shown.version.get() && open == Parental.open();
         }
     }
 
     /** What is hidden and locked now, for a list (see Filter). */
     public static Filter filter(Context c) {
-        int v = version;
+        int v = version.get();
         boolean open = Parental.open();
         return new Filter(v, Categories.hidden(c), Parental.lockedGroups(c), Parental.lockedChannels(c), Parental.hides(c),
                 Parental.hasPin(c), open);
@@ -114,7 +115,7 @@ public final class Shown {
      * change (any thread; Library makes its own off the main thread).
      */
     public static List<Channel> of(Context c, List<Channel> all) {
-        int v = version;
+        int v = version.get();
         boolean open = Parental.open();
         List<Channel> s = shown;
         if (s != null && from == all && shownVersion == v && shownOpen == open) return s;
