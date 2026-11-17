@@ -97,7 +97,7 @@ public class TorBoxTest {
         assertEquals("Glass.Harbour.2024.1080p.WEB-DL", out.get(0).item);
     }
 
-    @Test public void everyVersionOfAFilmTheSurestFirst() {
+    @Test public void everyVersionOfAFilmTheBestFirst() {
         List<TorBox.File> lib = Arrays.asList(
                 file(1, 0, "Glass.Harbour.2024.2160p.UHD.BluRay.x265.mkv", "Glass.Harbour.2024.2160p.UHD.BluRay.x265", 40 * GB),
                 file(2, 0, "Glass.Harbour.2024.1080p.WEB-DL.mkv", "Glass.Harbour.2024.1080p.WEB-DL", 6 * GB),
@@ -109,7 +109,8 @@ public class TorBoxTest {
                 // A file whose own name says nothing: its download's name does, as the only picture in it.
                 single(7, 3, "abc123.mkv", "Glass.Harbour.2024.2160p.WEB-DL", 15 * GB));
         List<TorBox.File> got = TorBox.films(lib, "Glass Harbour", null, "2024");
-        assertEquals(Arrays.asList("Glass.Harbour.2024.1080p.WEB-DL.mkv", "abc123.mkv", "Glass.Harbour.2024.2160p.UHD.BluRay.x265.mkv",
+        // The best first, with no limit on size: both 4K (the bigger first), then 1080p, 720p, and the AVI after them all.
+        assertEquals(Arrays.asList("Glass.Harbour.2024.2160p.UHD.BluRay.x265.mkv", "abc123.mkv", "Glass.Harbour.2024.1080p.WEB-DL.mkv",
                 "Glass.Harbour.2024.720p.mkv", "Glass.Harbour.2024.1080p.avi"), names(got));
         // The other film's year, and none given.
         assertEquals(Arrays.asList("Glass.Harbour.1998.1080p.mkv"), names(TorBox.films(lib, "Glass Harbour", null, "1998")));

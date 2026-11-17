@@ -70,6 +70,8 @@ public final class Catalog {
          */
         public final int picture;
         public final boolean dolbyVision, atmos;
+        /** The HDR and sound its name (or its category) says, as Formats words them ("HDR10", "Dolby Atmos"; "" for none). */
+        public final String hdr, sound;
         final String source, id, ext, url, userAgent, referrer;
         /** The same title in the family's other playlists, played when this one doesn't start. */
         final List<Title> copies = new ArrayList<>(0);
@@ -96,6 +98,13 @@ public final class Catalog {
             this.picture = Math.max(pictureOf(rawName), pictureOf(category) == PICTURE_4K ? PICTURE_4K : 0);
             this.dolbyVision = dolbyVisionOf(rawName) || dolbyVisionOf(category);
             this.atmos = atmosOf(rawName) || atmosOf(category);
+            // Read only where its name or category may say it (most say neither): a playlist loads many thousands.
+            String c = this.category;
+            String h = dolbyVision ? "Dolby Vision" : "", s = atmos ? "Dolby Atmos" : "";
+            if (h.isEmpty() && (Formats.mayHdr(rawName) || Formats.mayHdr(c))) h = Formats.hdr(rawName + " " + c);
+            if (s.isEmpty() && (Formats.maySound(rawName) || Formats.maySound(c))) s = Formats.audio(rawName + " " + c);
+            this.hdr = h;
+            this.sound = s;
         }
 
         /** The playlist it is from. */
@@ -324,12 +333,22 @@ public final class Catalog {
         /** The picture its name says (PICTURE_4K … PICTURE_SD, 0 when it says none), its file's kind ("MKV", "MP4", ""). */
         public int picture;
         public String kind = "";
+        /** The HDR and sound its name says, as Formats words them ("Dolby Vision", "HDR10"; "Dolby Atmos", "DTS-HD 7.1"; ""). */
+        public String hdr = "", sound = "";
 
         Play(String url, String userAgent, String referrer) {
             this.url = url;
             this.userAgent = userAgent == null ? "" : userAgent;
             this.referrer = referrer == null ? "" : referrer;
         }
+    }
+
+    /** Previews and tests: a copy as if found, by its address and its playlist's name (TorBox's for a "torbox:" one). */
+    public static Play previewPlay(String url, String playlist) {
+        Play p = new Play(url, null, null);
+        p.torbox = TorBox.ours(url);
+        p.playlist = p.torbox || playlist == null ? "" : playlist;
+        return p;
     }
 
     public interface DetailsCallback {
@@ -1208,6 +1227,8 @@ public final class Catalog {
         p.playlist = src.name;
         p.name = t.name;
         p.picture = t.picture;
+        p.hdr = t.hdr;
+        p.sound = t.sound;
         p.kind = kindOf(e != null ? e.ext : t.ext);
         if (p.kind.isEmpty()) p.kind = kindOf(e != null ? e.url : t.url);
         return p;
