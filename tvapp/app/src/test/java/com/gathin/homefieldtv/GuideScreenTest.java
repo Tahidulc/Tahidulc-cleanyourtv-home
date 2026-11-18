@@ -219,6 +219,48 @@ public class GuideScreenTest {
         assertTrue(a.top() instanceof HomeScreen);
     }
 
+    @Test public void theShelvesAreTheSameGuideDrawnAsShelves() {
+        Exec.inline = true;
+        Context app = RuntimeEnvironment.getApplication();
+        made = app;
+        List<Channel> ch = MadeUpGuide.load(app);
+        com.gathin.homefieldtv.prefs.Look.setGuideStyle(app, com.gathin.homefieldtv.prefs.Look.GUIDE_SHELVES);
+        try {
+            tv = Robolectric.buildActivity(TvActivity.class).setup();
+            TvActivity a = tv.get();
+            idle();
+            Library.get(app).watched(ch.get(1));
+            a.openGuide(null);
+            idle();
+            GuideScreen g = (GuideScreen) a.top();
+            // No preview window: nothing plays unseen.
+            assertTrue(a.live.where().isEmpty());
+            assertEquals(ch.get(1).key, g.focusedChannel().key);
+            // Down a channel, Right a programme on, Back to now, Left to the groups and Right back: as in the grid.
+            press(a, KeyEvent.KEYCODE_DPAD_DOWN);
+            assertEquals(ch.get(2).key, g.focusedChannel().key);
+            long now = System.currentTimeMillis();
+            press(a, KeyEvent.KEYCODE_DPAD_RIGHT);
+            assertTrue(g.focusedTimes()[0] > now);
+            // OK on one to come: its small menu; Back shuts it.
+            press(a, KeyEvent.KEYCODE_DPAD_CENTER);
+            assertTrue(g.menuOpen());
+            press(a, KeyEvent.KEYCODE_BACK);
+            press(a, KeyEvent.KEYCODE_BACK);
+            assertTrue(g.focusedTimes()[0] <= now);
+            press(a, KeyEvent.KEYCODE_DPAD_LEFT);
+            assertEquals(1, g.area());
+            press(a, KeyEvent.KEYCODE_DPAD_RIGHT);
+            assertEquals(0, g.area());
+            // OK on what's on now watches it full screen.
+            press(a, KeyEvent.KEYCODE_DPAD_CENTER);
+            assertTrue(a.top() instanceof LiveScreen);
+            assertEquals(ch.get(2).key, a.live.channel().key);
+        } finally {
+            com.gathin.homefieldtv.prefs.Look.setGuideStyle(app, com.gathin.homefieldtv.prefs.Look.GUIDE_GRID);
+        }
+    }
+
     @Test public void theArchiveByDayPlaysFromTheArchive() {
         Exec.inline = true;
         Context app = RuntimeEnvironment.getApplication();

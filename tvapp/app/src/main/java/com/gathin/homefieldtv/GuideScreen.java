@@ -56,7 +56,8 @@ import java.util.Map;
  * comes back to the programmes on now. Back from the player opens a new guide (TvActivity.toGuide) on the list shown
  * last, the channel playing in its preview.
  */
-final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Host, GuideMenu.Host, DialogCard.Host, LiveTv.Listener {
+final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Host, GuideMenu.Host, DialogCard.Host, LiveTv.Listener,
+        GuideShelves.Host {
     private static final int GRID = 0, GROUPS = 1;
     private static final String ALL = "all", FAV = "fav", RECENT = "recent", GENRE = "genre:", GROUP = "group:", PLAYLIST = "playlist",
             KINDS = "kinds";
@@ -68,6 +69,8 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
     private FrameLayout content;
     private GuideBand band;
     private GuideGrid grid;
+    /** 07's shelves (Settings › Appearance › TV guide › Guide style): the grid's state drawn as shelves. */
+    private GuideShelves shelves;
     private GroupsPanel groups;
     private GuideMenu menu;
     /** The page's blurred picture (the programme the remote rests on), and the preview's frame over the live picture. */
@@ -130,8 +133,12 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
         band.live = tv.live;
         grid = new GuideGrid(tv, lib);
         grid.setHost(this);
+        shelves = new GuideShelves(tv, lib, grid);
+        shelves.setHost(this);
         content.addView(band, new FrameLayout.LayoutParams(-1, -1));
         content.addView(grid, new FrameLayout.LayoutParams(-1, -1));
+        content.addView(shelves, new FrameLayout.LayoutParams(-1, -1));
+        applyStyle();
         groups = new GroupsPanel(tv);
         groups.look07 = true;
         groups.setHost(this);
@@ -191,12 +198,59 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
             kinds = true;
             add(e, g, GENRE + g);
         }
+        pillNames.clear();
+        pillTags.clear();
+        for (GroupsPanel.Entry en : e) {
+            if (en.kind == GroupsPanel.HEADING || !(en.tag instanceof String)) continue;
+            String tag = (String) en.tag;
+            pillTags.add(tag);
+            pillNames.add(FAV.equals(tag) ? "★ Favourites" : en.name);
+        }
+        pillsFor = "";
         // The list on screen gone (its group hidden or emptied): all the channels.
         if (!listed.contains(shown)) shown = ALL;
         int at = 0;
         for (int i = 0; i < e.size(); i++) if (shown.equals(e.get(i).tag)) at = i;
         groups.set(e, at);
         groups.choose(shown);
+    }
+
+    /** The lists as the shelves' pills (the one on screen first), in the groups' order. */
+    private final List<String> pillNames = new ArrayList<>(), pillTags = new ArrayList<>(), pillsShown = new ArrayList<>();
+    private String pillsFor = "";
+
+    @Override public List<String> pills() {
+        if (!shown.equals(pillsFor)) {
+            pillsFor = shown;
+            pillsShown.clear();
+            int at = pillTags.indexOf(shown);
+            if (at >= 0) pillsShown.add(pillNames.get(at));
+            for (int i = 0; i < pillNames.size(); i++) if (i != at) pillsShown.add(pillNames.get(i));
+        }
+        return pillsShown;
+    }
+
+    @Override public int pillOn() {
+        return 0;
+    }
+
+    @Override public String listName() {
+        int at = pillTags.indexOf(shown);
+        if (at >= 0) return pillNames.get(at).replace("★ ", "");
+        return shown.startsWith(GENRE) ? shown.substring(GENRE.length()) : "All channels";
+    }
+
+    /** Whether the guide is drawn as 07's shelves (Settings › Appearance › TV guide › Guide style). */
+    private boolean shelves() {
+        return com.gathin.homefieldtv.prefs.Look.guideStyle == com.gathin.homefieldtv.prefs.Look.GUIDE_SHELVES;
+    }
+
+    /** The grid (with its preview and details) or the shelves, as Settings says. */
+    private void applyStyle() {
+        boolean sh = shelves();
+        band.setVisibility(sh ? View.GONE : View.VISIBLE);
+        grid.setVisibility(sh ? View.INVISIBLE : View.VISIBLE);
+        shelves.setVisibility(sh ? View.VISIBLE : View.GONE);
     }
 
     private void add(List<GroupsPanel.Entry> e, String name, String tag) {
@@ -226,6 +280,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
         else empty(Dark.TV, "No channels here", "");
         Channel playing = tv.live.channel();
         grid.setChannels(channelsOf(tag), focusOn != null ? focusOn : playing != null ? playing : tv.channelToPlay());
+        if (shelves != null) shelves.refresh();
     }
 
     private void empty(int icon, String title, String line) {
@@ -255,6 +310,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
         tv.live.addListener(this);
         // The preview's frame goes over the live picture while the guide is on top.
         if (frame.getParent() == null) tv.over.addView(frame, new FrameLayout.LayoutParams(-1, -1));
+        applyStyle();
         playPreview();
         place();
         moved();
@@ -295,6 +351,11 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
 
     /** The preview plays the channel last watched (a programme from the archive playing there carries on). */
     private void playPreview() {
+        if (shelves()) {
+            // The shelves have no preview: nothing plays unseen.
+            if (tv.live.channel() != null) tv.live.stop();
+            return;
+        }
         if (tv.live.channel() != null && tv.live.behind()) return;
         Channel want = tv.channelToPlay();
         if (want != null) tv.live.play(want);
@@ -332,6 +393,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
         grid.tick();
         band.invalidate();
         frame.invalidate();
+        shelves.invalidate();
     }
 
     @Override void channelsChanged() {
@@ -369,6 +431,11 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
     /** The live picture in the preview, moving with the guide; out of the way of a menu or a question over it. */
     private void placePreview() {
         if (!tv.isTop(this)) return;
+        if (shelves()) {
+            tv.live.place(null);
+            frame.place(null, false);
+            return;
+        }
         Rect at = GuideBand.previewRect(content.getTranslationX() / Ui.s);
         boolean covered = asking() || menu.isOpen() && menu.box(tmp).intersects(at.left, at.top, at.right, at.bottom);
         tv.live.place(covered ? null : at);
@@ -426,6 +493,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
     @Override public void moved() {
         Channel ch = grid.channel();
         band.show(ch, grid.programme(), grid.times(), ch != null && Library.get(tv).isFavourite(ch), ch == null ? "" : whereFrom(ch));
+        shelves.invalidate();
         h.removeCallbacks(rested);
         h.postDelayed(rested, ProgrammePictures.REST_MS);
     }
@@ -437,7 +505,8 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
      */
     private void rested() {
         band.settled();
-        grid.askPictures();
+        if (shelves()) shelves.askPictures();
+        else grid.askPictures();
         Library lib = Library.get(tv);
         Channel ch = grid.channel();
         if (ch == null) return;
@@ -548,6 +617,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
                 if (first && c != null) {
                     GuideActions.favourite(tv, c);
                     grid.favouritesChanged();
+                    shelves.favouritesChanged();
                     moved();
                 }
                 return true;
@@ -624,7 +694,8 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
             return;
         }
         Channel playing = tv.live.channel();
-        if (playing != null && playing.key.equals(c.key) && !tv.live.behind()) {
+        if (shelves() || playing != null && playing.key.equals(c.key) && !tv.live.behind()) {
+            // The shelves have no preview: OK on what's on now watches it.
             GuideActions.watch(tv, c);
             return;
         }
@@ -690,7 +761,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
     private void openPopup() {
         remember();
         if (menuChannel == null || menuTimes == null) return;
-        RectF cell = grid.focusedCell(new RectF());
+        RectF cell = shelves() ? shelves.focusedCard(new RectF()) : grid.focusedCell(new RectF());
         cell.offset(content.getTranslationX(), 0f);
         Guide.Schedule s = Library.get(tv).schedule(menuChannel.key);
         String title = s != null && menuIndex >= 0 && menuIndex < s.title.length ? s.title[menuIndex] : menuChannel.name;
@@ -719,7 +790,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
     }
 
     private RectF rowRect() {
-        RectF row = grid.focusedRow(new RectF());
+        RectF row = shelves() ? shelves.focusedShelf(new RectF()) : grid.focusedRow(new RectF());
         row.offset(content.getTranslationX(), 0f);
         return row;
     }
@@ -763,7 +834,10 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
         closeMenu();
         boolean ask = GuideActions.act(tv, tag, c, title, desc, p);
         // In Favourites: the list made again with the channel in or out; its star in every list.
-        if (GuideActions.FAVOURITE.equals(tag)) grid.favouritesChanged();
+        if (GuideActions.FAVOURITE.equals(tag)) {
+            grid.favouritesChanged();
+            shelves.favouritesChanged();
+        }
         if (GuideActions.FAVOURITE.equals(tag) && FAV.equals(shown)) load(FAV, c);
         if (ChannelMenu.handles(tag)) edited(ChannelMenu.HIDE.equals(tag) ? keepOn : c);
         moved();

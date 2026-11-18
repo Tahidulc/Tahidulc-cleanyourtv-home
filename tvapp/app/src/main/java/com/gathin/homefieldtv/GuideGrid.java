@@ -923,7 +923,7 @@ final class GuideGrid extends View {
     // ---- kept words and pictures --------------------------------------------------------------------------------------
 
     /** The cells' second lines ("21:00 – 22:00 · 40 min left"), made once each and kept (nothing made a frame). */
-    private static final class Lines {
+    static final class Lines {
         private static final int N = 512;
         private final long[] ka = new long[N], kb = new long[N];
         private final int[] km = new int[N];
@@ -969,7 +969,7 @@ final class GuideGrid extends View {
      * The programmes' pictures' addresses for the cells on screen, by schedule and programme, looked up once a cell
      * (ProgrammePictures.peek) and kept; one not known yet is looked at again only when a picture became known.
      */
-    private static final class Art {
+    static final class Art {
         private static final int N = 1024;
         private final Guide.Schedule[] sched = new Guide.Schedule[N];
         private final int[] index = new int[N], gen = new int[N];
