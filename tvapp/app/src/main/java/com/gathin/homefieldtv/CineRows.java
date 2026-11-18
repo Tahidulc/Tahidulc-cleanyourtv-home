@@ -256,8 +256,9 @@ final class CineRows extends View {
             float h = Ui.f(height(rw));
             if (top > getHeight()) break;
             if (top + h > 0) {
-                // Rows above the remote's slide up out of sight under the picture's words.
-                float fade = i >= row ? 1f : Math.max(0f, Math.min(1f, (top + h - Ui.f(ROW_Y - 40f)) / Ui.f(180f)));
+                // Rows above the remote's fade as they slide up, gone once they are above it (nothing left showing
+                // through the picture's words).
+                float fade = i >= row ? 1f : Math.max(0f, Math.min(1f, (top + h - Ui.f(ROW_Y)) / Ui.f(180f)));
                 int alpha = Math.round(255 * fade);
                 if (alpha > 0) moving |= drawRow(c, rw, top, alpha);
             }
@@ -270,9 +271,10 @@ final class CineRows extends View {
     private boolean drawRow(Canvas c, Row rw, float top, int alpha) {
         boolean moving = rw.x.step();
         float left = Ui.f(LEFT);
-        headP.setAlpha(alpha);
-        c.drawText(rw.title, left, top + Ui.f(HEAD - 18f), headP);
         float tw = Ui.f(tileW(rw)), th = Ui.f(tileH(rw)), step = tw + Ui.f(GAP);
+        // The row's name just above where the remote's tile reaches as it grows, so it is never under it.
+        headP.setAlpha(alpha);
+        c.drawText(rw.title, left, top + Ui.f(HEAD) - th * (TileArt.GROW - 1f) / 2f - Ui.f(12f), headP);
         float x0 = left + Ui.f(rw.x.value());
         int first = Math.max(0, (int) Math.floor((left - x0) / step) - 1);
         int last = Math.min(rw.stops() - 1, (int) Math.ceil((getWidth() - x0) / step));
