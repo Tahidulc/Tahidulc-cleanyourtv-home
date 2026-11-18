@@ -256,12 +256,8 @@ final class ListPanel extends View {
         } else if (it.kind == LOGO) {
             float lw = Ui.f(128), lh = Ui.f(72);
             r.set(tx, Ui.f(top) + (Ui.f(h) - lh) / 2f, tx + lw, Ui.f(top) + (Ui.f(h) + lh) / 2f);
-            // A channel's logo on its black tile (Pics.tiles), else on a dark card.
-            boolean tile = Pics.tiles;
-            c.drawRoundRect(r, Ui.f(10), Ui.f(10), tile ? tileBack : logoBack);
-            Bitmap b = tile ? Pics.get(it.picture, Math.round(lw), Math.round(lh), Pics.TILE, redraw)
-                    : Pics.get(it.picture, Math.round(lw - Ui.f(16)), Math.round(lh - Ui.f(16)), Pics.FIT, redraw);
-            if (b != null) c.drawBitmap(b, r.centerX() - b.getWidth() / 2f, r.centerY() - b.getHeight() / 2f, bmp);
+            // A channel's logo on its tile (Logos: Behind logos).
+            Logos.draw(c, it.picture, r, redraw);
             tx += lw + Ui.f(24);
         }
         float room = right - tx - Ui.f(16) - (it.dot ? Ui.f(30) : 0);

@@ -83,10 +83,30 @@ final class Pics {
     static final int ART = 11;
     /**
      * LOGO_ART stands in for a programme's picture where there is none (ART's size, shape and fades): the channel's logo
-     * (made ready for a dark ground, as READY) on a deep ground tinted by the logo's own colour, a soft round glow of that
-     * colour behind it, the logo itself low on the right, clear of most of the words. Asked for with the logo's address.
+     * (as LOGO makes it: its own colours, a soft light halo behind a dark one) on a deep ground tinted by the logo's own
+     * colour, a soft round glow of that colour behind it, the logo itself low on the right, clear of most of the words.
+     * Asked for with the logo's address.
      */
     static final int LOGO_ART = 12;
+    /**
+     * BLUR is the 07 page's picture behind everything (Ground, Frost): read at an eighth of the size asked (w x h, the
+     * size it is drawn), stack-blurred once and its colour pushed as the mock-ups' blur(50px) saturate(1.75)
+     * brightness(.86); drawn scaled up, it costs a few hundred KB of the budget, never a blur while drawing.
+     */
+    static final int BLUR = 13;
+    /**
+     * LOGO is a channel's logo with no tile (Logos): a plain box round it taken away and its empty margins trimmed, its
+     * colours as they are, fitted to w x h with Logos.PAD of its height clear all round; one mostly too dark for a dark
+     * ground has tv-logos' white version instead where there is one (LogoPack.lighter), else a soft light halo behind its
+     * shape in that clear margin (never a box).
+     */
+    static final int LOGO = 14;
+    /**
+     * TINT is a channel's logo on a tile of its own colour, w x h (Logos: Behind logos: Logo's colour, as it comes): the
+     * logo's main saturated colour made deep with a soft fall, deeper or lighter until the logo reads on it; a logo with
+     * no real colour on neutral dark glass. Worked out once as it is read; its colour kept (Logos.colour).
+     */
+    static final int TINT = 15;
 
     /** Each poster's fade colour as worked out when it loaded, by its address (0 until then). */
     private static final java.util.Map<String, Integer> FADES = java.util.Collections.synchronizedMap(new java.util.LinkedHashMap<String, Integer>(64, 0.75f, true) {
@@ -101,17 +121,15 @@ final class Pics {
         return c == null ? 0 : c;
     }
 
-    /** Channel logos on black tiles (Settings, Channel logos): on unless switched off. */
-    static volatile boolean tiles = true;
+    /**
+     * Whether Settings › Appearance › Logos › Behind logos is Black tile (the old look's), kept by Logos (which holds the
+     * choice: Logo's colour as it comes, None, Black tile).
+     */
+    static volatile boolean tiles = false;
 
-    /** A channel logo's mode: on its tile, else as it comes. */
+    /** A channel logo's mode for the setting in use (Logos.mode: TINT, LOGO or TILE). */
     static int logoMode() {
-        return tiles ? TILE : FIT;
-    }
-
-    static void setTiles(Context c, boolean on) {
-        tiles = on;
-        c.getApplicationContext().getSharedPreferences("look", Context.MODE_PRIVATE).edit().putBoolean("logo_tiles", on).apply();
+        return Logos.mode();
     }
 
     private static final int THREADS = 3, QUEUE = 48, PREFETCH = 24;
@@ -179,7 +197,7 @@ final class Pics {
 
     static synchronized void init(Context c) {
         if (disk != null) return;
-        tiles = c.getApplicationContext().getSharedPreferences("look", Context.MODE_PRIVATE).getBoolean("logo_tiles", true);
+        Logos.load(c);
         disk = new File(c.getCacheDir(), "pics");
         //noinspection ResultOfMethodCallIgnored
         disk.mkdirs();
@@ -364,8 +382,9 @@ final class Pics {
             BitmapFactory.decodeStream(s, null, o);
         }
         if (o.outWidth <= 0 || o.outHeight <= 0) return null;
+        if (mode == BLUR) return blurred(in, o, w, h);
         int sample = 1;
-        boolean fit = mode == FIT || mode == TILE || mode == READY || mode == LOGO_ART;
+        boolean fit = mode == FIT || mode == TILE || mode == READY || mode == LOGO_ART || mode == LOGO;
         if (!fit) {
             while (o.outWidth / (sample * 2) >= w && o.outHeight / (sample * 2) >= h) sample *= 2;
         } else {
@@ -379,7 +398,29 @@ final class Pics {
             src = BitmapFactory.decodeStream(s, null, d);
         }
         if (src == null) return null;
-        if (mode == TILE || mode == READY || mode == LOGO_ART) {
+        if (mode == LOGO || mode == TINT || mode == LOGO_ART) {
+            // As it comes, its box taken away and trimmed; too dark for a dark ground: tv-logos' white version.
+            Bitmap clear = com.gathin.broadcast.LogoTile.clear(src);
+            src.recycle();
+            if (clear == null) return null;
+            boolean dark = darkLogo(clear);
+            if (dark) {
+                Bitmap white = lighter(url, w, h);
+                if (white != null) {
+                    clear.recycle();
+                    clear = white;
+                    dark = false;
+                }
+            }
+            // On its own colour's tile (Behind logos: Logo's colour), or bare with a halo where it is still dark.
+            if (mode == TINT) return Logos.onColour(url, clear, w, h);
+            if (mode == LOGO) return Logos.bare(clear, w, h, dark);
+            // The stand-in for a programme's picture: the logo bare (its halo where it needs one) at its size there.
+            int lh = Math.max(2, Math.round(h * 0.30f / (1f - 2f * Logos.PAD)));
+            int lw = Math.max(2, Math.round(w * 0.30f + 2f * Logos.PAD * lh));
+            return logoArt(Logos.bare(clear, lw, lh, dark), w, h);
+        }
+        if (mode == TILE || mode == READY) {
             // Made ready for black and trimmed (LogoTile); nothing of it to draw: no logo (the name instead).
             Bitmap ready = com.gathin.broadcast.LogoTile.ready(src);
             src.recycle();
@@ -389,7 +430,6 @@ final class Pics {
                 ready.recycle();
                 return t;
             }
-            if (mode == LOGO_ART) return logoArt(ready, w, h);
             src = ready;
         }
         Paint p = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
@@ -526,7 +566,10 @@ final class Pics {
      * of it with no edge anywhere, the logo itself low on the right and a little faded, then ART's shape and fades.
      */
     private static Bitmap logoArt(Bitmap ready, int w, int h) {
-        int tint = tintOf(ready);
+        // The logo's main colour (Logos' rule), else its average.
+        int[] px = new int[ready.getWidth() * ready.getHeight()];
+        ready.getPixels(px, 0, ready.getWidth(), 0, 0, ready.getWidth(), ready.getHeight());
+        int main = Logos.dominant(px), tint = main != 0 ? main : tintOf(ready);
         Bitmap ground = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(ground);
         Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
@@ -540,12 +583,96 @@ final class Pics {
                 Palette.alpha(tint, 0), Shader.TileMode.CLAMP));
         c.drawRect(0, 0, w, h, p);
         p.setShader(null);
-        float lh = h * 0.30f, lw = Math.min(w * 0.30f, lh * ready.getWidth() / (float) Math.max(1, ready.getHeight()));
-        lh = Math.min(lh, lw * ready.getHeight() / (float) Math.max(1, ready.getWidth()));
+        // The logo as Logos.bare placed it (its halo round it where it is dark), at its own size.
         p.setAlpha(0xA6);
-        c.drawBitmap(ready, null, new android.graphics.RectF(cx - lw / 2f, cy - lh / 2f, cx + lw / 2f, cy + lh / 2f), p);
+        c.drawBitmap(ready, cx - ready.getWidth() / 2f, cy - ready.getHeight() / 2f, p);
         ready.recycle();
         return art(ground, true);
+    }
+
+    /** Pure enough: whether a made-clear logo is mostly too dark for a dark ground. */
+    private static boolean darkLogo(Bitmap b) {
+        int w = b.getWidth(), h = b.getHeight();
+        int[] px = new int[w * h];
+        b.getPixels(px, 0, w, 0, 0, w, h);
+        return Logos.dark(px);
+    }
+
+    /**
+     * A dark logo's white version from tv-logos (LogoPack.lighter), read and made clear as the logo itself is, when there
+     * is one and it reads on a dark ground; else null.
+     */
+    private static Bitmap lighter(String url, int w, int h) {
+        String alt;
+        try {
+            alt = com.gathin.homefieldtv.engine.LogoPack.lighter(url);
+        } catch (RuntimeException e) {
+            alt = null;
+        }
+        if (alt == null || alt.equals(url) || failed.contains(alt)) return null;
+        Source s = source(alt);
+        if (s == null) return null;
+        try {
+            BitmapFactory.Options o = new BitmapFactory.Options();
+            o.inJustDecodeBounds = true;
+            try (InputStream in = s.open()) {
+                BitmapFactory.decodeStream(in, null, o);
+            }
+            if (o.outWidth <= 0 || o.outHeight <= 0) return null;
+            int sample = 1;
+            while (o.outWidth / (sample * 2) >= w || o.outHeight / (sample * 2) >= h) sample *= 2;
+            BitmapFactory.Options d = new BitmapFactory.Options();
+            d.inSampleSize = sample;
+            d.inPreferredConfig = Bitmap.Config.ARGB_8888;
+            Bitmap src;
+            try (InputStream in = s.open()) {
+                src = BitmapFactory.decodeStream(in, null, d);
+            }
+            if (src == null) return null;
+            Bitmap clear = com.gathin.broadcast.LogoTile.clear(src);
+            src.recycle();
+            if (clear == null) return null;
+            if (darkLogo(clear)) {
+                clear.recycle();
+                return null;
+            }
+            return clear;
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
+    }
+
+    /**
+     * BLUR: the picture read at an eighth of w x h, filling it (its middle kept), stack-blurred once and its colour pushed
+     * (Look07: blur 50, saturate 1.75, brightness 0.86); drawn at w x h it is the 07 page's blurred picture.
+     */
+    private static Bitmap blurred(Source in, BitmapFactory.Options o, int w, int h) throws IOException {
+        int bw = Math.max(2, Math.round(w / (float) Look07.BLUR_DOWNSCALE)), bh = Math.max(2, Math.round(h / (float) Look07.BLUR_DOWNSCALE));
+        int sample = 1;
+        while (o.outWidth / (sample * 2) >= bw && o.outHeight / (sample * 2) >= bh) sample *= 2;
+        BitmapFactory.Options d = new BitmapFactory.Options();
+        d.inSampleSize = sample;
+        d.inPreferredConfig = Bitmap.Config.RGB_565;
+        Bitmap src;
+        try (InputStream s = in.open()) {
+            src = BitmapFactory.decodeStream(s, null, d);
+        }
+        if (src == null) return null;
+        Bitmap out = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888);
+        float sc = Math.max(bw / (float) src.getWidth(), bh / (float) src.getHeight());
+        Matrix m = new Matrix();
+        m.setScale(sc, sc);
+        m.postTranslate((bw - src.getWidth() * sc) / 2f, (bh - src.getHeight() * sc) / 2f);
+        new Canvas(out).drawBitmap(src, m, new Paint(Paint.FILTER_BITMAP_FLAG));
+        src.recycle();
+        int[] px = new int[bw * bh];
+        out.getPixels(px, 0, bw, 0, 0, bw, bh);
+        // The blur's deviation at this size (the mock-ups' 50 px of a 1920 page), as a stack blur's radius.
+        float sigma = Look07.BLUR_RADIUS * (w / 1920f) / Look07.BLUR_DOWNSCALE;
+        StackBlur.blur(px, bw, bh, Math.max(1, Math.round(sigma * 2.45f)));
+        StackBlur.colour(px, Look07.BLUR_SATURATE, Look07.BLUR_BRIGHTNESS);
+        out.setPixels(px, 0, bw, 0, 0, bw, bh);
+        return out;
     }
 
     /** Pure: a logo's own colour, the average of its solid, coloured pixels (a grey for a white or black logo). */

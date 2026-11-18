@@ -396,8 +396,8 @@ final class HistoryScreen extends Screen implements DialogCard.Host {
             String at = Words.hm(e.at);
             c.drawText(at, Ui.f(680f) - words.width(at), base, lineP);
             // The channel.
-            Bitmap logo = Pics.get(LogoPack.url(l.channel), Ui.px(99), Ui.px(66), Pics.tiles ? Pics.READY : Pics.FIT, redraw);
-            if (logo != null) c.drawBitmap(logo, Ui.f(728f) + (Ui.f(99) - logo.getWidth()) / 2f, Ui.f(y + 22f) + (Ui.f(66) - logo.getHeight()) / 2f, bmp);
+            r.set(Ui.f(728f), Ui.f(y + 22f), Ui.f(827f), Ui.f(y + 88f));
+            Logos.draw(c, l.channel, r, redraw);
             nameP.setColor(Palette.TEXT1);
             names.line(c, ChannelEdits.name(l.channel), Ui.f(851f), Type.centred(nameP, Ui.f(y + ENTRY_H / 2f)), Ui.f(lit ? 196f : 260f));
             if (lit) {

@@ -369,13 +369,12 @@ final class ChannelList extends FrameLayout implements GroupsPanel.Host {
                 if (groupsOpen) Focus.selected(c, r);
                 else Focus.pill(c, r);
             }
-            Bitmap logo = Pics.get(LogoPack.url(ch), Ui.px(96), Ui.px(72), Pics.tiles ? Pics.READY : Pics.FIT, redraw);
-            if (logo != null) {
-                c.drawBitmap(logo, Ui.f(x0 + 32f) + (Ui.f(96) - logo.getWidth()) / 2f, Ui.f(top + 22f) + (Ui.f(72) - logo.getHeight()) / 2f, bmp);
-            } else {
+            // The logo on its tile (Logos: Behind logos), else the channel's name over the empty tile.
+            r.set(Ui.f(x0 + 32f), Ui.f(top + 26f), Ui.f(x0 + 128f), Ui.f(top + 90f));
+            if (!Logos.draw(c, ch, r, redraw)) {
                 logoP.setColor(Palette.TEXT2);
                 if (logos == null) logos = new TextFit(logoP, 64);
-                logos.line(c, ChannelEdits.name(ch), Ui.f(x0 + 32f), Ui.f(top + 66f), Ui.f(96));
+                logos.line(c, ChannelEdits.name(ch), Ui.f(x0 + 36f), Ui.f(top + 66f), Ui.f(88));
             }
             float tx = Ui.f(x0 + 144f), room = Ui.f(COL_W - 144f - 32f - (playing ? 48f : 0f));
             nameP.setColor(Palette.TEXT1);
@@ -407,8 +406,8 @@ final class ChannelList extends FrameLayout implements GroupsPanel.Host {
                 c.drawRect(Ui.f(x0), 0, Ui.f(x1), getHeight(), fill);
             }
             // Its logo, name and where it is from at the top.
-            Bitmap logo = Pics.get(LogoPack.url(ch), Ui.px(108), Ui.px(72), Pics.tiles ? Pics.READY : Pics.FIT, redraw);
-            if (logo != null) c.drawBitmap(logo, Ui.f(624f) + (Ui.f(108) - logo.getWidth()) / 2f, Ui.f(20f) + (Ui.f(72) - logo.getHeight()) / 2f, bmp);
+            r.set(Ui.f(624f), Ui.f(20f), Ui.f(732f), Ui.f(92f));
+            Logos.draw(c, ch, r, redraw);
             headP.setColor(Palette.TEXT1);
             heads.line(c, ChannelEdits.name(ch), Ui.f(748f), Ui.f(46f), Ui.f(x1 - 748f - 16f));
             if (!ch.key.equals(whereKey)) {

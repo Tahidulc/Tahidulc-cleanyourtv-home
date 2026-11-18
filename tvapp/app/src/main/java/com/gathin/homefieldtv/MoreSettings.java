@@ -44,7 +44,6 @@ final class MoreSettings implements SettingsScreen.Pages {
     static final String[] START_NAMES = {"Home", "Live TV, the last channel turned on", "TV guide", "Movies", "TV shows"};
     /** Panels timeout, sec: how long the channel banner stays (PlayerPrefs.BANNER_SECONDS). */
     static final String[] TIMEOUT_NAMES = {"Off", "3", "6", "10"};
-    static final String[] LOGO_NAMES = {"On black tiles", "As the playlist gives them"};
     static final String[] POSTER_NAMES = {"Portrait", "Landscape"};
     static final String[] ON_OFF = {"Off", "On"};
 
@@ -264,7 +263,7 @@ final class MoreSettings implements SettingsScreen.Pages {
         out.add(RowList.Row.header("The remote"));
         out.add(RowList.Row.note("Add a channel to your favourites from the player's bar (OK held, or MENU). Type a channel's number "
                 + "to go straight to it."));
-        out.add(RowList.Row.note("Scoreboard lettering: Outfit (SIL Open Font License)."));
+        out.add(RowList.Row.note("Lettering: Inter, and Outfit on the scoreboard (both SIL Open Font License)."));
     }
 
     /**
@@ -452,8 +451,9 @@ final class MoreSettings implements SettingsScreen.Pages {
             case "banner": return new SettingsScreen.Picker("Panels timeout, sec", TIMEOUT_NAMES, bannerIndex(),
                     "How long the channel's banner stays when you change channel.");
             case "tiles": return new SettingsScreen.Picker("Live TV's channel tiles", Look.TILES_NAMES, Look.logos ? 1 : 0, null);
-            case "logos": return new SettingsScreen.Picker("Channel logos", LOGO_NAMES, Pics.tiles ? 0 : 1,
-                    "On black tiles: each logo trimmed and set in the middle of a black tile, a dark one turned light.");
+            case "logos": return new SettingsScreen.Picker("Behind logos", Logos.NAMES, Logos.behind(),
+                    "Logo's colour: each logo on a tile of its own colour. None: the logo alone, a soft glow behind a dark one. "
+                            + "Black tile: as before.");
             case "buffer.live": return new SettingsScreen.Picker("Buffer size", PlayerPrefs.BUFFER_NAMES, PlayerPrefs.buffer(tv, true),
                     PlayerPrefs.BUFFER_HINT);
             case "buffer.vod": {
@@ -533,7 +533,7 @@ final class MoreSettings implements SettingsScreen.Pages {
             case "clock": Look.setClock(tv, i); break;
             case "banner": PlayerPrefs.setBannerSeconds(tv, PlayerPrefs.BANNER_SECONDS[i]); break;
             case "tiles": Look.setLogos(tv, i == 1); break;
-            case "logos": Pics.setTiles(tv, i == 0); break;
+            case "logos": Logos.setBehind(tv, i); break;
             case "buffer.live": PlayerPrefs.setBuffer(tv, true, i); break;
             case "buffer.vod": PlayerPrefs.setBuffer(tv, false, i); break;
             case "decoder": PlayerPrefs.setDecoder(tv, i); break;

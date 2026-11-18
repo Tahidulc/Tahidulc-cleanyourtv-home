@@ -643,16 +643,9 @@ final class SearchScreen extends Screen implements Keyboard.Host {
             r.set(Ui.f(x), Ui.f(y), Ui.f(x + TILE_W), Ui.f(y + TILE_H));
             fill.setColor(on ? Palette.over(Palette.GROUND, Palette.FOCUS) : Palette.PANEL);
             c.drawRoundRect(r, Ui.f(12), Ui.f(12), fill);
-            Bitmap b = LogoPack.url(ch).isEmpty() ? null : Pics.get(LogoPack.url(ch), Ui.px(100), Ui.px(66), Pics.logoMode(), redraw);
             float lx = Ui.f(x + TILE_W / 2f), ly = Ui.f(y + 52);
-            if (b != null) {
-                c.drawBitmap(b, lx - b.getWidth() / 2f, ly - b.getHeight() / 2f, bmp);
-            } else {
-                r.set(lx - Ui.f(40), ly - Ui.f(38), lx + Ui.f(40), ly + Ui.f(38));
-                fill.setColor(0x1FFFFFFF);
-                c.drawRoundRect(r, Ui.f(6), Ui.f(6), fill);
-                c.drawText("TV", lx - tvP.measureText("TV") / 2f, Type.centred(tvP, ly), tvP);
-            }
+            r.set(lx - Ui.f(56), ly - Ui.f(33), lx + Ui.f(56), ly + Ui.f(33));
+            if (!Logos.draw(c, ch, r, redraw)) c.drawText("TV", lx - tvP.measureText("TV") / 2f, Type.centred(tvP, ly), tvP);
             Library lib = Library.get(tv);
             Guide.Schedule s = lib.schedule(ch.key);
             long now = System.currentTimeMillis();

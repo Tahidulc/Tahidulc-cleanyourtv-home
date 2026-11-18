@@ -158,6 +158,36 @@ public final class LogoMatch {
         return logos.size();
     }
 
+    /**
+     * Pure: the white version of a logo (its path), for a logo too dark to see on a dark ground: the same channel's logo
+     * in the same country marked white, the one most like it (HD, wide, icon as it is) first; null when there is none or
+     * it is white already.
+     */
+    public String whiteOf(String path) {
+        if (path == null) return null;
+        Logo me = null;
+        for (Logo l : logos) {
+            if (l.path.equals(path)) {
+                me = l;
+                break;
+            }
+        }
+        if (me == null || (me.variant & WHITE) != 0 || me.key.isEmpty()) return null;
+        List<Logo> same = byKey.get(me.key);
+        if (same == null) return null;
+        Logo best = null;
+        int bestDiff = Integer.MAX_VALUE;
+        for (Logo l : same) {
+            if (l == me || (l.variant & WHITE) == 0 || (l.variant & LIGHT) != 0 || !l.country.equals(me.country)) continue;
+            int diff = Integer.bitCount((l.variant & ~WHITE) ^ (me.variant & ~WHITE));
+            if (diff < bestDiff) {
+                bestDiff = diff;
+                best = l;
+            }
+        }
+        return best == null ? null : best.path;
+    }
+
     // ---- the index ------------------------------------------------------------------------------------------------
 
     /** Pure: an index's text read, only the countries' folders in wanted kept (null: all of them). */

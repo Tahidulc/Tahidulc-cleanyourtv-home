@@ -324,18 +324,10 @@ final class ReminderCard {
 
             // The channel's logo on its tile (its name when there is no logo).
             float lx = pad, ly = Ui.f(26), lw = Ui.f(192), lh = Ui.f(108);
-            Bitmap logo = Pics.get(r.logo, Ui.px(192), Ui.px(108), Pics.tiles ? Pics.TILE : Pics.FIT, redraw);
-            if (logo != null && Pics.tiles) {
-                c.drawBitmap(logo, lx, ly, bmp);
-            } else {
-                rect.set(lx, ly, lx + lw, ly + lh);
-                c.drawRoundRect(rect, Ui.f(14), Ui.f(14), tile);
-                if (logo != null) {
-                    c.drawBitmap(logo, lx + (lw - logo.getWidth()) / 2f, ly + (lh - logo.getHeight()) / 2f, bmp);
-                } else {
-                    String n = Ui.fit(r.channel, nameP, lw - Ui.f(20));
-                    c.drawText(n, lx + (lw - nameP.measureText(n)) / 2f, ly + lh / 2f + Ui.f(9), nameP);
-                }
+            rect.set(lx, ly, lx + lw, ly + lh);
+            if (!Logos.draw(c, r.logo, rect, redraw)) {
+                String n = Ui.fit(r.channel, nameP, lw - Ui.f(20));
+                c.drawText(n, lx + (lw - nameP.measureText(n)) / 2f, ly + lh / 2f + Ui.f(9), nameP);
             }
 
             // "Starts in 1 min", the bell in front, on the accent.

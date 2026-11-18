@@ -111,7 +111,7 @@ final class HomeCard extends View {
     static final int TABS = 0, CARD = 1, STRIP = 2;
     static final float L = 108f, T = 180f, W = 1704f, H = 712f, R = 26f, NAME_X = 196f, NAME_Y = 0.56f,
             TILE_W = 240f, TILE_H = 135f, TILE_GAP = 30f, GROW = 1.6f, MARK_X = 100f, MARK_Y = 78f, TABS_X = 168f,
-            LOGO_W = 480f, LOGO_H = 210f;
+            LOGO_W = 360f, LOGO_H = 210f;
 
     private final Host host;
     private final List<Section> sections = new ArrayList<>();
@@ -129,7 +129,7 @@ final class HomeCard extends View {
             ring = Ui.stroke(Cine.WHITE, 3f), disc = Ui.fill(0x33FFFFFF), red = Ui.fill(Cine.RED), track = Ui.fill(0x59FFFFFF),
             tileFoot = new Paint(), glass = Ui.fill(0xFF2E3038), star = Ui.fill(Cine.TEXT), starOff = Ui.fill(0x59FFFFFF),
             amber = Ui.fill(Cine.AMBER), amberInk = Ui.fill(Cine.AMBER_INK);
-    private final RectF r = new RectF();
+    private final RectF r = new RectF(), logoBox = new RectF();
     private final Path starPath = new Path();
     private float[] tabX = new float[0], tabW = new float[0];
     private final Runnable redraw = this::invalidate, again = this::prepareNear;
@@ -265,7 +265,7 @@ final class HomeCard extends View {
         Card c = s.cards.get(i);
         String pic = c.picture.isEmpty() ? c.logo : c.picture;
         if (pic.isEmpty()) return;
-        if (c.picture.isEmpty()) Pics.prefetch(pic, Ui.px(LOGO_W), Ui.px(LOGO_H), Pics.FIT);
+        if (c.picture.isEmpty()) Logos.prefetch(pic, Ui.px(LOGO_W), Ui.px(LOGO_H));
         else Pics.prefetch(pic, 1280, 720, Pics.CROP);
         if (Tint.known(pic) == 0) Pics.prefetch(pic, Tint.W, Tint.H, Pics.CROP);
     }
@@ -306,7 +306,7 @@ final class HomeCard extends View {
             Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG);
             p.setShader(new LinearGradient(0, 0, w, h, Cine.shade(tint, 0.7f, 0.46f), Cine.shade(tint, 0.7f, 0.16f), Shader.TileMode.CLAMP));
             c.art = p;
-            if (!c.logo.isEmpty()) Pics.get(c.logo, Ui.px(LOGO_W), Ui.px(LOGO_H), Pics.FIT, again);
+            if (!c.logo.isEmpty()) Logos.prefetch(c.logo, Ui.px(LOGO_W), Ui.px(LOGO_H));
         }
         invalidate();
     }
@@ -594,13 +594,10 @@ final class HomeCard extends View {
         art.setAlpha(a);
         c.drawRoundRect(r, radius, radius, art);
         if (card.picture.isEmpty() && !card.logo.isEmpty()) {
-            // A channel's logo, large, on the right of its colour.
-            Bitmap logo = Pics.cached(card.logo, Ui.px(LOGO_W), Ui.px(LOGO_H), Pics.FIT);
-            if (logo != null) {
-                bmp.setAlpha(a);
-                float lx = cw * 0.76f - logo.getWidth() / 2f, ly = ch * 0.27f - logo.getHeight() / 2f;
-                c.drawBitmap(logo, lx, ly, bmp);
-            }
+            // A channel's logo, large, on the right of its colour (on its tile: Logos).
+            float lw = Ui.f(LOGO_W), lh = Ui.f(LOGO_H);
+            logoBox.set(cw * 0.76f - lw / 2f, ch * 0.27f - lh / 2f, cw * 0.76f + lw / 2f, ch * 0.27f + lh / 2f);
+            Logos.draw(c, card.logo, logoBox, again, a);
         }
         shadeLeft.setAlpha(a);
         shadeFoot.setAlpha(a);

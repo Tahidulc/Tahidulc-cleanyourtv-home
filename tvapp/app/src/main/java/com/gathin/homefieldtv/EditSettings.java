@@ -25,7 +25,7 @@ import java.util.Map;
  *                             name again) · Sort channels
  *   appearance.groups         Groups: Groups sorting (as the family's TiviMate has it, 89-set-app-groups)
  *   appearance.logos          Logos: Logos priority (New logos (Homefield), as it comes, or Playlist's logos) · Refresh
- *                             logos · Channel logos (on black tiles, or as they come)
+ *                             logos · Behind logos (Logo's colour as it comes, None, Black tile: Logos)
  * </pre>
  *
  * Homefield's Settings → Categories (hide, rename and move groups) lives on in Manage groups and each group's page; the
@@ -79,7 +79,7 @@ final class EditSettings implements SettingsScreen.Pages {
             case "appearance.logos":
                 out.add(MoreSettings.pick("lpriority", "Logos priority", PRIORITY[LogoPack.on() ? 0 : 1]));
                 out.add(RowList.Row.item("do:logos.refresh", "Refresh logos", LogoPack.status(tv)));
-                out.add(MoreSettings.pick("logos", "Channel logos", MoreSettings.LOGO_NAMES[Pics.tiles ? 0 : 1]));
+                out.add(MoreSettings.pick("logos", "Behind logos", Logos.NAMES[Logos.behind()]));
                 out.add(RowList.Row.note("New logos are the tv-logo project's free logos for dark grounds (github.com/tv-logo/tv-logos), "
                         + "for your own viewing here. Each is fetched to this TV the first time it shows, and kept with the other "
                         + "pictures. A new logo shows only where the channel's name surely matches one; else the playlist's."));
