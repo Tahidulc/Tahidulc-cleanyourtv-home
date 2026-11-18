@@ -108,6 +108,11 @@ final class TeamData {
         String line = "";
         /** ESPN's head-and-shoulders cut-out when ESPN has one, and ESPN's id for him. */
         String cutout = "", espnId = "";
+        /**
+         * His league's own cut-out (the Premier League's or La Liga's, head to waist in the kit: LeaguePhotos), looked up
+         * when his card first asks for its picture: "" when the league has none of him, null until looked up.
+         */
+        volatile String league;
         /** His height in cm and his date of birth ("1999-03-18"), when a source gives them. */
         int height;
         String born = "";

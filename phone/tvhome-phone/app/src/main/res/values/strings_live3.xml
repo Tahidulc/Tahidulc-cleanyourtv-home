@@ -34,4 +34,9 @@
     <string name="live3_on">On</string>
     <string name="live3_off">Off</string>
     <string name="live3_minutes">%1$d min</string>
+    <string name="live3_behind_logos">Behind logos</string>
+    <string name="live3_behind_colour">Logo\'s colour (default)</string>
+    <string name="live3_behind_none">None</string>
+    <string name="live3_behind_tile">Black tile</string>
+    <string name="live3_behind_line">Logo\'s colour puts each channel\'s logo on a tile in a deeper shade of its own colour (a white, black or grey logo on a soft dark one). None shows each logo as it is, with nothing behind it, and a soft glow behind one too dark to see. Black tile sets each on black, as the TVs could.</string>
 </resources>

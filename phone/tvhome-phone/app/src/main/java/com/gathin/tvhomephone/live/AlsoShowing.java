@@ -433,21 +433,19 @@ public final class AlsoShowing {
             row.setPadding(Ui.dp(c, 6), Ui.dp(c, 8), Ui.dp(c, 6), Ui.dp(c, 8));
             row.setBackground(Ui.touch(c, false, 0, 12));
             FrameLayout chip = new FrameLayout(c);
+            // The logo on a tile in its own colour, with nothing behind it, or on black (LogoTiles); no logo, its
+            // initials on the navy chip.
             chip.setBackground(Ui.round(c, 0xFF0C3483, 8));
             ImageView logo = new ImageView(c);
             logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
             logo.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-            int pad = Ui.dp(c, 6);
+            int pad = LogoTiles.pad(c, 6);
             chip.setPadding(pad, pad, pad, pad);
             chip.addView(logo, new FrameLayout.LayoutParams(-1, -1));
             TextView initials = Ui.text(c, initials(r.name), 13, Ui.TEXT, true);
             initials.setGravity(Gravity.CENTER);
             initials.setMaxLines(1);
             chip.addView(initials, new FrameLayout.LayoutParams(-1, -1));
-            if (r.logo != null && !r.logo.isEmpty()) {
-                initials.setVisibility(View.GONE);
-                com.gathin.tvhomephone.sports.Ui.load(logo, r.logo, null, () -> initials.setVisibility(View.VISIBLE));
-            }
             if (r.uhd) {
                 FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.END);
                 bl.setMargins(0, 0, -Ui.dp(c, 3), -Ui.dp(c, 3));
@@ -470,6 +468,21 @@ public final class AlsoShowing {
             under.setEllipsize(TextUtils.TruncateAt.END);
             words.addView(under);
             row.addView(words, new LinearLayout.LayoutParams(0, -2, 1f));
+            if (r.logo != null && !r.logo.isEmpty()) {
+                // Logo's colour: the whole row in it too, a touch lighter than the tile (its words white on it).
+                initials.setVisibility(View.GONE);
+                boolean best = r.best;
+                LogoTiles.show(chip, 8, false, logo, r.logo, LogoTiles.ON_NAVY, cols -> {
+                    android.graphics.drawable.Drawable ground = LogoTiles.row(c, cols, false, Ui.TEXT, 12);
+                    row.setBackground(ground != null ? ground : Ui.touch(c, false, 0, 12));
+                    under.setTextColor(ground == null ? (best ? 0xFF8EF0B8 : Ui.SOFT) : best ? Ui.TEXT : 0xD9FFFFFF);
+                }, () -> {
+                    initials.setVisibility(View.VISIBLE);
+                    chip.setBackground(Ui.round(c, 0xFF0C3483, 8));
+                    row.setBackground(Ui.touch(c, false, 0, 12));
+                    under.setTextColor(best ? 0xFF8EF0B8 : Ui.SOFT);
+                });
+            }
             if (r.now || r.ch != null) {
                 TextView act = Ui.text(c, c.getString(r.now ? R.string.tile_also_playing : R.string.tile_also_watch), 13,
                         r.now ? Ui.SOFT : Ui.G_INK, true);
@@ -487,7 +500,9 @@ public final class AlsoShowing {
                 });
             }
             row.setContentDescription(r.name + ", " + (r.under == null ? "" : r.under));
-            box.addView(row, new LinearLayout.LayoutParams(-1, -2));
+            LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, -2);
+            rowLp.bottomMargin = Ui.dp(c, 4);
+            box.addView(row, rowLp);
         }
         return box;
     }

@@ -169,11 +169,18 @@ public final class NotifCard {
         Bitmap home = logo(c, g.homeLogo, Math.round(36 * s), Math.round(36 * s));
         Bitmap away = logo(c, g.awayLogo, Math.round(36 * s), Math.round(36 * s));
         Bitmap comp = logo(c, Competitions.logo(g), Math.round(18 * s), Math.round(18 * s));
-        return draw(a, s, home, away, comp, channelLogo);
+        // The channel's logo on a chip in its own colour, nothing, or black (Behind logos: LogoTiles).
+        int[] chip = channelLogo == null ? null : com.gathin.tvhomephone.live.LogoTiles.tileFor(c, channelLogo);
+        return draw(a, s, home, away, comp, channelLogo, chip);
     }
 
-    /** The drawing itself, the pictures given (for tests and previews). */
+    /** The drawing itself, the pictures given (for tests and previews), the channel's logo on the soft glass chip. */
     static Bitmap draw(Events.Alert a, float s, Bitmap homeCrest, Bitmap awayCrest, Bitmap compLogo, Bitmap channelLogo) {
+        return draw(a, s, homeCrest, awayCrest, compLogo, channelLogo, null);
+    }
+
+    /** As draw, the channel logo's chip in these colours ({top, foot}; {0, 0} none; null the soft glass). */
+    static Bitmap draw(Events.Alert a, float s, Bitmap homeCrest, Bitmap awayCrest, Bitmap compLogo, Bitmap channelLogo, int[] chip) {
         Game g = a.game;
         int w = Math.round(W * s), h = Math.round(H * s);
         Bitmap out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
@@ -308,9 +315,15 @@ public final class NotifCard {
             float start = cx - (tw + lw + 12 * s) / 2;
             t.setTextAlign(Paint.Align.LEFT);
             c.drawText(on, start, lineY, t);
-            p.setColor(0x26FFFFFF);
             RectF lr = new RectF(start + tw, lineY - 15 * s, start + tw + lw + 12 * s, lineY + 7 * s);
-            c.drawRoundRect(lr, 6 * s, 6 * s, p);
+            if (chip == null) {
+                p.setColor(0x26FFFFFF);
+                c.drawRoundRect(lr, 6 * s, 6 * s, p);
+            } else if (chip[0] != 0 || chip[1] != 0) {
+                p.setShader(new LinearGradient(0, lr.top, 0, lr.bottom, chip[0], chip[1], Shader.TileMode.CLAMP));
+                c.drawRoundRect(lr, 6 * s, 6 * s, p);
+                p.setShader(null);
+            }
             fit(c, channelLogo, new RectF(lr.left + 6 * s, lr.top + 2 * s, lr.right - 6 * s, lr.top + 2 * s + lh));
             t.setTextAlign(Paint.Align.CENTER);
         } else {

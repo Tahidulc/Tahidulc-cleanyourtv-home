@@ -117,7 +117,10 @@ final class SportCards {
         return f;
     }
 
-    /** A channel's logo (Sky's guide logo, the playlist's), heightDp tall; its name written out when it has none. */
+    /**
+     * A channel's logo (Sky's guide logo, the playlist's), heightDp tall, in the line as it is (a soft halo behind one too
+     * dark for the glass: LogoTiles); its name written out when it has none.
+     */
     static View channel(Context c, String name, int heightDp) {
         String url = name == null ? null : ChannelLogos.known(c, name);
         if (url == null) {
@@ -132,7 +135,7 @@ final class SportCards {
         v.setContentDescription(name);
         v.setLayoutParams(new LinearLayout.LayoutParams(-2, Glass.dp(c, heightDp)));
         TextView fallback = text(c, name, 11, Glass.MUTED, semi(c));
-        Ui.load(v, url, null, () -> {
+        com.gathin.tvhomephone.live.LogoTiles.loadBare(v, url, com.gathin.tvhomephone.live.LogoTiles.ON_NAVY, () -> {
             if (v.getParent() instanceof LinearLayout) {
                 LinearLayout p = (LinearLayout) v.getParent();
                 int at = p.indexOfChild(v);

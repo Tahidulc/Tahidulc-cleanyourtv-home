@@ -111,13 +111,64 @@ public class SquadPagesTest {
 
     @Test public void theCardsPhotosBestFirst() {
         TeamData.Player p = player("Ari Lund", "2", "Defenders");
+        // no picture at all: none to try (the card shows the club's crest and his initials, never a drawn person)
         assertEquals(0, SquadFilter.photos(p).length);
+        assertEquals(SquadFilter.NONE, SquadFilter.kind(""));
+        // FotMob's face alone: the last resort, drawn as a portrait cut to the card
         p.photo = "https://images.fotmob.com/image_resources/playerimages/1.png";
+        assertArrayEquals(new String[]{p.photo}, SquadFilter.photos(p));
+        assertEquals(SquadFilter.HEAD, SquadFilter.kind(p.photo));
+        // ESPN's full head and shoulders before it
         p.cutout = "https://a.espncdn.com/i/headshots/soccer/players/full/1.png";
         assertArrayEquals(new String[]{p.cutout, p.photo}, SquadFilter.photos(p));
         assertEquals(SquadFilter.SHOULDERS, SquadFilter.kind(p.cutout));
-        assertEquals(SquadFilter.HEAD, SquadFilter.kind(p.photo));
-        assertEquals(SquadFilter.DRAWN, SquadFilter.kind(""));
+        // the league's own cut-out before both
+        p.league = "https://resources.premierleague.com/premierleague25/photos/players/500x500/223094.png";
+        assertArrayEquals(new String[]{p.league, p.cutout, p.photo}, SquadFilter.photos(p));
+        assertEquals(SquadFilter.LEAGUE, SquadFilter.kind(p.league));
+        // looked up and none ("") counts for nothing
+        p.league = "";
+        assertArrayEquals(new String[]{p.cutout, p.photo}, SquadFilter.photos(p));
+    }
+
+    @Test public void eachSourceOnceAndEspnByHisIdWhenItsRosterHadNoPicture() {
+        TeamData.Player p = player("Bo Varga", "8", "Midfielders");
+        p.espnId = "245117";
+        p.photo = "https://images.fotmob.com/image_resources/playerimages/7.png";
+        assertArrayEquals(new String[]{SquadFilter.ESPN_FULL + "245117.png", p.photo}, SquadFilter.photos(p));
+        // an ESPN squad's own picture is the same as its cut-out: once
+        TeamData.Player e = player("Cal Moss", "9", "Forwards");
+        e.cutout = "https://a.espncdn.com/i/headshots/soccer/players/full/9.png";
+        e.photo = e.cutout;
+        assertArrayEquals(new String[]{e.cutout}, SquadFilter.photos(e));
+        // an id that is not one is not tried
+        TeamData.Player x = player("Dan Rowe", "4", "Defenders");
+        x.espnId = "n/a";
+        assertEquals(0, SquadFilter.photos(x).length);
+    }
+
+    @Test public void laLigasPicturesAreLeagueCutOutsToo() {
+        String file = "file:///data/user/0/com.gathin.tvhomephone/cache/" + LeaguePhotos.LA_LIGA_DIR + "/3fa2c1.webp";
+        assertEquals(SquadFilter.LEAGUE, SquadFilter.kind(file));
+        TeamData.Player p = player("Ivo Serrat", "5", "Defenders");
+        p.league = file;
+        p.photo = "https://images.fotmob.com/image_resources/playerimages/5.png";
+        assertArrayEquals(new String[]{file, p.photo}, SquadFilter.photos(p));
+    }
+
+    @Test public void whoseOwnPicturesAClubsPlayersHave() {
+        assertEquals(LeaguePhotos.PREMIER, LeaguePhotos.league("eng.1"));
+        assertEquals(LeaguePhotos.LA_LIGA, LeaguePhotos.league("esp.1"));
+        assertEquals(LeaguePhotos.NONE, LeaguePhotos.league("eng.2"));
+        assertEquals(LeaguePhotos.NONE, LeaguePhotos.league("ger.1"));
+        assertEquals(LeaguePhotos.NONE, LeaguePhotos.league(""));
+        assertEquals(LeaguePhotos.NONE, LeaguePhotos.league(null));
+        // looked up once: a Premier League player until he has been, never a Championship one
+        TeamData.Player p = player("Ari Lund", "2", "Defenders");
+        assertTrue(LeaguePhotos.pending("eng.1", p));
+        assertFalse(LeaguePhotos.pending("eng.2", p));
+        p.league = "";
+        assertFalse(LeaguePhotos.pending("eng.1", p));
     }
 
     // ---- the carousel's arithmetic ---------------------------------------------------------------------------------

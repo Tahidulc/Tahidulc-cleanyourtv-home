@@ -263,8 +263,9 @@ final class Inline extends FrameLayout implements Playback.Host {
         aspect = Aspect.get(store, c.key, true);
         video.apply(aspect);
         initials.setText(c.logo.isEmpty() ? Ui.initials(c.name) : "");
+        // Large on the cover over the dark: as it is (a soft halo behind a dark one), made ready for black on Black tile.
         if (c.logo.isEmpty()) Glide.with(logo).clear(logo);
-        else Glide.with(logo).load(c.logo).into(logo);
+        else LogoTiles.loadReady(logo, c.logo);
         line.setText(describe(c));
         play.setContentDescription(getContext().getString(R.string.live_play_named, c.name));
     }

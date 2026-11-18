@@ -159,15 +159,19 @@ final class Sheets {
 
     private static FrameLayout logo(Context c, Channel ch, int w, int h) {
         FrameLayout box = new FrameLayout(c);
+        // The logo on a tile in its own colour, with nothing behind it, or on black (LogoTiles); no logo, its initials on glass.
         box.setBackground(Ui.round(c, Ui.GLASS, 10));
         TextView ini = Ui.text(c, ch.logo.isEmpty() ? Ui.initials(ch.name) : "", 12, Ui.SOFT, true);
         ini.setGravity(Gravity.CENTER);
         box.addView(ini, new FrameLayout.LayoutParams(-1, -1));
         ImageView img = new ImageView(c);
         img.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        int p = Ui.dp(c, 4);
+        int p = LogoTiles.pad(c, 4);
         img.setPadding(p, p, p, p);
-        if (!ch.logo.isEmpty()) Glide.with(img).load(ch.logo).into(img);
+        if (!ch.logo.isEmpty()) LogoTiles.show(box, 10, false, img, ch.logo, LogoTiles.ON_NAVY, () -> {
+            box.setBackground(Ui.round(c, Ui.GLASS, 10));
+            ini.setText(Ui.initials(ch.name));
+        });
         box.addView(img, new FrameLayout.LayoutParams(-1, -1));
         box.setLayoutParams(new LinearLayout.LayoutParams(Ui.dp(c, w), Ui.dp(c, h)));
         return box;
@@ -288,7 +292,10 @@ final class Sheets {
             @NonNull @Override public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int type) {
                 LinearLayout row = new LinearLayout(c);
                 row.setGravity(Gravity.CENTER_VERTICAL);
-                row.setLayoutParams(new RecyclerView.LayoutParams(-1, Ui.dp(c, 64)));
+                RecyclerView.LayoutParams rl = new RecyclerView.LayoutParams(-1, Ui.dp(c, 60));
+                rl.bottomMargin = Ui.dp(c, 4);
+                row.setLayoutParams(rl);
+                row.setPadding(Ui.dp(c, 8), 0, Ui.dp(c, 4), 0);
                 FrameLayout box = new FrameLayout(c);
                 box.setBackground(Ui.round(c, Ui.GLASS, 10));
                 TextView ini = Ui.text(c, "", 12, Ui.SOFT, true);
@@ -324,7 +331,7 @@ final class Sheets {
                         all.setVisibility(View.GONE);
                     }
                 });
-                row.setTag(new View[]{ini, logo, name, un});
+                row.setTag(new View[]{ini, logo, name, un, box});
                 return vh;
             }
 
@@ -336,8 +343,18 @@ final class Sheets {
                 ImageView logo = (ImageView) v[1];
                 boolean pic = ch != null && !ch.logo.isEmpty();
                 ((TextView) v[0]).setText(pic ? "" : Ui.initials(label));
-                if (pic) Glide.with(logo).load(ch.logo).into(logo);
-                else Glide.with(logo).clear(logo);
+                // The logo on a tile in its own colour and the row (its number and name) in it too, a touch lighter;
+                // with nothing behind it, or on black, the plain row (LogoTiles); no logo, its initials on glass.
+                int p = LogoTiles.pad(c, 4);
+                logo.setPadding(p, p, p, p);
+                h.itemView.setBackground(null);
+                if (pic) {
+                    LogoTiles.show(v[4], 10, false, logo, ch.logo, LogoTiles.ON_NAVY,
+                            cols -> h.itemView.setBackground(LogoTiles.row(c, cols, false, Ui.TEXT, 12)), null);
+                } else {
+                    v[4].setBackground(Ui.round(c, Ui.GLASS, 10));
+                    Glide.with(logo).clear(logo);
+                }
                 int n = ch == null ? 0 : lib.number(ch);
                 ((TextView) v[2]).setText(n > 0 ? n + "  " + label : label);
                 v[3].setContentDescription(c.getString(R.string.live_unhide_named, label));
@@ -498,7 +515,9 @@ final class Sheets {
             @NonNull @Override public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int type) {
                 LinearLayout row = new LinearLayout(c);
                 row.setGravity(Gravity.CENTER_VERTICAL);
-                row.setLayoutParams(new RecyclerView.LayoutParams(-1, Ui.dp(c, 64)));
+                RecyclerView.LayoutParams rl = new RecyclerView.LayoutParams(-1, Ui.dp(c, 60));
+                rl.bottomMargin = Ui.dp(c, 4);
+                row.setLayoutParams(rl);
                 ImageView handle = new ImageView(c);
                 handle.setImageResource(R.drawable.live_ic_drag);
                 handle.setImageTintList(ColorStateList.valueOf(Ui.SOFT));
@@ -533,7 +552,7 @@ final class Sheets {
                     notifyItemRemoved(at);
                     if (list.isEmpty()) hint.setText(R.string.live_fav_empty);
                 });
-                row.setTag(new View[]{logo, name});
+                row.setTag(new View[]{logo, name, box});
                 return vh;
             }
 
@@ -541,8 +560,18 @@ final class Sheets {
                 Channel ch = list.get(position);
                 View[] v = (View[]) h.itemView.getTag();
                 ImageView logo = (ImageView) v[0];
-                if (ch.logo.isEmpty()) Glide.with(logo).clear(logo);
-                else Glide.with(logo).load(ch.logo).into(logo);
+                // The logo on a tile in its own colour and the row (its number and name) in it too, a touch lighter;
+                // with nothing behind it, or on black, the plain row (LogoTiles); no logo, an empty glass box.
+                int p = LogoTiles.pad(c, 4);
+                logo.setPadding(p, p, p, p);
+                h.itemView.setBackground(null);
+                if (ch.logo.isEmpty()) {
+                    v[2].setBackground(Ui.round(c, Ui.GLASS, 10));
+                    Glide.with(logo).clear(logo);
+                } else {
+                    LogoTiles.show(v[2], 10, false, logo, ch.logo, LogoTiles.ON_NAVY,
+                            cols -> h.itemView.setBackground(LogoTiles.row(c, cols, false, Ui.TEXT, 12)), null);
+                }
                 int n = lib.number(ch);
                 ((TextView) v[1]).setText(n > 0 ? n + "  " + ch.name : ch.name);
             }
@@ -567,7 +596,11 @@ final class Sheets {
 
             @Override public void clearView(@NonNull RecyclerView r, @NonNull RecyclerView.ViewHolder h) {
                 super.clearView(r, h);
-                h.itemView.setBackground(null);
+                // back to its row: in its logo's colour (Logo's colour), else plain
+                int at = h.getBindingAdapterPosition();
+                Channel ch = at >= 0 && at < list.size() ? list.get(at) : null;
+                h.itemView.setBackground(ch == null || ch.logo.isEmpty() ? null
+                        : LogoTiles.row(c, LogoTiles.now(c, ch.logo), false, Ui.TEXT, 12));
             }
         });
         drag[0].attachToRecyclerView(rv);

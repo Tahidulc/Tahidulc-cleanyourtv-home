@@ -795,7 +795,8 @@ public class LiveTvFragment extends Fragment {
             TextView ini = (TextView) v[0];
             ImageView img = (ImageView) v[1];
             if (position >= favs.size()) {
-                // The last tile: Manage favourites.
+                // The last tile: Manage favourites (glass, not a channel's).
+                holder.itemView.setBackground(Ui.touch(c, false, Ui.GLASS, 10));
                 Glide.with(img).clear(img);
                 img.setImageResource(R.drawable.live_ic_edit);
                 img.setImageTintList(ColorStateList.valueOf(Ui.G_SELECT));
@@ -810,8 +811,18 @@ public class LiveTvFragment extends Fragment {
             img.setImageTintList(null);
             img.setScaleType(ImageView.ScaleType.FIT_CENTER);
             ini.setText(ch.logo.isEmpty() ? Ui.initials(ch.name) : "");
-            if (ch.logo.isEmpty()) Glide.with(img).clear(img);
-            else Glide.with(img).load(ch.logo).into(img);
+            // Its logo on a tile in its own colour, with nothing behind it, or on black (LogoTiles); no logo, its initials on glass.
+            int p = LogoTiles.pad(c, 6);
+            img.setPadding(p, p, p, p);
+            if (ch.logo.isEmpty()) {
+                holder.itemView.setBackground(Ui.touch(c, false, Ui.GLASS, 10));
+                Glide.with(img).clear(img);
+            } else {
+                LogoTiles.show(holder.itemView, 10, true, img, ch.logo, LogoTiles.ON_BLACK, () -> {
+                    ini.setText(Ui.initials(ch.name));
+                    holder.itemView.setBackground(Ui.touch(c, false, Ui.GLASS, 10));
+                });
+            }
             holder.itemView.setContentDescription(getString(R.string.live_watch_named, ch.name));
             holder.itemView.setOnClickListener(x -> play(ch));
             holder.itemView.setOnLongClickListener(x -> {
@@ -1572,6 +1583,7 @@ public class LiveTvFragment extends Fragment {
     /** A channel with its logo, the guide's now (with how far in) and next, and the star. */
     private final class ChannelRow extends RecyclerView.ViewHolder {
         final LinearLayout view;
+        final FrameLayout box;
         final TextView initials, name, nowTag, nowTitle, next, uhd;
         final ImageView logo;
         final ProgressBar progress;
@@ -1587,7 +1599,7 @@ public class LiveTvFragment extends Fragment {
             RecyclerView.LayoutParams lp = new RecyclerView.LayoutParams(-1, -2);
             lp.bottomMargin = Ui.dp(c, 6);
             view.setLayoutParams(lp);
-            FrameLayout box = new FrameLayout(c);
+            box = new FrameLayout(c);
             box.setBackground(Ui.round(c, Ui.GLASS, 12));
             initials = Ui.text(c, "", 14, Ui.SOFT, true);
             initials.setGravity(Gravity.CENTER);
@@ -1652,19 +1664,37 @@ public class LiveTvFragment extends Fragment {
         void bind(Channel c) {
             ch = c;
             Context ctx = view.getContext();
-            view.setBackground(Ui.touch(ctx, mode != COMPACT && !searching && c.key.equals(selKey), 0x14FFFFFF, 14));
+            boolean sel = mode != COMPACT && !searching && c.key.equals(selKey);
+            view.setBackground(Ui.touch(ctx, sel, 0x14FFFFFF, 14));
             int n = lib.number(c);
             name.setText(n > 0 ? n + "  " + c.name : c.name);
             initials.setText(Ui.initials(c.name));
-            // Its playlist's logo, else Sky's for its name (a 4K channel with none of its own shows its channel's).
+            // Its playlist's logo, else Sky's for its name (a 4K channel with none of its own shows its channel's): on a
+            // tile in its own colour, the whole row (its number and name) in that colour too, a touch lighter; with
+            // nothing behind it, or on black, on the plain row (LogoTiles); no logo, its initials on glass.
             String pic = Ui.logo(c);
             if (pic == null) {
+                box.setBackground(Ui.round(ctx, Ui.GLASS, 12));
                 Glide.with(logo).clear(logo);
                 initials.setVisibility(View.VISIBLE);
             } else {
+                int p = LogoTiles.pad(ctx, 5);
+                logo.setPadding(p, p, p, p);
                 initials.setVisibility(View.INVISIBLE);
-                Glide.with(logo).load(pic).into(logo);
+                LogoTiles.show(box, 12, false, logo, pic, LogoTiles.ON_BLACK, cols -> {
+                    if (ch != c) return;
+                    android.graphics.drawable.Drawable row = LogoTiles.row(ctx, cols, sel, Ui.TEXT, 14);
+                    view.setBackground(row != null ? row : Ui.touch(ctx, sel, 0x14FFFFFF, 14));
+                    tinted(row != null);
+                }, () -> {
+                    if (ch != c) return;
+                    box.setBackground(Ui.round(ctx, Ui.GLASS, 12));
+                    view.setBackground(Ui.touch(ctx, sel, 0x14FFFFFF, 14));
+                    tinted(false);
+                    initials.setVisibility(View.VISIBLE);
+                });
             }
+            if (pic == null) tinted(false);
             uhd.setVisibility(Names.uhd(c.name) ? View.VISIBLE : View.GONE);
             boolean fav = Picks.isFavourite(ctx, c.key);
             star.setImageResource(fav ? R.drawable.live_ic_star : R.drawable.live_ic_star_outline);
@@ -1688,12 +1718,21 @@ public class LiveTvFragment extends Fragment {
                 next.setText(getString(R.string.live_next_at, Ui.clock(s.start[nx]), s.title[nx]));
             } else next.setVisibility(View.GONE);
         }
+
+        /** On a row in its logo's colour the red NOW and its line turn white, so they show on any colour. */
+        private void tinted(boolean coloured) {
+            nowTag.setTextColor(coloured ? Ui.TEXT : Ui.RED);
+            progress.setProgressTintList(ColorStateList.valueOf(coloured ? Ui.TEXT : Ui.RED));
+            progress.setProgressBackgroundTintList(ColorStateList.valueOf(coloured ? 0x40FFFFFF : Ui.LINE));
+            next.setTextColor(coloured ? 0xB3FFFFFF : Ui.DIM);
+        }
     }
 
     /** A programme the search found: its title, the channel, the day and time, ON NOW when it is on. */
     private final class ProgrammeRow extends RecyclerView.ViewHolder {
         final TextView title, meta, badge, initials;
         final ImageView logo;
+        final FrameLayout box;
         ProgrammeSearch.Hit hit;
 
         ProgrammeRow(Context c) {
@@ -1706,7 +1745,7 @@ public class LiveTvFragment extends Fragment {
             lp.bottomMargin = Ui.dp(c, 6);
             view.setLayoutParams(lp);
             view.setBackground(Ui.touch(c, false, 0x14FFFFFF, 14));
-            FrameLayout box = new FrameLayout(c);
+            box = new FrameLayout(c);
             box.setBackground(Ui.round(c, Ui.GLASS, 10));
             initials = Ui.text(c, "", 12, Ui.SOFT, true);
             initials.setGravity(Gravity.CENTER);
@@ -1760,8 +1799,20 @@ public class LiveTvFragment extends Fragment {
             meta.setText(getString(R.string.live_search_meta, ch.name, Ui.day(c, s.start[i]), Ui.range(s.start[i], s.stop[i])));
             badge.setVisibility(on ? View.VISIBLE : View.GONE);
             initials.setText(ch.logo.isEmpty() ? Ui.initials(ch.name) : "");
-            if (ch.logo.isEmpty()) Glide.with(logo).clear(logo);
-            else Glide.with(logo).load(ch.logo).into(logo);
+            // The channel's logo on a tile in its own colour, with nothing behind it, or on black (LogoTiles); no logo, its
+            // initials on glass.
+            int p = LogoTiles.pad(c, 4);
+            logo.setPadding(p, p, p, p);
+            if (ch.logo.isEmpty()) {
+                box.setBackground(Ui.round(c, Ui.GLASS, 10));
+                Glide.with(logo).clear(logo);
+            } else {
+                LogoTiles.show(box, 10, false, logo, ch.logo, LogoTiles.ON_BLACK, () -> {
+                    if (hit != x) return;
+                    box.setBackground(Ui.round(c, Ui.GLASS, 10));
+                    initials.setText(Ui.initials(ch.name));
+                });
+            }
         }
     }
 

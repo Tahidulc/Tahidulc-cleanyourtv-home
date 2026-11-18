@@ -187,6 +187,7 @@ public class PlayerPageActivity extends AppCompatActivity {
             @Override public View make() {
                 PlayerPage page = new PlayerPage(PlayerPageActivity.this, wide);
                 page.setColours(colour, ground);
+                page.setClub(data.slug, data.name, data.shortName, data.logo);
                 page.setInsets(PageBits.dp(PlayerPageActivity.this, wide ? 60 : 0), barBottom);
                 return page;
             }

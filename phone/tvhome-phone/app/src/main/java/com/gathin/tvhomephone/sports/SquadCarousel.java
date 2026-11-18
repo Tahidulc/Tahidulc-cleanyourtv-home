@@ -117,6 +117,14 @@ final class SquadCarousel extends ViewGroup {
         for (SquadCard c : cards) c.setColours(club, ground);
     }
 
+    /** The club the cards are of: its competition (for its league's own pictures), its names and its crest. */
+    private String[] clubInfo = {"", "", "", ""};
+
+    void setClub(String slug, String name, String shortName, String crest) {
+        clubInfo = new String[]{slug, name, shortName, crest};
+        for (SquadCard c : cards) c.setClub(slug, name, shortName, crest);
+    }
+
     /** The players shown, with the one at middle; the cards are made again (at most a squad's worth). */
     void setPlayers(List<TeamData.Player> list, int middle) {
         settle.cancel();
@@ -125,6 +133,7 @@ final class SquadCarousel extends ViewGroup {
         while (cards.size() < players.size()) {
             SquadCard card = new SquadCard(getContext());
             card.setColours(club, ground);
+            card.setClub(clubInfo[0], clubInfo[1], clubInfo[2], clubInfo[3]);
             int at = cards.size();
             card.setOnClickListener(v -> tapped(cards.indexOf((SquadCard) v)));
             cards.add(card);

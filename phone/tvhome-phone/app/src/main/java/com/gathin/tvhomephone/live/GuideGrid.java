@@ -35,8 +35,9 @@ import java.util.TimeZone;
 
 /**
  * The TV guide's grid, dark (GuideLook): the day big at the top left and the times across with a white mark at now;
- * each channel a row of rounded cards, its logo on a tile in the logo's own colour over the row's start (a star on a
- * favourite), and its programmes as rounded blocks each in a deep colour of its own, what has been shown a shade
+ * each channel a row of rounded cards, its logo on a tile in the logo's own colour over the row's start (or as it is on
+ * the guide's black, or on a black tile: LogoTiles; a star on a favourite), and its programmes as rounded blocks each in
+ * a deep colour of its own, what has been shown a shade
  * darker, the channel's name with its picture's tag and each start time over the titles. One RecyclerView of rows,
  * each row one view that draws its blocks from a shared horizontal offset, so twenty thousand channels and a day of
  * guide stay smooth: no view per programme. A sideways drag or fling moves every row and the ruler together; up and
@@ -663,9 +664,6 @@ final class GuideGrid extends FrameLayout {
         }
     }
 
-    /** Each logo's tile colour once worked out, by the logo's address. */
-    private static final android.util.LruCache<String, Integer> tiles = new android.util.LruCache<>(600);
-
     private final class Row extends RecyclerView.ViewHolder {
         final FrameLayout tile;
         final TextView initials;
@@ -684,9 +682,10 @@ final class GuideGrid extends FrameLayout {
             blocks = new Blocks(c, st);
             blocks.noGuide = c.getString(R.string.live_no_guide_info);
             item.addView(blocks, new FrameLayout.LayoutParams(-1, -1));
-            // The logo's tile over the row's start, in the logo's colour.
+            // The logo's tile over the row's start: in the logo's own colour, nothing (the guide's black) or black (LogoTiles).
             tile = new FrameLayout(c);
             ground = new android.graphics.drawable.GradientDrawable();
+            ground.setOrientation(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM);
             // Square at the screen's edge, round where it meets the programmes.
             ground.setCornerRadii(new float[]{0, 0, st.radius, st.radius, st.radius, st.radius, 0, 0});
             tile.setBackground(new android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(0x33FFFFFF), ground, null));
@@ -733,34 +732,28 @@ final class GuideGrid extends FrameLayout {
             blocks.quality = GuideLook.quality(c.name);
             initials.setText(Ui.initials(c.name));
             String url = c.logo;
-            Integer known = url.isEmpty() ? null : tiles.get(url);
-            ground.setColor(known != null ? known : url.isEmpty() ? GuideLook.nameColour(c.name) : GuideLook.PILL_ON);
+            Context ctx = itemView.getContext();
             if (url.isEmpty()) {
+                // No logo: its initials on a tile in a colour of its own.
+                paint(GuideLook.nameColour(c.name), GuideLook.nameColour(c.name));
                 Glide.with(logo).clear(logo);
                 initials.setVisibility(View.VISIBLE);
             } else {
+                // Behind logos (LogoTiles): the tile in the logo's own colour (the default, worked out once per logo); the
+                // logo as it is on the guide's own black (None: the programmes run on under the column, so it is the
+                // guide's ground, not a tile), a soft halo behind a dark one; or a black tile.
+                int lp = Ui.dp(ctx, 8);
+                logo.setPadding(lp, lp, lp, lp);
                 initials.setVisibility(View.INVISIBLE);
-                Glide.with(logo).load(url).listener(new com.bumptech.glide.request.RequestListener<android.graphics.drawable.Drawable>() {
-                    @Override public boolean onLoadFailed(com.bumptech.glide.load.engine.GlideException e, Object model,
-                                                          @NonNull com.bumptech.glide.request.target.Target<android.graphics.drawable.Drawable> target, boolean first) {
-                        if (ch == c) {
-                            initials.setVisibility(View.VISIBLE);
-                            ground.setColor(GuideLook.nameColour(c.name));
-                        }
-                        return false;
-                    }
-
-                    @Override public boolean onResourceReady(@NonNull android.graphics.drawable.Drawable d, @NonNull Object model,
-                                                             com.bumptech.glide.request.target.Target<android.graphics.drawable.Drawable> target,
-                                                             @NonNull com.bumptech.glide.load.DataSource source, boolean first) {
-                        if (ch == c && tiles.get(url) == null) {
-                            int colour = tileOf(d);
-                            tiles.put(url, colour);
-                            ground.setColor(colour);
-                        }
-                        return false;
-                    }
-                }).into(logo);
+                LogoTiles.load(logo, url, GuideLook.GROUND, cols -> {
+                    if (ch != c) return;
+                    if (cols[0] == 0 && cols[1] == 0) paint(GuideLook.GROUND, GuideLook.GROUND);
+                    else paint(cols[0], cols[1]);
+                }, () -> {
+                    if (ch != c) return;
+                    initials.setVisibility(View.VISIBLE);
+                    paint(GuideLook.nameColour(c.name), GuideLook.nameColour(c.name));
+                });
             }
             marks();
             Guide.Schedule s = blocks.schedule;
@@ -768,6 +761,11 @@ final class GuideGrid extends FrameLayout {
             tile.setContentDescription(c.name + (at >= 0 ? ", " + s.title[at] : ""));
             blocks.setContentDescription(at >= 0 ? s.title[at] + ", " + Ui.range(s.start[at], s.stop[at]) : blocks.noGuide);
             blocks.invalidate();
+        }
+
+        /** The tile's colours, top to foot (always a gradient: a solid colour after one would keep the gradient's paint). */
+        private void paint(int top, int foot) {
+            ground.setColors(new int[]{top, foot});
         }
 
         /** The favourite's star, and the selection drawn again. */
@@ -778,22 +776,4 @@ final class GuideGrid extends FrameLayout {
         }
     }
 
-    /** The tile's colour for a logo as loaded: from a small copy of its pixels (GuideLook.tile). */
-    private static int tileOf(android.graphics.drawable.Drawable d) {
-        try {
-            int s = 24;
-            android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(s, s, android.graphics.Bitmap.Config.ARGB_8888);
-            Canvas cv = new Canvas(b);
-            android.graphics.Rect was = new android.graphics.Rect(d.getBounds());
-            d.setBounds(0, 0, s, s);
-            d.draw(cv);
-            d.setBounds(was);
-            int[] px = new int[s * s];
-            b.getPixels(px, 0, s, 0, 0, s, s);
-            b.recycle();
-            return GuideLook.tile(px, s, s);
-        } catch (RuntimeException e) {
-            return GuideLook.LIGHT_GREY;
-        }
-    }
 }
