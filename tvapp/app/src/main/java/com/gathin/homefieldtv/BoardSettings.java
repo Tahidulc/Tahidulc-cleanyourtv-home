@@ -9,9 +9,9 @@ import java.util.List;
 
 /**
  * Settings → Other → Scoreboard: the scoreboard over matches in the player (BoardLayer) and the cover over the channel's
- * logo, each with its switch; the look (the Scoreboard Lab's and By competition) and the goal sound, OK stepping on to
- * the next; the alerts, pop-ups, the kick-off's card and the swishes. Moving and sizing are done over the match itself
- * (OK held there), as on the launcher.
+ * logo, each with its switch; the look (the Scoreboard Lab's and By competition), the pop-ups' style (in my scoreboard's
+ * look, classic or off) and the goal sound, OK stepping on to the next; the alerts, line-ups, the kick-off's card and the
+ * swishes. Moving and sizing are done over the match itself (OK held there), as on the launcher.
  */
 final class BoardSettings {
     private BoardSettings() {}
@@ -25,7 +25,7 @@ final class BoardSettings {
         out.add(RowList.Row.toggle("drops", "Alerts beside the board", "Cards, substitutions, VAR, added time, half and full time",
                 BoardPrefs.dropsOn(c)));
         out.add(RowList.Row.toggle("var", "VAR explained", "The check, then the decision and why", BoardPrefs.varExplainedOn(c)));
-        out.add(RowList.Row.toggle("popup", "Kick-off and goal pop-ups", "The kick-off, after a goal and the second half", BoardPrefs.popupOn(c)));
+        out.add(RowList.Row.item("popup", "Kick-off and goal pop-ups", BoardPrefs.popupWords(BoardPrefs.popupStyle(c)) + "  ·  OK for the next"));
         out.add(RowList.Row.toggle("lineups", "Line-ups before kick-off", "Both elevens, seven minutes before", BoardPrefs.lineupsOn(c)));
         out.add(RowList.Row.toggle("ask", "Ask at each kick-off", "OK as it kicks off sets the clock with your channel's", InStep.asking(c)));
         out.add(RowList.Row.header("Sounds"));
@@ -41,7 +41,7 @@ final class BoardSettings {
             case "logo": BoardPrefs.setLogoOn(c, !BoardPrefs.logoOn(c)); return true;
             case "drops": BoardPrefs.setDropsOn(c, !BoardPrefs.dropsOn(c)); return true;
             case "var": BoardPrefs.setVarExplainedOn(c, !BoardPrefs.varExplainedOn(c)); return true;
-            case "popup": BoardPrefs.setPopupOn(c, !BoardPrefs.popupOn(c)); return true;
+            case "popup": BoardPrefs.setPopupStyle(c, BoardPrefs.nextPopup(BoardPrefs.popupStyle(c), 1)); return true;
             case "lineups": BoardPrefs.setLineupsOn(c, !BoardPrefs.lineupsOn(c)); return true;
             case "ask": InStep.setAsking(c, !InStep.asking(c)); return true;
             case "swish": {

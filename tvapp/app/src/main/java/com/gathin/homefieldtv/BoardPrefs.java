@@ -230,13 +230,57 @@ final class BoardPrefs {
         prefs(c).edit().putBoolean("var", on).apply();
     }
 
-    /** The kick-off pop-up (and the second half's, and after a goal): on unless off. */
-    static boolean popupOn(Context c) {
-        return prefs(c).getBoolean("popup", true);
+    /**
+     * The kick-off pop-up's style (and the restart's after a goal, and the second half's): "strap" (in my scoreboard's look,
+     * whichever look the board is in, folding into it where it is: a new install's), "classic" (crests, trophy and teams)
+     * or "off", as on the phone and the launcher. Once, a pop-up that was on (the classic, the only one here before) was
+     * switched to the strap, as the family asked (followBoard); off stays off.
+     */
+    static String popupStyle(Context c) {
+        SharedPreferences p = prefs(c);
+        if (!p.getBoolean(FOLLOWS_BOARD, false)) {
+            p.edit().putString("popup_style", followBoard(p.getString("popup_style", null), p.getBoolean("popup", true)))
+                    .putBoolean(FOLLOWS_BOARD, true).apply();
+        }
+        String s = p.getString("popup_style", null);
+        return s != null ? s : "strap";
     }
 
-    static void setPopupOn(Context c, boolean on) {
-        prefs(c).edit().putBoolean("popup", on).apply();
+    static void setPopupStyle(Context c, String style) {
+        prefs(c).edit().putString("popup_style", style).apply();
+    }
+
+    /** The kick-off pop-up (and the second half's, and after a goal), in either style: on unless off. */
+    static boolean popupOn(Context c) {
+        return !"off".equals(popupStyle(c));
+    }
+
+    /** Set once the pop-up was switched to follow the board (Nov 2026). */
+    private static final String FOLLOWS_BOARD = "popup_follows_board";
+
+    /**
+     * Pure: the pop-up's style after the one switch to the board's look: the strap for one that was on (the old switch,
+     * or the classic); off stays off; the strap stays.
+     */
+    static String followBoard(String style, boolean wasOn) {
+        if ("off".equals(style)) return "off";
+        if (style == null) return wasOn ? "strap" : "off";
+        return "strap";
+    }
+
+    /** The pop-up's styles, in the order OK and the arrows step through them. */
+    static final String[] POPUPS = {"strap", "classic", "off"};
+
+    /** Pure: the style step away from style (1 the next, -1 the one before), round the three. */
+    static String nextPopup(String style, int step) {
+        int i = 0;
+        for (int k = 0; k < POPUPS.length; k++) if (POPUPS[k].equals(style)) i = k;
+        return POPUPS[((i + step) % POPUPS.length + POPUPS.length) % POPUPS.length];
+    }
+
+    /** Pure: a style in words, as the phone's and the launcher's settings say it. */
+    static String popupWords(String style) {
+        return "strap".equals(style) ? "In my scoreboard's look" : "classic".equals(style) ? "Classic" : "Off";
     }
 
     /** The classic line-ups before kick-off: on unless off. */
