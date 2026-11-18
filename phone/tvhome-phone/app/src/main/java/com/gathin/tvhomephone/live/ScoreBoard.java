@@ -412,8 +412,6 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     final BoardLineups lineups;
     /** Under it: a penalty shootout's kicks while one is on. */
     final BoardUnder under;
-    /** The game's stats and facts read last, by their names ("Possession", "Form"…), each {name, home, away[, kind]}. */
-    private Map<String, String[]> statsBy = new HashMap<>();
     /** The added time put up in each half (minutes; -1 until it is), for the game read. */
     private int[] addedUp = {-1, -1, -1, -1};
     private String statsFor = "";
@@ -708,6 +706,8 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         lineups.gone();
         under.gone();
         yellowsWaiting.clear();
+        held.clear();
+        varHeld.clear();
         PhoneKits.stop(src.kitRoot());
     }
 
@@ -740,6 +740,8 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         bug.setVisibility(View.GONE);
         under.gone();
         yellowsWaiting.clear();
+        held.clear();
+        varHeld.clear();
         h.removeCallbacks(read);
         if (running) h.post(read);
     }
@@ -930,7 +932,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                 if (channelGame) src.shown(g, now - src.behindMs(true));
                 l = look(g, screen.boardClock(now));
                 // From the half's last minute, the added time put up beside the clock (the channel's own when it shows it).
-                if (l.live) l.added = addedBox(period(g, l.clock), minuteOfClock(l.clock), addedUp, l.added);
+                if (l.live) l.added = addedBox(period(g, l.clock), minuteOfClock(l.clock), addedNow(), l.added);
                 // The minutes added, once known for this half: out beside the board once as an alert, then in its tab.
                 if (l.live && !l.added.isEmpty()) addedOut(g, l.added, period(g, l.clock));
                 keepAdded(g, l);
@@ -962,6 +964,16 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                 boardMinute = minuteOfClock(l.clock);
                 boardSecs = com.gathin.broadcast.SubsTiming.clockSeconds(l.clock);
                 releaseYellows(g, l.clock);
+                // Where the picture is (its clock the channel's own while it is read off it): what waits for it comes now.
+                if (g.id != null && g.id.equals(lastId)) {
+                    picture = picture(g, l.clock, now, channelGame && screen.reading(now), screen.behind());
+                    if (lastGot != null && g.id.equals(lastGot.id) && lastGot.state != Game.PRE) {
+                        picture.scoresHome = lastGot.homeScore;
+                        picture.scoresAway = lastGot.awayScore;
+                    }
+                    held.release(g.id, picture);
+                    varHeld.release(g.id, picture);
+                }
                 // Full time on the screen: shown a little under a minute (its alert, its stats), then away.
                 String id = g.id == null ? "" : g.id;
                 if (g.state == Game.POST) {
@@ -1407,11 +1419,12 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     /**
      * The game's stats sliding out beside it at one of its few moments (statsSlot). Never while an alert or the line-ups
      * are out, just after a goal, in the small window or while it is placed by hand; and never while the scores have a
-     * goal the picture hasn't shown yet (its shot on target would give it away).
+     * goal the picture hasn't shown yet (its shot on target would give it away). What they say is as it stood at the
+     * moment on the picture (statsNow): no total moves, no name comes, before the goal or chance behind it is seen.
      */
     private void maybeStats(Game g, long now) {
         if (small || preview || hidden || dropping || lineups.isOut() || stats.isOut() || bug.closing() || !boardUp()) return;
-        if (statsBy.isEmpty() || !lastId.equals(statsFor) || now - goalShownAt < 90_000L) return;
+        if (!lastId.equals(statsFor) || now - goalShownAt < 90_000L || statsNow().isEmpty()) return;
         boolean pre = g.state == Game.PRE;
         if (!pre && screen.ahead(now)) return;
         String slot = statsSlot(pre, g.kickoff - now, g.state, g.halftime, boardMinute);
@@ -1431,27 +1444,107 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     /** The Lab's moments shown, by "game|moment" (each once a game); the stats waiting for their turn, each {game, stat...}. */
     private final Set<String> labShown = new java.util.HashSet<>();
     private final List<String[]> labQueue = new ArrayList<>();
-    /** The board's game's momentum and FotMob's match (head to head, runs), and the sky over each game's ground. */
+    /** The board's game and FotMob's match for it (head to head, runs, the referee), and the sky over each game's ground. */
     private String labFor = "";
-    private List<int[]> labMomentum = new ArrayList<>();
     private FotMob.Match labMatch;
     private final Map<String, com.gathin.broadcast.BoardFx.Sky> labSky = new HashMap<>();
     /** The shots and the games whose first read has been seen (a big save from before the board came up is never news). */
     private final Set<String> labShots = new java.util.HashSet<>(), labGames = new java.util.HashSet<>();
+
+    // ---- no spoilers: what the board says from the live data waits for the picture (AsSeen) ---------------------------
+
+    /** Where the picture is now: the board's own game as it shows it, its clock, the channel's lag (each look at the board). */
+    private com.gathin.broadcast.AsSeen.Picture picture = new com.gathin.broadcast.AsSeen.Picture();
+    /** The game's stats and facts as read, a few minutes of them: a stats moment says them as they stood on the picture. */
+    private final com.gathin.broadcast.AsSeen.Reads<Map<String, String[]>> statsReads = new com.gathin.broadcast.AsSeen.Reads<>();
+    /** FotMob's reads for the Lab's moments, {momentum, the cards so far}, as they stood. */
+    private final com.gathin.broadcast.AsSeen.Reads<Object[]> labReads = new com.gathin.broadcast.AsSeen.Reads<>();
+    /** FotMob's shot map as read last (for a big save or a great finish once the picture has it), when each shot came, its home side. */
+    private org.json.JSONArray labShotsNow;
+    private final Map<String, Long> labFirstSeen = new HashMap<>();
+    private int labHomeTeamId;
+    /** What a read says at once (a penalty's card, VAR's check and decision), held until the picture reaches its read. */
+    private final com.gathin.broadcast.AsSeen.Held held = new com.gathin.broadcast.AsSeen.Held(), varHeld = new com.gathin.broadcast.AsSeen.Held();
+
+    /**
+     * Pure: where the picture is for AsSeen: the board's game as it shows it (before kick-off, in play, half time, full
+     * time), its half, its clock in step with the picture (seconds; none at a break), whether that clock is the channel's
+     * own (read off it), how far the channel runs behind the scores, and the board's score.
+     */
+    static com.gathin.broadcast.AsSeen.Picture picture(Game g, String clock, long now, boolean known, long lagMs) {
+        com.gathin.broadcast.AsSeen.Picture p = new com.gathin.broadcast.AsSeen.Picture();
+        p.now = now;
+        p.known = known;
+        p.lagMs = lagMs;
+        if (g == null) return p;
+        p.state = g.state == Game.POST ? com.gathin.broadcast.AsSeen.OVER : g.state == Game.PRE ? com.gathin.broadcast.AsSeen.BEFORE
+                : g.halftime ? com.gathin.broadcast.AsSeen.BREAK : com.gathin.broadcast.AsSeen.PLAY;
+        p.period = g.state == Game.LIVE && g.period >= 5 ? g.period : period(g, clock);
+        p.secs = p.state == com.gathin.broadcast.AsSeen.PLAY ? com.gathin.broadcast.SubsTiming.clockSeconds(clock) : -1;
+        p.home = g.state == Game.PRE ? 0 : g.homeScore;
+        p.away = g.state == Game.PRE ? 0 : g.awayScore;
+        return p;
+    }
+
+    /** Pure: a read's stamp for AsSeen: when it came, the game as the scores had it then, its latest moment, its goals. */
+    static com.gathin.broadcast.AsSeen.Stamp stamp(Game g, long at, int upTo, int home, int away) {
+        int phase = g == null ? com.gathin.broadcast.AsSeen.PLAY : g.state == Game.POST ? com.gathin.broadcast.AsSeen.OVER
+                : g.state == Game.PRE ? com.gathin.broadcast.AsSeen.BEFORE : g.halftime ? com.gathin.broadcast.AsSeen.BREAK
+                : com.gathin.broadcast.AsSeen.PLAY;
+        int period = g == null ? 0 : period(g, "");
+        int h = g == null ? home : Math.max(home, g.state == Game.PRE ? 0 : g.homeScore);
+        int a = g == null ? away : Math.max(away, g.state == Game.PRE ? 0 : g.awayScore);
+        return new com.gathin.broadcast.AsSeen.Stamp(at, phase, period, upTo, h, a, true);
+    }
+
+    /** The minutes added put up in each half, as read (ESPN's commentary, FotMob's where it has none), a few minutes of them. */
+    private final com.gathin.broadcast.AsSeen.Reads<int[]> addedReads = new com.gathin.broadcast.AsSeen.Reads<>();
+
+    /**
+     * The minutes added as they stood at the moment on the picture: part of the board's own clock, so by its own lag (the
+     * channel's, as the board's clock is held), not the longest one; none put up until a read has been reached.
+     */
+    private int[] addedNow() {
+        int[] a = addedReads.pick(picture.inStep());
+        return a == null ? new int[]{-1, -1, -1, -1} : a;
+    }
+
+    /** Pure: the minutes added's stamp: the read's time and game, nothing else (they give no goal or chance away). */
+    static com.gathin.broadcast.AsSeen.Stamp addedStamp(com.gathin.broadcast.AsSeen.Stamp st) {
+        return new com.gathin.broadcast.AsSeen.Stamp(st.at, st.phase, st.period, -1, -1, -1);
+    }
+
+    /** The stats and facts as they stood at the moment on the picture (none until a read has been reached). */
+    private Map<String, String[]> statsNow() {
+        Map<String, String[]> m = statsReads.pick(picture);
+        return m == null ? new HashMap<>() : m;
+    }
     /** The board's game's goals as they came ({side}, {minute}), when it has been seen from 0-0 (a comeback needs them all). */
     private String labGoalsFor = "";
     private final List<Integer> labSides = new ArrayList<>(), labMinutes = new ArrayList<>();
     private boolean labFromStart;
 
     /**
-     * FotMob's read for the board's game (main thread): its momentum and match kept for the Lab's moments, the sky over
-     * its ground (FotMob's weather only: none when it gives none); a big save or a great finish, and the referee's first
-     * booking, waiting for their turn (none from before the board came up).
+     * FotMob's read for the board's game (main thread): its momentum and cards kept as they stood with the read (AsSeen),
+     * its match for the Lab's moments, the sky over its ground (FotMob's weather only: none when it gives none), and its
+     * shots with when each was first read. A big save or a great finish, and the referee's first booking, come in their
+     * turn once the picture has shown them (labTick; none from before the board came up), never as soon as FotMob has
+     * them: the picture runs behind it.
      */
     private void labRead(Game g, FotMob.Match m) {
+        long now = System.currentTimeMillis();
+        if (!g.id.equals(labFor)) {
+            labReads.clear();
+            labFirstSeen.clear();
+        }
         labFor = g.id;
-        labMomentum = new ArrayList<>(m.momentum);
         labMatch = m;
+        labShotsNow = m.shotsRaw;
+        labHomeTeamId = m.homeTeamId;
+        com.gathin.broadcast.MatchStats.firstSeen(m.shotsRaw, labFirstSeen, now);
+        int[] goals = com.gathin.broadcast.AsSeen.goals(m.shotsRaw, m.homeTeamId);
+        labReads.add(stamp(g, now, com.gathin.broadcast.AsSeen.latest(m.shotsRaw, m.events), goals[0], goals[1]),
+                new Object[]{new ArrayList<>(m.momentum), BoardLab.cards(m.events)});
         com.gathin.broadcast.BoardFx.Sky sky = FotMob.sky(m);
         if (sky != null) labSky.put(g.id, sky);
         else labSky.remove(g.id);
@@ -1465,16 +1558,21 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             }
             int[] cards = BoardLab.cards(m.events);
             if (cards[0] + cards[1] > 0) labShown.add(g.id + "|referee");
-            return;
         }
-        String[] shot = com.gathin.broadcast.MatchStats.shotMoment(m.shotsRaw, labShots);
         if (labShots.size() > 600) labShots.clear();
-        if (shot != null) labWait(g.id, shot);
-        int[] cards = BoardLab.cards(m.events);
-        if (cards[0] + cards[1] > 0 && !m.referee.isEmpty() && labShown.add(g.id + "|referee")) {
-            String[] ref = com.gathin.broadcast.MatchStats.refCards(m.referee, cards[0], cards[1]);
-            if (ref != null) labWait(g.id, ref);
-        }
+    }
+
+    /** FotMob's momentum as it stood at the moment on the picture (null until a read has been reached). */
+    @SuppressWarnings("unchecked")
+    private List<int[]> labMomentumNow() {
+        Object[] r = labReads.pick(picture);
+        return r == null ? null : (List<int[]>) r[0];
+    }
+
+    /** The referee's cards so far as they stood at the moment on the picture, {yellows, reds} (null until a read is). */
+    private int[] labCardsNow() {
+        Object[] r = labReads.pick(picture);
+        return r == null ? null : (int[]) r[1];
     }
 
     /** A Lab stat waiting for its turn beside the board (a few at most). */
@@ -1565,11 +1663,12 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         if (dropping || lineups.isOut() || stats.isOut() || bug.closing()) return;
         if (now - goalShownAt < 90_000L || screen.ahead(now)) return;
         String hc = code(g.home, g.homeName), ac = code(g.away, g.awayName);
-        // The momentum wave once a half.
+        // The momentum wave once a half: FotMob's momentum as it stood at the moment on the picture, its minutes up to the
+        // one before the board's (a minute's pressure before a goal is no hint of it).
         if (live && minute >= 0 && statOn(c, "momentum") && g.id.equals(labFor)) {
-            String due = com.gathin.broadcast.BoardFx.waveDue(g.id, minute, labShown);
-            String[] w = due == null ? null : BoardLab.wave(labMomentum, minute, hc, ac);
-            if (w != null) {
+            List<int[]> mom = labMomentumNow();
+            String[] w = mom == null ? null : BoardLab.wave(mom, minute - 1, hc, ac);
+            if (w != null && com.gathin.broadcast.BoardFx.waveDue(g.id, minute, labShown) != null) {
                 showStats(java.util.Collections.singletonList(w));
                 return;
             }
@@ -1594,11 +1693,30 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             return;
         }
         labQueue.removeIf(q -> !g.id.equals(q[0]));
+        if (!g.id.equals(labFor)) return;
+        // A big save or a great finish once the picture has shown it (its minute over on the board's clock, a goal on the
+        // board), never as FotMob has it: the picture runs behind (AsSeen). One gone stale is dropped.
+        if (statOn(c, "shots")) {
+            String[] shot = com.gathin.broadcast.MatchStats.shotMoment(labShotsNow, labShots, picture, labFirstSeen, labHomeTeamId);
+            if (shot != null) {
+                showStats(java.util.Collections.singletonList(shot));
+                return;
+            }
+        }
+        // The referee's first booking, with the cards so far, once the picture has shown them.
+        int[] cards = labCardsNow();
+        if (cards != null && cards[0] + cards[1] > 0 && labMatch != null && !labMatch.referee.isEmpty() && labShown.add(g.id + "|referee")) {
+            String[] ref = com.gathin.broadcast.MatchStats.refCards(labMatch.referee, cards[0], cards[1]);
+            if (ref != null && statOn(c, "referee")) showStats(java.util.Collections.singletonList(ref));
+        }
     }
 
-    /** A stats moment's stats now: statsFor's, each under its own switch (the settings' Stats to show). */
+    /**
+     * A stats moment's stats now: statsFor's, as they stood at the moment on the picture (statsNow), each under its own
+     * switch (the settings' Stats to show).
+     */
     private List<String[]> statsPick(String slot) {
-        List<String[]> pick = statsFor(slot, statsBy);
+        List<String[]> pick = statsFor(slot, statsNow());
         pick.removeIf(st -> !statOn(c, BoardLab.statKey(st[0])));
         return pick;
     }
@@ -1662,23 +1780,36 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                 if (tick != null) ltc = VarExplained.notInEspn(VarExplained.ticker(tick, got == null ? null : got.varLines), var);
             }
             List<VarExplained.Seen> ltcSeen = ltc;
+            // What the read could give away (its latest moment, FotMob's goals), for what waits for the picture (AsSeen).
+            int upTo = Math.max(fm == null ? -1 : com.gathin.broadcast.AsSeen.latest(fm.shotsRaw, fm.events),
+                    got == null ? -1 : com.gathin.broadcast.AsSeen.latestMinute(got.events, 0));
+            int[] fg = fm == null ? new int[]{-1, -1} : com.gathin.broadcast.AsSeen.goals(fm.shotsRaw, fm.homeTeamId);
             App.main.post(() -> {
                 statsReading = false;
+                com.gathin.broadcast.AsSeen.Stamp st = stamp(g, System.currentTimeMillis(), upTo, fg[0], fg[1]);
                 if (recoloured) Espn.wornOn(g);   // the kits they wear in this game, from the next look on
-                if (pen != null) penaltyRead(g, (String) pen[0], (Drop[]) pen[1]);
-                if (read != null) fotmobRead(g, read);
-                if (var != null) varFromEspn(g, var);
-                if (ltcSeen != null) varFromTicker(g, ltcSeen);
+                // A penalty given (its card out until the kick) and VAR's checks and decisions: once the picture reaches this read.
+                if (pen != null) held.add(id, st, () -> penaltyRead(g, (String) pen[0], (Drop[]) pen[1]));
+                if (read != null) fotmobRead(g, read, st);
+                if (var != null) varFromEspn(g, var, st);
+                if (ltcSeen != null) varFromTicker(g, ltcSeen, st);
+                // Another game: the reads before it go.
+                if (!id.equals(statsFor)) {
+                    statsReads.clear();
+                    addedReads.clear();
+                }
                 if (got == null) {
                     if (!by.isEmpty()) {
-                        statsBy = by;
                         statsFor = id;
+                        statsReads.add(st, by);
+                        addedReads.add(addedStamp(st), addedUp.clone());
                     }
                     return;
                 }
                 if (!id.equals(statsFor)) addedUp = new int[]{-1, -1, -1, -1};
                 for (int i = 0; i < 4; i++) if (got.added[i] > 0) addedUp[i] = got.added[i];
-                if (!by.isEmpty()) statsBy = by;
+                addedReads.add(addedStamp(st), addedUp.clone());
+                if (!by.isEmpty()) statsReads.add(st, by);
                 statsFor = id;
                 lastSum = got;
                 sumFor = id;
@@ -2000,12 +2131,12 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     private final Set<String> subsSeen = new java.util.HashSet<>(), subsGames = new java.util.HashSet<>();
 
     /** FotMob's game read (main thread): its VAR check on the board, and each new substitution beside it. */
-    private void fotmobRead(Game g, FotMob.Match m) {
+    private void fotmobRead(Game g, FotMob.Match m, com.gathin.broadcast.AsSeen.Stamp st) {
         boolean own = g.id != null && g.id.equals(lastId) && mode == FOOTBALL_MODE;
         // FotMob's VAR events kept for VAR explained (the reason and the on-field call ESPN's words lack).
         VarExplained.fotmob(g.id, m.vars, m.reds);
-        if (own && m.varPending && !varExplained(c)) bug.varCheck(8_000L);
-        if (own) varFromFotMob(g, m);
+        // Its check under way, its decisions: on the board once the picture has reached this read.
+        if (own) varFromFotMob(g, m, st);
         // The minutes added FotMob has where ESPN's commentary has none (not every game has commentary).
         if (own) for (int i = 0; i < 4; i++) if (addedUp[i] <= 0 && m.added[i] > 0) addedUp[i] = m.added[i];
         if (own) {
@@ -2436,7 +2567,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         d.own = g != null && g.id != null && g.id.equals(lastId) && mode == FOOTBALL_MODE;
         // VAR explained has the board's own game's checks and decisions from the commentary: the plain alert not as well.
         if (d.own && "var".equals(a.kind) && varExplained(c) && (VarExplained.decidedLately(g.id, System.currentTimeMillis())
-                || VarExplained.checking(g.id, System.currentTimeMillis()))) return;
+                || VarExplained.checking(g.id, System.currentTimeMillis()) || varHeld.waiting(g.id))) return;
         if (d.own && "var".equals(a.kind)) bug.varCheck(8_000L);
         // The line-ups, while the board is up: as the TV's card beside it.
         if (d.lineups && lineupsOn(c) && a.summary != null && g != null && boardUp() && !(src instanceof FloatService)) {
@@ -2843,11 +2974,11 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     /** Pure: whether the minutes added stay out now: the game live, not half or full time, still the half they came in. */
     /** Pure: the minutes added in the board's own tab: none while their panel stands out beside it (it says them). */
     static String boardAdded(String added, boolean panelStands) {
-        return panelStands || added == null ? "" : added;
+        return com.gathin.broadcast.AddedTime.boardAdded(added, panelStands);
     }
 
     static boolean addedStands(int state, boolean halftime, boolean live, int period, int standingPeriod) {
-        return state == Game.LIVE && !halftime && live && period == standingPeriod;
+        return com.gathin.broadcast.AddedTime.stands(state == Game.LIVE, halftime, live, period, standingPeriod);
     }
 
     /**
@@ -3132,9 +3263,31 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         why.open();
     }
 
-    /** ESPN's commentary as the board read it (main thread): a VAR check or decision for its own game not seen before. */
-    private void varFromEspn(Game g, List<VarExplained.Seen> all) {
+    /**
+     * ESPN's commentary as the board read it (main thread): a VAR check or decision for its own game not seen before, on
+     * the board once the picture has reached the read (st): the data has it before the picture shows it.
+     */
+    private void varFromEspn(Game g, List<VarExplained.Seen> all, com.gathin.broadcast.AsSeen.Stamp st) {
         List<VarExplained.Seen> fresh = VarExplained.fresh(g.id, all);
+        boolean own = g.id != null && g.id.equals(lastId) && mode == FOOTBALL_MODE;
+        if (!own || !running || !varExplained(c) || !shows(c, FOOTBALL) || fresh.isEmpty()) return;
+        varHeld.add(g.id, st, () -> sayVar(g, fresh));
+    }
+
+    /**
+     * FotMob's live commentary as the board read it (main thread): a VAR check or decision for its own game not seen
+     * before (none from before the board came up), once the picture has reached the read. A quick check that leaves the
+     * referee's call as it was is written up there and nowhere else: neither ESPN's commentary nor FotMob's events have it.
+     */
+    private void varFromTicker(Game g, List<VarExplained.Seen> all, com.gathin.broadcast.AsSeen.Stamp st) {
+        List<VarExplained.Seen> fresh = VarExplained.fresh(g.id + "|ltc", all);
+        boolean own = g.id != null && g.id.equals(lastId) && mode == FOOTBALL_MODE;
+        if (!own || !running || !varExplained(c) || !shows(c, FOOTBALL) || fresh.isEmpty()) return;
+        varHeld.add(g.id, st, () -> sayVar(g, fresh));
+    }
+
+    /** VAR's checks and decisions read before, out of the board now the picture has reached them (still its own game). */
+    private void sayVar(Game g, List<VarExplained.Seen> fresh) {
         boolean own = g.id != null && g.id.equals(lastId) && mode == FOOTBALL_MODE;
         if (!own || !running || !varExplained(c) || !shows(c, FOOTBALL)) return;
         for (VarExplained.Seen s : fresh) {
@@ -3148,35 +3301,29 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     }
 
     /**
-     * FotMob's live commentary as the board read it (main thread): a VAR check or decision for its own game not seen
-     * before (none from before the board came up). A quick check that leaves the referee's call as it was is written up
-     * there and nowhere else: neither ESPN's commentary nor FotMob's events have it.
+     * FotMob's read for the board's own game (main thread): a check FotMob has under way (its scan along the board without
+     * VAR explained), and a decision only it has; on the board once the picture has reached the read (st).
      */
-    private void varFromTicker(Game g, List<VarExplained.Seen> all) {
-        List<VarExplained.Seen> fresh = VarExplained.fresh(g.id + "|ltc", all);
-        boolean own = g.id != null && g.id.equals(lastId) && mode == FOOTBALL_MODE;
-        if (!own || !running || !varExplained(c) || !shows(c, FOOTBALL)) return;
-        for (VarExplained.Seen s : fresh) {
-            if (s.call != null) {
-                VarExplained.enrich(s.call, VarExplained.fotmobVars(g.id));
-                varDecisionOut(g, s.call);
-            } else if (s.about != null) {
-                varCheckOut(g, s.about);
-            }
-        }
-    }
-
-    /** FotMob's read for the board's own game (main thread): a check FotMob has under way, and a decision only it has. */
-    private void varFromFotMob(Game g, FotMob.Match m) {
+    private void varFromFotMob(Game g, FotMob.Match m, com.gathin.broadcast.AsSeen.Stamp st) {
         List<String[]> fresh = VarExplained.freshFotmob(g.id, m.vars);
-        if (!running || !varExplained(c) || !shows(c, FOOTBALL)) return;
-        long now = System.currentTimeMillis();
-        if (m.varPending) varCheckOut(g, VarExplained.noCheck());
-        for (String[] e : fresh) {
-            VarExplained.Call call = VarExplained.fromFotMob(e, m.reds);
-            if (call == null || VarExplained.decidedLately(g.id, now) && !VarExplained.checking(g.id, now)) continue;
-            varDecisionOut(g, call);
-        }
+        boolean pending = m.varPending;
+        List<String[]> reds = new ArrayList<>(m.reds);
+        if (!pending && fresh.isEmpty()) return;
+        varHeld.add(g.id, st, () -> {
+            if (!running || !g.id.equals(lastId) || mode != FOOTBALL_MODE) return;
+            if (!varExplained(c)) {
+                if (pending) bug.varCheck(8_000L);
+                return;
+            }
+            if (!shows(c, FOOTBALL)) return;
+            long now = System.currentTimeMillis();
+            if (pending) varCheckOut(g, VarExplained.noCheck());
+            for (String[] e : fresh) {
+                VarExplained.Call call = VarExplained.fromFotMob(e, reds);
+                if (call == null || VarExplained.decidedLately(g.id, now) && !VarExplained.checking(g.id, now)) continue;
+                varDecisionOut(g, call);
+            }
+        });
     }
 
     /** For the tests and the previews: an alert dropped now. */
@@ -3258,7 +3405,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         if (dropping || stats.isOut() || lineups.isOut()) return false;
         return test(() -> {
             if (dropping || stats.isOut() || lineups.isOut()) return;
-            showStats(testStats(mode == FOOTBALL_MODE && lastId.equals(statsFor) ? statsBy : new HashMap<>()));
+            showStats(testStats(mode == FOOTBALL_MODE && lastId.equals(statsFor) ? statsNow() : new HashMap<>()));
         });
     }
 
@@ -3384,6 +3531,8 @@ public final class ScoreBoard implements LiveAlerts.Listener {
 
     private void testAdded(OverlayBug.Look l, long now) {
         addedTest(l, (now - addedFrom) / 1000);
+        // As in a game (AddedTime): no +N tab of the board's own while its panel is out with Added time stays on.
+        l.added = boardAdded(l.added, addedStays(c) && strip.isOut() && strip.drop() != null && strip.drop().addedMins > 0);
     }
 
     /**

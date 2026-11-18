@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="live_bug_replays">Away in replays: the scoreboard goes as the channel\'s does for a replay, and comes back with it for live play</string>
-    <string name="live_bug_pop_outs">Cover the channel\'s pop-outs: anything coming out of the channel\'s scoreboard is covered where it is, in your board\'s look</string>
+    <string name="live_bug_pop_outs">Cover the channel\'s score pop-ups: whatever comes out of the channel\'s own scoreboard (a scorer, a card, a sub, its added time) is covered where it is, in your board\'s look. Off, they show round your board</string>
+    <!-- The same switch in the player's own scoreboard options and in Move and resize, in the family's words. -->
+    <string name="live_bug_pop_outs_short">Cover the channel\'s score pop-ups</string>
 </resources>

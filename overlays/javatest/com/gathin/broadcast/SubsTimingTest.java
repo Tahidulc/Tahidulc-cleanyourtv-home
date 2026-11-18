@@ -24,9 +24,12 @@ public class SubsTimingTest {
 
     @Test
     public void itWaitsForThePictureToReachIt() {
-        // Known at 69:50 on the board: not yet; at 70:30, out.
+        // Known at 69:50 on the board: not yet; half way through its minute (70:30), not yet either (the change can come
+        // at 70:50); once its minute is over on the board (71:00), out.
         assertFalse(SubsTiming.due("71", 69 * 60 + 50, false, 5_000L));
-        assertTrue(SubsTiming.due("71", 70 * 60 + 30, false, 5_000L));
+        assertFalse(SubsTiming.due("71", 70 * 60 + 30, false, 5_000L));
+        assertFalse(SubsTiming.due("71", 70 * 60 + 59, false, 5_000L));
+        assertTrue(SubsTiming.due("71", 71 * 60, false, 5_000L));
         // Known late: at once.
         assertTrue(SubsTiming.due("71", 72 * 60, false, 0L));
         // The channel has just shown one, or no clock to go by, or waited its longest: at once.

@@ -12,6 +12,22 @@ import java.util.Collections;
 /** What the plates over the channel's pop-outs write, and how a plate is matched with the one before. */
 public class BugCoverTest {
     @Test
+    public void theCoverSwitchOffCoversNothingWhateverAwayInReplaysSays() {
+        // "Cover the channel's score pop-ups" off: no plate, with "Away in replays" on or off, the channel's own up or not.
+        org.junit.Assert.assertFalse(BugCover.covers(false, false));
+        org.junit.Assert.assertFalse(BugCover.covers(true, false));
+        // On: covered while the channel's own scoreboard is up, never in its replays (nothing grows out of it then).
+        assertTrue(BugCover.covers(false, true));
+        org.junit.Assert.assertFalse(BugCover.covers(true, true));
+        // The channel's scoreboard is still watched for "Away in replays" alone, and for the pop-ups alone.
+        assertTrue(BugCover.wanted(true, false));
+        assertTrue(BugCover.wanted(false, true));
+        org.junit.Assert.assertFalse(BugCover.wanted(false, false));
+        // Its words, the family's, the same in the Scoreboard card and the hold-OK menu.
+        assertEquals("Cover the channel's score pop-ups", BoardCover.POP_UPS);
+    }
+
+    @Test
     public void wordsAreTidiedIntoCapitals() {
         assertEquals("GOAL OKAFOR 33'", BugCover.words(Collections.singletonList("Goal  Okafor 33'")));
         assertEquals("ADDED TIME: +4", BugCover.words(Collections.singletonList("Added time: +4")));
