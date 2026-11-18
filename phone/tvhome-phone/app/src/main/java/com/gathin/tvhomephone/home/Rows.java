@@ -225,7 +225,9 @@ final class Rows {
         WatchHolder(Context c) {
             super(new WatchCard(c));
             card = (WatchCard) itemView;
-            RecyclerView.LayoutParams lp = new RecyclerView.LayoutParams(Glass.dp(c, WATCH_W), Glass.dp(c, WATCH_H));
+            // A tablet: a little larger, room for the title in its spaced capitals.
+            float k = com.gathin.tvhomephone.glass.Wide.tablet(c) ? 1.2f : 1f;
+            RecyclerView.LayoutParams lp = new RecyclerView.LayoutParams(Glass.dp(c, WATCH_W * k), Glass.dp(c, WATCH_H * k));
             lp.rightMargin = Glass.dp(c, GAP);
             card.setLayoutParams(lp);
             chip = Glass.text(c, "ON TV", 10, Glass.TEXT, Glass.bodySemi(c));

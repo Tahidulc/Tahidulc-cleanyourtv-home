@@ -58,6 +58,8 @@ final class Sheets {
         b.setState(BottomSheetBehavior.STATE_EXPANDED);
         b.setDraggable(draggable);
         d.show();
+        // A tablet: a card in the middle of the screen rather than a sheet across its foot.
+        com.gathin.tvhomephone.glass.Wide.card(d);
         return d;
     }
 

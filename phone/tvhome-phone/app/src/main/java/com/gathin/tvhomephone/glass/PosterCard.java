@@ -583,8 +583,10 @@ public final class PosterCard extends LinearLayout {
     /** As above, or a landscape card's: 66% of a phone's width (one and a half across), 220–300dp; 300dp on a tablet. */
     public static int rowWidth(Context c, boolean wide) {
         int sw = c.getResources().getConfiguration().screenWidthDp;
+        // A small tablet upright (600 to 720dp across) a little smaller, so more go across than on a phone.
+        boolean small = sw < 720 && Wide.tablet(c);
         float w = wide ? (sw >= 600 ? 300f : Math.max(220f, Math.min(300f, sw * 0.66f)))
-                : sw >= 600 ? 176f : Math.max(136f, Math.min(176f, sw * 0.37f));
+                : sw >= 600 ? (small ? 160f : 176f) : Math.max(136f, Math.min(176f, sw * 0.37f));
         return Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, w, c.getResources().getDisplayMetrics()));
     }
 

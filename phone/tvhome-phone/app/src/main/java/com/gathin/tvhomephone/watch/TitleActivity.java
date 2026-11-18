@@ -119,6 +119,11 @@ public class TitleActivity extends AppCompatActivity {
         c.startActivity(intent(c, t));
     }
 
+    /** A tablet's type a little larger, as the tabs' (Wide); a phone's as it is. */
+    @Override protected void attachBaseContext(Context base) {
+        super.attachBaseContext(com.gathin.tvhomephone.glass.Wide.wrap(base));
+    }
+
     /** Its page, and Play pressed on it at once (Home's hero): from the family's own playlists only, as Play is. */
     public static void play(Context c, Title t) {
         c.startActivity(intent(c, t).putExtra("autoplay", true));

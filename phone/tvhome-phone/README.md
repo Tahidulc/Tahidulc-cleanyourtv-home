@@ -654,3 +654,16 @@ Playlists sync off; removing one playlist removes it everywhere. SYNC.md has the
 4K, then 1080p, 720p and the rest; Dolby Vision or HDR before SDR, Dolby Atmos or surround before stereo, then the bigger
 file; AVI and the like last. TorBox's copies come before the playlists' (unless Settings put them last), and the
 playlists' copies are in that order too. 5.17's 1080p-first order and its preference for files under 20 GB are gone.
+
+**Made for tablets too.** On a tablet (its shorter side 600dp or more) everything is laid out for the room it has; a
+phone is exactly as it was. The type is a tenth larger (at most 1.3 of the family's own text size, unless they chose
+more), and the floating tab bar sits in the middle of the foot, no wider than its five tabs need, as Home's and Watch's
+pills do. Watch's grid has four to ten posters across, each a little larger than a phone's; Home's rows are a little
+smaller on a small tablet held upright, so more go across, and Continue watching's cards a little larger, with room for
+their titles. Sports has two columns where there is room: the football down the left, the rest of the sport down the
+right. Settings is one column that reads well on a tablet held upright; on its side, the list of sections down the left
+on a card of its own and the chosen one's page beside it (the one chosen last opens again; a playlist's notification
+opens Live TV's). Sheets (a programme's details, a channel's menu, Cast, Also Showing On, the sources) come as cards in
+the middle of the screen rather than across its foot. Live TV's picture beside the details on a tablet held upright is
+about half its width, the buttons in Live TV's top bar and over the full-screen player are a little larger to touch, and
+the player's panel keeps its words to the middle of a wide screen.

@@ -220,7 +220,9 @@ public class LiveTvFragment extends Fragment {
             band = new LinearLayout(c);
             band.setBackgroundColor(GuideLook.PANEL);
             band.setPadding(Ui.dp(c, 16), Ui.dp(c, 14), 0, Ui.dp(c, 6));
-            band.addView(inline, new LinearLayout.LayoutParams(Ui.dp(c, 320), Ui.dp(c, 180)));
+            // The picture about half the tablet's width (288 to 420dp), 16:9, the details beside it.
+            int iw = Math.min(Ui.dp(c, 420), Math.max(Ui.dp(c, 288), getResources().getDisplayMetrics().widthPixels / 2 - Ui.dp(c, 12)));
+            band.addView(inline, new LinearLayout.LayoutParams(iw, iw * 9 / 16));
             details = new Details(c, lib, false, 4);
             band.addView(details, new LinearLayout.LayoutParams(0, -2, 1f));
             head.addView(band, new LinearLayout.LayoutParams(-1, -2));
@@ -756,12 +758,14 @@ public class LiveTvFragment extends Fragment {
 
     /** A top-bar button as a dark circle, as the guide's own buttons. */
     private static ImageButton round(Context c, ImageButton b) {
-        b.setBackground(Ui.touch(c, false, GuideLook.PILL, 22));
+        b.setBackground(Ui.touch(c, false, GuideLook.PILL, com.gathin.tvhomephone.glass.Wide.tablet(c) ? 24 : 22));
         return b;
     }
 
     private static LinearLayout.LayoutParams roundParams(Context c) {
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Ui.dp(c, 44), Ui.dp(c, 44));
+        // A little larger to touch on a tablet.
+        int s = Ui.dp(c, com.gathin.tvhomephone.glass.Wide.tablet(c) ? 48 : 44);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(s, s);
         lp.leftMargin = Ui.dp(c, 6);
         return lp;
     }

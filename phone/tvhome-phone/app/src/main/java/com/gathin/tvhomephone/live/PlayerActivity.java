@@ -2020,7 +2020,10 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     private void clearCutout() {
-        int side = Ui.dp(this, 20);
+        // On a tablet the panel's words and mini guide keep to the middle 960dp, as wide as reads well.
+        int side = com.gathin.tvhomephone.glass.Wide.tablet(this)
+                ? com.gathin.tvhomephone.glass.Wide.side(getResources().getDisplayMetrics().widthPixels, Ui.dp(this, 960), Ui.dp(this, 24))
+                : Ui.dp(this, 20);
         panel.setPadding(side + cut.left, Ui.dp(this, 36), side + cut.right, Ui.dp(this, 12) + cut.bottom);
         FrameLayout.LayoutParams tp = (FrameLayout.LayoutParams) top.getLayoutParams();
         tp.topMargin = cut.top;
@@ -2127,9 +2130,11 @@ public class PlayerActivity extends AppCompatActivity {
 
     private ImageButton button(int icon, int label, View.OnClickListener l) {
         ImageButton b = Ui.icon(this, icon, label);
-        b.setBackground(Ui.touch(this, false, 0x990B0C21, 24));
+        // A little larger to touch on a tablet.
+        int s = com.gathin.tvhomephone.glass.Wide.tablet(this) ? 56 : 48;
+        b.setBackground(Ui.touch(this, false, 0x990B0C21, s / 2f));
         b.setOnClickListener(l);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Ui.dp(this, 48), Ui.dp(this, 48));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Ui.dp(this, s), Ui.dp(this, s));
         lp.leftMargin = Ui.dp(this, 8);
         b.setLayoutParams(lp);
         return b;
