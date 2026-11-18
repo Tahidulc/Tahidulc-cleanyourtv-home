@@ -157,8 +157,9 @@ final class HomeScreen extends Screen implements HomeCard.Host {
             else home.empty("Homefield", lib.busy() || lib.status().isEmpty() ? "Loading your channels…" : lib.status());
         }
         home.set(list);
-        // Nothing to show yet: the remote waits on the tab bar (Settings' cog for a first playlist).
-        if (list.isEmpty() && tv.tabs() != null) tv.tabs().enter();
+        // Nothing to show yet: the remote waits on the tab bar (Settings' cog for a first playlist), but only while Home
+        // is the page on top, so a list refreshed under the guide never takes the remote from it.
+        if (list.isEmpty() && tv.tabs() != null && tv.isTop(this)) tv.tabs().enter();
         HomeCard.Card c = home.card();
         if (c != null) focused(c);
     }
