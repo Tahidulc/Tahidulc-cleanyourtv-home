@@ -339,6 +339,11 @@ final class BoardBug extends View {
 
     /** The competition look drawn now (its own, or By competition's for the game's), or null for the board's own looks. */
     CompBug.Kind kind() {
+        return kindOf(style, gameKind);
+    }
+
+    /** Pure: the competition look a style draws (its own, or By competition's: the game's), or null for the board's own looks. */
+    static CompBug.Kind kindOf(Style style, CompBug.Kind gameKind) {
         return style.kind != null ? style.kind : style == Style.COMPETITION ? gameKind : null;
     }
 
@@ -1878,14 +1883,28 @@ final class BoardBug extends View {
         return 2 * (h * 0.09f + h * 1.2f) + cardMid(h);
     }
 
-    /** Whether the minutes added stand beside the board: there are some, and the board keeps room for itself beside them. */
-    private boolean addedTabbed(int w, int h) {
-        return !look.added.isEmpty() && w - addedTab(h) >= h * (style == Style.CARD ? 2.6f : 2f);
+    /**
+     * Whether the minutes added stand beside the board (AddedTime.outside, as every look and the launcher's and phone's):
+     * there are some, and the board keeps room for itself beside them, or the look cannot write them by its clock (CompBug's).
+     */
+    boolean addedTabbed(int w, int h) {
+        if (look.added.isEmpty()) return false;
+        int room = Math.round(addedTab(h));
+        return com.gathin.broadcast.AddedTime.outside(com.gathin.broadcast.AddedTime.drawsInside(kind()), w - room, room, h,
+                style == Style.CARD ? com.gathin.broadcast.AddedTime.LEAST_CARD : com.gathin.broadcast.AddedTime.LEAST);
     }
 
-    /** The tab's height: half the board's beside a tall one (Stacked, Card), else most of it. */
+    /**
+     * The tab's band, {top, height} (AddedTime.band, as every look and the launcher's and phone's): a competition look's
+     * beside its main row, a tall look's (Stacked, Card, the 3D kits) half its height on its foot, else 0.8 of it across it.
+     */
+    float[] tabBand(int h) {
+        return com.gathin.broadcast.AddedTime.band(kind(), com.gathin.broadcast.AddedTime.tall(tall()), h);
+    }
+
+    /** The tab's height: its band's. */
     private float tabHeight(int h) {
-        return tall() > 1.2f ? h * 0.5f : h * 0.8f;
+        return tabBand(h)[1];
     }
 
     /** The room the minutes added take beside the board ("+4" in a tab of their own, a little apart); none without them. */
@@ -2064,7 +2083,7 @@ final class BoardBug extends View {
         float in = Math.min(1f, since / (float) TAB_IN_MS);
         float gap = ch * 0.06f, tw = tab - gap, th = tabHeight(ch);
         float left = body + gap - (1f - ease(in)) * (tw + gap);
-        float top = tall() > 1.2f ? edgePx + ch - th : edgePx + (ch - th) / 2f;
+        float top = edgePx + tabBand(ch)[0];
         float rad = p.round >= 0.5f ? th / 2f : th * 0.12f;
         cv.save();
         // Out from behind the board.
@@ -2238,7 +2257,7 @@ final class BoardBug extends View {
     /** The shootout's dots in their tab beside the clock: the home side's row over the away side's, on the clock's ground. */
     private void pensTabDraw(Canvas cv, int body, int edgePx, int ch, int tab) {
         float gap = ch * 0.06f, tw = tab - gap, th = tabHeight(ch);
-        float left = body + gap, top = tall() > 1.2f ? edgePx + ch - th : edgePx + (ch - th) / 2f;
+        float left = body + gap, top = edgePx + tabBand(ch)[0];
         float rad = p.round >= 0.5f ? th / 2f : th * 0.12f;
         int ground = p.clock != 0 ? p.clock : p.ground != 0 ? p.ground : CLOCK;
         fill.setShader(null);
