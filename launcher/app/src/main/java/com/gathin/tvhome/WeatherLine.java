@@ -98,7 +98,7 @@ final class WeatherLine {
         t.setText(s);
         t.setTextColor(color);
         t.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, sp);
-        t.setTypeface(ctx.getResources().getFont(R.font.outfit_regular));
+        t.setTypeface(Fonts.get(ctx, R.font.outfit_regular));
         t.setGravity(android.view.Gravity.CENTER);
         t.setSingleLine(true);
         return t;

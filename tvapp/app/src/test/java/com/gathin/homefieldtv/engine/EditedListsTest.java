@@ -91,6 +91,8 @@ public class EditedListsTest {
         lib.toggleFavourite(ch(2));
         lib.watched(ch(2));
         assertTrue(keys(lib.all()).contains("e:2"));
+        // Home's On now: the favourites first.
+        assertEquals("e:2", lib.onNowAt(System.currentTimeMillis()).channels.get(0).key);
         ChannelEdits.setHidden(c, "e:2", true);
         assertFalse(keys(lib.all()).contains("e:2"));
         assertEquals(Arrays.asList("e:1", "e:3"), keys(lib.group("Alpha").channels));
@@ -104,7 +106,9 @@ public class EditedListsTest {
         assertTrue(lib.recent(null).isEmpty());
         assertFalse(lib.listed(ch(2)));
         assertFalse(Shown.listed(c, ch(2)));
-        // Never started by itself on Home's mini TV.
+        // Nor on Home, a favourite though it is.
+        assertFalse(keys(lib.onNowAt(System.currentTimeMillis()).channels).contains("e:2"));
+        // Never the channel started by itself (Library.playable).
         assertEquals("e:1", lib.playable(ch(2)).key);
         // Shown again: back where it was.
         ChannelEdits.setHidden(c, "e:2", false);

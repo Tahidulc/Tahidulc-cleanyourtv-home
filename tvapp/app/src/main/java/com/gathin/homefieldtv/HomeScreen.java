@@ -10,32 +10,36 @@ import com.gathin.homefieldtv.engine.Catalog;
 import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.Library;
+import com.gathin.homefieldtv.engine.LogoPack;
+import com.gathin.homefieldtv.engine.Reminders;
 import com.gathin.homefieldtv.engine.Resume;
 import com.gathin.homefieldtv.prefs.ChannelEdits;
-import com.gathin.homefieldtv.engine.LogoPack;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
- * Home, in the colour theme's look: the menu's rail down the left (Rail: Left from the rows, or Back, opens it into the
- * drawer), the date and the clock at the top left in the light accent, the big picture of whatever the remote is on,
- * the mini TV at the top right playing the channel last watched, and rows under them: what's on now, Continue
- * watching, the family's own TorBox titles, the newest films and TV shows from the playlists, sport on now and the
- * favourite channels. The remote starts in the rows; with no rows yet (no playlist, or still loading) on the menu.
+ * Home, as the family's hero-card video has it (HomeCard): one big card at a time for whatever the remote is on, from
+ * the sections along the top: what's on now, Continue watching, the family's own TorBox titles, the newest films and TV
+ * shows from the playlists, sport on now and the favourite channels. A channel's card is its programme on now with its
+ * next ones along its foot; a series' has its episodes, a film's like ones. OK on a card: a channel full screen, a
+ * title's page, or carrying on from where it was left; on a tile of its strip: that episode (every source first), that
+ * like title, the programme on now (or a reminder for a later one). Homefield's mark at the top left opens the menu
+ * (Rail, its drawer coming in over the page); CH+ and CH- go straight to the next channel full screen.
  */
-final class HomeScreen extends Screen implements Rows.Host, LiveTv.Listener {
+final class HomeScreen extends Screen implements HomeCard.Host {
+    static final String ON_NOW = "on", CONTINUE = "continue", TORBOX = "torbox", FILMS = "films", SHOWS = "shows",
+            SPORT = "sport", FAVOURITES = "favourites";
+    private static final int MAX = 30;
+
     private Rail rail;
-    private MiniTv mini;
-    private Hero hero;
-    private Rows rows;
-    private DateLine date;
-    private boolean inMenu = true;
-    /** A key pressed since Home was made: until then the remote goes into the rows as soon as there are some. */
+    private HomeCard home;
+    private boolean inMenu;
+    /** A key pressed since Home was made: until then the remote goes to the cards as soon as there are some. */
     private boolean touched;
     private final Handler h = new Handler(Looper.getMainLooper());
-    private Catalog.Title pending;
-    private Rows.Tile heroTile;
+    private HomeCard.Card pending;
     private final Runnable fetch = this::fetchDetails;
 
     HomeScreen(TvActivity tv) {
@@ -43,91 +47,37 @@ final class HomeScreen extends Screen implements Rows.Host, LiveTv.Listener {
     }
 
     @Override View build() {
+        Cine.init(tv);
         FrameLayout f = new FrameLayout(tv);
-        f.setBackgroundColor(Palette.GROUND);
+        f.setBackgroundColor(Cine.GROUND);
+        home = new HomeCard(tv, this);
         rail = new Rail(tv, Rail.HOME);
-        // The menu comes back to the item it was on.
         rail.keep = true;
-        mini = new MiniTv(tv);
-        hero = new Hero(tv);
-        hero.titleLines = 2;
-        hero.plotLines = 3;
-        hero.textY = 136f;
-        hero.setTitleSize(56f);
-        rows = new Rows(tv);
-        rows.setHost(this);
-        rows.setActive(false);
-        date = new DateLine(tv);
-        f.addView(hero.picture, new FrameLayout.LayoutParams(-1, -1));
-        f.addView(hero, new FrameLayout.LayoutParams(-1, -1));
-        f.addView(date, new FrameLayout.LayoutParams(-1, -1));
-        f.addView(rows, new FrameLayout.LayoutParams(-1, -1));
-        f.addView(mini, new FrameLayout.LayoutParams(-1, -1));
+        rail.hideClosed = true;
+        f.addView(home, new FrameLayout.LayoutParams(-1, -1));
         f.addView(rail, new FrameLayout.LayoutParams(-1, -1));
         fill();
         return f;
     }
 
-    /** The date and the clock at the top left, as the guide shows them: "Tue, 17 Nov, 10.45am" in the light accent. */
-    private static final class DateLine extends android.view.View {
-        private final android.text.TextPaint p = Type.paint(Type.ROW, Type.MEDIUM, Palette.ACCENT_LIGHT);
-
-        DateLine(android.content.Context c) {
-            super(c);
-        }
-
-        @Override protected void onDraw(android.graphics.Canvas c) {
-            c.drawText(Ui.dateClock(System.currentTimeMillis()), Ui.f(Billboard.TEXT_X), Ui.f(72), p);
-        }
-    }
-
     @Override void shown() {
-        tv.live.addListener(this);
-        tv.live.place(mini.tvRect());
-        Channel c = tv.channelToPlay();
-        // Back here because the phone stopped what it sent: the mini TV stays off until the remote plays something.
-        if (tv.takeMiniTvHeld()) tv.live.stop();
-        else if (c != null) tv.live.play(c);
-        else tv.live.forget();
+        // Home has no live window: the stream let go (the phone's "stopped" flag taken, as there is nothing to hold off).
+        tv.takeMiniTvHeld();
+        tv.live.stop();
+        tv.live.place(null);
         fill();
     }
 
     @Override void hidden() {
-        tv.live.removeListener(this);
         h.removeCallbacks(fetch);
-    }
-
-    @Override public void liveChanged() {
-        updateNote();
-        mini.invalidate();
-    }
-
-    private void updateNote() {
-        Library lib = Library.get(tv);
-        String note;
-        if (!lib.hasSource()) note = "Add your playlist in Settings to watch TV here.";
-        else if (!lib.ready()) note = lib.busy() ? "Loading your channels…" : lib.status().isEmpty() ? "Loading your channels…" : lib.status();
-        else note = "";
-        if (!note.equals(mini.note)) {
-            mini.note = note;
-            mini.invalidate();
-        }
     }
 
     @Override void tick() {
         rail.invalidate();
-        mini.invalidate();
-        date.invalidate();
         fill();
     }
 
     @Override void channelsChanged() {
-        // Not while another app is in front: the lists made again then (a PIN locked again) mustn't start the mini TV.
-        if (tv.showing(this)) {
-            Channel c = tv.channelToPlay();
-            if (c != null) tv.live.play(c);
-            else tv.live.forget();
-        }
         fill();
     }
 
@@ -135,199 +85,221 @@ final class HomeScreen extends Screen implements Rows.Host, LiveTv.Listener {
         fill();
     }
 
-    // ---- the rows -----------------------------------------------------------------------------------------------
+    // ---- the sections -------------------------------------------------------------------------------------------
 
     private void fill() {
-        if (rows == null) return;
-        updateNote();
+        if (home == null) return;
         Library lib = Library.get(tv);
         Catalog cat = Catalog.get(tv);
         long now = System.currentTimeMillis();
-        List<Rows.Row> list = new ArrayList<>();
+        List<HomeCard.Section> list = new ArrayList<>();
 
-        List<Rows.Tile> onNow = new ArrayList<>(), sport = new ArrayList<>(), favs = new ArrayList<>();
-        boolean guide = lib.hasGuide();
-        // What's on now and the sport in it: found off the main thread (Library.onNow), the rows made again when it is.
+        List<HomeCard.Card> onNow = new ArrayList<>(), sport = new ArrayList<>(), favs = new ArrayList<>();
+        // What's on now and the sport in it: found off the main thread (Library.onNow), made again when it is.
         Library.OnNow on = lib.onNow(now, this::fill);
-        for (Channel c : on.channels) {
-            Guide.Schedule s = lib.schedule(c.key);
-            onNow.add(channelTile(lib, c, s, s == null ? -1 : s.at(now), now));
-        }
-        for (Channel c : on.sport) {
-            Guide.Schedule s = lib.schedule(c.key);
-            sport.add(channelTile(lib, c, s, s == null ? -1 : s.at(now), now));
-        }
+        for (Channel c : on.channels) if (onNow.size() < MAX) onNow.add(channelCard(lib, c, now));
+        for (Channel c : on.sport) if (sport.size() < MAX) sport.add(channelCard(lib, c, now));
         for (String k : lib.favourites()) {
             Channel c = lib.byKey(k);
-            if (c == null || favs.size() >= 24) continue;
-            Guide.Schedule s = lib.schedule(c.key);
-            favs.add(channelTile(lib, c, s, s == null ? -1 : s.at(now), now));
+            // Not one the family hid (Hide channel): off Home as off every list.
+            if (c != null && !ChannelEdits.hidden(c.key) && favs.size() < MAX) favs.add(channelCard(lib, c, now));
         }
-        if (!onNow.isEmpty()) list.add(new Rows.Row(guide ? "On now" : "Your channels", Rows.CHANNEL, onNow));
+        if (!onNow.isEmpty()) list.add(new HomeCard.Section(lib.hasGuide() ? "On now" : "Your channels", ON_NOW, onNow));
 
-        List<Rows.Tile> cont = new ArrayList<>();
+        List<HomeCard.Card> going = new ArrayList<>();
         for (Resume.Point p : Resume.all(tv)) {
             Catalog.Title t = cat.title(p.title);
-            if (t == null) continue;
-            Rows.Tile tile = new Rows.Tile(p);
-            tile.picture = p.picture;
-            tile.fallback = t.backdrop.isEmpty() ? t.poster : t.backdrop;
-            tile.title = t.name;
-            tile.subtitle = p.subtitle.isEmpty() ? Ui.left(p.duration - p.position) : p.subtitle;
-            tile.progress = p.position == 0 ? -1f : p.progress();
-            cont.add(tile);
-            if (cont.size() >= 20) break;
+            if (t != null && going.size() < 20) going.add(resumeCard(p, t));
         }
-        if (!cont.isEmpty()) list.add(new Rows.Row("Continue watching", Rows.WIDE, cont));
+        if (!going.isEmpty()) list.add(new HomeCard.Section("Continue watching", CONTINUE, going));
 
-        // The family's own TorBox films and shows that no playlist has, newest first, with TorBox's cloud.
+        // The family's own TorBox films and shows that no playlist has, newest first.
         List<Catalog.Title> own = new ArrayList<>(cat.own(false));
         own.addAll(cat.own(true));
         own.sort((a, b) -> Long.compare(b.added, a.added));
-        List<Rows.Tile> mine = posters(own.subList(0, Math.min(30, own.size())));
-        for (Rows.Tile t : mine) t.torbox = true;
-        if (!mine.isEmpty()) list.add(new Rows.Row(Catalog.TORBOX, Rows.POSTER, mine));
+        List<HomeCard.Card> mine = titleCards(own);
+        if (!mine.isEmpty()) list.add(new HomeCard.Section(Catalog.TORBOX, TORBOX, mine));
+        List<HomeCard.Card> films = titleCards(cat.recent(false, MAX));
+        if (!films.isEmpty()) list.add(new HomeCard.Section("New films", FILMS, films));
+        List<HomeCard.Card> shows = titleCards(cat.recent(true, MAX));
+        if (!shows.isEmpty()) list.add(new HomeCard.Section("New TV shows", SHOWS, shows));
+        if (!sport.isEmpty()) list.add(new HomeCard.Section("Sport on now", SPORT, sport));
+        if (!favs.isEmpty()) list.add(new HomeCard.Section("Favourites", FAVOURITES, favs));
 
-        List<Rows.Tile> films = posters(cat.recent(false, 30));
-        if (!films.isEmpty()) list.add(new Rows.Row("New films", Rows.POSTER, films));
-        List<Rows.Tile> shows = posters(cat.recent(true, 30));
-        if (!shows.isEmpty()) list.add(new Rows.Row("New TV shows", Rows.POSTER, shows));
-        if (!sport.isEmpty()) list.add(new Rows.Row("Sport on now", Rows.CHANNEL, sport));
-        if (!favs.isEmpty()) list.add(new Rows.Row("Your favourite channels", Rows.CHANNEL, favs));
-        rows.setRows(list);
+        if (list.isEmpty()) {
+            if (!lib.hasSource()) home.empty("Welcome to Homefield", "Add your family's playlist in Settings: live TV, films and shows all come from it.");
+            else home.empty("Homefield", lib.busy() || lib.status().isEmpty() ? "Loading your channels…" : lib.status());
+        }
+        home.set(list);
         if (list.isEmpty() && !inMenu) {
             inMenu = true;
             rail.setActive(true);
-            rows.setActive(false);
         } else if (!list.isEmpty() && inMenu && !touched) {
-            // The remote starts in the rows as soon as there are some.
-            enterRows();
-            return;
-        } else if (list.isEmpty() && !rail.active()) {
-            // Nothing to show yet: the menu open, to Settings or a section.
-            rail.setActive(true);
+            inMenu = false;
+            rail.setActive(false);
         }
-        showHero();
+        HomeCard.Card c = home.card();
+        if (c != null) focused(c);
     }
 
-    static Rows.Tile channelTile(Library lib, Channel c, Guide.Schedule s, int i, long now) {
-        Rows.Tile t = new Rows.Tile(c);
-        t.logo = LogoPack.url(c);
-        if (i >= 0) {
-            t.title = s.title[i];
-            t.subtitle = lib.number(c) + "  " + ChannelEdits.name(c) + "  ·  " + Ui.left(s.stop[i] - now);
-            t.progress = (now - s.start[i]) / (float) Math.max(1, s.stop[i] - s.start[i]);
-        } else {
-            t.title = ChannelEdits.name(c);
-            t.subtitle = String.valueOf(lib.number(c));
-        }
-        return t;
-    }
-
-    static List<Rows.Tile> posters(List<Catalog.Title> titles) {
-        List<Rows.Tile> out = new ArrayList<>(titles.size());
-        for (Catalog.Title t : titles) {
-            Rows.Tile tile = new Rows.Tile(t);
-            tile.picture = t.poster;
-            tile.title = t.name;
-            out.add(tile);
-        }
+    private List<HomeCard.Card> titleCards(List<Catalog.Title> titles) {
+        List<HomeCard.Card> out = new ArrayList<>();
+        for (int i = 0; i < titles.size() && out.size() < MAX; i++) out.add(titleCard(titles.get(i)));
         return out;
     }
 
-    // ---- the big picture ----------------------------------------------------------------------------------------
-
-    private void showHero() {
-        // On the menu: the newest film, as the guide puts its own pick of the day there; else the tile the rows were on.
-        Rows.Tile t = rows.tile();
-        if (inMenu) {
-            Rows.Row films = rows.find("New films");
-            if (films != null && !films.tiles.isEmpty()) t = films.tiles.get(0);
+    /** A channel's card: its programme on now (else its name), when it runs, the channel, the time left; its logo. */
+    static HomeCard.Card channelCard(Library lib, Channel c, long now) {
+        Guide.Schedule s = lib.schedule(c.key);
+        int i = s == null ? -1 : s.at(now);
+        // The family's name for it (Rename channel) and its logo as the guide shows it (a new one, or the playlist's).
+        String name = ChannelEdits.name(c), logo = LogoPack.url(c);
+        String number = lib.number(c) > 0 ? lib.number(c) + "  " + name : name;
+        if (i >= 0) {
+            float done = (now - s.start[i]) / (float) Math.max(1, s.stop[i] - s.start[i]);
+            return new HomeCard.Card(c, "c:" + c.key, s.title[i], new String[]{Ui.span(s.start[i], s.stop[i]), number,
+                    Ui.left(s.stop[i] - now)}, 0, "", logo, true, done);
         }
-        heroTile = t;
-        if (t == null) {
-            Library lib = Library.get(tv);
-            if (!lib.hasSource()) {
-                hero.show("", "", "Welcome to Homefield", "", 0,
-                        "Add your family's playlist in Settings: an M3U address or an Xtream Codes login. Live TV, the guide, "
-                                + "films and TV shows all come from it.", "", false);
-            } else {
-                hero.show("", "", lib.busy() ? "Loading your channels…" : "Homefield", "", 0, lib.status(), "", false);
-            }
-            return;
-        }
-        heroFor(tv, hero, t, now());
-        h.removeCallbacks(fetch);
-        pending = t.item instanceof Catalog.Title ? (Catalog.Title) t.item
-                : t.item instanceof Resume.Point ? Catalog.get(tv).title(((Resume.Point) t.item).title) : null;
-        if (pending != null && Catalog.get(tv).cachedDetails(pending) == null && !pending.series) h.postDelayed(fetch, 450);
+        return new HomeCard.Card(c, "c:" + c.key, name, new String[]{number, c.group}, 0, "", logo, false, -1f);
     }
 
-    private static long now() {
-        return System.currentTimeMillis();
+    private HomeCard.Card titleCard(Catalog.Title t) {
+        Catalog.Details d = Catalog.get(tv).cachedDetails(t);
+        HomeCard.Card c = new HomeCard.Card(t, "t:" + t.key, t.name, facts(t, d, null), stars(t, d), picture(t, d), "", false, -1f);
+        return c;
+    }
+
+    private HomeCard.Card resumeCard(Resume.Point p, Catalog.Title t) {
+        Catalog.Details d = Catalog.get(tv).cachedDetails(t);
+        List<String> f = new ArrayList<>();
+        String line = BrowseScreen.resumeLine(t.series ? p.subtitle : "", p.position, p.duration);
+        if (!line.isEmpty()) for (String s : line.split(" · ")) f.add(s);
+        if (!t.year.isEmpty()) f.add(t.year);
+        String pic = picture(t, d);
+        if (pic.isEmpty()) pic = p.picture;
+        return new HomeCard.Card(p, "r:" + t.key, t.name, f.toArray(new String[0]), stars(t, d), pic, "", false,
+                p.position > 0 ? p.progress() : -1f);
+    }
+
+    private static String picture(Catalog.Title t, Catalog.Details d) {
+        return d != null && !d.backdrop.isEmpty() ? d.backdrop : !t.backdrop.isEmpty() ? t.backdrop : t.poster;
+    }
+
+    /**
+     * Pure: a title card's facts, as the video's line has them: a series' season (the one carried on in, else its
+     * newest), a film's length; its year, first genre and age ("15+").
+     */
+    static String[] facts(Catalog.Title t, Catalog.Details d, Resume.Point p) {
+        List<String> out = new ArrayList<>();
+        if (t.series && d != null && !d.seasons.isEmpty()) {
+            int season = d.seasons.get(d.seasons.size() - 1).number;
+            Catalog.Episode e = p == null ? null : d.episode(p.episode);
+            if (e != null) season = e.season;
+            out.add("Season " + season);
+        } else if (!t.series && d != null && d.minutes > 0) {
+            out.add(Ui.duration(d.minutes));
+        }
+        if (!t.year.isEmpty()) out.add(t.year);
+        String g = d == null ? "" : PosterArt.firstGenre(d.genre);
+        if (g.isEmpty()) g = PosterArt.genreOf(t.category);
+        if (!g.isEmpty()) out.add(g);
+        String age = d == null ? "" : d.age.trim();
+        if (!age.isEmpty()) out.add(age.matches("\\d+") ? age + "+" : age);
+        return out.toArray(new String[0]);
+    }
+
+    /** Pure: out of five, the rating's (out of ten) nearest. */
+    static int stars(Catalog.Title t, Catalog.Details d) {
+        float r = Billboard.rating(d != null && !d.rating.isEmpty() ? d.rating : t.rating);
+        return r <= 0 ? 0 : Math.max(1, Math.min(5, Math.round(r / 2f)));
+    }
+
+    // ---- the strip ----------------------------------------------------------------------------------------------
+
+    @Override public void focused(HomeCard.Card card) {
+        h.removeCallbacks(fetch);
+        Object o = card.item;
+        if (o instanceof Channel) {
+            channelStrip(card, (Channel) o);
+            return;
+        }
+        Catalog.Title t = titleOf(o);
+        if (t == null) return;
+        Catalog.Details d = Catalog.get(tv).cachedDetails(t);
+        if (d != null) {
+            titleStrip(card, t, d);
+        } else {
+            pending = card;
+            h.postDelayed(fetch, 450);
+        }
+    }
+
+    private Catalog.Title titleOf(Object o) {
+        if (o instanceof Catalog.Title) return (Catalog.Title) o;
+        if (o instanceof Resume.Point) return Catalog.get(tv).title(((Resume.Point) o).title);
+        return null;
     }
 
     private void fetchDetails() {
-        Catalog.Title want = pending;
-        if (want == null) return;
-        Catalog.get(tv).details(want, d -> {
-            Rows.Tile t = heroTile;
-            if (t != null && (t.item == want || t.item instanceof Resume.Point && ((Resume.Point) t.item).title.equals(want.key))) {
-                heroFor(tv, hero, t, now());
-            }
+        HomeCard.Card card = pending;
+        Catalog.Title t = card == null ? null : titleOf(card.item);
+        if (t == null) return;
+        Catalog.get(tv).details(t, d -> {
+            if (d == null || home == null) return;
+            card.facts = card.item instanceof Resume.Point ? card.facts : facts(t, d, null);
+            card.stars = stars(t, d);
+            if (home.card() == card) titleStrip(card, t, d);
+            else home.invalidate();
         });
     }
 
-    /** The big picture for a tile: a channel's programme now, a film or a series. */
-    static void heroFor(TvActivity tv, Hero hero, Rows.Tile t, long now) {
-        Library lib = Library.get(tv);
-        hero.badge = "";
-        if (t.item instanceof Channel) {
-            Channel c = (Channel) t.item;
-            Guide.Schedule s = lib.schedule(c.key);
-            int i = s == null ? -1 : s.at(now);
-            if (i >= 0) {
-                hero.show("", LogoPack.url(c), s.title[i], "Now  ·  " + Ui.span(s.start[i], s.stop[i]) + "  ·  " + lib.number(c) + " " + ChannelEdits.name(c), 0,
-                        s.desc[i], "", false);
-            } else {
-                hero.show("", LogoPack.url(c), ChannelEdits.name(c), lib.number(c) + "  ·  " + c.group, 0, "", "", false);
+    /** A channel's next programmes: on now first, with how far in, then the later ones with their times. */
+    private void channelStrip(HomeCard.Card card, Channel c) {
+        Guide.Schedule s = Library.get(tv).schedule(c.key);
+        long now = System.currentTimeMillis();
+        List<HomeCard.Tile> tiles = new ArrayList<>();
+        if (s != null) {
+            int i = s.at(now);
+            if (i < 0) i = s.after(now);
+            for (int k = Math.max(0, i); k >= 0 && k < s.start.length && tiles.size() < 8; k++) {
+                boolean onNow = s.start[k] <= now && s.stop[k] > now;
+                float done = onNow ? (now - s.start[k]) / (float) Math.max(1, s.stop[k] - s.start[k]) : -1f;
+                String when = onNow ? "Now" : LiveText.hm(s.start[k]);
+                tiles.add(new HomeCard.Tile(new long[]{s.start[k], s.stop[k], k}, "", when, s.title[k], done));
             }
-            return;
         }
-        Catalog.Title title = t.item instanceof Catalog.Title ? (Catalog.Title) t.item
-                : t.item instanceof Resume.Point ? Catalog.get(tv).title(((Resume.Point) t.item).title) : null;
-        if (title == null) return;
-        Catalog.Details d = Catalog.get(tv).cachedDetails(title);
-        String meta = meta(title, d);
-        String plot = d != null && !d.plot.isEmpty() ? d.plot : title.plot;
-        String backdrop = d != null && !d.backdrop.isEmpty() ? d.backdrop : title.backdrop;
-        if (t.item instanceof Resume.Point) {
-            Resume.Point p = (Resume.Point) t.item;
-            meta = (p.subtitle.isEmpty() ? "" : p.subtitle + "  ·  ") + Ui.left(p.duration - p.position);
-        }
-        float stars = rating(title, d);
-        hero.badge = d == null ? "" : d.age;
-        if (!backdrop.isEmpty()) hero.show(title.category, "", title.name, meta, stars, plot, backdrop, false);
-        else hero.show(title.category, "", title.name, meta, stars, plot, title.poster, true);
+        home.strip(card, tiles, 0);
     }
 
-    static float rating(Catalog.Title t, Catalog.Details d) {
-        String r = d != null && !d.rating.isEmpty() ? d.rating : t.rating;
-        try {
-            return r.isEmpty() ? 0f : Float.parseFloat(r);
-        } catch (NumberFormatException e) {
-            return 0f;
+    /** A series' episodes (every season's, each season's first named "Season 2"…), or a film's like ones. */
+    private void titleStrip(HomeCard.Card card, Catalog.Title t, Catalog.Details d) {
+        List<HomeCard.Tile> tiles = new ArrayList<>();
+        int at = 0;
+        if (t.series) {
+            Resume.Point p = card.item instanceof Resume.Point ? (Resume.Point) card.item : Resume.latest(tv, t.key);
+            int first = d.seasons.isEmpty() ? 0 : d.seasons.get(0).number;
+            for (Catalog.Season s : d.seasons) {
+                for (int k = 0; k < s.episodes.size(); k++) {
+                    Catalog.Episode e = s.episodes.get(k);
+                    if (p != null && e.id.equals(p.episode)) at = tiles.size();
+                    Resume.Point ep = Resume.get(tv, t.key, e.id);
+                    String label = k == 0 && s.number != first ? "Season " + s.number : String.format(Locale.UK, "%02d", e.number);
+                    tiles.add(new HomeCard.Tile(e, e.still.isEmpty() ? picture(t, d) : e.still, label,
+                            e.title.isEmpty() ? "Episode " + e.number : e.title, ep != null && ep.position > 0 ? ep.progress() : -1f));
+                }
+            }
+        } else {
+            for (Catalog.Category c : Catalog.get(tv).categories(false)) {
+                if (!c.name.equals(t.category)) continue;
+                for (Catalog.Title o : c.titles) {
+                    if (tiles.size() >= 10) break;
+                    if (o == t) continue;
+                    Catalog.Details od = Catalog.get(tv).cachedDetails(o);
+                    tiles.add(new HomeCard.Tile(o, picture(o, od), o.name, "", -1f));
+                }
+            }
         }
-    }
-
-    /** "1h 56m  ·  2019  ·  Action, Thriller". */
-    static String meta(Catalog.Title t, Catalog.Details d) {
-        List<String> parts = new ArrayList<>();
-        if (d != null && d.minutes > 0 && !t.series) parts.add(Ui.duration(d.minutes));
-        if (d != null && !d.seasons.isEmpty()) parts.add(d.seasons.size() == 1 ? "1 series" : d.seasons.size() + " series");
-        if (!t.year.isEmpty()) parts.add(t.year);
-        if (d != null && !d.genre.isEmpty()) parts.add(d.genre.replace(" /", ",").replace(" ,", ","));
-        return String.join("  ·  ", parts);
+        home.strip(card, tiles, at);
     }
 
     // ---- the remote ---------------------------------------------------------------------------------------------
@@ -339,110 +311,137 @@ final class HomeScreen extends Screen implements Rows.Host, LiveTv.Listener {
             return true;
         }
         if (inMenu) {
-            if (code == KeyEvent.KEYCODE_DPAD_RIGHT && !rows.isEmpty()) {
-                enterRows();
+            if (code == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                closeMenu();
                 return true;
             }
             return rail.key(code) || code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_UP
                     || code == KeyEvent.KEYCODE_DPAD_DOWN;
         }
-        return rows.key(code);
+        return home.key(code);
     }
 
-    private void enterRows() {
+    private void closeMenu() {
+        if (home.card() == null) return;
         inMenu = false;
         rail.setActive(false);
-        rows.setActive(true);
-        showHero();
     }
 
+    /** The next or the last channel, full screen (Settings → Categories and Parental control: past hidden and locked ones). */
     private void zap(int dir) {
-        // Settings → Categories and Parental control: past hidden categories and locked channels (found at once).
-        Channel c = Library.get(tv).step(tv.live.channel(), dir);
-        if (c != null && !com.gathin.homefieldtv.prefs.Parental.blocks(tv, c)) tv.live.play(c);
+        Library lib = Library.get(tv);
+        Channel from = tv.live.channel() != null ? tv.live.channel() : lib.lastChannel();
+        Channel c = lib.step(from, dir);
+        if (c != null && !com.gathin.homefieldtv.prefs.Parental.blocks(tv, c)) tv.watch(c);
     }
 
     @Override void ok() {
         touched = true;
-        if (!inMenu) {
-            rows.ok(false);
+        if (inMenu) {
+            if (rail.focus == Rail.HOME) closeMenu();
+            else Rail.go(tv, rail.focus, Rail.HOME);
             return;
         }
-        // Home into the rows; the rest as the rail does on every dark screen (Sports: the sports hub).
-        if (rail.focus == Rail.HOME) {
-            if (!rows.isEmpty()) enterRows();
-        } else {
-            Rail.go(tv, rail.focus, Rail.HOME);
-        }
+        home.ok();
     }
 
     @Override void okLong() {
-        if (!inMenu) rows.ok(true);
-        else ok();
+        HomeCard.Card c = home.card();
+        if (!inMenu && home.area() == HomeCard.CARD && c != null && c.item instanceof Channel) {
+            Library.get(tv).toggleFavourite((Channel) c.item);
+            return;
+        }
+        ok();
     }
 
     @Override boolean back() {
         touched = true;
-        if (!inMenu) {
-            inMenu = true;
-            rail.setActive(true);
-            rows.setActive(false);
-            showHero();
-            return true;
-        }
-        // As the guide does: Back from the menu is back to the TV, full screen.
-        Channel c = tv.live.channel();
-        if (c != null) {
-            tv.watch(c);
-            return true;
-        }
-        return false;
-    }
-
-    // ---- the rows' remote -------------------------------------------------------------------------------------
-
-    @Override public void focused(Rows.Row row, Rows.Tile tile) {
-        showHero();
-    }
-
-    @Override public void chosen(Rows.Row row, Rows.Tile tile, boolean held) {
-        open(tv, tile, held);
-    }
-
-    /** What OK on a tile does, wherever it is: a channel full screen, a title's page, a film carried on. */
-    static void open(TvActivity tv, Rows.Tile tile, boolean held) {
-        Object o = tile.item;
-        if (o instanceof Channel) {
-            if (held) {
-                Library.get(tv).toggleFavourite((Channel) o);
-                return;
+        if (inMenu) {
+            // As the guide does: Back from the menu is back to the TV, full screen.
+            Channel c = tv.live.channel() != null ? tv.live.channel() : tv.channelToPlay();
+            if (c != null) {
+                tv.watch(c);
+                return true;
             }
+            return false;
+        }
+        if (home.back()) return true;
+        menu();
+        return true;
+    }
+
+    @Override public void section(int index) {
+        // The new section's card is shown at once (focused() follows).
+    }
+
+    @Override public void menu() {
+        inMenu = true;
+        rail.setActive(true);
+    }
+
+    @Override public void chosen(HomeCard.Card card) {
+        Object o = card.item;
+        if (o instanceof Channel) {
             tv.watch((Channel) o);
         } else if (o instanceof Catalog.Title) {
             tv.openTitle((Catalog.Title) o);
         } else if (o instanceof Resume.Point) {
-            Resume.Point p = (Resume.Point) o;
-            Catalog.Title t = Catalog.get(tv).title(p.title);
-            if (t == null) return;
-            if (held || !t.series && p.episode.isEmpty()) {
-                if (held) tv.openTitle(t);
-                else tv.play(t, null, p.position, false);
-                return;
-            }
-            // An episode: its details first (where it plays comes from them).
-            Catalog.get(tv).details(t, d -> {
-                Catalog.Episode e = d == null ? null : d.episode(p.episode);
-                if (e != null) tv.play(t, e, p.position, false);
-                else tv.openTitle(t);
-            });
+            carryOn((Resume.Point) o);
         }
     }
 
-    @Override public boolean edge(int dir) {
-        if (dir == Ui.LEFT) {
-            back();
-            return true;
+    /** Continue watching: on at once from where it was (an episode needs its series' page read; else its page). */
+    private void carryOn(Resume.Point p) {
+        Catalog.Title t = Catalog.get(tv).title(p.title);
+        if (t == null) return;
+        if (!t.series && p.episode.isEmpty()) {
+            tv.play(t, null, p.position, false);
+            return;
         }
-        return false;
+        Catalog.get(tv).details(t, d -> {
+            Catalog.Episode e = d == null ? null : d.episode(p.episode);
+            if (e != null) tv.play(t, e, p.position, false);
+            else tv.openTitle(t);
+        });
+    }
+
+    @Override public void chosen(HomeCard.Card card, HomeCard.Tile tile) {
+        Object o = tile.item;
+        if (o instanceof Catalog.Episode) {
+            Catalog.Title t = titleOf(card.item);
+            if (t == null) return;
+            Catalog.Episode e = (Catalog.Episode) o;
+            Resume.Point p = Resume.get(tv, t.key, e.id);
+            tv.play(t, e, p == null ? 0 : p.position, true);
+        } else if (o instanceof Catalog.Title) {
+            tv.openTitle((Catalog.Title) o);
+        } else if (o instanceof long[] && card.item instanceof Channel) {
+            Channel c = (Channel) card.item;
+            long[] when = (long[]) o;
+            long now = System.currentTimeMillis();
+            if (when[0] <= now && when[1] > now) {
+                tv.watch(c);
+                return;
+            }
+            if (Reminders.has(tv, c.key, when[0])) GuideActions.unremind(tv, c, tile.name, when[0]);
+            else GuideActions.remind(tv, c, tile.name, when[0], when[1]);
+        }
+    }
+
+    /** Previews and tests: the remote on a section, a card, and where (HomeCard.CARD, STRIP) along the strip. */
+    void previewFocus(int section, int card, int where, int strip) {
+        inMenu = false;
+        rail.setActive(false);
+        home.focus(section, card, where, strip);
+    }
+
+    /** Previews: the slide from one card to the next caught part way. */
+    void previewBetween(float at) {
+        home.between(at);
+    }
+
+    /** Previews and tests: a section's place by its tag (ON_NOW, FILMS…), -1 when it isn't shown. */
+    int previewSection(String tag) {
+        return home.sectionOf(tag);
     }
 }

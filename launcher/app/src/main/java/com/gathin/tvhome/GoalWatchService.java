@@ -5091,7 +5091,7 @@ public class GoalWatchService extends Service {
         t.setSingleLine(true);
         if (onLane()) {
             // On v2's Home the alert speaks in Home's own face (Inter; its bold is the real semibold).
-            if (homeFace == null) homeFace = getResources().getFont(R.font.inter_ui);
+            if (homeFace == null) homeFace = Fonts.get(this, R.font.inter_ui);
             t.setTypeface(homeFace);
             t.getPaint().setSubpixelText(true);
         }

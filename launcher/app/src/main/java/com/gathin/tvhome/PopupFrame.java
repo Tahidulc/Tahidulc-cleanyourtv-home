@@ -106,7 +106,7 @@ final class PopupFrame {
                 @Override public void onScoresOpen(ScoresTicker.Game g) { leaveFocus(); watch(g); }
                 @Override public void onScoresDown() { if (!boxes.isEmpty()) boxes.get(Math.min(firstFocus, boxes.size() - 1)).requestFocus(); }
             });
-            scores.setTypeface(c.getResources().getFont(R.font.inter_ui));
+            scores.setTypeface(Fonts.get(c, R.font.inter_ui));
             scores.equalWidths(true);
             scores.showF1(Config.themeFlag(c, "f1_scores_bar", false));
             scores.showAlerts(false);
@@ -276,7 +276,7 @@ final class PopupFrame {
             if (i >= dockApps && v instanceof FrameLayout && ((FrameLayout) v).getChildAt(0) instanceof LinearLayout) {
                 LinearLayout in = (LinearLayout) ((FrameLayout) v).getChildAt(0);
                 ((ImageView) in.getChildAt(0)).setColorFilter(on ? Color.WHITE : HomeV2.CAT_COLOURS[HomeV2.DOCK_ORDER[i - dockApps]]);
-                ((TextView) in.getChildAt(1)).setTypeface(app.getResources().getFont(on ? R.font.inter_semibold : R.font.inter_ui));
+                ((TextView) in.getChildAt(1)).setTypeface(Fonts.get(app, on ? R.font.inter_semibold : R.font.inter_ui));
             }
         }
         if (lens == null) return;
@@ -667,7 +667,7 @@ final class PopupFrame {
         t.setText(s);
         t.setTextSize(TypedValue.COMPLEX_UNIT_PX, sizePx * k);
         t.setTextColor(colour);
-        t.setTypeface(c.getResources().getFont(R.font.inter_ui));
+        t.setTypeface(Fonts.get(c, R.font.inter_ui));
         t.setIncludeFontPadding(false);
         t.setSingleLine(true);
         return t;

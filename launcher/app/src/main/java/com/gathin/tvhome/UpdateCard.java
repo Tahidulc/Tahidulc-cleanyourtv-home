@@ -136,8 +136,8 @@ final class UpdateCard {
             android.util.Log.i(Updater.TAG, "no card: the launcher may not show itself over other apps here");
             return false;
         }
-        Typeface heavy = c.getResources().getFont(R.font.outfit_extrabold), semi = c.getResources().getFont(R.font.inter_semibold),
-                regular = c.getResources().getFont(R.font.inter_regular);
+        Typeface heavy = Fonts.get(c, R.font.outfit_extrabold), semi = Fonts.get(c, R.font.inter_semibold),
+                regular = Fonts.get(c, R.font.inter_regular);
         FrameLayout frame = new FrameLayout(c);
         LinearLayout card = new LinearLayout(c);
         card.setOrientation(LinearLayout.HORIZONTAL);

@@ -199,9 +199,9 @@ final class TrailerReel implements TilePlayer.Film {
     private TrailerReel(HomeV2 h) {
         this.h = h;
         c = h.a;
-        heavy = c.getResources().getFont(R.font.outfit_extrabold);
-        semi = c.getResources().getFont(R.font.inter_semibold);
-        regular = c.getResources().getFont(R.font.inter_regular);
+        heavy = Fonts.get(c, R.font.outfit_extrabold);
+        semi = Fonts.get(c, R.font.inter_semibold);
+        regular = Fonts.get(c, R.font.inter_regular);
     }
 
     private void hide(boolean fade) {

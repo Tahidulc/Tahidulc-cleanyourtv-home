@@ -20,8 +20,12 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * TMDB, for the posters, stories and episode names of the family's own TorBox titles that no playlist has, as the phone
@@ -270,6 +274,174 @@ public final class Tmdb {
             out.add(n);
         }
         return out;
+    }
+
+    // ---- a title's extras: its logo, its cast's faces, its seasons' posters ------------------------------------------
+
+    /**
+     * What a title's page shows from TMDB beyond its playlist's page: its logo ("" for none), its cast as {name, the part
+     * they play, their photo}, its seasons' posters by number, its years ("2011–2019") and its age rating ("15").
+     */
+    public static final class Extras {
+        public final String logo, years, age;
+        public final List<String[]> cast;
+        public final Map<Integer, String> seasons;
+
+        Extras(String logo, List<String[]> cast, Map<Integer, String> seasons, String years, String age) {
+            this.logo = logo == null ? "" : logo;
+            this.cast = Collections.unmodifiableList(cast == null ? new ArrayList<>() : cast);
+            this.seasons = Collections.unmodifiableMap(seasons == null ? new HashMap<>() : seasons);
+            this.years = years == null ? "" : years;
+            this.age = age == null ? "" : age;
+        }
+    }
+
+    /** TMDB has no such title. */
+    public static final Extras NO_EXTRAS = new Extras("", null, null, "", "");
+
+    /**
+     * A title's extras: kept from before (a fortnight), else asked of TMDB now with the launcher's key (its search, then
+     * its page with credits, logos and age ratings), and kept. Null when TMDB can't be asked. Off the main thread.
+     */
+    public static Extras extras(Context c, Catalog.Title t) {
+        if (t == null) return null;
+        Match m = find(c, t.series, t.name, yearOf(t.year));
+        if (m == null) return null;
+        if (m.id <= 0) return NO_EXTRAS;
+        File f = file(c, "x|" + (t.series ? "tv" : "movie") + "|" + m.id);
+        JSONObject had = read(f);
+        if (had != null && System.currentTimeMillis() - had.optLong("_at") < KEEP_MS) return fromKept(had);
+        String k = key(c);
+        if (k == null) return had == null ? null : fromKept(had);
+        try {
+            JSONObject j = get(k, (t.series ? "tv/" : "movie/") + m.id + "?append_to_response=credits,images,"
+                    + (t.series ? "content_ratings" : "release_dates") + "&include_image_language=en,null");
+            Extras x = extrasOf(j, t.series);
+            write(f, kept(x).toString());
+            return x;
+        } catch (IOException | JSONException e) {
+            return had == null ? null : fromKept(had);
+        }
+    }
+
+    /** A title's extras when they are kept on this TV already (nothing asked), else null: for a page drawn at once. */
+    public static Extras keptExtras(Context c, Catalog.Title t) {
+        if (t == null) return null;
+        Match m = cached(c, t.series, t.name, yearOf(t.year));
+        if (m == null) return null;
+        if (m.id <= 0) return NO_EXTRAS;
+        JSONObject had = read(file(c, "x|" + (t.series ? "tv" : "movie") + "|" + m.id));
+        return had == null ? null : fromKept(had);
+    }
+
+    private static int yearOf(String y) {
+        return y != null && y.matches("\\d{4}") ? Integer.parseInt(y) : 0;
+    }
+
+    /**
+     * Pure: a title's extras from TMDB's page: its English (else wordless) PNG logo, the first ten of its cast with the
+     * parts they play and their photos, each season's poster (small: its colour is what is wanted), the years it ran (a
+     * series) or its year (a film), and its age rating in the UK, else the US.
+     */
+    static Extras extrasOf(JSONObject j, boolean tv) {
+        String logo = "";
+        JSONObject images = j.optJSONObject("images");
+        JSONArray logos = images == null ? null : images.optJSONArray("logos");
+        for (String lang : new String[]{"en", ""}) {
+            for (int i = 0; logos != null && i < logos.length() && logo.isEmpty(); i++) {
+                JSONObject o = logos.optJSONObject(i);
+                if (o == null) continue;
+                String l = o.isNull("iso_639_1") ? "" : o.optString("iso_639_1", "");
+                String path = o.optString("file_path", "");
+                if (l.equals(lang) && path.toLowerCase(Locale.ROOT).endsWith(".png")) logo = image(path, "w500");
+            }
+        }
+        List<String[]> cast = new ArrayList<>();
+        JSONObject credits = j.optJSONObject("credits");
+        JSONArray people = credits == null ? null : credits.optJSONArray("cast");
+        for (int i = 0; people != null && i < people.length() && cast.size() < 10; i++) {
+            JSONObject o = people.optJSONObject(i);
+            if (o == null || o.optString("name").isEmpty()) continue;
+            String part = o.optString("character", "");
+            if (part.equals("null")) part = "";
+            cast.add(new String[]{o.optString("name"), part, image(o.optString("profile_path", ""), "w185")});
+        }
+        Map<Integer, String> seasons = new HashMap<>();
+        JSONArray ss = j.optJSONArray("seasons");
+        for (int i = 0; ss != null && i < ss.length(); i++) {
+            JSONObject o = ss.optJSONObject(i);
+            if (o == null) continue;
+            String poster = image(o.optString("poster_path", ""), "w92");
+            if (!poster.isEmpty()) seasons.put(o.optInt("season_number", -1), poster);
+        }
+        String first = year(j.optString(tv ? "first_air_date" : "release_date", "")), last = tv ? year(j.optString("last_air_date", "")) : "";
+        String years = first.isEmpty() ? "" : last.isEmpty() || last.equals(first) ? first : first + "\u2013" + last;
+        String age = "";
+        if (tv) {
+            JSONObject cr = j.optJSONObject("content_ratings");
+            JSONArray rs = cr == null ? null : cr.optJSONArray("results");
+            for (String country : new String[]{"GB", "US"}) {
+                for (int i = 0; rs != null && i < rs.length() && age.isEmpty(); i++) {
+                    JSONObject o = rs.optJSONObject(i);
+                    if (o != null && country.equals(o.optString("iso_3166_1"))) age = o.optString("rating", "").trim();
+                }
+            }
+        } else {
+            JSONObject rd = j.optJSONObject("release_dates");
+            JSONArray rs = rd == null ? null : rd.optJSONArray("results");
+            for (String country : new String[]{"GB", "US"}) {
+                for (int i = 0; rs != null && i < rs.length() && age.isEmpty(); i++) {
+                    JSONObject o = rs.optJSONObject(i);
+                    if (o == null || !country.equals(o.optString("iso_3166_1"))) continue;
+                    JSONArray ds = o.optJSONArray("release_dates");
+                    for (int k = 0; ds != null && k < ds.length() && age.isEmpty(); k++) {
+                        JSONObject d = ds.optJSONObject(k);
+                        if (d != null) age = d.optString("certification", "").trim();
+                    }
+                }
+            }
+        }
+        return new Extras(logo, cast, seasons, years, age);
+    }
+
+    private static String year(String date) {
+        return date != null && date.length() >= 4 && date.substring(0, 4).matches("\\d{4}") ? date.substring(0, 4) : "";
+    }
+
+    /** Pure: extras as they are kept on this TV (only what the page uses, not TMDB's whole page). */
+    static JSONObject kept(Extras x) throws JSONException {
+        JSONObject o = new JSONObject();
+        o.put("_at", System.currentTimeMillis()).put("logo", x.logo).put("years", x.years).put("age", x.age);
+        JSONArray cast = new JSONArray();
+        for (String[] p : x.cast) cast.put(new JSONArray().put(p[0]).put(p[1]).put(p[2]));
+        o.put("cast", cast);
+        JSONObject seasons = new JSONObject();
+        for (Map.Entry<Integer, String> e : x.seasons.entrySet()) seasons.put(String.valueOf(e.getKey()), e.getValue());
+        o.put("seasons", seasons);
+        return o;
+    }
+
+    /** Pure: extras as kept (kept()). */
+    static Extras fromKept(JSONObject o) {
+        List<String[]> cast = new ArrayList<>();
+        JSONArray a = o.optJSONArray("cast");
+        for (int i = 0; a != null && i < a.length(); i++) {
+            JSONArray p = a.optJSONArray(i);
+            if (p != null) cast.add(new String[]{p.optString(0, ""), p.optString(1, ""), p.optString(2, "")});
+        }
+        Map<Integer, String> seasons = new HashMap<>();
+        JSONObject s = o.optJSONObject("seasons");
+        if (s != null) {
+            for (Iterator<String> it = s.keys(); it.hasNext(); ) {
+                String k = it.next();
+                try {
+                    seasons.put(Integer.parseInt(k), s.optString(k));
+                } catch (NumberFormatException ignored) {
+                    // not a season
+                }
+            }
+        }
+        return new Extras(o.optString("logo", ""), cast, seasons, o.optString("years", ""), o.optString("age", ""));
     }
 
     // ---- asking, and keeping ------------------------------------------------------------------------------------

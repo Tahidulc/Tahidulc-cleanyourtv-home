@@ -433,6 +433,8 @@ public final class Library {
                 int e = ix.byKey.get(f.keys.get(k));
                 if (e < 0) continue;
                 c = ix.channels.get(e);
+                // A favourite the family hid (Hide channel) is off Home as off every list.
+                if (l.filter != null && l.filter.edits.hidden(c.key)) continue;
                 if (!seen.add(c.key)) continue;
             } else {
                 c = l.all.get(k - favourites);

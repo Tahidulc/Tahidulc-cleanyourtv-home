@@ -567,7 +567,8 @@ final class ChannelMark {
     /** The name's box as last drawn (in the canvas's units), and whether it was. */
     private final RectF lowerBox = new RectF();
     private boolean lowerDrawn;
-    private final java.util.Map<String, android.graphics.Bitmap> markPics = new java.util.HashMap<>();
+    /** The marks drawn, by kind, held to a size in bytes (BitmapCache). */
+    private final BitmapCache markPics = new BitmapCache("marks", 4L * 1024 * 1024);
     private final Paint markPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
 
     void marks(List<String> m) {

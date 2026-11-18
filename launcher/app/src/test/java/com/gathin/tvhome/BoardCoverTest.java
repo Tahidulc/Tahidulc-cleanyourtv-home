@@ -244,7 +244,9 @@ public class BoardCoverTest {
     @Test
     public void itShowsOverTheChannelAppsOnly() {
         assertTrue(BoardCover.isPlayer("ar.tvplayer.tv"));
-        assertTrue(BoardCover.isPlayer("com.gathin.homefieldtv"));
+        assertTrue(BoardCover.isPlayer("com.plaintextdev.klevaTv"));
+        // Never over Homefield TV (5.34): it has its own scoreboard and logo cover.
+        assertFalse(BoardCover.isPlayer("com.gathin.homefieldtv"));
         assertFalse(BoardCover.isPlayer("com.google.android.youtube.tv"));
     }
 

@@ -138,9 +138,9 @@ final class AlertToday {
         AlertToday t = new AlertToday();
         t.h = h;
         shown = t;
-        t.heavy = h.a.getResources().getFont(R.font.outfit_extrabold);
-        t.semi = h.a.getResources().getFont(R.font.inter_semibold);
-        t.regular = h.a.getResources().getFont(R.font.inter_regular);
+        t.heavy = Fonts.get(h.a, R.font.outfit_extrabold);
+        t.semi = Fonts.get(h.a, R.font.inter_semibold);
+        t.regular = Fonts.get(h.a, R.font.inter_regular);
         t.overlay = new FrameLayout(h.a);
         t.overlay.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{0xFF10157E, 0xFF1B279F, 0xFF2838C0}));
         t.overlay.setClickable(true);

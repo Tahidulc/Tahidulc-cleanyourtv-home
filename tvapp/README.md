@@ -13,15 +13,21 @@ wordmark are Homefield; it carries no Sky logo or name.
   shows, Sports, Recordings and My list, with Settings at the foot; the screen's own section in white). When the remote
   goes on to it, it opens into the drawer with each section's name, the remote's item lit in the accent and the screen's
   own in a quieter grey; Up and Down along it, OK goes there, Right or Back closes it.
-- **Home:** the remote starts in the rows (on the menu while there are none yet); Left from the rows, or Back, opens the
-  menu, and Back from the menu goes back to the TV. The date and the time at the top left, the big picture of what the
-  remote is on (its backdrop fading into the ground, its title, its rating in a grey chip and its facts, its story), and
-  the mini TV at the top right playing the last channel, on a card with LIVE, the channel, and what's on with how far it
-  is and the minutes left. Then rows, each with how far along it the remote is ("3 / 25") at its right, laid out as
-  Films' are: On now (each channel's tile as the live screen draws it: a picture of what's on with the channel's logo,
-  the title, a line about it and how far through in amber, its number and name and what's left), Continue watching,
-  Your TorBox (the family's own TorBox films and shows that no playlist has, newest first, each with TorBox's cloud),
-  New films, New TV shows (the posters as everywhere), Sport on now and favourite channels.
+- **Home:** one large card at a time with rounded corners, the artwork of what the remote is on filling it: its title
+  big and bold over the picture (a channel's logo at the top right), a line of facts (season or running time, year,
+  genre, age as "15+", five stars from its rating) and, along the card's foot, a strip of small pictures: a series'
+  episodes (every season's in one row, each later season's first marked "Season 2", the one to carry on with first in
+  view), a channel's next programmes (on now with how far in, the later ones with their times), or films like the one
+  on the card. The page around the card takes the artwork's colour. Above it, Homefield's mark (OK opens the menu)
+  and the sections as words: On now (or Your channels), Continue watching, Your TorBox, New films, New TV shows, Sport
+  on now and Favourites; Left and Right go along a section's cards, the next picture cross-fading into the card as its
+  name slides in from that side and the page's colour fades to its own; Up goes to the sections, Down into the
+  strip, where the tile the remote is on grows with a white edge and shows its name. OK on a channel watches it, on a
+  film or show opens its page, on Continue watching carries on, on an episode plays it and on a programme later sets a
+  reminder; OK held on a channel makes it a favourite and CH+ and CH- change channel. Back goes from the strip to the
+  card, then to the sections, then opens the menu, and Back from the menu goes back to the TV. Home doesn't play
+  anything itself.
+
 - **TV guide:** as the family's other app has it. At the top left the preview, 640 by 360, playing the channel last
   watched (or the programme from the archive Back came from); to its right, on a panel of its own, the programme the
   remote is on: its title, a star for a favourite channel, its times ("10:00 — 11:00") with a bar and the minutes left
@@ -50,7 +56,7 @@ wordmark are Homefield; it carries no Sky logo or name.
   from its start. OK held (or MENU) opens the whole menu: Search (for the programme's title) and Settings, the
   programme's lines (Remind, Watch from start, Watch, Record, My list, its description), then under the channel's name
   TiviMate's Add to or Remove from Favourites, Block channel and Hide channel (out of every list at once: the guide, the
-  channel lists, channel up and down, the numbers, search, Home's rows and the sports pages' Watch on), then Rename
+  channel lists, channel up and down, the numbers, search, Home's sections and the sports pages' Watch on), then Rename
   channel (with Settings, Appearance, TV guide, Channel names editor on, as it comes: the keyboard over the guide, the
   name shown everywhere and found by search with its old one too; Restore channel name), Change logo (the new logos found
   for it, the best first, each on its tile with its country and kind, and the playlist's own; the one chosen kept for
@@ -69,7 +75,7 @@ wordmark are Homefield; it carries no Sky logo or name.
   as 1, a "+1" kept apart, a few aliases (ITV as ITV1, More4, CBBC, Sky Main Event) and its numbers always counting;
   where the playlist's country says otherwise, another country's. A new logo shows only where the match is sure (else
   the playlist's); Change logo in a channel's menu offers every one found. On the guide's rows, the channel lists, the
-  info card, Home's tiles, search, History, My list and the sports pages' Watch on.
+  info card, Home's channel cards, search, History, My list and the sports pages' Watch on.
 - **Catch-up's archive:** from a channel's Catch-up in the guide's menu: the channel along the top, its programmes down
   the left under each day's name, the remote's always at the same height with the list sliding under it (the one on now
   in the light accent, those the archive no longer keeps greyed), the days beside them (today's in the light accent), and
@@ -155,23 +161,23 @@ wordmark are Homefield; it carries no Sky logo or name.
   kick-off and after-goal pop-ups and the line-ups, a cover for the channel's logo, its menu from the player's bar
   (Scoreboard), and a Scoreboard section in Settings. The scoreboard and the logo cover show only while the channel
   plays full screen with nothing over it: the info card, the OK overlay, the bar, the channel list, a number being typed
-  or any screen or panel over the picture (the guide's preview, Home's mini TV, Settings) takes them away at once, and
+  or any screen or panel over the picture (the guide's preview, Home, Settings) takes them away at once, and
   they come back with plain playback; their pop-ups wait for it, or are let go when stale (a kick-off after two minutes,
   a goal's after ninety seconds), and after a longer time away the board catches up without popping up what it missed.
 - **Moving about:** on the dark screens the picture behind cross-fades as the remote moves to another title or
   channel, the words fade in and rise into place a moment after, pages cross-fade into each other, and the poster or
   tile the remote is on grows a little inside a soft white ring. Opacity, a small move and scale only, nothing
   blurred, and each picture read once at the size it is shown, so it stays light on a TV with 1 GB of memory.
-- **Movies and TV shows:** the rail, then the categories down a column (My list and Continue watching in bold, then the
-  playlists' heading, which folds, with All movies or All TV shows, Your TorBox for the family's own titles no playlist
-  has, Recently added and every category; the remote's row held at one height), and the category the remote is on
-  beside it at once: a row of posters under its name and "1 / 25", under the big words of the poster the remote is on
-  (its title and year, the rating in a grey chip, the year, running time or seasons and genres, the cast, the director
-  and the story) with its backdrop on the right fading into the ground. Right (or OK) goes into the posters: the column
-  goes, the posters move to the left edge in rows of seven, and Search and Sort show at the top right (as in the
-  playlist, by name, newest first or best rated); Left from a row's first poster brings the column back, and OK on a
-  poster opens its page. An empty category shows the clapperboard and "No movies" (or "No TV shows").
-- **Posters**, wherever they show (Movies and TV shows, Search, My list, Home's rows, More like this): the poster with
+- **Movies and TV shows:** the top bar (Home, TV shows, Movies, Recently added, Search and My list, with Homefield's
+  mark in the middle and the clock at the right; Up from the rows goes to it), then the picture of the title the remote
+  is on across the page in that picture's colour, under its TMDB logo (or its name in big lettering), its facts (rating,
+  years, age, seasons or running time, 4K, Dolby Vision, Atmos, TorBox's cloud) and its story. Under it rows of
+  artwork: Continue watching (wide pictures with the episode, the time left and a red bar), My list, Recently added,
+  Your TorBox, then every category, each ending in "All 1,234" where it has more than the row shows, which opens all
+  of them as a wall of posters with a sort (as in the playlist, by name, newest first or best rated). The poster the remote is on grows with a white edge;
+  the rows glide up and along, and the picture and its words fade to the next as the remote moves.
+
+- **Posters**, in Search and My list: the poster with
   rounded corners and a caption strip of the panel's colour under it with the title and year, cut short with "..", the
   rating in an accent chip at the poster's foot; "New" on the top left for a title the playlist added in the last
   fortnight, the best picture the family's playlists have of it on the top right (4K, 1080p or 720p in a white chip,
@@ -180,13 +186,18 @@ wordmark are Homefield; it carries no Sky logo or name.
   poster's foot. Where the remote is, the strip takes the focus colour and a thin light edge goes round the card.
   Settings, Appearance, Posters: Landscape makes every card 16:9, with the title's wide backdrop (TMDB's at w780, the
   poster where there is none) and the same strip under it.
-- **A title:** its backdrop on the right fading into the ground, its words at the top left (title and year, rating,
-  facts, cast, director, story), and under them Play in the accent's pill, or Resume and Play from beginning where it
-  was left part-way (a series: Resume S2 E8, or Play S1 E1), then round buttons: the trailer (in the TV's YouTube app),
-  My list's bookmark and, once something was started, taking it off Continue watching. Down from there: a series'
-  seasons, each a row of 16:9 episodes ("E3. Its title", how far through along the still's foot, TorBox's cloud on one
-  only the family's TorBox has) under "Season 1" and "3 / 8", the remote's row under the title's words; then More like
-  this.
+- **A title:** its picture across the whole page, the page in its colour (a series' changing with the season), the
+  title's TMDB logo (or its name in big lettering), a line of facts (★ rating, the years it ran, its age, its seasons
+  or running time, the picture and sound marks, TorBox's cloud), then the red Play pill (Resume, or Resume S2 E4, and
+  From the start where it was left part-way) and grey buttons: My List (a tick once on it), a film's trailer and, once
+  something was started, taking it off Continue watching. A series then has its seasons as the phone has them: the
+  season pills, the white one under the season the remote is in, over one row of every season's episodes, the trailer
+  first; Left and Right go along the episodes and the pill follows into the next season, or along the pills and the
+  row jumps to that season's first episode. The episode the remote is on grows and shows its name. Down from there the
+  page rises: Overview and Genres side by side, the cast as round photos with the parts they play (OK searches for
+  someone), and More like this, the poster the remote is on lifted. TMDB's logo, cast photos and seasons' posters come
+  with the key the TV launcher hands over (kept in memory only), and are kept on this TV for a fortnight.
+
 - **Choose a source:** Play on a film's page (and From the start, and an episode chosen) first lists every source it
   has, as the phone's Choose a source: the family's own TorBox files of it, then the playlists' copies, each source
   under its own heading, each copy with its mark (TorBox's green with a cloud, a playlist's blue with a screen and its
@@ -303,7 +314,7 @@ wordmark are Homefield; it carries no Sky logo or name.
   name), listens on port 47830 when it is free (the phone tries it when the announcement doesn't reach it) and answers
   only addresses on that network: the channel is played only when this TV's own playlists have it (by its stream id,
   else its guide id, else its tidied name), with "Playing … from …" for a moment, and the phone's Stop lets go of it
-  (back to Home, its mini TV left off). The phone's stream address and login are never used.
+  (back to Home). The phone's stream address and login are never used.
 
 ## Getting a playlist on to a TV
 

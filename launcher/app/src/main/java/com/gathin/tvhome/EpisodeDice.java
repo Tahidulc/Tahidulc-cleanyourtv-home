@@ -175,8 +175,8 @@ final class EpisodeDice {
     }
 
     private void build() {
-        Typeface heavy = c.getResources().getFont(R.font.outfit_extrabold), semi = c.getResources().getFont(R.font.inter_semibold),
-                regular = c.getResources().getFont(R.font.inter_regular);
+        Typeface heavy = Fonts.get(c, R.font.outfit_extrabold), semi = Fonts.get(c, R.font.inter_semibold),
+                regular = Fonts.get(c, R.font.inter_regular);
         overlay = new FrameLayout(c);
         overlay.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xFF0A0E4A, 0xFF080A32, 0xFF04061C}));
         overlay.setClickable(true);

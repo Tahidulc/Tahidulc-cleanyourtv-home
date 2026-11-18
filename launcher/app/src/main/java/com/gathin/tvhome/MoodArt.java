@@ -104,8 +104,8 @@ final class MoodArt {
         Paint shade = new Paint();
         shade.setShader(new LinearGradient(0, h * (wide ? 0.45f : 0.55f), 0, h, 0x00000000, 0xB3000000, Shader.TileMode.CLAMP));
         cv.drawRect(0, h * (wide ? 0.45f : 0.55f), w, h, shade);
-        Typeface heavy = c.getResources().getFont(R.font.outfit_extrabold);
-        Typeface semi = c.getResources().getFont(R.font.inter_semibold);
+        Typeface heavy = Fonts.get(c, R.font.outfit_extrabold);
+        Typeface semi = Fonts.get(c, R.font.inter_semibold);
         Paint np = new Paint(Paint.ANTI_ALIAS_FLAG);
         np.setTypeface(heavy);
         np.setColor(Color.WHITE);

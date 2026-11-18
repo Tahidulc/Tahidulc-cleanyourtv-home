@@ -11,7 +11,6 @@ import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
-import android.util.LruCache;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -92,10 +91,7 @@ final class WatchRows {
         android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
         r.run();
     }));
-    private final LruCache<String, Bitmap> posters = new LruCache<String, Bitmap>(
-            (int) Math.min(Runtime.getRuntime().maxMemory() / 8, 32L * 1024 * 1024)) {
-        @Override protected int sizeOf(String key, Bitmap value) { return value.getByteCount(); }
-    };
+    private final BitmapCache posters = new BitmapCache("posters", BitmapCache.share(8, 32L * 1024 * 1024));
     private final Map<String, List<Item>> cache = new HashMap<>();
     private final Map<String, Long> cachedAt = new HashMap<>();
     private String shownPackage;
@@ -120,7 +116,7 @@ final class WatchRows {
         caption.setTextColor(0xB3FFFFFF);
         caption.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f);
         caption.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f);
-        caption.setTypeface(context.getResources().getFont(R.font.outfit_medium));
+        caption.setTypeface(Fonts.get(context, R.font.outfit_medium));
         caption.setLetterSpacing(0.02f);
         caption.setSingleLine(true);
         caption.setPadding(dp(EDGE), 0, 0, 0);
@@ -248,7 +244,7 @@ final class WatchRows {
 
     void close() {
         stopTrailer();
-        if (web != null) { web.destroy(); web = null; }
+        if (web != null) { WebViews.gone(web); web.destroy(); web = null; }
         reader.shutdownNow();
         images.shutdownNow();
         ahead.shutdownNow();
@@ -388,7 +384,7 @@ final class WatchRows {
         n.setText(name == null ? "" : name);
         n.setTextColor(LightUi.ink(Color.WHITE));
         n.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f);
-        n.setTypeface(context.getResources().getFont(R.font.outfit_medium));
+        n.setTypeface(Fonts.get(context, R.font.outfit_medium));
         n.setSingleLine(true);
         n.setEllipsize(android.text.TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -400,7 +396,7 @@ final class WatchRows {
             l.setText(line);
             l.setTextColor(LightUi.ink(lineColor));
             l.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
-            l.setTypeface(context.getResources().getFont(R.font.outfit_regular));
+            l.setTypeface(Fonts.get(context, R.font.outfit_regular));
             l.setSingleLine(true);
             l.setEllipsize(android.text.TextUtils.TruncateAt.END);
             String bbc = NewsPanel.isTag(line.toString()) ? Badges.bbcSection(line.toString()) : null;
@@ -630,7 +626,7 @@ final class WatchRows {
         c.setTextColor(Color.WHITE);
         c.setGravity(Gravity.CENTER);
         c.setTextSize(TypedValue.COMPLEX_UNIT_SP, f1 ? 22f : g.state == 1 ? 22f : 34f);
-        c.setTypeface(context.getResources().getFont(R.font.outfit_medium));
+        c.setTypeface(Fonts.get(context, R.font.outfit_medium));
         LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         clp.leftMargin = clp.rightMargin = dp(f1 ? 0 : 24);
         mid.addView(c, clp);
@@ -957,7 +953,7 @@ final class WatchRows {
         TextView v = new TextView(context);
         v.setText(cats.get(i).name);
         v.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f);
-        v.setTypeface(context.getResources().getFont(R.font.outfit_medium));
+        v.setTypeface(Fonts.get(context, R.font.outfit_medium));
         v.setSingleLine(true);
         v.setFocusable(true);
         v.setGravity(Gravity.CENTER);
@@ -983,7 +979,7 @@ final class WatchRows {
 
     private void styleTab(TextView v, boolean current, boolean focused) {
         v.setTextColor(LightUi.ink(current || focused ? Color.WHITE : 0x80FFFFFF));
-        v.setTypeface(context.getResources().getFont(current ? R.font.outfit_medium : R.font.outfit_regular),
+        v.setTypeface(Fonts.get(context, current ? R.font.outfit_medium : R.font.outfit_regular),
                 current ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
         v.setBackground(null);
         // The lens swells a little while the tabs have focus, as a pressed glass button does.
@@ -1290,7 +1286,7 @@ final class WatchRows {
         name.setText(t.title);
         name.setTextColor(LightUi.ink(Color.WHITE));
         name.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f);
-        name.setTypeface(context.getResources().getFont(R.font.outfit_medium));
+        name.setTypeface(Fonts.get(context, R.font.outfit_medium));
         name.setSingleLine(true);
         name.setEllipsize(android.text.TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -1301,7 +1297,7 @@ final class WatchRows {
         year.setText(t.year + (t.season != null ? "  ·  " + t.season : ""));
         year.setTextColor(LightUi.ink(0x99FFFFFF));
         year.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
-        year.setTypeface(context.getResources().getFont(R.font.outfit_regular));
+        year.setTypeface(Fonts.get(context, R.font.outfit_regular));
         year.setSingleLine(true);
         LinearLayout.LayoutParams ylp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         ylp.leftMargin = dp(2);
@@ -1454,7 +1450,7 @@ final class WatchRows {
         stopTrailer();
         if (web == null) {
             try {
-                web = new android.webkit.WebView(context);
+                web = WebViews.made(new android.webkit.WebView(context));
             } catch (RuntimeException e) {
                 return;   // no WebView on this TV: no trailer
             }
@@ -1597,7 +1593,7 @@ final class WatchRows {
         about.setText(text);
         about.setTextColor(0xB3FFFFFF);
         about.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f);
-        about.setTypeface(context.getResources().getFont(R.font.outfit_regular));
+        about.setTypeface(Fonts.get(context, R.font.outfit_regular));
         about.setLineSpacing(0, 1.1f);
         about.setMaxLines(h > dp(200) ? 4 : 3);
         about.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -1624,7 +1620,7 @@ final class WatchRows {
         v.setText(text);
         v.setTextColor(color);
         v.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
-        v.setTypeface(context.getResources().getFont(R.font.outfit_medium));
+        v.setTypeface(Fonts.get(context, R.font.outfit_medium));
         v.setShadowLayer(dp(4), 0, dp(1), 0xCC000000);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.rightMargin = dp(4);

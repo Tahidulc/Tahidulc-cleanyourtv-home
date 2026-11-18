@@ -133,7 +133,7 @@ final class NewsPanel {
             title.setText(stories.get(i)[0]);
             title.setTextColor(Color.WHITE);
             title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f);
-            title.setTypeface(ctx.getResources().getFont(R.font.outfit_regular));
+            title.setTypeface(Fonts.get(ctx, R.font.outfit_regular));
             title.setMaxLines(rowH > 70 * density ? 3 : 2);
             title.setEllipsize(android.text.TextUtils.TruncateAt.END);
             LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);

@@ -248,8 +248,8 @@ final class Recap {
     @SuppressWarnings("unchecked")
     private void build(PagesV2.Title t, WatchHistory.Entry e, Object[] got, Runnable play) {
         Context c = h.a;
-        Typeface heavy = c.getResources().getFont(R.font.outfit_extrabold), semi = c.getResources().getFont(R.font.inter_semibold),
-                regular = c.getResources().getFont(R.font.inter_regular);
+        Typeface heavy = Fonts.get(c, R.font.outfit_extrabold), semi = Fonts.get(c, R.font.inter_semibold),
+                regular = Fonts.get(c, R.font.inter_regular);
         overlay.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{0xFF141C92, 0xFF1F29A6, 0xFF2A35B8}));
         if (got[1] != null) {
             ImageView bg = new ImageView(c);
