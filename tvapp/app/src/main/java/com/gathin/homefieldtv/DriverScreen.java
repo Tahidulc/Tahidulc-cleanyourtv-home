@@ -362,7 +362,6 @@ final class DriverScreen extends Screen {
         private void drawDriver(Canvas c, F1.Standing st, Sheet s, float d) {
             float alpha = Math.max(0f, 1f - Math.abs(d));
             if (alpha <= 0.01f) return;
-            int a = Math.round(255 * alpha);
             // His number, huge, italic and faded behind him.
             if (!s.number.isEmpty()) {
                 bigNumber.setAlpha(Math.round(0x29 * alpha));
@@ -372,11 +371,15 @@ final class DriverScreen extends Screen {
             drawCar(c, s, x(888f + d * 640f), x(916f), x(1000f), alpha);
             // The driver standing over the card's left half, rising above its top.
             drawFigure(c, st, s, x(650f + d * 420f), alpha);
+            // The words go in the first half of a slide and come in the second, so two drivers' never lie over each other.
+            float words = Math.max(0f, 1f - 2f * Math.abs(d));
+            if (words <= 0.01f) return;
+            int wa = Math.round(255 * words);
             // His season down the left.
             float sx = x(150f + d * 220f);
-            headP.setAlpha(Math.round(0xB3 * alpha));
-            labelP.setAlpha(Math.round(0xC7 * alpha));
-            valueP.setAlpha(a);
+            headP.setAlpha(Math.round(0xB3 * words));
+            labelP.setAlpha(Math.round(0xC7 * words));
+            valueP.setAlpha(wa);
             if (!s.head.isEmpty()) c.drawText(s.head, sx, x(664f), headP);
             F1.Season season = seasons.get(st.driverId);
             if (season != null && s.races == null) {
@@ -400,7 +403,7 @@ final class DriverScreen extends Screen {
             }
             // The right: the team's name very large with its logo, then his number, flag and name, then the facts.
             float tx = x(1010f + d * 260f);
-            teamP.setAlpha(a);
+            teamP.setAlpha(wa);
             c.save();
             c.translate(tx, x(530f));
             c.scale(s.teamSize, s.teamSize);
@@ -409,25 +412,25 @@ final class DriverScreen extends Screen {
             Bitmap logo = picture(s.logo, s.logoBefore, Ui.px(84f), Ui.px(84f));
             if (logo != null) {
                 float lx = Math.min(tx + teamP.measureText(s.team) * s.teamSize + x(26f), x(1736f + d * 260f));
-                bmp.setAlpha(a);
+                bmp.setAlpha(wa);
                 c.drawBitmap(logo, lx, x(500f) - logo.getHeight() / 2f, bmp);
             }
             float nx = tx;
             if (!s.number.isEmpty()) {
-                numberP.setAlpha(Math.round(0xD9 * alpha));
+                numberP.setAlpha(Math.round(0xD9 * words));
                 c.drawText(s.number, nx, x(606f), numberP);
                 nx += numberP.measureText(s.number) + x(18f);
             }
             Bitmap flag = s.flag == null ? null : Pics.get(s.flag, Ui.px(56f), Ui.px(56f), Pics.FIT, redraw);
             if (flag != null) {
-                bmp.setAlpha(a);
+                bmp.setAlpha(wa);
                 c.drawBitmap(flag, nx - x(3f), x(592f) - flag.getHeight() / 2f, bmp);
                 nx += x(58f) + x(10f);
             }
-            nameP.setAlpha(a);
+            nameP.setAlpha(wa);
             c.drawText(s.name, nx, x(606f), nameP);
             if (!s.facts.isEmpty()) {
-                factsP.setAlpha(Math.round(0xC7 * alpha));
+                factsP.setAlpha(Math.round(0xC7 * words));
                 c.drawText(s.facts, tx, x(652f), factsP);
             }
         }
@@ -448,8 +451,8 @@ final class DriverScreen extends Screen {
                 bmp.setAlpha(Math.round(255 * alpha));
                 c.drawBitmap(car, null, r, bmp);
             } else if (s.car == null || Pics.failed(s.car) && (s.carBefore == null || Pics.failed(s.carBefore))) {
-                carBody.setColor(ClubLook.at(s.colour, 0.22, 0.6f));
-                carBody.setAlpha(Math.round(235 * alpha));
+                carBody.setColor(ClubLook.at(s.colour, 0.16, 0.6f));
+                carBody.setAlpha(Math.round(200 * alpha));
                 wheels.setAlpha(Math.round(255 * alpha));
                 ClubLook.car(c, left, groundY, length, carBody, wheels);
             }
@@ -474,8 +477,8 @@ final class DriverScreen extends Screen {
                     bmp.setAlpha(Math.round(255 * alpha));
                     c.drawBitmap(head, null, r, bmp);
                 } else if (st.headshot == null || Pics.failed(st.headshot)) {
-                    stand.setColor(ClubLook.at(s.colour, 0.2, 0.45f));
-                    stand.setAlpha(Math.round(200 * alpha));
+                    stand.setColor(ClubLook.at(s.colour, 0.13, 0.45f));
+                    stand.setAlpha(Math.round(130 * alpha));
                     ClubLook.standing(c, cx, x(70f), x(FIGURE_H), stand);
                 }
             }

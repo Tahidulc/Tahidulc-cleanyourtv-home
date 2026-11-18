@@ -353,26 +353,33 @@ final class PlayerScreen extends Screen {
                 numberP.setAlpha(a);
                 c.drawText(s.number, ccx - numberP.measureText(s.number) / 2f, Cine.mid(numberP, ccy), numberP);
             }
-            // The words: the names, his position, country and age, then the season's figures.
+            // The words: the names, his position, country and age, then the season's figures. They go in the first half
+            // of a slide and come in the second, so two players' words never lie over each other.
+            float words = Math.max(0f, 1f - 2f * Math.abs(d));
+            if (words <= 0.01f) {
+                c.restore();
+                return;
+            }
+            int wa = Math.round(255 * words);
             float tx = x(TEXT_X);
             if (!s.first.isEmpty()) {
-                firstP.setAlpha(a);
+                firstP.setAlpha(wa);
                 c.drawText(s.first, tx, x(330f), firstP);
             }
-            lastP.setAlpha(a);
+            lastP.setAlpha(wa);
             c.save();
             c.translate(tx, x(480f));
             c.scale(s.lastSize, s.lastSize);
             c.drawText(s.last, 0, 0, lastP);
             c.restore();
-            drawFacts(c, s, tx, x(560f), a);
+            drawFacts(c, s, tx, x(560f), wa);
             if (!s.figures.isEmpty()) {
-                line.setAlpha(Math.round(0x26 * alpha));
+                line.setAlpha(Math.round(0x26 * words));
                 c.drawRect(tx, x(608f), x(1820f), x(610f), line);
-                whatP.setAlpha(Math.round(0xB3 * alpha));
+                whatP.setAlpha(Math.round(0xB3 * words));
                 c.drawText(s.what, tx, x(672f), whatP);
-                valueP.setAlpha(a);
-                labelP.setAlpha(Math.round(0xBF * alpha));
+                valueP.setAlpha(wa);
+                labelP.setAlpha(Math.round(0xBF * words));
                 for (int i = 0; i < s.figures.size() && i < 8; i++) {
                     String[] f = s.figures.get(i);
                     float fx = tx + x(245f * (i % 4)), fy = x(i < 4 ? 778f : 960f);
