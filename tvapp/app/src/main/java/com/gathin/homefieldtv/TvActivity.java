@@ -15,6 +15,7 @@ import com.gathin.homefieldtv.engine.Catalog;
 import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Library;
+import com.gathin.homefieldtv.prefs.ChannelEdits;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -56,6 +57,14 @@ public final class TvActivity extends Activity {
             s.updatesChanged();
         }
     };
+    /** The channels' logos changed (a new list of logos, a channel's own choice, Settings › Logos): drawn again. */
+    private final Runnable logos = () -> {
+        for (Screen s : new ArrayList<>(stack)) {
+            if (!s.built()) continue;
+            redraw(s.view());
+            if (s instanceof SettingsScreen) ((SettingsScreen) s).logosChanged();
+        }
+    };
 
     private static void redraw(View v) {
         v.invalidate();
@@ -77,6 +86,11 @@ public final class TvActivity extends Activity {
         Dark.init(this);
         PosterArt.init(this);
         Pics.init(this);
+        // The family's own edits to their channels, and the new logos (their list read, asked for again weekly).
+        com.gathin.homefieldtv.prefs.ChannelEdits.load(this);
+        com.gathin.homefieldtv.engine.LogoPack.failed = Pics::failed;
+        com.gathin.homefieldtv.engine.LogoPack.init(this);
+        com.gathin.homefieldtv.engine.LogoPack.addListener(logos);
         Cast.hello(this);
         // The family's playlists, favourites, Continue watching and settings, through the launcher on this TV.
         com.gathin.homefieldtv.sync.TvSync.start(this);
@@ -185,7 +199,7 @@ public final class TvActivity extends Activity {
         Channel c = Library.get(this).byKey(key);
         if (c == null) return;
         watch(c);
-        android.widget.Toast.makeText(this, "Playing " + c.name + (from == null || from.isEmpty() ? "" : " from " + from),
+        android.widget.Toast.makeText(this, "Playing " + ChannelEdits.name(c) + (from == null || from.isEmpty() ? "" : " from " + from),
                 android.widget.Toast.LENGTH_LONG).show();
     }
 
@@ -271,6 +285,7 @@ public final class TvActivity extends Activity {
         Library.get(this).removeListener(channels);
         Catalog.get(this).removeListener(catalog);
         Updates.removeListener(updates);
+        com.gathin.homefieldtv.engine.LogoPack.removeListener(logos);
         live.stop();
         super.onDestroy();
     }

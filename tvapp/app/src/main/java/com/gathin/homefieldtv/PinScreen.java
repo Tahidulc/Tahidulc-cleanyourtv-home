@@ -13,6 +13,7 @@ import android.view.View;
 
 import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.prefs.Parental;
+import com.gathin.homefieldtv.prefs.ChannelEdits;
 
 import java.util.Locale;
 
@@ -59,7 +60,7 @@ final class PinScreen extends Screen {
 
     /** A channel played by go, after the PIN when it is locked. */
     static void forChannel(TvActivity tv, Channel c, Runnable go) {
-        if (c != null && Parental.blocks(tv, c)) check(tv, c.name + " is locked", go);
+        if (c != null && Parental.blocks(tv, c)) check(tv, ChannelEdits.name(c) + " is locked", go);
         else go.run();
     }
 

@@ -16,6 +16,8 @@ import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.engine.Recordings;
 import com.gathin.homefieldtv.prefs.OtherPrefs;
+import com.gathin.homefieldtv.prefs.ChannelEdits;
+import com.gathin.homefieldtv.engine.LogoPack;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -68,19 +70,19 @@ final class RecordingsScreen extends Screen implements ProgrammeList.Host, Dialo
         Channel archive = Catchup.source(channel);
         int days = archive == null ? 0 : archive.archiveDays;
         if (days <= 0) {
-            say(c, channel.name + " keeps no catch-up, so it can't be recorded: your provider allows one stream at a time.");
+            say(c, ChannelEdits.name(channel) + " keeps no catch-up, so it can't be recorded: your provider allows one stream at a time.");
             return false;
         }
         if (!Recordings.recordable(days, start, end, now)) {
-            say(c, "That programme has gone from " + channel.name + "'s catch-up.");
+            say(c, "That programme has gone from " + ChannelEdits.name(channel) + "'s catch-up.");
             return false;
         }
         if (Recordings.has(c, channel.key, start)) {
             say(c, "Already in Recordings");
             return true;
         }
-        Recordings.add(c, new Recordings.Recording(channel.key, channel.name, channel.logo, title, description, start, end, now));
-        say(c, "Recording " + (title == null || title.isEmpty() ? "it" : title) + ": it plays from " + channel.name
+        Recordings.add(c, new Recordings.Recording(channel.key, ChannelEdits.name(channel), LogoPack.url(channel), title, description, start, end, now));
+        say(c, "Recording " + (title == null || title.isEmpty() ? "it" : title) + ": it plays from " + ChannelEdits.name(channel)
                 + "'s catch-up, for " + days + (days == 1 ? " day" : " days") + " after it starts.");
         return true;
     }
@@ -145,8 +147,8 @@ final class RecordingsScreen extends Screen implements ProgrammeList.Host, Dialo
         ProgrammeList.Entry e = new ProgrammeList.Entry(r, Ui.day(r.start, now));
         e.title = r.title.isEmpty() ? "A programme on " + r.channel : r.title;
         e.when = ProgrammeList.when(r.start, r.end);
-        e.channel = c == null ? r.channel : c.name;
-        e.logo = c == null ? r.logo : c.logo;
+        e.channel = c == null ? r.channel : ChannelEdits.name(c);
+        e.logo = c == null ? r.logo : LogoPack.url(c);
         e.about = r.about;
         e.archive = true;
         e.now = st == Recordings.RECORDING;
@@ -257,7 +259,7 @@ final class RecordingsScreen extends Screen implements ProgrammeList.Host, Dialo
         } else if (st == Recordings.SCHEDULED) {
             say(tv, "It's on " + Ui.day(r.start, now) + " at " + LiveText.hm(r.start) + ": it can be watched once it starts.");
         } else if (st == Recordings.GONE) {
-            say(tv, "It has gone from " + c.name + "'s catch-up.");
+            say(tv, "It has gone from " + ChannelEdits.name(c) + "'s catch-up.");
         } else {
             // From the archive, as far either side as Settings → Other → Recording says (the archive's own start at most).
             long[] span = Recordings.span(r, OtherPrefs.before(tv), OtherPrefs.after(tv));

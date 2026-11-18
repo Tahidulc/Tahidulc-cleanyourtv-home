@@ -41,14 +41,14 @@ public final class SubsTiming {
     }
 
     /**
-     * Pure: whether a substitution at minute may come out now: the picture has reached it (the board's clock at least
-     * half way through its minute), the clock is not known, the channel has just shown one (seen), or it has waited its
-     * longest.
+     * Pure: whether a substitution at minute may come out now: the picture has shown it (the board's clock past the end of
+     * its minute, never part way through: the change can come late in it, and it is no spoiler only once it is on the
+     * picture), the clock is not known, the channel has just shown one (seen), or it has waited its longest.
      */
     public static boolean due(String minute, int boardSeconds, boolean seen, long waitedMs) {
         if (seen || waitedMs >= MOST_WAIT_MS) return true;
         int at = secondsOf(minute);
-        return at < 0 || boardSeconds < 0 || boardSeconds >= at;
+        return at < 0 || boardSeconds < 0 || boardSeconds >= at + 30;
     }
 
     /**

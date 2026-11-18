@@ -39,8 +39,9 @@ import java.util.List;
  * the on-screen keyboard, on a sheet risen from the foot over the dimmed screen: a password and the TorBox key only
  * ever show as dots, an address only its server's name.
  *
- * <p>The pages are MoreSettings' (General, Appearance, Playback, Remote control, Other, About) and ExtraSettings'
- * (Playlists, EPG, Groups, Parental controls, Restore data); each page is named by a path ("appearance", "pick:clock").
+ * <p>The pages are MoreSettings' (General, Appearance, Playback, Remote control, Other, About), ExtraSettings'
+ * (Playlists, EPG, Parental controls, Restore data) and EditSettings' (Appearance › TV guide with Hidden channels and
+ * Manage groups and each group's page, Groups, Logos); each page is named by a path ("appearance", "pick:clock").
  * Settings can be opened on a page (new SettingsScreen(tv, "other.recording")), and opens again where it was after the
  * screens are made again for a new colour theme, font size or posters.
  */
@@ -103,6 +104,7 @@ final class SettingsScreen extends Screen implements RightPanel.Host, Keyboard.H
     private Runnable onYes;
     private MoreSettings more;
     private ExtraSettings extra;
+    private EditSettings edits;
     /** The pages open, the sections first. */
     private final List<String> pages = new ArrayList<>();
     private boolean editing;
@@ -145,6 +147,7 @@ final class SettingsScreen extends Screen implements RightPanel.Host, Keyboard.H
         f.addView(dialog, new FrameLayout.LayoutParams(-1, -1));
         more = new MoreSettings(tv, this);
         extra = new ExtraSettings(tv, this);
+        edits = new EditSettings(tv, this);
         return f;
     }
 
@@ -206,6 +209,11 @@ final class SettingsScreen extends Screen implements RightPanel.Host, Keyboard.H
         refreshQuietly();
     }
 
+    /** The logos changed (their list read, Refresh logos): Appearance › Logos says so. */
+    void logosChanged() {
+        refreshQuietly();
+    }
+
     // ---- the pages ------------------------------------------------------------------------------------------------
 
     /**
@@ -223,8 +231,10 @@ final class SettingsScreen extends Screen implements RightPanel.Host, Keyboard.H
             out.add("playlists");
             out.add(base);
         } else if (base.startsWith("group:")) {
+            // A group's page, in Appearance › TV guide › Manage groups (EditSettings).
             out.add("appearance");
-            out.add("appearance.groups");
+            out.add("appearance.guide");
+            out.add("appearance.guide.groups");
             out.add(base);
         } else if (base.equals("theme")) {
             out.add("appearance");
@@ -257,8 +267,13 @@ final class SettingsScreen extends Screen implements RightPanel.Host, Keyboard.H
 
     private Pages owner(String page) {
         String p = page.startsWith(PICK) ? page.substring(PICK.length()) : page;
-        if (page.startsWith(PICK)) return extra.picker(p) != null ? extra : more;
-        return extra.owns(p) ? extra : more;
+        if (page.startsWith(PICK)) return extra.picker(p) != null ? extra : edits.picker(p) != null ? edits : more;
+        return extra.owns(p) ? extra : edits.owns(p) ? edits : more;
+    }
+
+    /** Who keeps what is typed in a field. */
+    private Pages fieldOwner(String field) {
+        return edits.ownsField(field) ? edits : extra.ownsField(field) ? extra : more;
     }
 
     String title(String page) {
@@ -495,7 +510,7 @@ final class SettingsScreen extends Screen implements RightPanel.Host, Keyboard.H
 
     @Override public void done(Keyboard k, String text) {
         String field = editField;
-        Pages o = extra.ownsField(field) ? extra : more;
+        Pages o = fieldOwner(field);
         // The keyboard let go of first: a secret typed is never left in it.
         k.setText("");
         closeKeys();
@@ -519,7 +534,7 @@ final class SettingsScreen extends Screen implements RightPanel.Host, Keyboard.H
 
     /** Previews: a field typed in already, as if from the keyboard. */
     void previewTyped(String field, String text) {
-        Pages o = extra.ownsField(field) ? extra : more;
+        Pages o = fieldOwner(field);
         o.typed(field, text);
         refresh();
     }

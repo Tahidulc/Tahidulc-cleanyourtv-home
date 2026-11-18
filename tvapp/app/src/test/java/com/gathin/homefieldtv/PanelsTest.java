@@ -92,7 +92,12 @@ public class PanelsTest {
         assertEquals(Arrays.asList("playlists", "playlists.add", "playlists.add.m3u"), SettingsScreen.chain("playlists.add.m3u"));
         // A playlist's or a group's own page, whose name can hold dots.
         assertEquals(Arrays.asList("playlists", "playlist:p0"), SettingsScreen.chain("playlist:p0"));
-        assertEquals(Arrays.asList("appearance", "appearance.groups", "group:U.K. | Sport"), SettingsScreen.chain("group:U.K. | Sport"));
+        assertEquals(Arrays.asList("appearance", "appearance.guide", "appearance.guide.groups", "group:U.K. | Sport"),
+                SettingsScreen.chain("group:U.K. | Sport"));
+        assertEquals(Arrays.asList("appearance", "appearance.guide", "appearance.guide.groups", "group:U.K. | Sport", "pick:gsort:U.K. | Sport"),
+                SettingsScreen.chain("pick:gsort:U.K. | Sport"));
+        assertEquals(Arrays.asList("appearance", "appearance.guide", "pick:csort"), SettingsScreen.chain("pick:csort"));
+        assertEquals(Arrays.asList("appearance", "appearance.logos", "pick:lpriority"), SettingsScreen.chain("pick:lpriority"));
         assertEquals(Arrays.asList("appearance", "theme"), SettingsScreen.chain("theme"));
         // A setting's choices, under the page it is on.
         assertEquals(Arrays.asList("appearance", "appearance.player", "pick:clock"), SettingsScreen.chain("pick:clock"));

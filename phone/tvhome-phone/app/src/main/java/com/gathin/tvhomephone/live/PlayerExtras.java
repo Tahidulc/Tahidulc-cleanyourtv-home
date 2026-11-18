@@ -645,6 +645,8 @@ final class PlayerExtras implements LiveAlerts.Listener {
                 ls.add(t);
                 addChip(looks, t);
             }
+            // Beside the look and size: whether what comes out of the channel's own scoreboard is covered (BugCover).
+            toggle(c, box, a.getString(R.string.live_bug_pop_outs_short), ScoreBoard.coverPopOuts(c), on -> ScoreBoard.setCoverPopOuts(c, on));
             // The picture tag on the logo's cover.
             LinearLayout tags = chipRow(c, box, R.string.live20_logo_tag);
             List<TextView> tg = new ArrayList<>();

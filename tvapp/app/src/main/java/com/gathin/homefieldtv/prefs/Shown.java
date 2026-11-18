@@ -13,10 +13,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 
 /**
- * Which channels the screens show, by Settings → Categories (hidden groups) and Parental control (locked channels
- * hidden, until the PIN is entered): Library's lists, Live TV's rows, channel up and down and search all go by it. A
- * favourite or recent channel in a hidden category stays in Favourites and Recent; one locked away doesn't. A list is
- * read through a Filter, which reads what is hidden and locked once for the whole list, never once a channel.
+ * Which channels the screens show, by Settings → Categories (hidden groups), Parental control (locked channels
+ * hidden, until the PIN is entered) and the channels the family hid themselves (Hide channel: ChannelEdits): Library's
+ * lists, Live TV's rows, channel up and down and search all go by it. A favourite or recent channel in a hidden
+ * category stays in Favourites and Recent; one locked away or hidden itself doesn't. A list is read through a Filter,
+ * which reads what is hidden and locked once for the whole list, never once a channel; it carries the family's edits
+ * and sorting (ChannelEdits.Snapshot) for the lists to be made in their order.
  */
 public final class Shown {
     private Shown() {}
@@ -54,9 +56,16 @@ public final class Shown {
         public final boolean open;
         private final Set<String> hidden, lockedGroups, lockedChannels;
         private final boolean hides, pin;
+        /** The family's edits to their channels (hidden, named, placed) and the lists' sorting (ChannelEdits). */
+        public final ChannelEdits.Snapshot edits;
 
         Filter(int version, Set<String> hidden, Set<String> lockedGroups, Set<String> lockedChannels, boolean hides, boolean pin,
                boolean open) {
+            this(version, hidden, lockedGroups, lockedChannels, hides, pin, open, ChannelEdits.Snapshot.EMPTY);
+        }
+
+        Filter(int version, Set<String> hidden, Set<String> lockedGroups, Set<String> lockedChannels, boolean hides, boolean pin,
+               boolean open, ChannelEdits.Snapshot edits) {
             this.version = version;
             this.hidden = hidden;
             this.lockedGroups = lockedGroups;
@@ -64,6 +73,7 @@ public final class Shown {
             this.hides = hides;
             this.pin = pin;
             this.open = open;
+            this.edits = edits == null ? ChannelEdits.Snapshot.EMPTY : edits;
         }
 
         /** Whether a channel is in the lists (Shown.listed). */
@@ -71,9 +81,9 @@ public final class Shown {
             return ch != null && !hidden.contains(ch.group) && kept(ch);
         }
 
-        /** Whether a channel stays in Favourites and Recent (Shown.kept). */
+        /** Whether a channel stays in Favourites and Recent (Shown.kept): not hidden by the family, nor locked away. */
         public boolean kept(Channel ch) {
-            return ch != null && !(hides && blocks(ch));
+            return ch != null && !(hides && blocks(ch)) && !edits.hidden(ch.key);
         }
 
         /** Whether a channel needs the PIN before it plays (Parental.blocks). */
@@ -83,7 +93,7 @@ public final class Shown {
 
         /** Whether nothing is hidden or locked away from the lists. */
         boolean everything() {
-            return hidden.isEmpty() && !(hides && pin && !open);
+            return hidden.isEmpty() && !(hides && pin && !open) && !edits.anyHidden();
         }
 
         /** Whether it still says what is hidden and locked now. */
@@ -97,17 +107,19 @@ public final class Shown {
         int v = version.get();
         boolean open = Parental.open();
         return new Filter(v, Categories.hidden(c), Parental.lockedGroups(c), Parental.lockedChannels(c), Parental.hides(c),
-                Parental.hasPin(c), open);
+                Parental.hasPin(c), open, ChannelEdits.snapshot(c));
     }
 
-    /** Whether a channel is in the lists: not in a hidden category, and not locked away. */
+    /** Whether a channel is in the lists: not in a hidden category, not hidden itself, and not locked away. */
     public static boolean listed(Context c, Channel ch) {
         return ch != null && !Categories.isHidden(c, ch.group) && kept(c, ch);
     }
 
-    /** Whether a channel stays in Favourites and Recent: not locked away (Parental control: Hide them). */
+    /** Whether a channel stays in Favourites and Recent: not hidden by the family, not locked away (Parental control: Hide them). */
     public static boolean kept(Context c, Channel ch) {
-        return ch != null && !(Parental.hides(c) && Parental.blocks(c, ch));
+        if (ch == null) return false;
+        ChannelEdits.load(c);
+        return !(Parental.hides(c) && Parental.blocks(c, ch)) && !ChannelEdits.hidden(ch.key);
     }
 
     /**

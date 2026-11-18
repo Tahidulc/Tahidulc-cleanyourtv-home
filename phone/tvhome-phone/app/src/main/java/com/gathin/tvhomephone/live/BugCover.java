@@ -117,10 +117,32 @@ final class BugCover {
         }
     }
 
+    /** Pure: whether the channel's own scoreboard is watched at all: for the board away in its replays, or its pop-ups covered. */
+    static boolean wanted(boolean awayInReplays, boolean coverPopOuts) {
+        return awayInReplays || coverPopOuts;
+    }
+
+    /**
+     * Pure: whether what grows out of the channel's scoreboard is covered now: only with "Cover the channel's score
+     * pop-ups" on (whatever "Away in replays" says), and never while the channel's own is gone (a replay).
+     */
+    static boolean covers(boolean channelsAway, boolean coverPopOuts) {
+        return coverPopOuts && !channelsAway;
+    }
+
     private void loop() {
         h.removeCallbacks(loop);
         if (!running) return;
-        boolean wanted = ScoreBoard.awayInReplays(c) || ScoreBoard.coverPopOuts(c);
+        boolean popOuts = ScoreBoard.coverPopOuts(c);
+        // Switched off (here, in Settings or in the player's options): the plates come down at once, not at the next picture.
+        if (!popOuts && !plates.isEmpty()) {
+            plates.clear();
+            words.clear();
+            since.clear();
+            asked.clear();
+            host.plates(new ArrayList<>(), new ArrayList<>());
+        }
+        boolean wanted = wanted(ScoreBoard.awayInReplays(c), popOuts);
         int[] vp = host.videoPixels();
         int[] b = wanted && host.watching() ? host.boardInStream() : null;
         if (b == null || vp[0] <= 0 || vp[1] <= 0) {
@@ -192,7 +214,7 @@ final class BugCover {
             host.away(away);
         }
         List<int[]> rects = new ArrayList<>();
-        if (!aw && ScoreBoard.coverPopOuts(c)) {
+        if (covers(aw, ScoreBoard.coverPopOuts(c))) {
             BugWatch.Place p = w.place();
             int[] core = p.toScreen(w.core());
             int pad = Math.max(2, Math.round((core[3] - core[1]) * 0.08f));

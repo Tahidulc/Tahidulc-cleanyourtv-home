@@ -997,6 +997,9 @@ final class AdBreak {
         postsAt = now;
         io.execute(() -> {
             List<FanPosts.Post> got = FanPosts.fetch(g.homeName != null ? g.homeName : g.home, g.awayName != null ? g.awayName : g.away);
+            // None newer than the longest a channel runs behind: a fan's "GOAL!" never before the picture has shown it.
+            long at = System.currentTimeMillis();
+            got.removeIf(p -> !com.gathin.broadcast.AsSeen.fanSafe(p.at, at));
             for (FanPosts.Post p : got) {
                 if (p.avatar == null || avatars.containsKey(p.avatar)) continue;
                 Bitmap b = avatar(p.avatar);
@@ -1255,7 +1258,9 @@ final class AdBreak {
         @Override public void run() {
             if (!isShowing() || shown == null || phaseLine == null) return;
             long now = System.currentTimeMillis();
-            ScoresTicker.Game g = fresh(shown.g);
+            // The game as the picture shows it (the board's in step with the channel), never as the scores have it now: the
+            // end of half time on the picture is already the second half in the real game.
+            ScoresTicker.Game g = BoardCover.asOnScreen(app, fresh(shown.g));
             int ph = g == null ? AdBreakLogic.GENERAL : AdBreakLogic.phase(true, g.state, g.halftime, g.kickoff, now);
             phaseLine.setText(AdBreakLogic.label(ph));
             if (ph == AdBreakLogic.BEFORE) {

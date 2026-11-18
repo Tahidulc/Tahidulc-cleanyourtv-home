@@ -157,6 +157,7 @@ public final class BackupStore {
         Reminders.forget();
         Categories.forget();
         Parental.forget();
+        com.gathin.homefieldtv.prefs.ChannelEdits.forget();
         // A file chosen is used once.
         if (PICKED.equals(k.which)) {
             //noinspection ResultOfMethodCallIgnored

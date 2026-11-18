@@ -14,8 +14,8 @@ import java.util.List;
 /**
  * The player's "Move and resize" panel, along the foot while the scoreboard and Homefield's mark over the channel's
  * logo are dragged into place: each one on or off, its size (smaller and bigger), its height alone and its width alone, its look; the
- * board's timing against the channel (read off the channel's own clock, or put later or sooner by hand); keeping them
- * still, and Reset (back to where Homefield puts them) or Done.
+ * channel's score pop-ups covered or not (BugCover); the board's timing against the channel (read off the channel's own
+ * clock, or put later or sooner by hand); keeping them still, and Reset (back to where Homefield puts them) or Done.
  */
 final class AdjustPanel {
     private AdjustPanel() {}
@@ -128,6 +128,21 @@ final class AdjustPanel {
             lp.rightMargin = Ui.dp(c, 8);
             lookRow.addView(one, lp);
         }
+
+        // Whether what comes out of the channel's own scoreboard is covered, beside the board's look and size (BugCover).
+        LinearLayout pops = row(c, card, "Pop-ups");
+        String popWords = c.getString(com.gathin.tvhomephone.R.string.live_bug_pop_outs_short);
+        boolean[] popOn = {ScoreBoard.coverPopOuts(c)};
+        TextView pop = Ui.guideChip(c, (popOn[0] ? "✓ " : "") + popWords, popOn[0]);
+        pop.setContentDescription(popWords + (popOn[0] ? " on" : " off"));
+        pop.setOnClickListener(v -> {
+            popOn[0] = !popOn[0];
+            ScoreBoard.setCoverPopOuts(c, popOn[0]);
+            pop.setText((popOn[0] ? "✓ " : "") + popWords);
+            pop.setContentDescription(popWords + (popOn[0] ? " on" : " off"));
+            Ui.styleChip(c, pop, popOn[0]);
+        });
+        pops.addView(pop);
 
         // The board's timing against the channel's own scoreboard.
         LinearLayout time = row(c, card, "Timing");

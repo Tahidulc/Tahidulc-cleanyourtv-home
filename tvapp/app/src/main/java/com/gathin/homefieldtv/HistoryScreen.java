@@ -15,6 +15,8 @@ import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.History;
 import com.gathin.homefieldtv.engine.Library;
+import com.gathin.homefieldtv.prefs.ChannelEdits;
+import com.gathin.homefieldtv.engine.LogoPack;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -394,10 +396,10 @@ final class HistoryScreen extends Screen implements DialogCard.Host {
             String at = Words.hm(e.at);
             c.drawText(at, Ui.f(680f) - words.width(at), base, lineP);
             // The channel.
-            Bitmap logo = Pics.get(l.channel.logo, Ui.px(99), Ui.px(66), Pics.tiles ? Pics.READY : Pics.FIT, redraw);
+            Bitmap logo = Pics.get(LogoPack.url(l.channel), Ui.px(99), Ui.px(66), Pics.tiles ? Pics.READY : Pics.FIT, redraw);
             if (logo != null) c.drawBitmap(logo, Ui.f(728f) + (Ui.f(99) - logo.getWidth()) / 2f, Ui.f(y + 22f) + (Ui.f(66) - logo.getHeight()) / 2f, bmp);
             nameP.setColor(Palette.TEXT1);
-            names.line(c, l.channel.name, Ui.f(851f), Type.centred(nameP, Ui.f(y + ENTRY_H / 2f)), Ui.f(lit ? 196f : 260f));
+            names.line(c, ChannelEdits.name(l.channel), Ui.f(851f), Type.centred(nameP, Ui.f(y + ENTRY_H / 2f)), Ui.f(lit ? 196f : 260f));
             if (lit) {
                 float cx = Ui.f(1092f), cy = Ui.f(y + ENTRY_H / 2f);
                 if (onDelete) Focus.circle(c, cx, cy, Ui.f(72f));

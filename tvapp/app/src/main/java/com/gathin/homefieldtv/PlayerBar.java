@@ -21,6 +21,7 @@ import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.prefs.Parental;
 import com.gathin.homefieldtv.prefs.PlayerPrefs;
+import com.gathin.homefieldtv.prefs.ChannelEdits;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -328,8 +329,8 @@ final class PlayerBar extends FrameLayout implements PickerCard.Host {
                 Channel ch = host.channel();
                 if (ch == null) return;
                 boolean on = Library.get(getContext()).toggleFavourite(ch);
-                android.widget.Toast.makeText(getContext(), on ? ch.name + " added to your favourites"
-                        : ch.name + " taken off your favourites", android.widget.Toast.LENGTH_SHORT).show();
+                android.widget.Toast.makeText(getContext(), on ? ChannelEdits.name(ch) + " added to your favourites"
+                        : ChannelEdits.name(ch) + " taken off your favourites", android.widget.Toast.LENGTH_SHORT).show();
                 relabel();
                 bar.invalidate();
                 return;
@@ -507,13 +508,13 @@ final class PlayerBar extends FrameLayout implements PickerCard.Host {
     private void lock(Channel ch) {
         Context c = getContext();
         if (Parental.lockedChannels(c).contains(ch.key)) {
-            PinScreen.check(tv, "Unlock " + ch.name, () -> {
+            PinScreen.check(tv, "Unlock " + ChannelEdits.name(ch), () -> {
                 Parental.lockChannel(tv, ch.key, false);
-                android.widget.Toast.makeText(tv, ch.name + " unlocked", android.widget.Toast.LENGTH_SHORT).show();
+                android.widget.Toast.makeText(tv, ChannelEdits.name(ch) + " unlocked", android.widget.Toast.LENGTH_SHORT).show();
             });
         } else {
             Parental.lockChannel(tv, ch.key, true);
-            android.widget.Toast.makeText(tv, ch.name + " locked: the PIN is asked before it plays", android.widget.Toast.LENGTH_SHORT).show();
+            android.widget.Toast.makeText(tv, ChannelEdits.name(ch) + " locked: the PIN is asked before it plays", android.widget.Toast.LENGTH_SHORT).show();
         }
     }
 

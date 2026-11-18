@@ -107,6 +107,19 @@ final class BugCover {
         }
     }
 
+    /** Pure: whether the channel's own scoreboard is watched at all: for your board away in its replays, or its pop-ups covered. */
+    static boolean wanted(boolean replays, boolean popOuts) {
+        return replays || popOuts;
+    }
+
+    /**
+     * Pure: whether what grows out of the channel's scoreboard is covered now: only with "Cover the channel's score pop-ups"
+     * on (whatever "Away in replays" says), and never while the channel's own is gone (a replay).
+     */
+    static boolean covers(boolean channelsAway, boolean popOuts) {
+        return popOuts && !channelsAway;
+    }
+
     /** What grows out of the channel's scoreboard covered by plates in your board's look: on unless switched off. */
     static boolean popOutsOn(Context c) {
         return prefs(c).getBoolean("pop_outs", true);
@@ -149,7 +162,7 @@ final class BugCover {
     /** Your board at board {x, y, w, h} (the screen's pixels) over the match on the channel named: the place under it watched. */
     static void tick(Context c, int[] board, String channel) {
         app = c.getApplicationContext();
-        if (board == null || !replaysOn(app) && !popOutsOn(app) || !ScreenShots.available()) {
+        if (board == null || !wanted(replaysOn(app), popOutsOn(app)) || !ScreenShots.available()) {
             stop();
             return;
         }
@@ -297,7 +310,7 @@ final class BugCover {
             BoardCover.bugChanged();
         }
         List<int[]> rects = new ArrayList<>();
-        if (!aw && popOutsOn(app)) {
+        if (covers(aw, popOutsOn(app))) {
             BugWatch.Place p = w.place();
             int[] core = p.toScreen(w.core());
             int pad = Math.max(3, Math.round((core[3] - core[1]) * 0.08f));

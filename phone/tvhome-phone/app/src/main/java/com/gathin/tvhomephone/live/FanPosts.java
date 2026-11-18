@@ -79,7 +79,10 @@ final class FanPosts {
         return "soccer";
     }
 
-    /** Off the main thread: the newest posts for a game, both sources mixed, newest first, at most max. */
+    /**
+     * Off the main thread: the newest posts for a game, both sources mixed, newest first, at most max; none newer than the
+     * longest a channel runs behind (AsSeen.fanSafe): a fan's "GOAL!" never comes before the picture has shown it.
+     */
     static List<Post> load(Game g, int max) {
         List<Post> all = new ArrayList<>();
         if (g == null) return all;
@@ -100,6 +103,8 @@ final class FanPosts {
                 // none from Reddit this time
             }
         }
+        long now = System.currentTimeMillis();
+        all.removeIf(p -> !com.gathin.broadcast.AsSeen.fanSafe(p.at, now));
         return mix(all, max);
     }
 
