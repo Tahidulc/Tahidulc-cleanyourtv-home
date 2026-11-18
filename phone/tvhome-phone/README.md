@@ -695,9 +695,24 @@ of past managers is never shown as the manager. A player's page, in the same loo
 his country with its flag, his age and height, and this season's figures from ESPN and FotMob, each only where a source
 gave it; swipe, or the arrows, for the one before or after him as the club page showed them, and back on the club page
 the carousel is on the last one shown. A driver in Sports' Formula 1 opens his page: his team's colour, his number huge,
-italic and faded behind him, the driver standing (formula1.com's picture, else ESPN's, else a figure drawn in the
-team's colour), the next Grand Prix with its dates and a Days, Hrs and Mins countdown that goes on by itself, the team's
+italic and faded behind him, the driver standing (formula1.com's picture, else ESPN's, else his team's logo with his
+initials), the next Grand Prix with its dates and a Days, Hrs and Mins countdown that goes on by itself, the team's
 name with its logo, his number, flag and full name, his nationality and age, the team's car from the side breaking out
 past the card (formula1.com's, else one drawn), and Grands Prix, Points and Podiums this season (one read of his results
 on Jolpica); swipe through the championship, the colour turning to each team's. Upright on a phone the photo is on top
 and the rest under it; on its side and on a tablet the pages are laid out wide, as the pictures are.
+
+**Each channel's logo on its own colour, and every player's own picture (5.29).** Wherever a channel's logo sits on a tile (the
+guide, Live TV's lists, favourites and hidden channels, the player and its channels, Also Showing On, the info tile,
+Recently watched, a game's channels, Sports and its notifications), the tile is a rich, deeper shade of the logo's own
+colour (a green logo on deep green, a red one on deep red; a white, black or grey mark on a neutral dark, never black),
+worked out once per logo off the main thread and kept. A row with a channel's number, logo and name together (Live TV's
+channel list, the player's channels, Also Showing On, a game's channels, favourites and hidden channels) is filled with
+it too, a touch lighter so the tile still shows, its writing white; the chosen one keeps its ring. Settings → Live TV →
+Behind logos: Logo's colour (the default), None (each logo as it is, with a soft halo behind its own shape only where it
+would be lost on its ground) or Black tile (as before, the rows plain). Every phone is switched to Logo's colour once;
+whatever is chosen after is kept. A player's picture is his own, with nothing drawn under or in place of his face: the
+Premier League's own photo for its clubs, La Liga's for La Liga's, then ESPN's full headshot, then FotMob's face as a
+portrait cut to the card's shape; with none, the club's crest large and his initials. The same in the line-ups (the
+board's, the classic line-ups' and the studio's: a round portrait, or the crest and initials, where there is no cut-out).
+Tests: the switch onto Logo's colour, when a logo gets its halo, a logo's colour and its row, and the pictures' order.

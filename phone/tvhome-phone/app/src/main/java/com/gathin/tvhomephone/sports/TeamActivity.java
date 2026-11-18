@@ -331,6 +331,8 @@ public class TeamActivity extends AppCompatActivity {
         if (!staff && management) management = false;
         staffPill.setVisibility(staff ? View.VISIBLE : View.GONE);
         lightPills();
+        // the cards' club: its league's own pictures of its players, and its crest for one there is no picture of
+        carousel.setClub(data.slug, data.name, data.shortName, data.logo);
         showSquad(false);
         sectionMaker.fill(sections, data, fotmobRead, getResources().getConfiguration().screenWidthDp >= 720);
         more.setVisibility(sections.getChildCount() > 0 ? View.VISIBLE : View.INVISIBLE);

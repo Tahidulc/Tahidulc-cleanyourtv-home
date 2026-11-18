@@ -1051,8 +1051,17 @@ final class InfoTile {
             ImageView img = new ImageView(c);
             img.setScaleType(ImageView.ScaleType.FIT_CENTER);
             img.setContentDescription(i.ch.name);
+            // On a tile in the logo's own colour, black, or nothing behind it (LogoTiles).
+            int p = LogoTiles.boxed(c) ? LogoTiles.pad(c, 3) : 0;
+            img.setPadding(p, p, p, p);
             box.addView(img, new FrameLayout.LayoutParams(-1, -1));
-            if (i.channelLogo != null) com.gathin.tvhomephone.sports.Ui.load(img, i.channelLogo, () -> ini.setText(""), null);
+            if (i.channelLogo != null) {
+                ini.setText("");
+                LogoTiles.show(box, 6, false, img, i.channelLogo, LogoTiles.ON_NAVY, () -> {
+                    ini.setText(Ui.initials(i.ch.name));
+                    box.setBackground(null);
+                });
+            }
             return box;
         }
 

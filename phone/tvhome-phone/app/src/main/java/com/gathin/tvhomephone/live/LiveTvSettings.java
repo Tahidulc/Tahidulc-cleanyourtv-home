@@ -430,6 +430,34 @@ public final class LiveTvSettings {
         TextView capLine = Ui.text(c, c.getString(R.string.captions_setting_line), 13, Ui.DIM, false);
         capLine.setPadding(0, 0, 0, Ui.dp(c, 6));
         col.addView(capLine);
+        behindLogos(c, col);
+    }
+
+    /** Behind logos: Logo's colour (the default), None or Black tile (LogoTiles), for every channel logo in the app. */
+    private static void behindLogos(Context c, LinearLayout col) {
+        col.addView(label(c, c.getString(R.string.live3_behind_logos)));
+        LinearLayout row = new LinearLayout(c);
+        List<TextView> chips = new java.util.ArrayList<>();
+        int now = LogoTiles.behind(c);
+        int[] choices = {LogoTiles.COLOUR, LogoTiles.NONE, LogoTiles.TILE};
+        int[] words = {R.string.live3_behind_colour, R.string.live3_behind_none, R.string.live3_behind_tile};
+        for (int i = 0; i < choices.length; i++) {
+            int choice = choices[i];
+            TextView t = pill(c, c.getString(words[i]), choice == now);
+            t.setOnClickListener(v -> {
+                LogoTiles.set(c, choice);
+                for (TextView x : chips) restyle(c, x, x == v);
+            });
+            chips.add(t);
+            row.addView(t, chipParams(c));
+        }
+        HorizontalScrollView hs = new HorizontalScrollView(c);
+        hs.setHorizontalScrollBarEnabled(false);
+        hs.addView(row);
+        col.addView(hs);
+        TextView note = Ui.text(c, c.getString(R.string.live3_behind_line), 13, Ui.DIM, false);
+        note.setPadding(0, Ui.dp(c, 6), 0, Ui.dp(c, 6));
+        col.addView(note);
     }
 
     interface Flip {

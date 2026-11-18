@@ -527,16 +527,25 @@ public final class BoardLineups extends View {
         for (int i = 0; i < p.players.size(); i++) player(cv, p.team, p.players.get(i), band + pad + i * cell, cell, h);
     }
 
-    /** One player: his number above at the left, head and shoulders, his first name and surname below. */
+    /**
+     * One player: his number above at the left, his picture (head and shoulders), his first name and surname below. With
+     * no picture of him, his club's crest and his initials in its place: never a drawn figure.
+     */
     private void player(Canvas cv, Team t, Player pl, float x, float cw, int h) {
         float top = h * 0.13f, ph = h * 0.56f, pw = Math.min(cw * 0.96f, ph * 1.05f);
-        Bitmap b = pl.photo != null ? pl.photo : avatar(t.kit);
+        Bitmap b = pl.photo;
         if (b != null) {
             float s = Math.min(pw / b.getWidth(), ph / b.getHeight());
             float bw = b.getWidth() * s, bh = b.getHeight() * s;
             r.set(x + (cw - bw) / 2f, top + ph - bh, x + (cw + bw) / 2f, top + ph);
             image.setAlpha(255);
             cv.drawBitmap(b, null, r, image);
+        } else {
+            float side = Math.min(pw, ph) * 0.58f;
+            if (t.crest != null) image(cv, t.crest, x + (cw - side) / 2f, top + ph * 0.04f, side);
+            String ini = initialsOf(pl);
+            words(cv, ini, x + cw / 2f, top + ph * 0.04f + side, ph - side - ph * 0.04f, Math.min(h * 0.11f, (ph - side) * 0.7f),
+                    NAVY, Paint.Align.CENTER, 0.02f);
         }
         words(cv, pl.number, x + cw * 0.08f, h * 0.02f, h * 0.14f, h * 0.11f, NAVY, Paint.Align.LEFT, 0f);
         float fs = fit(pl.first, cw * 0.94f, h * 0.065f, 0f);
@@ -599,22 +608,14 @@ public final class BoardLineups extends View {
         return (n.length() > 3 ? n.substring(0, 3) : n).toUpperCase(Locale.ROOT);
     }
 
-    private Bitmap avatarFor;
-    private int avatarKit;
-
-    /** A player with no photo: the figure in his side's colour (as the TV's card has him). */
-    private Bitmap avatar(int kit) {
-        if (avatarFor != null && avatarKit == kit) return avatarFor;
-        Bitmap b = Bitmap.createBitmap(120, 120, Bitmap.Config.ARGB_8888);
-        Canvas c = new Canvas(b);
-        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-        p.setColor(kit | 0xFF000000);
-        c.drawRoundRect(new RectF(14, 78, 106, 150), 40, 40, p);
-        p.setColor(0xFFB9BED6);
-        c.drawCircle(60, 48, 28, p);
-        avatarFor = b;
-        avatarKit = kit;
-        return b;
+    /** Pure: a player's initials for when there is no picture of him: his first name's and surname's first letters. */
+    static String initialsOf(Player pl) {
+        StringBuilder b = new StringBuilder();
+        for (String w : new String[]{pl.first, pl.last}) {
+            String s = w == null ? "" : w.trim();
+            if (!s.isEmpty()) b.appendCodePoint(Character.toUpperCase(s.codePointAt(0)));
+        }
+        return b.toString();
     }
 
     private void image(Canvas cv, Bitmap b, float x, float y, float size) {

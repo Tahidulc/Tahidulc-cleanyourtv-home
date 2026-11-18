@@ -271,20 +271,38 @@ final class SkinSwipGuide {
             cell.setPadding(s.px(16), 0, s.px(12), 0);
             cell.setBackground(s.fill(12, top + r == chan ? SkinSwip.PANEL2 : SkinSwip.PANEL));
             FrameLayout tile = new FrameLayout(s.c);
-            // On a black tile (ChannelTiles), else on the channel's colour.
-            boolean black = ChannelTiles.on(s.c);
-            int ground = black ? ChannelTiles.GROUND : SkinSwip.channelColour(ch[1]);
-            GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{ground, black ? ground : darker(ground)});
-            g.setCornerRadius(s.px(10));
-            tile.setBackground(g);
-            String logo = black ? ChannelTiles.url(host.channelLogo(ch[0])) : host.channelLogo(ch[0]);
+            // Behind logos (ChannelTiles): on a tile in the logo's own colour (the default); on a black tile; or the logo
+            // as it is on the row, nothing behind it (a halo behind a dark one). No logo: its monogram on its colour.
+            int behind = ChannelTiles.behind(s.c);
+            boolean black = behind == ChannelTiles.TILE, own = behind == ChannelTiles.COLOUR;
+            String raw = host.channelLogo(ch[0]);
+            String logo = black ? ChannelTiles.url(raw) : own ? ChannelTiles.colourUrl(raw) : ChannelTiles.haloUrl(raw);
+            boolean chosen = top + r == chan;
+            if (own && logo != null) {
+                // The whole cell in the logo's colour too, a touch lighter than its tile, the chosen one ringed.
+                int[] known = ChannelTiles.colourOf(logo);
+                int[] cols = known != null ? known : ChannelTiles.waiting();
+                tile.setBackground(ChannelTiles.tile(cols, s.px(10)));
+                cell.setBackground(ChannelTiles.row(cols, s.px(12), chosen, 0xFFFFFFFF));
+            } else if (black || logo == null) {
+                int ground = black ? ChannelTiles.GROUND : SkinSwip.channelColour(ch[1]);
+                GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{ground, black ? ground : darker(ground)});
+                g.setCornerRadius(s.px(10));
+                tile.setBackground(g);
+            }
             if (logo != null) {
                 ImageView lv = new ImageView(s.c);
                 lv.setScaleType(ImageView.ScaleType.FIT_CENTER);
                 FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(-1, -1);
                 lp.setMargins(s.px(5), s.px(8), s.px(5), s.px(8));
                 tile.addView(lv, lp);
-                host.image(lv, logo, s.px(120));
+                String u = logo;
+                host.image(lv, logo, s.px(120), own ? () -> {
+                    int[] got = ChannelTiles.colourOf(u);
+                    if (got == null) return;
+                    tile.setBackground(ChannelTiles.tile(got, s.px(10)));
+                    cell.setBackground(ChannelTiles.row(got, s.px(12), chosen, 0xFFFFFFFF));
+                } : null);
             } else {
                 TextView t = s.text(14, host.display(), 0xFFFFFFFF);
                 t.setGravity(Gravity.CENTER);

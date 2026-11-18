@@ -33,14 +33,16 @@ import java.util.Map;
 
 /**
  * A cut-out photo (a player's, a driver's) drawn into its box, its foot fading away so no hard edge shows: fitted whole
- * and sat on the box's foot, or filling the box's width from its top with the rest cut off by the box's foot. Read with
- * the app's picture cache (Glide) at no more than the box's size, off the main thread; the first of several addresses
- * that loads. A stand-in (a drawn bust) shows while it comes and stays when none does, so there is never a broken box.
- * The fade is a shader on the one picture, so moving and scaling the view costs nothing more.
+ * and sat on the box's foot, or filling the box's width from its top with the rest cut off by the box's foot; or a
+ * picture of a face alone (FotMob's) as a portrait, filling the box and cut to the card's shape (its top corners cut as
+ * the card's are). Read with the app's picture cache (Glide) at no more than the box's size, off the main thread; the
+ * first of several addresses that loads. A stand-in (the club's crest and the man's initials, never a drawn person)
+ * shows when it is given one and no picture comes. The fade is a shader on the one picture, so moving and scaling the
+ * view costs nothing more.
  */
 final class Cutout extends View {
-    /** How the picture sits: whole, on the box's foot; or as wide as the box from its top. */
-    static final int FIT = 0, TOP = 1;
+    /** How the picture sits: whole, on the box's foot; as wide as the box from its top; or a portrait filling the box. */
+    static final int FIT = 0, TOP = 1, PORTRAIT = 2;
 
     /** Previews only: pictures by address, drawn at once in place of a download. Empty in the app. */
     static final Map<String, Bitmap> GIVEN = new HashMap<>();
@@ -66,6 +68,9 @@ final class Cutout extends View {
     private Drawable standIn;
     private int mode = FIT;
     private float fade = 0.26f;
+    /** A portrait's shape: the box with its top corners cut by cut px, as the card's panel has them. */
+    private final android.graphics.Path shape = new android.graphics.Path();
+    private float cut;
     private CustomViewTarget<Cutout, Bitmap> target;
     private int token;
 
@@ -74,10 +79,19 @@ final class Cutout extends View {
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
     }
 
-    /** How it sits (FIT or TOP) and how much of its foot fades (a share of what shows; 0 for none). */
+    /** How it sits (FIT, TOP or PORTRAIT) and how much of its foot fades (a share of what shows; 0 for none). */
     void setLook(int mode, float fade) {
+        if (mode == this.mode && fade == this.fade) return;
         this.mode = mode;
         this.fade = fade;
+        shade();
+        invalidate();
+    }
+
+    /** A portrait's top corners cut by this much (px), as the card's panel is cut. */
+    void setCut(float px) {
+        if (Math.abs(px - cut) < 0.5f) return;
+        cut = px;
         shade();
         invalidate();
     }
@@ -200,12 +214,26 @@ final class Cutout extends View {
             s = w / bw;
             left = 0;
             top = 0;
+        } else if (mode == PORTRAIT) {
+            // The face fills the box (its middle across, from its top), cut to the card's shape.
+            s = Math.max(w / bw, h / bh);
+            left = (w - bw * s) / 2f;
+            top = 0;
+            float k = Math.min(cut, Math.min(w, h) / 3f);
+            shape.reset();
+            shape.moveTo(k, 0);
+            shape.lineTo(w - k, 0);
+            shape.lineTo(w, k);
+            shape.lineTo(w, h);
+            shape.lineTo(0, h);
+            shape.lineTo(0, k);
+            shape.close();
         } else {
             s = Math.min(w / bw, h / bh);
             left = (w - bw * s) / 2f;
             top = h - bh * s;
         }
-        dst.set(left, top, left + bw * s, Math.min(h, top + bh * s));
+        dst.set(Math.max(0, left), top, Math.min(w, left + bw * s), Math.min(h, top + bh * s));
         matrix.setScale(s, s);
         matrix.postTranslate(left, top);
         BitmapShader pic = new BitmapShader(bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
@@ -221,7 +249,14 @@ final class Cutout extends View {
 
     @Override protected void onDraw(@NonNull Canvas c) {
         if (bitmap != null && paint.getShader() != null) {
-            c.drawRect(dst, paint);
+            if (mode == PORTRAIT) {
+                int saved = c.save();
+                c.clipPath(shape);
+                c.drawRect(dst, paint);
+                c.restoreToCount(saved);
+            } else {
+                c.drawRect(dst, paint);
+            }
         } else if (standIn != null) {
             standIn.draw(c);
         }

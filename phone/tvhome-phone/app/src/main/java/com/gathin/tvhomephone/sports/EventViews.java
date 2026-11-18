@@ -17,6 +17,7 @@ import android.widget.TextView;
 
 import com.gathin.tvhomephone.R;
 import com.gathin.tvhomephone.live.AlsoShowing;
+import com.gathin.tvhomephone.live.LogoTiles;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -80,13 +81,16 @@ final class EventViews {
         return v;
     }
 
-    /** One channel: its logo on a dark tile (initials until it loads), its name, on now or when, and Watch. */
+    /**
+     * One channel: its logo on a tile in its own colour (or with nothing behind it, or on black: LogoTiles; initials on a
+     * dark tile until it loads, and when it has none), its name, on now or when, and Watch.
+     */
     private static View row(Activity a, AlsoShowing.Listed l, long now) {
         LinearLayout r = Ui.row(a);
         r.setPadding(0, Ui.dp(a, 9), 0, Ui.dp(a, 9));
         FrameLayout tile = new FrameLayout(a);
         tile.setBackground(Ui.fill(a, 0xFF0A0C22, 9));
-        int pad = Ui.dp(a, 6);
+        int pad = LogoTiles.pad(a, 6);
         tile.setPadding(pad, pad, pad, pad);
         ImageView logo = new ImageView(a);
         logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
@@ -96,10 +100,6 @@ final class EventViews {
         initials.setGravity(Gravity.CENTER);
         initials.setMaxLines(1);
         tile.addView(initials, new FrameLayout.LayoutParams(-1, -1));
-        if (l.logo != null && !l.logo.isEmpty()) {
-            initials.setVisibility(View.GONE);
-            Ui.load(logo, l.logo, null, () -> initials.setVisibility(View.VISIBLE));
-        }
         if (l.uhd) {
             TextView k = Ui.text(a, "4K", 9, 0xFFFFFFFF, true);
             k.setIncludeFontPadding(false);
@@ -127,6 +127,24 @@ final class EventViews {
         under.setEllipsize(TextUtils.TruncateAt.END);
         words.addView(under);
         r.addView(words, Ui.weight(1));
+        if (l.logo != null && !l.logo.isEmpty()) {
+            // Logo's colour: the row (its name and when) in it too, a touch lighter than the tile, its words white.
+            initials.setVisibility(View.GONE);
+            int underInk = l.live ? a.getColor(R.color.live_green) : a.getColor(R.color.text_dim);
+            LogoTiles.show(tile, 9, false, logo, l.logo, LogoTiles.ON_NAVY, cols -> {
+                android.graphics.drawable.Drawable ground = LogoTiles.row(a, cols, false, 0xFFFFFFFF, 14);
+                r.setBackground(ground);
+                int side = ground == null ? 0 : Ui.dp(a, 8);
+                r.setPadding(side, Ui.dp(a, 9), side, Ui.dp(a, 9));
+                under.setTextColor(ground == null ? underInk : 0xE6FFFFFF);
+            }, () -> {
+                initials.setVisibility(View.VISIBLE);
+                tile.setBackground(Ui.fill(a, 0xFF0A0C22, 9));
+                r.setBackground(null);
+                r.setPadding(0, Ui.dp(a, 9), 0, Ui.dp(a, 9));
+                under.setTextColor(underInk);
+            });
+        }
         TextView watch = Ui.text(a, "▶  Watch", 13, l.live ? 0xFF06281A : 0xFF0A0D33, true);
         watch.setGravity(Gravity.CENTER);
         watch.setPadding(Ui.dp(a, 12), Ui.dp(a, 6), Ui.dp(a, 12), Ui.dp(a, 6));

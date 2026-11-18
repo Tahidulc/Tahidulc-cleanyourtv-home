@@ -4228,7 +4228,11 @@ final class HomeV2 {
     }
 
     private Bitmap fetch(String url, int width) {
-        // A channel's logo for its black tile (ChannelTiles): the logo as ever, then made ready for black.
+        // A channel's logo (ChannelTiles): as it is, its tile's colour worked out and kept (Behind logos: Logo's colour);
+        // as it is with a soft halo behind it when it is too dark for the dark ground it sits on (None); or for its
+        // black tile: the logo as ever, then made ready for black.
+        if (ChannelTiles.colourMarked(url)) return ChannelTiles.coloured(url, fetch(ChannelTiles.unmarked(url), width));
+        if (ChannelTiles.haloed(url)) return ChannelTiles.halo(fetch(ChannelTiles.unmarked(url), width));
         if (ChannelTiles.marked(url)) return ChannelTiles.ready(fetch(ChannelTiles.unmarked(url), width));
         if (url.endsWith("#yt")) return video(url.substring(0, url.length() - 3), width);
         if (url.startsWith("crest:")) return crests(url.substring(6), width);

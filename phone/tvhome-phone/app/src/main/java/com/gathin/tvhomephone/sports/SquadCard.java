@@ -17,7 +17,12 @@ import com.gathin.tvhomephone.home.Type;
  * shade lighter than the ground; his cut-out photo rising above the panel's top; the shirt number on a coin in the
  * club's colour over the photo's shoulder; his first name small and his surname huge over the panel's foot. Away from
  * the middle it becomes a neighbour's card: the photo sinks inside the panel, the coin moves to the panel's foot with
- * the whole name small under it. morph() moves between the two with no layout and no allocation, so the carousel can
+ * the whole name small under it.
+ *
+ * <p>His picture is always a real one, the best there is (SquadFilter.photos): his league's own cut-out (the Premier
+ * League's or La Liga's: LeaguePhotos), ESPN's head and shoulders, else FotMob's face, which has no body: it is shown as a
+ * portrait filling the panel's top, cut to the card's shape. With no picture at all, the club's crest large and his
+ * initials (PageArt.Mark); never a drawn person. morph() moves between the two with no layout and no allocation, so the carousel can
  * call it every frame. Sized by its panel's width p (px): the card is 2p wide and about 2p tall.
  */
 final class SquadCard extends ViewGroup {
@@ -25,7 +30,7 @@ final class SquadCard extends ViewGroup {
     final Cutout photo;
     final TextView coin, first, last, small;
     private float p = 1;
-    private int kind = SquadFilter.DRAWN;
+    private int kind = SquadFilter.NONE;
     private String[] urls = new String[0];
     private boolean requested, names = true;
     private String firstName = "", surname = "";
@@ -34,7 +39,13 @@ final class SquadCard extends ViewGroup {
     private float coinD, coinX, coinY, coinSideDx, coinSideDy;
     /** How much larger than the carousel's the photo is drawn (the player's page has the panel to itself). */
     private float photoScale = 1f;
-    private final int maxHead;
+    /** The player shown, and his club: its competition (for its league's pictures), its names and its crest. */
+    private TeamData.Player player;
+    private String clubSlug = "", clubName = "", clubShort = "", crestUrl = "";
+    /** The club's crest, for a player there is no picture of (read only when one needs it). */
+    private final PagePic crest;
+    private boolean crestAsked;
+    private final android.graphics.Typeface markFace;
 
     SquadCard(Context c) {
         super(c);
@@ -44,6 +55,8 @@ final class SquadCard extends ViewGroup {
         addView(panel);
         photo = new Cutout(c);
         addView(photo);
+        crest = new PagePic(photo);
+        markFace = Type.outfit(c, 700);
         coin = label(c, Type.outfit(c, 700));
         coin.setGravity(Gravity.CENTER);
         addView(coin);
@@ -54,8 +67,6 @@ final class SquadCard extends ViewGroup {
         small = label(c, Type.outfit(c, 600));
         small.setEllipsize(TextUtils.TruncateAt.END);
         addView(small);
-        // FotMob's heads are 192 px square: never shown more than about two and a half times that, so they stay sharp.
-        maxHead = Math.round(192 * 2.6f);
     }
 
     private static TextView label(Context c, android.graphics.Typeface face) {
@@ -72,7 +83,7 @@ final class SquadCard extends ViewGroup {
     private int ground = ClubLook.ground(ClubLook.NAVY);
     private boolean coloured;
 
-    /** The club's colours: the panel from the ground, the coin in the club's own colour, the bust in it. */
+    /** The club's colours: the panel from the ground, the coin in the club's own colour. */
     void setColours(int club, int ground) {
         this.ground = ground;
         coloured = true;
@@ -83,8 +94,21 @@ final class SquadCard extends ViewGroup {
         round.setColor(c);
         coin.setBackground(round);
         coin.setTextColor(ClubLook.coinInk(c));
-        photo.setStandIn(new PageArt.Bust(club));
-        photo.setLook(Cutout.FIT, 0.30f);
+        look();
+    }
+
+    /** The club: its competition (ESPN's slug: its league's own pictures), its names, and its crest's address. */
+    void setClub(String slug, String name, String shortName, String crestAddress) {
+        clubSlug = slug == null ? "" : slug;
+        clubName = name == null ? "" : name;
+        clubShort = shortName == null ? "" : shortName;
+        String was = crestUrl;
+        crestUrl = crestAddress == null ? "" : crestAddress;
+        if (!crestUrl.equals(was)) {
+            crestAsked = false;
+            crest.clear();
+            if (kind == SquadFilter.NONE && player != null) look();
+        }
     }
 
     /** The photo larger (or smaller) than the carousel draws it: 1 as it is. */
@@ -103,6 +127,7 @@ final class SquadCard extends ViewGroup {
 
     /** The player shown. His photo is asked for only when request() is called (the carousel's near cards). */
     void bind(TeamData.Player pl) {
+        player = pl;
         String[] parts = SquadFilter.parts(pl.name, pl.first, pl.last);
         firstName = parts[0];
         surname = parts[1];
@@ -112,24 +137,44 @@ final class SquadCard extends ViewGroup {
         coin.setText(pl.number);
         coin.setVisibility(pl.number.isEmpty() ? GONE : VISIBLE);
         urls = SquadFilter.photos(pl);
-        kind = urls.length == 0 ? SquadFilter.DRAWN : SquadFilter.kind(urls[0]);
+        kind = urls.length == 0 && !LeaguePhotos.pending(clubSlug, pl) ? SquadFilter.NONE
+                : urls.length == 0 ? SquadFilter.LEAGUE : SquadFilter.kind(urls[0]);
         requested = false;
         photo.clear();
+        look();
         place();
     }
 
-    /** Asks for the photo (once). */
+    /** Asks for the photo (once): his league's own looked up first where the club's league has them. */
     void request() {
-        if (requested) return;
+        if (requested || player == null) return;
         requested = true;
-        if (urls.length == 0) return;
-        photo.load(urls, new Cutout.Loaded() {
+        TeamData.Player pl = player;
+        if (LeaguePhotos.pending(clubSlug, pl)) {
+            LeaguePhotos.lookUp(getContext(), clubSlug, clubName, clubShort, pl, () -> {
+                if (player == pl) loadPhotos();
+            });
+        } else {
+            loadPhotos();
+        }
+    }
+
+    /** The real pictures of him, best first; the crest and his initials when none comes. */
+    private void loadPhotos() {
+        urls = SquadFilter.photos(player);
+        if (urls.length == 0) {
+            setKind(SquadFilter.NONE);
+            return;
+        }
+        setKind(SquadFilter.kind(urls[0]));
+        String[] tried = urls;
+        photo.load(tried, new Cutout.Loaded() {
             @Override public void ready(int which) {
-                setKind(SquadFilter.kind(urls[which]));
+                setKind(SquadFilter.kind(tried[which]));
             }
 
             @Override public void failed() {
-                setKind(SquadFilter.DRAWN);
+                setKind(SquadFilter.NONE);
             }
         });
     }
@@ -141,7 +186,25 @@ final class SquadCard extends ViewGroup {
     private void setKind(int k) {
         if (k == kind) return;
         kind = k;
+        look();
         place();
+    }
+
+    /**
+     * How the picture is drawn for its kind: a face alone as a portrait cut to the card's shape; a cut-out as it is;
+     * no picture, the club's crest and his initials (asked for now, the first time one is needed).
+     */
+    private void look() {
+        photo.setLook(kind == SquadFilter.HEAD ? Cutout.PORTRAIT : Cutout.FIT, kind == SquadFilter.HEAD ? 0.34f : 0.30f);
+        if (kind == SquadFilter.NONE && player != null) {
+            if (!crestAsked && !crestUrl.isEmpty()) {
+                crestAsked = true;
+                crest.load(new String[]{crestUrl}, 256, 256);
+            }
+            photo.setStandIn(new PageArt.Mark(crest, TeamData.initials(player.name), markFace));
+        } else {
+            photo.setStandIn(null);
+        }
     }
 
     private PageArt.Panel newPanel() {
@@ -193,31 +256,51 @@ final class SquadCard extends ViewGroup {
         panelH = 1.32f * p;
         cardH = panelY + panelH + 0.34f * p;
         float crown, sideScale;
+        boolean inPanel = false;
         switch (kind) {
             case SquadFilter.SHOULDERS:
+                // ESPN's: 600 by 436, his head about a ninth of the way down
                 photoW = 1.5f * p * photoScale;
                 photoH = photoW * 436f / 600f;
                 crown = 0.11f;
                 sideScale = 0.78f;
                 break;
-            case SquadFilter.HEAD:
-                photoW = Math.min(0.98f * p * photoScale, maxHead);
+            case SquadFilter.LEAGUE:
+                // the league's own: square, head to waist, the head at its very top
+                photoW = 1.3f * p * photoScale;
                 photoH = photoW;
-                crown = 0.04f;
-                sideScale = 0.84f;
+                crown = 0.03f;
+                sideScale = 0.78f;
+                break;
+            case SquadFilter.HEAD:
+                // a face alone: a portrait filling the panel's top, cut to its shape (no body under it)
+                photoW = p;
+                photoH = p;
+                crown = 0f;
+                sideScale = 1f;
+                inPanel = true;
                 break;
             default:
-                photoW = 0.92f * p * photoScale;
-                photoH = photoW;
-                crown = PageArt.Bust.CROWN;
-                sideScale = 0.84f;
+                // no picture: the crest and his initials, inside the panel
+                photoW = 0.8f * p;
+                photoH = 0.8f * p;
+                crown = 0f;
+                sideScale = 1f;
+                inPanel = true;
                 break;
         }
         photoX = panelX + p / 2f - photoW / 2f;
-        photoTop = panelY - 0.22f * p - crown * photoH;
-        float sideTop = panelY + 0.07f * p - crown * photoH * sideScale;
-        photoSideDy = sideTop - photoTop;
+        if (inPanel) {
+            photoTop = panelY + (kind == SquadFilter.HEAD ? 0f : 0.1f * p);
+            photoSideDy = 0f;
+        } else {
+            photoTop = panelY - 0.22f * p - crown * photoH;
+            float sideTop = panelY + 0.07f * p - crown * photoH * sideScale;
+            photoSideDy = sideTop - photoTop;
+        }
         photoSideScale = sideScale;
+        // the portrait's top corners cut as the panel's are (PageArt.Panel: 8.5 % of its width)
+        photo.setCut(p * 0.085f);
         coinD = 0.30f * p;
         coinX = panelX + 0.90f * p;
         coinY = panelY + 0.3f * panelH;

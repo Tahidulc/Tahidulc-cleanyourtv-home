@@ -147,20 +147,34 @@ final class SquadFilter {
         return out;
     }
 
-    /** Pure: the photos to try for a card, best first: ESPN's head-and-shoulders cut-out, then the squad's own photo. */
+    /** ESPN's full head-and-shoulders picture of a player, by his ESPN id. */
+    static final String ESPN_FULL = "https://a.espncdn.com/i/headshots/soccer/players/full/";
+
+    /**
+     * Pure: the real pictures to try for a card, best first: his league's own cut-out (the Premier League's for a
+     * Premier League club, La Liga's for a La Liga club: head to waist in the club's kit), ESPN's full head and
+     * shoulders (its roster's, else by his ESPN id), and only then FotMob's face. Each once; none drawn, ever.
+     */
     static String[] photos(TeamData.Player p) {
         List<String> out = new ArrayList<>();
+        String league = p.league;
+        if (league != null && !league.isEmpty()) out.add(league);
         if (p.cutout != null && !p.cutout.isEmpty()) out.add(p.cutout);
+        else if (p.espnId != null && p.espnId.matches("[0-9]+")) out.add(ESPN_FULL + p.espnId + ".png");
         if (p.photo != null && !p.photo.isEmpty() && !out.contains(p.photo)) out.add(p.photo);
         return out.toArray(new String[0]);
     }
 
-    /** The photo's kind, from where it is: ESPN's head and shoulders (wide), FotMob's head (square), or none. */
-    static final int SHOULDERS = 0, HEAD = 1, DRAWN = 2;
+    /**
+     * The photo's kind, from where it is: ESPN's head and shoulders (wide), a face alone (FotMob's, square), none at all,
+     * or a league's own cut-out (square, head to waist).
+     */
+    static final int SHOULDERS = 0, HEAD = 1, NONE = 2, LEAGUE = 3;
 
     /** Pure: the kind of a photo by its address. */
     static int kind(String url) {
-        if (url == null || url.isEmpty()) return DRAWN;
+        if (url == null || url.isEmpty()) return NONE;
+        if (url.contains("premierleague.com") || url.contains(LeaguePhotos.LA_LIGA_DIR)) return LEAGUE;
         return url.contains("espncdn.com") ? SHOULDERS : HEAD;
     }
 }

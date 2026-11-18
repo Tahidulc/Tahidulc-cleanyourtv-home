@@ -17,6 +17,7 @@ import com.gathin.tvhomephone.glass.AmbientView;
 import com.gathin.tvhomephone.glass.Glass;
 import com.gathin.tvhomephone.glass.Icons;
 import com.gathin.tvhomephone.glass.LensBar;
+import com.gathin.tvhomephone.live.LogoTiles;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -407,14 +408,32 @@ final class SportsScreen {
         return box;
     }
 
-    /** A channel's logo for on the white Watch button: Sky's logos are made for dark grounds, so on a dark tile. */
+    /**
+     * A channel's logo on the white Watch button, as Behind logos asks (LogoTiles): on a small tile in its own colour (the
+     * default), on black, or as it is on the white (a soft dark halo behind a white logo, so it shows). Its name on a dark
+     * tile when it has no logo.
+     */
     private View darkLogo(String channel) {
         FrameLayout tile = new FrameLayout(c);
-        tile.setBackground(roundFill(0xFF101114, 6));
         tile.setPadding(Glass.dp(c, 6), Glass.dp(c, 4), Glass.dp(c, 6), Glass.dp(c, 4));
-        View logo = SportCards.channel(c, channel, 14);
-        tile.addView(logo, new FrameLayout.LayoutParams(-2, Glass.dp(c, 14)));
         tile.setLayoutParams(new LinearLayout.LayoutParams(-2, -2));
+        String url = channel == null ? null : ChannelLogos.known(c, channel);
+        if (url == null) {
+            tile.setBackground(roundFill(0xFF101114, 6));
+            tile.addView(SportCards.channel(c, channel, 14), new FrameLayout.LayoutParams(-2, Glass.dp(c, 14)));
+            return tile;
+        }
+        ImageView logo = new ImageView(c);
+        logo.setAdjustViewBounds(true);
+        logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        logo.setMaxWidth(Glass.dp(c, 118));
+        logo.setContentDescription(channel);
+        tile.addView(logo, new FrameLayout.LayoutParams(-2, Glass.dp(c, 14)));
+        LogoTiles.show(tile, 6, false, logo, url, LogoTiles.ON_WHITE, () -> {
+            tile.removeAllViews();
+            tile.setBackground(roundFill(0xFF101114, 6));
+            tile.addView(SportCards.text(c, channel, 11, Glass.MUTED, Glass.bodySemi(c)), new FrameLayout.LayoutParams(-2, -2));
+        });
         return tile;
     }
 

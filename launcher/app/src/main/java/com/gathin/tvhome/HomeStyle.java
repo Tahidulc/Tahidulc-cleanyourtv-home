@@ -101,10 +101,10 @@ final class HomeStyle {
         private FrameLayout overlay;
         private final List<View> cards = new ArrayList<>();
         private int at;
-        /** 0: the styles; 1: the channel logos' line under them (ChannelTiles). */
+        /** 0: the styles; 1: the Behind logos line under them (ChannelTiles). */
         private int row;
         private TextView logos;
-        /** The channel logos' switch changed: the style's screen is built again as the picker goes (not under it). */
+        /** Behind logos changed: the style's screen is built again as the picker goes (not under it). */
         private boolean logosChanged;
 
         Picker(HomeV2 h) {
@@ -133,14 +133,14 @@ final class HomeStyle {
                 add(overlay, card, x0 + i * (w + gap), 340, w, 470, Gravity.NO_GRAVITY);
                 cards.add(card);
             }
-            // Channel logos on black tiles or as they come, in the guides and channel tiles of every style.
+            // What is behind the channels' logos (ChannelTiles), in the guides, channel tiles and What's on of every style.
             logos = text(22, h.semi, 0xFFFFFFFF);
             logos.setGravity(Gravity.CENTER);
             logos.setBackground(fill(26, 0x26FFFFFF));
             logos.setOnClickListener(v -> { row = 1; flipLogos(); });
-            add(overlay, logos, (1920 - 620) / 2, 846, 620, 52, Gravity.NO_GRAVITY);
+            add(overlay, logos, (1920 - 940) / 2, 846, 940, 52, Gravity.NO_GRAVITY);
             TextView foot = text(19, h.regular, 0x99FFFFFF);
-            foot.setText("◀ ▶ to choose  ·  OK to switch  ·  ▼ channel logos  ·  Back to keep this one");
+            foot.setText("◀ ▶ to choose  ·  OK to switch  ·  ▼ behind logos  ·  Back to keep this one");
             add(overlay, foot, 0, 930, 1920, 28, Gravity.CENTER_HORIZONTAL);
             h.root.addView(overlay, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
             overlay.setAlpha(0f);
@@ -163,7 +163,7 @@ final class HomeStyle {
 
         private void paint() {
             if (logos != null) {
-                logos.setText(ChannelTiles.on(c) ? "Channel logos:  on black tiles" : "Channel logos:  as they come");
+                logos.setText(behindLine(ChannelTiles.behind(c)));
                 logos.setForeground(row == 1 ? ring(26, 0xFFFFFFFF, 3) : null);
             }
             for (int i = 0; i < cards.size(); i++) {
@@ -182,13 +182,53 @@ final class HomeStyle {
             android.widget.Toast.makeText(c, name(style) + " on", android.widget.Toast.LENGTH_SHORT).show();
         }
 
-        /** The channel logos' switch: black tiles or as they come, the style's screen built again with them. */
+        /** Behind logos' choices in the line's order, and their words. */
+        private static final int[] BEHIND = {ChannelTiles.COLOUR, ChannelTiles.NONE, ChannelTiles.TILE};
+        private static final String[] BEHIND_WORDS = {"Logo's colour (default)", "None", "Black tile"};
+
+        /** Behind logos: Logo's colour (the default), None or Black tile, the chosen one lit and underlined. */
+        private static CharSequence behindLine(int behind) {
+            StringBuilder s = new StringBuilder("Behind logos:   ");
+            int[] from = new int[BEHIND.length];
+            for (int i = 0; i < BEHIND.length; i++) {
+                if (i > 0) s.append("   |   ");
+                from[i] = s.length();
+                s.append(BEHIND_WORDS[i]);
+            }
+            android.text.SpannableString t = new android.text.SpannableString(s);
+            t.setSpan(new android.text.style.ForegroundColorSpan(0x99FFFFFF), 0, from[0], 0);
+            for (int i = 0; i < BEHIND.length; i++) {
+                int end = from[i] + BEHIND_WORDS[i].length();
+                if (BEHIND[i] == behind) t.setSpan(new android.text.style.UnderlineSpan(), from[i], end, 0);
+                else t.setSpan(new android.text.style.ForegroundColorSpan(0x73FFFFFF), from[i], end, 0);
+            }
+            return t;
+        }
+
+        private static int place(int behind) {
+            for (int i = 0; i < BEHIND.length; i++) if (BEHIND[i] == behind) return i;
+            return 0;
+        }
+
+        /** Behind logos moved on to the next choice (OK), the style's screen built again with it. */
         private void flipLogos() {
-            boolean on = !ChannelTiles.on(c);
-            ChannelTiles.set(c, on);
+            pickLogos(BEHIND[(place(ChannelTiles.behind(c)) + 1) % BEHIND.length]);
+        }
+
+        /** Behind logos: the choice one along to the left or right on its line. */
+        private void stepLogos(int by) {
+            int at = place(ChannelTiles.behind(c)) + by;
+            if (at >= 0 && at < BEHIND.length) pickLogos(BEHIND[at]);
+        }
+
+        private void pickLogos(int behind) {
+            if (behind == ChannelTiles.behind(c)) return;
+            ChannelTiles.set(c, behind);
             logosChanged = !logosChanged;
             paint();
-            android.widget.Toast.makeText(c, on ? "Channel logos on black tiles" : "Channel logos as they come", android.widget.Toast.LENGTH_SHORT).show();
+            String said = behind == ChannelTiles.TILE ? "Behind logos: black tiles"
+                    : behind == ChannelTiles.NONE ? "Behind logos: none, the logos as they are" : "Behind logos: each logo's own colour";
+            android.widget.Toast.makeText(c, said, android.widget.Toast.LENGTH_SHORT).show();
         }
 
         boolean key(KeyEvent e) {
@@ -207,6 +247,8 @@ final class HomeStyle {
             if (e.getAction() != KeyEvent.ACTION_DOWN) return true;
             if (code == KeyEvent.KEYCODE_DPAD_DOWN) row = 1;
             else if (code == KeyEvent.KEYCODE_DPAD_UP) row = 0;
+            else if (row == 1 && code == KeyEvent.KEYCODE_DPAD_LEFT) stepLogos(-1);
+            else if (row == 1 && code == KeyEvent.KEYCODE_DPAD_RIGHT) stepLogos(1);
             else if (row == 0 && code == KeyEvent.KEYCODE_DPAD_LEFT && at > 0) at--;
             else if (row == 0 && code == KeyEvent.KEYCODE_DPAD_RIGHT && at < ALL.length - 1) at++;
             paint();

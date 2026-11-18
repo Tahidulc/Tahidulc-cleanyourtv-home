@@ -1919,7 +1919,7 @@ final class LiveCentre {
     }
 
     /**
-     * A player's picture in a circle (a figure in his club's colour while it has none), his club's crest small at
+     * A player's picture in a circle (his initials while it has none: never a drawn figure), his club's crest small at
      * its foot when given.
      */
     private static View portrait(Context c, String who, String crestUrl, int kit, int size) {
@@ -1935,7 +1935,7 @@ final class LiveCentre {
             @Override public void getOutline(View v, Outline o) { o.setOval(0, 0, v.getWidth(), v.getHeight()); }
         });
         Bitmap b = who == null ? null : crests.get("face|" + who);
-        pic.setImageBitmap(b != null ? b : LineupCard.avatar(kit, kit, ""));
+        pic.setImageBitmap(b != null ? b : LineupCard.mark(null, LineupCard.initials(who), 0xFF151A63));
         f.addView(pic, new FrameLayout.LayoutParams(px(size), px(size)));
         if (crestUrl != null) {
             ImageView crest = new ImageView(c);

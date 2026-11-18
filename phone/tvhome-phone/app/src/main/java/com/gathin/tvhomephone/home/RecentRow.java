@@ -282,10 +282,14 @@ final class RecentRow {
             ImageView logo = new ImageView(c);
             logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
             logo.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(Ui.dp(c, 78), Ui.dp(c, 54), Gravity.CENTER_HORIZONTAL | Gravity.TOP);
+            // On a tile in its own colour (or black), a little wider for its room; or as it is on the glass (LogoTiles).
+            boolean boxed = com.gathin.tvhomephone.live.LogoTiles.boxed(c);
+            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(Ui.dp(c, boxed ? 92 : 78), Ui.dp(c, 54), Gravity.CENTER_HORIZONTAL | Gravity.TOP);
             lp.topMargin = Ui.dp(c, 44);
             frame.addView(logo, lp);
-            Ui.load(logo, e.channelLogo, null, () -> {
+            int p = boxed ? com.gathin.tvhomephone.live.LogoTiles.pad(c, 7) : 0;
+            logo.setPadding(p, p, p, p);
+            com.gathin.tvhomephone.live.LogoTiles.show(logo, 10, false, logo, e.channelLogo, com.gathin.tvhomephone.live.LogoTiles.ON_NAVY, () -> {
                 logo.setVisibility(View.GONE);
                 name.setVisibility(View.VISIBLE);
             });
