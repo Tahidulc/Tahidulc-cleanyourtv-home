@@ -100,6 +100,23 @@ final class TeamData {
         String name = "", number = "", country = "", flag = "", photo = "", injury = "";
         int age, goals, assists, yellow, red;
         double rating;
+        /** The name as the cards set it, first name over surname (ESPN's parts when they make up the name). */
+        String first = "", last = "";
+        /** His place in words ("Right-back", "Defender") and the others FotMob lists ("LB, LWB"); "" when not given. */
+        String position = "", also = "";
+        /** The line of the squad he is in (Goalkeepers, Defenders, Midfielders, Forwards, Others, Manager). */
+        String line = "";
+        /** ESPN's head-and-shoulders cut-out when ESPN has one, and ESPN's id for him. */
+        String cutout = "", espnId = "";
+        /** His height in cm and his date of birth ("1999-03-18"), when a source gives them. */
+        int height;
+        String born = "";
+        /** FotMob's id (0 when not from FotMob). */
+        int fotmobId;
+        /** ESPN's figures for his season in the competition, by ESPN's names ("appearances", "totalGoals"), as given. */
+        final Map<String, Integer> espnStats = new LinkedHashMap<>();
+        /** FotMob's season figures it gave a value for: "goals", "assists", "ycards", "rcards", "rating". */
+        final Map<String, Double> fotmobStats = new LinkedHashMap<>();
     }
 
     /** A line of the squad (Goalkeepers, Defenders…) and its players. */
@@ -113,6 +130,12 @@ final class TeamData {
     }
 
     String slug = "", id = "", name = "", shortName = "", logo = "", color = "", standing = "", venue = "";
+    /** ESPN's other colour for the club ("" when not given), for a club whose first colour is white or grey. */
+    String alternate = "";
+    /** The season ESPN's figures for the squad are from ("2026-27 English Premier League"); "" when not given. */
+    String season = "";
+    /** ESPN's squad, every player once (its ids, cut-outs and season figures, for FotMob's squad to take on). */
+    final List<Player> espnPlayers = new ArrayList<>();
     int rank;
     final Record all = new Record(), home = new Record(), away = new Record();
     /** The competition's games played, newest first (ESPN's). */
@@ -128,6 +151,8 @@ final class TeamData {
     String squadFrom = "";
     /** Whether FotMob's part is in. */
     boolean fotmob;
+    /** Whether the page's reading is over (FotMob's part in, or not to come): kept as shown for the player's page. */
+    boolean done;
 
     TeamData() {
     }
@@ -157,8 +182,61 @@ final class TeamData {
         if (roster != null) {
             t.squad.addAll(espnSquad(roster));
             if (!t.squad.isEmpty()) t.squadFrom = "ESPN";
+            for (Group g : t.squad) if (!g.title.equals("Manager")) t.espnPlayers.addAll(g.players);
+            t.season = rosterSeason(roster);
         }
         return t;
+    }
+
+    private static final Map<String, Object[]> SHOWN = new HashMap<>();
+
+    /** Keeps the page as last shown, for a player's page opened from it (the same squad, the same order). */
+    static void shown(TeamData t) {
+        if (t == null) return;
+        synchronized (SHOWN) {
+            if (SHOWN.size() > 8) SHOWN.clear();
+            SHOWN.put(t.slug + ":" + t.id, new Object[]{System.currentTimeMillis(), t});
+        }
+    }
+
+    /** The page as last shown (within the hour), or null. */
+    static TeamData lastShown(String slug, String id) {
+        synchronized (SHOWN) {
+            Object[] had = SHOWN.get(slug + ":" + id);
+            return had != null && System.currentTimeMillis() - (Long) had[0] < 3_600_000L ? (TeamData) had[1] : null;
+        }
+    }
+
+    /** What a page's reading gives as it comes: ESPN's part first, then (done) with FotMob's when it has the club. */
+    interface Step {
+        void got(TeamData t, boolean done);
+    }
+
+    /**
+     * Reads a club's page off the main thread, telling step on the main thread: ESPN's part as soon as it is in, then
+     * the whole page (or ESPN's alone, or null, when FotMob does not have the club). One read for the page's opening;
+     * the feeds' own caches keep a second opening from reading again.
+     */
+    static void read(Context c, String slug, String id, String name, String logo, Step step) {
+        Context app = c.getApplicationContext();
+        com.gathin.tvhomephone.App.io.execute(() -> {
+            TeamData espn;
+            try {
+                espn = espn(slug, id, name, logo);
+            } catch (RuntimeException e) {
+                espn = null;
+            }
+            TeamData first = espn;
+            if (first != null) com.gathin.tvhomephone.App.main.post(() -> step.got(first, false));
+            TeamData full;
+            try {
+                full = first == null ? null : withFotMob(app, first);
+            } catch (RuntimeException e) {
+                full = null;
+            }
+            TeamData got = full != null ? full : first;
+            com.gathin.tvhomephone.App.main.post(() -> step.got(got, true));
+        });
     }
 
     /**
@@ -172,6 +250,7 @@ final class TeamData {
         TeamData t = espn.copy();
         fotmob(t, root);
         if (!t.fotmob) return null;
+        if ("FotMob".equals(t.squadFrom)) merge(t.squad, t.espnPlayers);
         synchronized (READ) {
             if (READ.size() > 12) READ.clear();
             READ.put(t.slug + ":" + t.id, new Object[]{System.currentTimeMillis(), t});
@@ -207,6 +286,9 @@ final class TeamData {
         t.shortName = shortName;
         t.logo = logo;
         t.color = color;
+        t.alternate = alternate;
+        t.season = season;
+        t.espnPlayers.addAll(espnPlayers);
         t.standing = standing;
         t.venue = venue;
         t.rank = rank;
@@ -222,6 +304,7 @@ final class TeamData {
         t.squad.addAll(squad);
         t.squadFrom = squadFrom;
         t.fotmob = fotmob;
+        t.done = done;
         return t;
     }
 
@@ -245,6 +328,7 @@ final class TeamData {
         t.shortName = str(team, "shortDisplayName", t.name);
         if (t.logo.isEmpty()) t.logo = firstLogo(team);
         t.color = str(team, "color", "");
+        t.alternate = str(team, "alternateColor", "");
         t.standing = str(team, "standingSummary", "");
         JSONObject rec = team.optJSONObject("record");
         JSONArray items = rec == null ? null : rec.optJSONArray("items");
@@ -375,11 +459,16 @@ final class TeamData {
     static List<Group> espnSquad(JSONObject root) {
         Map<String, Group> by = new LinkedHashMap<>();
         for (String g : new String[]{"Manager", "Goalkeepers", "Defenders", "Midfielders", "Forwards", "Others"}) by.put(g, new Group(g));
+        // ESPN's coach is the manager only when it names one: a list of several is the club's past managers.
         JSONArray coach = root.optJSONArray("coach");
-        JSONObject boss = coach == null ? null : coach.optJSONObject(0);
+        JSONObject boss = coach == null || coach.length() != 1 ? null : coach.optJSONObject(0);
         if (boss != null) {
             Player p = new Player();
-            p.name = (str(boss, "firstName", "") + " " + str(boss, "lastName", "")).trim();
+            p.first = str(boss, "firstName", "");
+            p.last = str(boss, "lastName", "");
+            p.name = (p.first + " " + p.last).trim();
+            p.line = "Manager";
+            p.position = "Manager";
             if (!p.name.isEmpty()) by.get("Manager").players.add(p);
         }
         JSONArray athletes = root.optJSONArray("athletes");
@@ -402,13 +491,102 @@ final class TeamData {
             p.flag = flag == null ? "" : str(flag, "href", "");
             JSONObject head = a.optJSONObject("headshot");
             p.photo = head == null ? "" : str(head, "href", "");
+            p.cutout = p.photo;
+            p.espnId = str(a, "id", "");
+            p.first = str(a, "firstName", "");
+            p.last = str(a, "lastName", "");
             JSONObject pos = a.optJSONObject("position");
             String where = pos == null ? "" : str(pos, "displayName", str(pos, "name", ""));
-            by.get(lineOf(where)).players.add(p);
+            p.position = where;
+            double inches = a.optDouble("height", 0);
+            if (inches > 40 && inches < 100) p.height = (int) Math.round(inches * 2.54);
+            p.born = day(str(a, "dateOfBirth", ""));
+            espnStats(a, p.espnStats);
+            p.line = lineOf(where);
+            by.get(p.line).players.add(p);
         }
         List<Group> out = new ArrayList<>();
         for (Group g : by.values()) if (!g.players.isEmpty()) out.add(g);
         return out;
+    }
+
+    /** Pure: a player's figures in ESPN's roster (statistics' splits, every category), by ESPN's names, as given. */
+    static void espnStats(JSONObject athlete, Map<String, Integer> into) {
+        JSONObject st = athlete.optJSONObject("statistics");
+        JSONObject splits = st == null ? null : st.optJSONObject("splits");
+        JSONArray cats = splits == null ? null : splits.optJSONArray("categories");
+        for (int i = 0; cats != null && i < cats.length(); i++) {
+            JSONObject cat = cats.optJSONObject(i);
+            JSONArray stats = cat == null ? null : cat.optJSONArray("stats");
+            for (int k = 0; stats != null && k < stats.length(); k++) {
+                JSONObject s = stats.optJSONObject(k);
+                if (s == null || s.isNull("value") || !s.has("value")) continue;
+                double v = s.optDouble("value", Double.NaN);
+                String n = str(s, "name", "");
+                if (n.isEmpty() || Double.isNaN(v) || Double.isInfinite(v) || v < 0) continue;
+                into.put(n, (int) Math.round(v));
+            }
+        }
+    }
+
+    /** Pure: the season ESPN's roster is for, as it names it ("2026-27 English Premier League"); "" when not given. */
+    static String rosterSeason(JSONObject root) {
+        JSONObject s = root == null ? null : root.optJSONObject("season");
+        return s == null ? "" : str(s, "displayName", str(s, "name", ""));
+    }
+
+    /** Pure: the day part of an ISO date ("1999-03-18T07:00Z" to "1999-03-18"); "" when it is not one. */
+    static String day(String iso) {
+        if (iso == null || iso.length() < 10) return "";
+        String d = iso.substring(0, 10);
+        return d.matches("[0-9]{4}-[0-9]{2}-[0-9]{2}") ? d : "";
+    }
+
+    /**
+     * Pure: ESPN's extras for each of FotMob's players (matched by name, else by shirt number and surname): ESPN's id and
+     * cut-out, the name's parts, height and birthday where FotMob has none, and ESPN's season figures.
+     */
+    static void merge(List<Group> squad, List<Player> espn) {
+        if (espn == null || espn.isEmpty()) return;
+        for (Group g : squad) {
+            if (g.title.equals("Manager")) continue;
+            for (Player p : g.players) {
+                Player e = match(p, espn);
+                if (e == null) continue;
+                if (p.cutout.isEmpty()) p.cutout = e.cutout;
+                if (p.espnId.isEmpty()) p.espnId = e.espnId;
+                if (p.first.isEmpty() && p.last.isEmpty()) {
+                    p.first = e.first;
+                    p.last = e.last;
+                }
+                if (p.height <= 0) p.height = e.height;
+                if (p.born.isEmpty()) p.born = e.born;
+                if (p.espnStats.isEmpty()) p.espnStats.putAll(e.espnStats);
+            }
+        }
+    }
+
+    /** Pure: ESPN's player for one of FotMob's: the same name; else the same shirt number and the same surname. */
+    static Player match(Player p, List<Player> espn) {
+        Player nameOnly = null;
+        for (Player e : espn) {
+            if (PlayerPhotos.sameName(p.name, e.name)) {
+                if (p.number.isEmpty() || e.number.isEmpty() || p.number.equals(e.number)) return e;
+                if (nameOnly == null) nameOnly = e;
+            }
+        }
+        if (nameOnly != null) return nameOnly;
+        if (p.number.isEmpty()) return null;
+        String surname = lastWord(PlayerPhotos.plain(p.name));
+        for (Player e : espn) {
+            if (p.number.equals(e.number) && !surname.isEmpty() && surname.equals(lastWord(PlayerPhotos.plain(e.name)))) return e;
+        }
+        return null;
+    }
+
+    private static String lastWord(String s) {
+        int sp = s.lastIndexOf(' ');
+        return sp >= 0 ? s.substring(sp + 1) : s;
     }
 
     private static String lineOf(String position) {
@@ -478,6 +656,26 @@ final class TeamData {
                 JSONObject injury = m.optJSONObject("injury");
                 if (injury != null) p.injury = str(injury, "expectedReturn", "");
                 if (injury != null && p.injury.isEmpty()) p.injury = "Injured";
+                p.fotmobId = Math.max(0, pid);
+                p.line = line.title;
+                boolean boss = line.title.equals("Manager");
+                String[] where = boss ? new String[]{"Manager", ""} : PlayerFacts.positions(str(m, "positionIdsDesc", ""));
+                p.position = where[0];
+                p.also = where[1];
+                if (p.position.isEmpty()) {
+                    JSONObject role = m.optJSONObject("role");
+                    p.position = role == null ? "" : str(role, "fallback", "");
+                }
+                int cm = m.optInt("height");
+                if (cm > 120 && cm < 230) p.height = cm;
+                p.born = day(str(m, "dateOfBirth", ""));
+                if (!boss) {
+                    for (String key : new String[]{"goals", "assists", "ycards", "rcards", "rating"}) {
+                        if (!m.has(key) || m.isNull(key)) continue;
+                        double v = m.optDouble(key, Double.NaN);
+                        if (!Double.isNaN(v) && !Double.isInfinite(v) && v >= 0) p.fotmobStats.put(key, v);
+                    }
+                }
                 line.players.add(p);
             }
             if (!line.players.isEmpty()) out.add(line);

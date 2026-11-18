@@ -110,6 +110,9 @@
         <activity android:name=".sports.EventActivity" android:exported="false" />
         <!-- A club's own page (from a table's row or a game's crest): form, season figures, leading players, squad. -->
         <activity android:name=".sports.TeamActivity" android:exported="false" />
+        <!-- A player's page from the club page's squad, and an F1 driver's from Sports' Formula 1 (swiped through). -->
+        <activity android:name=".sports.PlayerPageActivity" android:exported="false" />
+        <activity android:name=".sports.DriverActivity" android:exported="false" />
         <!-- A highlight clip (ESPN's own), full screen. -->
         <activity
             android:name=".sports.ClipPlayerActivity"

@@ -911,7 +911,10 @@ final class SportsScreen {
         wp.leftMargin = Glass.dp(c, 10);
         r.addView(words, wp);
         r.addView(SportCards.text(c, d.points, 15, Glass.TEXT, Glass.bodySemi(c)));
-        r.setContentDescription(d.position + ", " + d.name + ", " + d.team + ", " + d.points + " points");
+        r.setContentDescription(d.position + ", " + d.name + ", " + d.team + ", " + d.points + " points. Opens his page");
+        // His page (the championship to swipe through), as the family's picture of a driver's has it.
+        r.setBackground(SportCards.touch(c));
+        r.setOnClickListener(x -> c.startActivity(DriverActivity.intent(c, d.driverId, d.name)));
         return r;
     }
 
