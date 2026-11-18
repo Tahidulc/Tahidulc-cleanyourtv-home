@@ -81,6 +81,7 @@ final class BrowseScreen extends Screen implements CineRows.Host {
         // No live picture here: the stream let go (a film may want the provider's one connection).
         tv.live.stop();
         tv.live.place(null);
+        if (rows != null) rows.setActive(tv.tabs() == null || !tv.tabs().active());
         fill();
     }
 
@@ -438,8 +439,15 @@ final class BrowseScreen extends Screen implements CineRows.Host {
 
     @Override boolean back() {
         if (rows.back()) return true;
-        if (tv.tabs() != null) tv.tabs().enter();
+        toBar();
         return true;
+    }
+
+    /** The remote up to the tab bar (nothing on the page lifted meanwhile). */
+    private void toBar() {
+        if (tv.tabs() == null) return;
+        tv.tabs().enter();
+        rows.setActive(false);
     }
 
     // ---- the shelves --------------------------------------------------------------------------------------------------
@@ -476,7 +484,7 @@ final class BrowseScreen extends Screen implements CineRows.Host {
 
     @Override public boolean edge(int dir) {
         if (dir == Ui.UP && tv.tabs() != null) {
-            tv.tabs().enter();
+            toBar();
             return true;
         }
         return false;

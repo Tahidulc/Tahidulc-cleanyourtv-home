@@ -163,6 +163,8 @@ final class HomeCard extends View {
     private final Host host;
     private final List<Section> sections = new ArrayList<>();
     private int section, area = CARD;
+    /** Whether the page has the remote (false while it is up on the tab bar: nothing lifted). */
+    private boolean active = true;
     private String note = "", noteHead = "";
     private final Ground ground;
     /** The card on show, the one it is leaving, when it changed; previews freeze the change part way (frozen >= 0). */
@@ -304,6 +306,12 @@ final class HomeCard extends View {
 
     int area() {
         return area;
+    }
+
+    /** The page has the remote (true), or the tab bar above it has (nothing on the page lifted). */
+    void setActive(boolean on) {
+        active = on;
+        invalidate();
     }
 
     /** The card the remote is on comes in (fresh: the first, at once). */
@@ -586,13 +594,13 @@ final class HomeCard extends View {
         boolean moving = ground.draw(c, w, h);
         long now = SystemClock.uptimeMillis();
         Card on = card();
-        Object stripFocus = area == STRIP && on != null && on.stripAt < on.strip.size() ? on.strip.get(on.stripAt) : null;
+        Object stripFocus = active && area == STRIP && on != null && on.stripAt < on.strip.size() ? on.strip.get(on.stripAt) : null;
         if (area == CARD && on != null && on.item instanceof com.gathin.homefieldtv.engine.Resume.Point && on.stripAt < on.strip.size()) {
             // Continue watching: the episode to carry on with stands up from the strip while the remote is on the card.
             stripFocus = on.strip.get(on.stripAt);
         }
         moving |= lift.step(stripFocus);
-        moving |= tabLift.step(area == TABS ? current() : null);
+        moving |= tabLift.step(active && area == TABS ? current() : null);
         moving |= stripX.step();
         drawSections(c);
         if (shown == null) {
@@ -779,7 +787,7 @@ final class HomeCard extends View {
         if (!card.button.isEmpty()) {
             y += Ui.f(26f);
             float cy = y + Ui.f(35f), bw = Hero07.buttonWidth(card.button, card.after, card.buttonIcon);
-            boolean up = area == CARD && card == shown;
+            boolean up = active && area == CARD && card == shown;
             c.save();
             if (up) c.scale(1.06f, 1.06f, x + bw / 2f, cy);
             Hero07.button(c, x, cy, card.button, card.after, card.buttonIcon, true, a);

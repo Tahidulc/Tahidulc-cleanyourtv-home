@@ -130,6 +130,7 @@ final class MyListScreen extends Screen implements DialogCard.Host {
     @Override void shown() {
         tv.live.stop();
         tv.live.place(null);
+        page.active = tv.tabs() == null || !tv.tabs().active();
         counts();
         show(which);
     }
@@ -158,6 +159,7 @@ final class MyListScreen extends Screen implements DialogCard.Host {
 
     /** Down from the tab bar: into the list shown (its first card), or the lists when it is empty. */
     @Override void fromTabs() {
+        page.active = true;
         area = entries.isEmpty() ? COLUMN : CONTENT;
         focus = Math.min(focus, Math.max(0, entries.size() - 1));
         page.settle();
@@ -446,7 +448,10 @@ final class MyListScreen extends Screen implements DialogCard.Host {
     }
 
     private void toBar() {
-        if (tv.tabs() != null) tv.tabs().enter();
+        if (tv.tabs() == null) return;
+        tv.tabs().enter();
+        page.active = false;
+        page.invalidate();
     }
 
     @Override void ok() {
@@ -597,6 +602,8 @@ final class MyListScreen extends Screen implements DialogCard.Host {
                 WIDE_W = 400f, WIDE_H = 225f, WIDE_STEP_X = 440f, WIDE_STEP_Y = 352f, POSTER_W = 196f, POSTER_H = 294f,
                 POSTER_STEP_X = 222f, POSTER_STEP_Y = 392f;
         final Ground ground = new Ground(this);
+        /** Whether the page has the remote (false while it is up on the tab bar: nothing lifted). */
+        boolean active = true;
         private final Frost glass = new Frost(Look07.GLASS);
         private final Card07 wides = new Card07(Look07.R_CARD), posters = new Card07(Look07.R_POSTER);
         private final Card07.Marks marks = new Card07.Marks();
@@ -681,9 +688,9 @@ final class MyListScreen extends Screen implements DialogCard.Host {
         @Override protected void onDraw(Canvas c) {
             boolean moving = ground.draw(c, getWidth(), getHeight());
             moving |= scroll.step();
-            Entry on = area == CONTENT && focus < entries.size() ? entries.get(focus) : null;
+            Entry on = active && area == CONTENT && focus < entries.size() ? entries.get(focus) : null;
             moving |= lift.step(on);
-            moving |= columnLift.step(area == COLUMN ? listKeys[which] : null);
+            moving |= columnLift.step(active && area == COLUMN ? listKeys[which] : null);
             drawCards(c);
             drawColumn(c);
             drawReminders(c);
@@ -703,7 +710,7 @@ final class MyListScreen extends Screen implements DialogCard.Host {
                     c.drawRect(x + Ui.f(34f), iy + Ui.f(10f), x + w - Ui.f(34f), iy + Ui.f(11f), rule);
                     iy += Ui.f(21f);
                 }
-                boolean here = area == COLUMN && i == which, chosen = i == which;
+                boolean here = active && area == COLUMN && i == which, chosen = i == which;
                 float up = here ? Math.max(0f, Math.min(1.1f, columnLift.of(listKeys[i]))) : 0f;
                 r.set(x + Ui.f(16f), iy, x + w - Ui.f(16f), iy + Ui.f(ITEM_H));
                 c.save();

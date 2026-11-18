@@ -108,6 +108,8 @@ final class TitlePage extends View {
     private int resumeAt = -1;
 
     private int part = BUTTONS, buttonAt, epAt, castAt, moreAt, seasonAt;
+    /** Whether the page has the remote (false while it is up on the tab bar: nothing lifted). */
+    private boolean active = true;
     private final Glide page = new Glide(PAGE_MS), epX = new Glide(ROW_MS), castX = new Glide(ROW_MS), moreX = new Glide(ROW_MS),
             pillL = new Glide(PILL_MS), pillR = new Glide(PILL_MS);
     private final Lift07 lift = new Lift07(), buttonLift = new Lift07();
@@ -465,6 +467,12 @@ final class TitlePage extends View {
         return part;
     }
 
+    /** The page has the remote (true), or the tab bar above it has (nothing on the page lifted). */
+    void setActive(boolean on) {
+        active = on;
+        invalidate();
+    }
+
     boolean key(int code) {
         switch (code) {
             case KeyEvent.KEYCODE_DPAD_UP:
@@ -660,10 +668,10 @@ final class TitlePage extends View {
         moving |= pillL.step();
         moving |= pillR.step();
         moving |= wash.step();
-        Object focus = part == EPISODES ? episode(epAt) : part == MORE && moreAt < more.size() ? more.get(moreAt)
+        Object focus = !active ? null : part == EPISODES ? episode(epAt) : part == MORE && moreAt < more.size() ? more.get(moreAt)
                 : part == CAST && castAt < cast.size() ? cast.get(castAt) : null;
         moving |= lift.step(focus);
-        moving |= buttonLift.step(part == BUTTONS && buttonAt < buttons.size() ? buttons.get(buttonAt) : null);
+        moving |= buttonLift.step(active && part == BUTTONS && buttonAt < buttons.size() ? buttons.get(buttonAt) : null);
 
         int w = getWidth(), h = getHeight();
         float risen = Ui.f(page.value());
@@ -737,7 +745,7 @@ final class TitlePage extends View {
         float bx = x, cy = Ui.f(BUTTONS_Y);
         for (int i = 0; i < buttons.size(); i++) {
             Button b = buttons.get(i);
-            boolean here = part == BUTTONS && i == buttonAt;
+            boolean here = active && part == BUTTONS && i == buttonAt;
             float up = Math.max(0f, Math.min(1.1f, buttonLift.of(b)));
             float g = 1f + 0.07f * up;
             if (b.round()) {

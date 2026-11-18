@@ -62,6 +62,8 @@ final class HomeScreen extends Screen implements HomeCard.Host {
      * so making Home's cards each minute reads nothing from the disk.
      */
     private final Map<String, Tmdb.Extras> extrasKnown = new HashMap<>();
+    /** The playlists' names by id, read once each time the cards are made. */
+    private final Map<String, String> playlistNames = new HashMap<>();
 
     HomeScreen(TvActivity tv) {
         super(tv);
@@ -82,6 +84,7 @@ final class HomeScreen extends Screen implements HomeCard.Host {
         tv.takeMiniTvHeld();
         tv.live.stop();
         tv.live.place(null);
+        if (home != null) home.setActive(tv.tabs() == null || !tv.tabs().active());
         fill();
     }
 
@@ -111,6 +114,8 @@ final class HomeScreen extends Screen implements HomeCard.Host {
         Catalog cat = Catalog.get(tv);
         long now = System.currentTimeMillis();
         List<HomeCard.Section> list = new ArrayList<>();
+        playlistNames.clear();
+        for (Sources.Entry e : Sources.list(tv)) playlistNames.put(e.id, e.name);
 
         // What's on now and the sport in it: found off the main thread (Library.onNow), made again when it is.
         Library.OnNow on = lib.onNow(now, this::fill);
@@ -213,8 +218,8 @@ final class HomeScreen extends Screen implements HomeCard.Host {
     /** Where a title is: Your TorBox, or the name of the playlist it comes from. */
     private String where(Catalog.Title t) {
         if (t.torbox()) return Catalog.TORBOX;
-        Sources.Entry e = Sources.get(tv, t.playlist());
-        return e == null || e.name.isEmpty() ? "your playlist" : e.name;
+        String name = playlistNames.get(t.playlist());
+        return name == null || name.isEmpty() ? "your playlist" : name;
     }
 
     private HomeCard.Card resumeCard(Resume.Point p, Catalog.Title t) {
@@ -545,7 +550,9 @@ final class HomeScreen extends Screen implements HomeCard.Host {
 
     /** Up from the sections, or Back there: the remote up to 07's tab bar. */
     @Override public void menu() {
-        if (tv.tabs() != null) tv.tabs().enter();
+        if (tv.tabs() == null) return;
+        tv.tabs().enter();
+        home.setActive(false);
     }
 
     @Override boolean shell() {
@@ -558,6 +565,7 @@ final class HomeScreen extends Screen implements HomeCard.Host {
 
     /** Down from the tab bar: the sections along the top of the page. */
     @Override void fromTabs() {
+        home.setActive(true);
         home.fromAbove();
     }
 

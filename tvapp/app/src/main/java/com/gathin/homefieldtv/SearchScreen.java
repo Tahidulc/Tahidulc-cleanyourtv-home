@@ -109,6 +109,8 @@ final class SearchScreen extends Screen implements SearchKeys.Host {
     private final Runnable run = this::search;
     /** The search asked last: an answer to an older one is let go. */
     private int asked;
+    /** The playlists in use, read once a search (each result asks which it comes from). */
+    private List<Sources.Entry> sources = new ArrayList<>();
 
     SearchScreen(TvActivity tv) {
         super(tv);
@@ -146,6 +148,7 @@ final class SearchScreen extends Screen implements SearchKeys.Host {
     @Override void shown() {
         tv.live.stop();
         tv.live.place(null);
+        page.active = tv.tabs() == null || !tv.tabs().active();
         history.clear();
         if (OtherPrefs.showHistory(tv)) history.addAll(OtherPrefs.history(tv));
         page.invalidate();
@@ -182,6 +185,7 @@ final class SearchScreen extends Screen implements SearchKeys.Host {
 
     /** Down from the tab bar: the field, the keyboard up. */
     @Override void fromTabs() {
+        page.active = true;
         to(KEYS);
     }
 
@@ -260,6 +264,7 @@ final class SearchScreen extends Screen implements SearchKeys.Host {
 
     private void show(String q, List<Object> found, List<Catalog.Title> films, List<Catalog.Title> shows) {
         searching = false;
+        sources = Sources.inUse(tv);
         rows.clear();
         if (!films.isEmpty()) rows.add(new Row(MOVIES, new ArrayList<>(films)));
         // A channel found by its name and a programme on it now: once.
@@ -305,7 +310,7 @@ final class SearchScreen extends Screen implements SearchKeys.Host {
             if (!ids.contains(id)) ids.add(id);
         }
         chips.add(new String[]{"", "All playlists"});
-        for (Sources.Entry e : Sources.inUse(tv)) if (ids.remove(e.id)) chips.add(new String[]{e.id, e.name});
+        for (Sources.Entry e : sources) if (ids.remove(e.id)) chips.add(new String[]{e.id, e.name});
         for (String id : ids) chips.add(new String[]{id, nameOf(id)});
         if (chips.size() == 2) chips.remove(1);
         chosen = 0;
@@ -325,7 +330,7 @@ final class SearchScreen extends Screen implements SearchKeys.Host {
     private String playlistOf(Object o) {
         if (o instanceof Catalog.Title) return ((Catalog.Title) o).playlist();
         String key = ((Airing) o).channel.key;
-        for (Sources.Entry e : Sources.inUse(tv)) if (!e.prefix().isEmpty() && key.startsWith(e.prefix())) return e.id;
+        for (Sources.Entry e : sources) if (!e.prefix().isEmpty() && key.startsWith(e.prefix())) return e.id;
         return "p0";
     }
 
@@ -470,7 +475,10 @@ final class SearchScreen extends Screen implements SearchKeys.Host {
     }
 
     private void toBar() {
-        if (tv.tabs() != null) tv.tabs().enter();
+        if (tv.tabs() == null) return;
+        tv.tabs().enter();
+        page.active = false;
+        page.invalidate();
     }
 
     /** Down from the top: the chips (more than one playlist), the results, or the searches made before. */
@@ -648,6 +656,8 @@ final class SearchScreen extends Screen implements SearchKeys.Host {
 
     private final class Page extends View {
         final Ground ground = new Ground(this);
+        /** Whether the page has the remote (false while it is up on the tab bar: nothing lit). */
+        boolean active = true;
         private final Card07 posters = new Card07(Look07.R_POSTER), tiles07 = new Card07(24f);
         private final PicTile pictures = new PicTile(this);
         private final Card07.Marks marks = new Card07.Marks();
@@ -695,9 +705,9 @@ final class SearchScreen extends Screen implements SearchKeys.Host {
 
         @Override protected void onDraw(Canvas c) {
             boolean moving = ground.draw(c, getWidth(), getHeight());
-            Object top = area == MIC ? micKey : area == GEAR ? gearKey : area == TRASH ? trashKey : null;
+            Object top = !active ? null : area == MIC ? micKey : area == GEAR ? gearKey : area == TRASH ? trashKey : null;
             moving |= topLift.step(top);
-            Row on = rows.isEmpty() || area != RESULTS ? null : rows.get(Math.min(row, rows.size() - 1));
+            Row on = !active || rows.isEmpty() || area != RESULTS ? null : rows.get(Math.min(row, rows.size() - 1));
             moving |= lift.step(on == null || on.shown.isEmpty() ? null : on.shown.get(Math.min(on.focus, on.shown.size() - 1)));
             drawTop(c);
             boolean typed = !keys.text().trim().isEmpty();
@@ -712,8 +722,8 @@ final class SearchScreen extends Screen implements SearchKeys.Host {
                 drawHistory(c);
             }
             if (area == KEYS) {
-                keys.draw(c, true, 255);
-                drawHints(c);
+                keys.draw(c, active, 255);
+                if (active) drawHints(c);
             }
             if (moving) postInvalidateOnAnimation();
         }

@@ -77,6 +77,7 @@ final class TitleScreen extends Screen implements TitlePage.Host {
     @Override void shown() {
         tv.live.stop();
         tv.live.place(null);
+        if (page != null) page.setActive(tv.tabs() == null || !tv.tabs().active());
         // Back from a film: its resume point has moved.
         if (built()) fill();
     }
@@ -92,7 +93,9 @@ final class TitleScreen extends Screen implements TitlePage.Host {
 
     /** Down from the tab bar: the buttons. */
     @Override void fromTabs() {
-        if (page != null) page.enter();
+        if (page == null) return;
+        page.setActive(true);
+        page.enter();
     }
 
     @Override void catalogChanged() {
@@ -224,7 +227,9 @@ final class TitleScreen extends Screen implements TitlePage.Host {
 
     /** Up from the buttons: the tab bar comes back over the page, the remote on it. */
     @Override public void up() {
-        if (tv.tabs() != null) tv.tabs().enter();
+        if (tv.tabs() == null) return;
+        tv.tabs().enter();
+        page.setActive(false);
     }
 
     @Override public void play(Catalog.Episode ep) {
