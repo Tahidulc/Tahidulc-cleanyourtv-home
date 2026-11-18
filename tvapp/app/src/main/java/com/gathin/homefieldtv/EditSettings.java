@@ -16,7 +16,8 @@ import java.util.Map;
  * Settings' pages for the channels and groups the family edits, and for the logos (DEVICE.md §2.15, Appearance):
  *
  * <pre>
- *   appearance.guide          TV guide: Channels sorting (By order in playlist, By name, By number, Manual) · Channel
+ *   appearance.guide          TV guide: Guide style (Grid, as it comes, or Shelves) · Channels sorting (By order in
+ *                             playlist, By name, By number, Manual) · Channel
  *                             names editor (On as it comes) · Show channel numbers · Rows in the guide · Progress bars ·
  *                             Hidden channels › · Manage groups ›
  *   appearance.guide.hidden   Show all channels · each channel hidden (OK shows it again)
@@ -80,10 +81,9 @@ final class EditSettings implements SettingsScreen.Pages {
                 out.add(MoreSettings.pick("lpriority", "Logos priority", PRIORITY[LogoPack.on() ? 0 : 1]));
                 out.add(RowList.Row.item("do:logos.refresh", "Refresh logos", LogoPack.status(tv)));
                 out.add(MoreSettings.pick("logos", "Behind logos", Logos.NAMES[Logos.behind()]));
-                out.add(RowList.Row.note("New logos are the tv-logo project's free logos for dark grounds (github.com/tv-logo/tv-logos), "
-                        + "for your own viewing here. Each is fetched to this TV the first time it shows, and kept with the other "
-                        + "pictures. A new logo shows only where the channel's name surely matches one; else the playlist's."));
-                out.add(RowList.Row.note("A channel's own: hold OK on it in the TV guide, then Change logo."));
+                out.add(RowList.Row.note("New logos: the tv-logo project's free logos (github.com/tv-logo/tv-logos), for your own "
+                        + "viewing, fetched as they show; only where a channel's name surely matches one. A channel's own: hold OK "
+                        + "on it in the TV guide, then Change logo."));
                 break;
             default:
                 break;
@@ -93,6 +93,7 @@ final class EditSettings implements SettingsScreen.Pages {
 
     /** Appearance › TV guide: the other app's first rows, Homefield's guide rows, then the two pages to bring things back. */
     private void guide(List<RowList.Row> out) {
+        out.add(MoreSettings.pick("gstyle", "Guide style", Look.GUIDE_NAMES[Look.guideStyle]));
         out.add(MoreSettings.pick("csort", "Channels sorting", ChannelEdits.SORT_NAMES[ChannelEdits.sort(tv)]));
         out.add(MoreSettings.pick("editor", "Channel names editor", MoreSettings.ON_OFF[ChannelEdits.editor(tv) ? 1 : 0]));
         out.add(MoreSettings.tog("numbers", "Show channel numbers", "", Look.numbers));
@@ -253,6 +254,9 @@ final class EditSettings implements SettingsScreen.Pages {
                     "Manual: the order you put them in with Move channel (hold OK on a channel in the TV guide).");
         }
         switch (key) {
+            case "gstyle": return new SettingsScreen.Picker("Guide style", Look.GUIDE_NAMES, Look.guideStyle,
+                    "Grid: your guide as it is, a row for each channel along the times, the programme's details and the channel "
+                            + "playing over it. Shelves: each channel's evening as pictures, what's on now first.");
             case "csort": return new SettingsScreen.Picker("Channels sorting", ChannelEdits.SORT_NAMES, ChannelEdits.sort(tv),
                     "Manual: the order you put channels in with Move channel (hold OK on a channel in the TV guide). A group can "
                             + "be sorted its own way: hold OK on it.");
@@ -275,6 +279,7 @@ final class EditSettings implements SettingsScreen.Pages {
                 if (i >= 0 && i < ChannelEdits.SORT_NAMES.length) ChannelEdits.setSort(tv, i);
                 break;
             case "editor": ChannelEdits.setEditor(tv, i == 1); break;
+            case "gstyle": Look.setGuideStyle(tv, i); break;
             case "lpriority": LogoPack.setOn(tv, i == 0); break;
             default: break;
         }
