@@ -18,11 +18,14 @@ import java.util.Locale;
  * The mini guide over a channel playing, in the 07 look (the approved still 07c): as Up and Down (or CH+ and CH−) go
  * through the channels, a frosted panel at the top right (600 wide, rounded 36: the plain dark material over the live
  * picture) with where the channels are from ("HOME • UK ENTERTAINMENT") and "Change channel" over five channels' rows,
- * the one shown in the middle: each row its channel's cell in its logo's colour (ChannelLook), its programme's picture
- * fitted round its faces (PicTile) with the logo's chip on it, the channel's number, the programme's title, the channel
- * and what is left, and a bar of how far through it is. The remote's row lifts with 07's white ring; going on a channel
- * slides the rows a row. Beside it the box at the top right says which channel is playing ("Watching 102"), and the
- * keys' hints sit over the card at the foot (OK Overlay, ◀ Channel list, ≡ Options).
+ * the one shown in the middle. Each row is the channel's cell, the logo alone (ChannelLook: on its logo's deep colour,
+ * no number, no tile, no name), then its programme: the programme's picture taking up the whole of its part
+ * (PicTile.fill, its faces whole), its title and times with what is left over a soft shade at the left, and a white
+ * line along its foot for how far through it is (the part plain when it has no picture). The remote's row lifts with
+ * 07's white ring; going on a channel slides the rows a row, and the rows' pictures are asked for once it rests.
+ * The shown channel's number is the view's content description (accessibility), not drawn. Beside it the box at the
+ * top right says which channel is playing ("Watching 102"), and the keys' hints sit over the card at the foot (OK
+ * Overlay, ◀ Channel list, ≡ Options).
  *
  * <pre>
  *   MiniGuide mini = new MiniGuide(view);
@@ -35,7 +38,8 @@ final class MiniGuide {
     /** The panel (design px): its right edge's margin, its top, its width; a row's height and pitch; the rows shown. */
     static final float RIGHT = 70f, TOP = 140f, W = 600f, PAD = 18f, HEAD = 40f, ROW = 88f, PITCH = 96f, LIST_H = 470f, R = 36f;
     static final int ROWS = 5;
-    static final float THUMB_W = 112f, THUMB_H = 63f;
+    /** A row's channel cell (the logo alone) and the gap to its programme; both cells' corners. */
+    static final float CH_W = 170f, GAP_X = 8f, R_CELL = 20f;
 
     private final View owner;
     private final Runnable redraw;
@@ -46,7 +50,7 @@ final class MiniGuide {
     private final Glide slide = new Glide(Look07.SCROLL_MS);
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), ring = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final TextPaint headP = Type.paint(17f, Type.SEMIBOLD, Look07.L2), titleP = Type.paint(20f, Type.SEMIBOLD, Look07.L1);
-    private final TextPaint subP = Type.paint(16f, Type.MEDIUM, 0xD6FFFFFF), numP = Type.clock(19f, Type.BOLD, 0xD6FFFFFF);
+    private final TextPaint subP = Type.clock(16f, Type.MEDIUM, 0xD6FFFFFF);
     private final TextPaint watchP = Type.paint(22f, Type.SEMIBOLD, Look07.L2), watchNumP = Type.clock(30f, Type.BOLD, Look07.L1);
     private final TextFit titles = new TextFit(titleP, 64), subs = new TextFit(subP, 64), heads = new TextFit(headP, 16);
     private final RectF r = new RectF(), o = new RectF();
@@ -54,7 +58,7 @@ final class MiniGuide {
     private final Channel[] rows = new Channel[ROWS + 2];
     private Channel shown;
     private String headKey = "", headText = "";
-    /** Each row's second line ("Riverside One • 40 min left"), kept by channel and minute. */
+    /** Each row's second line ("19:00 – 20:10 · 40 min left"), kept by channel and minute. */
     private final Channel[] subFor = new Channel[ROWS + 2];
     private final long[] subMinute = new long[ROWS + 2];
     private final String[] subText = new String[ROWS + 2];
@@ -87,6 +91,7 @@ final class MiniGuide {
             int dir = shown == null ? 0 : lib.step(shown, 1) == ch ? 1 : lib.step(shown, -1) == ch ? -1 : 0;
             shown = ch;
             fillRows(lib, ch);
+            owner.setContentDescription(GuideGrid.describe(lib.number(ch), ChannelEdits.name(ch), ""));
             if (dir != 0 && !Exec.inline) {
                 slide.jump(dir * PITCH);
                 slide.to(0f);
@@ -145,71 +150,70 @@ final class MiniGuide {
     }
 
     private void drawRow(Canvas c, int k, Channel ch, float x0, float y, long now, Library lib, boolean settled, Channel playing) {
-        float left = x0 + PAD + 12f, right = x0 + W - PAD - 12f;
-        r.set(Ui.f(left), Ui.f(y), Ui.f(right), Ui.f(y + ROW));
-        float up = lift.of(ch);
-        ChannelLook.fillCell(c, r, Ui.f(22f), ch, up);
-        float s = 1f + (Look07.CHANNEL_LIFT - 1f) * Math.max(0f, Math.min(1f, up));
-        boolean scaled = s > 1.0005f;
+        float left = x0 + PAD + 12f, right = x0 + W - PAD - 12f, up = lift.of(ch);
+        // The channel's cell: the logo alone (ChannelLook), lifting where the remote is.
+        r.set(Ui.f(left), Ui.f(y), Ui.f(left + CH_W), Ui.f(y + ROW));
+        ChannelLook.cell(c, r, Ui.f(R_CELL), ch, up, 0, "", false, redraw);
+        // Its programme: the picture taking up the whole cell (PicTile.fill), the words over a soft shade at its left.
+        o.set(Ui.f(left + CH_W + GAP_X), Ui.f(y), Ui.f(right), Ui.f(y + ROW));
+        float u = Math.max(0f, Math.min(1f, up)), rad = Ui.f(R_CELL);
+        boolean scaled = u > 0.001f;
         if (scaled) {
+            float s = 1f + (Look07.CHANNEL_LIFT - 1f) * u;
             c.save();
-            c.scale(s, s, r.centerX(), r.centerY());
+            c.scale(s, s, o.centerX(), o.centerY());
+            Shadows.draw(c, o, rad, Look07.SH_CHANNEL_UP, u);
+            Shadows.glow(c, o, rad, Look07.GLOW_CHANNEL, u);
         }
-        float cy = y + ROW / 2f;
         Guide.Schedule sc = lib.schedule(ch.key);
         int i = sc == null ? -1 : sc.at(now);
-        // Its programme's picture (or its logo), the logo's chip on a picture.
-        o.set(Ui.f(left + 12f), Ui.f(cy - THUMB_H / 2f), Ui.f(left + 12f + THUMB_W), Ui.f(cy + THUMB_H / 2f));
+        String title = i >= 0 ? sc.title[i] : "No information", sub = i >= 0 ? sub(k, ch, sc, i, now) : "";
+        float tx = o.left + Ui.f(18f), room = o.right - Ui.f(14f) - tx;
+        float wordsEnd = tx + Math.min(room, Math.max(titles.width(title), sub.isEmpty() ? 0f : subs.width(sub)));
         String url = i < 0 ? "" : settled && !Exec.inline ? ProgrammePictures.get(owner.getContext(), ch, sc, i, redraw) : ProgrammePictures.peek(ch, sc, i);
-        float end = url == null || url.isEmpty() ? -1f : tiles.draw(c, o, Ui.f(12f), url, PicTile.COVER, true, false);
-        if (end < 0f) {
-            fill.setColor(0x59000000);
-            c.drawRoundRect(o, Ui.f(12f), Ui.f(12f), fill);
-            float lh = Ui.f(40f), lw = lh * 1.69f;
-            Logos.draw(c, ch, rect(o.centerX() - lw / 2f, o.centerY() - lh / 2f, lw, lh), redraw);
+        boolean on = i >= 0 && com.gathin.homefieldtv.prefs.Look.progress;
+        boolean pic = url != null && !url.isEmpty() && tiles.fill(c, o, rad, url, Math.round(o.width()), Pics.FILL, wordsEnd, true, false);
+        if (pic) {
+            tiles.shade(c, o, rad, wordsEnd, on);
         } else {
-            Logos.draw(c, ch, rect(o.left + Ui.f(4f), o.bottom - Ui.f(30f), Ui.f(44f), Ui.f(26f)), redraw);
+            fill.setColor(Look07.CELL);
+            c.drawRoundRect(o, rad, rad, fill);
+            float sw = Math.max(1f, Ui.f(1f));
+            ring.setStrokeWidth(sw);
+            ring.setColor(0x12FFFFFF);
+            c.drawRoundRect(o.left + sw / 2f, o.top + sw / 2f, o.right - sw / 2f, o.bottom - sw / 2f, rad, rad, ring);
         }
-        float sw = Math.max(1f, Ui.f(1f));
-        ring.setStrokeWidth(sw);
-        ring.setColor(0x1FFFFFFF);
-        c.drawRoundRect(o.left + sw / 2f, o.top + sw / 2f, o.right - sw / 2f, o.bottom - sw / 2f, Ui.f(12f), Ui.f(12f), ring);
-        // Its number, the programme's title, the channel and what's left, the bar.
-        int words = ChannelLook.colour(ch) == 0 && up >= 0.5f ? Look07.INK : Look07.L1;
-        numP.setColor(words == Look07.INK ? Look07.INK2 : 0xD6FFFFFF);
-        int n = lib.number(ch);
-        if (n > 0) c.drawText(Words.number(n), Ui.f(left + 12f + THUMB_W + 14f), Type.centred(numP, Ui.f(cy)), numP);
-        float tx = left + 12f + THUMB_W + 14f + 40f + 14f, room = Ui.f(right - 12f - tx);
-        titleP.setColor(words);
-        titles.line(c, i >= 0 ? sc.title[i] : ChannelEdits.name(ch), Ui.f(tx), Ui.f(y + 36f), room);
-        subP.setColor(words == Look07.INK ? Look07.INK2 : 0xD6FFFFFF);
-        subs.line(c, sub(k, ch, sc, i, now), Ui.f(tx), Ui.f(y + 58f), room);
-        if (i >= 0 && com.gathin.homefieldtv.prefs.Look.progress) {
-            float bx = Ui.f(tx), by = Ui.f(y + 67f), bw = room;
-            fill.setColor(words == Look07.INK ? 0x26000000 : 0x40FFFFFF);
-            c.drawRoundRect(bx, by, bx + bw, by + Ui.f(4f), Ui.f(2f), Ui.f(2f), fill);
-            float d = LiveText.progress(now, sc.start[i], sc.stop[i]);
-            if (d > 0f) {
-                fill.setColor(words == Look07.INK ? Look07.INK : Look07.L1);
-                c.drawRoundRect(bx, by, bx + Math.max(Ui.f(4f), bw * d), by + Ui.f(4f), Ui.f(2f), Ui.f(2f), fill);
+        // How far through it is: a white line along its foot.
+        if (on) {
+            float d = LiveText.progress(now, sc.start[i], sc.stop[i]), to = o.left + Ui.f(6f) + (o.width() - Ui.f(12f)) * d;
+            if (to > o.left + Ui.f(10f)) {
+                fill.setColor(Look07.L1);
+                c.drawRoundRect(o.left + Ui.f(6f), o.bottom - Ui.f(4f), to, o.bottom, Ui.f(2f), Ui.f(2f), fill);
             }
         }
-        if (scaled) c.restore();
+        // The programme's title, its times and what's left.
+        titleP.setColor(Look07.L1);
+        titles.line(c, title, tx, Ui.f(y + 39f), room);
+        if (!sub.isEmpty()) {
+            subP.setColor(pic ? GuideGrid.SUB_ON_PICTURE : 0xD6FFFFFF);
+            subs.line(c, sub, tx, Ui.f(y + 64f), room);
+        }
+        if (scaled) {
+            // 07's focus: a 3 px white ring just outside it.
+            float rw = Ui.f(Look07.CHANNEL_RING), out = rw / 2f;
+            ring.setStrokeWidth(rw);
+            ring.setColor(Palette.alpha(Look07.L1, Math.round(255 * u)));
+            c.drawRoundRect(o.left - out, o.top - out, o.right + out, o.bottom + out, rad + out, rad + out, ring);
+            c.restore();
+        }
     }
 
-    private final RectF box2 = new RectF();
-
-    private RectF rect(float x, float y, float w, float h) {
-        box2.set(x, y, x + w, y + h);
-        return box2;
-    }
-
-    /** "Riverside One • 40 min left": the channel and what is left of its programme (kept by channel and minute). */
+    /** "19:00 – 20:10 · 40 min left": the programme's times and what is left of it (kept by row, channel and minute). */
     private String sub(int k, Channel ch, Guide.Schedule s, int i, long now) {
         long minute = now / 60_000L;
         if (subFor[k] == ch && subMinute[k] == minute && subText[k] != null) return subText[k];
-        String name = ChannelEdits.name(ch);
-        String t = i < 0 ? name : name + " · " + GuideGrid.leftWords((int) Math.max(1L, (s.stop[i] - now + 59_999L) / 60_000L));
+        String t = LiveText.hm(s.start[i]) + " – " + LiveText.hm(s.stop[i]) + " · "
+                + GuideGrid.leftWords((int) Math.max(1L, (s.stop[i] - now + 59_999L) / 60_000L));
         subFor[k] = ch;
         subMinute[k] = minute;
         subText[k] = t;

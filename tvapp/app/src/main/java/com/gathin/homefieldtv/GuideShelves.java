@@ -15,7 +15,6 @@ import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.Library;
-import com.gathin.homefieldtv.engine.LogoPack;
 import com.gathin.homefieldtv.engine.Reminders;
 import com.gathin.homefieldtv.prefs.ChannelEdits;
 
@@ -28,11 +27,11 @@ import java.util.Locale;
 /**
  * The TV guide as 07's shelves (the approved still 04c), the second Guide style (Settings › Appearance › TV guide):
  * "Live Guide" and what it shows ("Tonight · All channels · Wednesday 18 November") with the lists as glass pills at
- * the right; then a shelf a channel, the remote's at the top: its cell in its logo's colour (ChannelLook) with the logo
- * on a disc of its colour, the amber star of a favourite, its number and name; its evening as 07's cards (Card07: 400 x
- * 225, the picture fitted round its faces), what's on now first with LIVE and how far through, the later ones with
- * their times (a bell for a reminder), each card's title and times under it; the card the remote is on lifted and tilted,
- * the shelves under it darker; at the foot a frosted sheet with the programme the remote is on: the channel, its title,
+ * the right; then a shelf a channel, the remote's at the top: its label, the logo alone on its cell (ChannelLook: its
+ * logo's deep colour, the amber star of a favourite small in its corner; no number, disc or name); its evening as
+ * 07's cards (Card07: 400 x 225, the picture filling it round its faces), what's on now first with LIVE and how far
+ * through, the later ones with their times (a bell for a reminder), each card's title and times under it; the card the
+ * remote is on lifted and tilted, the shelves under it darker; at the foot a frosted sheet with the programme the remote is on: the channel, its title,
  * its times and chips, what OK does (Watch Live, Remind Me), and what it is about.
  *
  * <p>It draws the grid's own state (GuideGrid: its channels, the remote's channel and its time), so every key does
@@ -56,7 +55,7 @@ final class GuideShelves extends View {
     }
 
     /** Where things go (design px, the still's .gd-*). */
-    static final float SHELVES_Y = 262f, SHELF = 330f, LABEL_X = 90f, LABEL_W = 160f, DISC = 120f, CARD_X = 300f, CARD_W = 400f,
+    static final float SHELVES_Y = 262f, SHELF = 330f, LABEL_X = 90f, LABEL_W = 160f, CARD_X = 300f, CARD_W = 400f,
             CARD_H = 225f, CARD_GAP = 40f, SHEET_Y = 746f, SHEET_X = 48f;
     static final int CARDS = 5;
 
@@ -68,14 +67,12 @@ final class GuideShelves extends View {
     private final Frost sheet = new Frost(Look07.MAT);
     private final GuideGrid.Art art = new GuideGrid.Art();
     private final GuideGrid.Lines lines = new GuideGrid.Lines();
-    private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), disc = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG),
-            bmp = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG), dark = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), dark = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final TextPaint titleP = Type.paint(Type.H2, Type.BOLD, Look07.L1), subP = Type.paint(Type.SUB, Type.MEDIUM, Look07.L2);
-    private final TextPaint numP = Type.clock(21f, Type.SEMIBOLD, 0xE0FFFFFF), nameP = Type.paint(20f, Type.SEMIBOLD, Look07.L1);
     private final TextPaint kickP = Type.paint(21f, Type.SEMIBOLD, Look07.L2), bigP = Type.paint(54f, Type.BOLD, Look07.L1);
     private final TextPaint metaP = Type.clock(22f, Type.MEDIUM, Look07.L2), descP = Type.paint(23f, Type.REGULAR, Look07.L2);
     private final TextPaint progP = Type.clock(20f, Type.MEDIUM, Look07.L2);
-    private final TextFit names = new TextFit(nameP, 64), bigs = new TextFit(bigP, 32), kicks = new TextFit(kickP, 32), metas = new TextFit(metaP, 32);
+    private final TextFit bigs = new TextFit(bigP, 32), kicks = new TextFit(kickP, 32), metas = new TextFit(metaP, 32);
     private final RectF r = new RectF(), o = new RectF();
     private final Runnable redraw = this::invalidate;
     private final Runnable artKnown = () -> {
@@ -195,6 +192,10 @@ final class GuideShelves extends View {
     @Override protected void onDraw(Canvas c) {
         long now = System.currentTimeMillis();
         Channel here = grid.channel();
+        if (here != lastFocus && here != null) {
+            // The channel and its number (its label no longer draws it), for accessibility.
+            setContentDescription(GuideGrid.describe(lib.number(here), ChannelEdits.name(here), ""));
+        }
         if (here != lastFocus) {
             // Another channel: the shelves glide to it (at once for another list).
             int was = lastFocus == null ? -1 : indexNear(lastFocus);
@@ -306,7 +307,7 @@ final class GuideShelves extends View {
     private void drawShelf(Canvas c, Channel ch, int d, float y, long now) {
         boolean here = d == 0;
         float dim = d > 0 ? 0.5f : d < 0 ? Math.min(1f, Math.max(0f, (SHELVES_Y - y) / SHELF)) : 0f;
-        drawLabel(c, ch, y, here);
+        drawLabel(c, ch, y);
         if (d != 0) {
             // Darker, the colours staying true (the label's cell darkened rather than faded).
             r.set(Ui.f(LABEL_X - 10f), Ui.f(y - 14f), Ui.f(LABEL_X + LABEL_W + 10f), Ui.f(y + 221f));
@@ -328,49 +329,14 @@ final class GuideShelves extends View {
         if (fc >= 0 && i0 + fc < s.start.length) drawCard(c, ch, s, i0 + fc, fc, CARD_X + (fc - shift) * (CARD_W + CARD_GAP), y, d, now);
     }
 
-    /** The channel's label: its cell in its logo's colour, the logo on a disc of its colour, the star, its number and name. */
-    private void drawLabel(Canvas c, Channel ch, float y, boolean here) {
+    /**
+     * The channel's label: its cell, the logo alone (ChannelLook: on its logo's deep colour, no number, no disc or tile,
+     * no name), as large as the label allows, the favourite's star small in its corner. The remote's card carries the
+     * focus, so the label itself stays as it is (its number is the shelves' content description, for accessibility).
+     */
+    private void drawLabel(Canvas c, Channel ch, float y) {
         r.set(Ui.f(LABEL_X - 10f), Ui.f(y - 14f), Ui.f(LABEL_X + LABEL_W + 10f), Ui.f(y + 221f));
-        // The remote's card carries the focus: the label stays as it is (the plain row's white pill where Behind logos
-        // is None or Black tile).
-        int words = ChannelLook.fillCell(c, r, Ui.f(30f), ch, ChannelLook.colour(ch) == 0 && here ? 1f : 0f);
-        float cx = Ui.f(LABEL_X + LABEL_W / 2f), cy = Ui.f(y + DISC / 2f), rad = Ui.f(DISC / 2f);
-        // The disc in the logo's own colour (its tile's fall), the logo bare on it.
-        Logos.Tint t = Logos.behind() == Logos.COLOUR ? Logos.tint(LogoPack.url(ch)) : null;
-        if (t == null) t = Logos.Tint.WAITING;
-        disc.setShader(null);
-        disc.setColor(t.tileFoot | 0xFF000000);
-        c.drawCircle(cx, cy, rad, disc);
-        disc.setColor(Palette.alpha(t.tileTop, 0x99));
-        c.drawCircle(cx, cy - rad * 0.08f, rad * 0.92f, disc);
-        String url = LogoPack.url(ch);
-        Bitmap b = url.isEmpty() ? null : Pics.get(url, Ui.px(DISC * 0.76f), Ui.px(DISC * 0.52f), Pics.LOGO, redraw);
-        if (b != null) {
-            c.drawBitmap(b, cx - b.getWidth() / 2f, cy - b.getHeight() / 2f, bmp);
-        } else {
-            Icons07.draw(c, Icons07.TV, cx, cy, Ui.f(44f), Look07.L3);
-        }
-        if (favourite(ch)) {
-            float sx = cx + rad - Ui.f(2f + 15f), sy = cy - rad + Ui.f(2f + 15f);
-            fill.setColor(Look07.AMBER);
-            c.drawCircle(sx, sy, Ui.f(15f), fill);
-            Icons07.draw(c, Icons07.STAR, sx, sy, Ui.f(16f), Look07.AMBER_INK);
-        }
-        int n = lib.number(ch);
-        numP.setColor(words == Look07.INK ? Look07.INK2 : 0xE0FFFFFF);
-        if (n > 0) {
-            String num = Words.number(n);
-            c.drawText(num, cx - numP.measureText(num) / 2f, Ui.f(y + DISC + 12f + 21f), numP);
-        }
-        nameP.setColor(words);
-        String name = ChannelEdits.name(ch);
-        float room = Ui.f(LABEL_W);
-        if (names.fitsOne(name, room)) {
-            float w = names.width(name);
-            names.line(c, name, cx - w / 2f, Ui.f(y + DISC + 12f + 25f + 2f + 20f), room);
-        } else {
-            names.lines(c, name, cx - room / 2f, Ui.f(y + DISC + 59f), Ui.f(y + DISC + 59f), Ui.f(y + DISC + 83f), room, 2);
-        }
+        ChannelLook.cell(c, r, Ui.f(30f), ch, 0f, favourite(ch) ? ChannelLook.FAVOURITE : 0, "", true, redraw);
     }
 
     private final java.util.Map<Channel, Boolean> favourites = new java.util.WeakHashMap<>();

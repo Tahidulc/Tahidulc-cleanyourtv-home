@@ -871,18 +871,18 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
                 // The card for the channel shown (CH+ and CH−: another one), the mini guide round it, the keys' hints, and
                 // which channel is playing.
                 Channel ch = peek != null ? peek : playing;
-                card.draw(c, InfoCard.FOOT_Y, ch, now, false, ch == playing ? chips(tv.live) : null);
+                moving = card.draw(c, InfoCard.FOOT_Y, ch, now, false, ch == playing ? chips(tv.live) : null);
                 if (ch != settledOn) {
                     settledOn = ch;
                     settled = Exec.inline;
                     removeCallbacks(rest);
                     postDelayed(rest, ProgrammePictures.REST_MS);
                 }
-                moving = mini.draw(c, ch, playing, settled);
+                moving |= mini.draw(c, ch, playing, settled);
                 MiniGuide.hints(c);
                 if (digits.isEmpty() && playing != null) mini.watching(c, "Watching", Words.number(Library.get(getContext()).number(playing)));
             } else if (mode == OVERLAY || mode == BAR && barWithCard) {
-                card.draw(c, InfoCard.TOP_Y, playing, now, false, chips(tv.live));
+                moving = card.draw(c, InfoCard.TOP_Y, playing, now, false, chips(tv.live));
             } else if (mode == DESC && playing != null) {
                 drawDescription(c, playing, now);
             }
