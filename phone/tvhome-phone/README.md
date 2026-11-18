@@ -682,3 +682,22 @@ over the guide, the list and Sport (it stays when the rest folds away upright), 
 has at its right. On a tablet on its side the panel stays docked beside the guide, the button tucking it away and back,
 and it opens as it was last left. The category chosen last still opens again, and the guide's swipes, full screen on
 turning the phone, and the guide to both screen edges are as they were.
+
+**A club's squad, a player's page and an F1 driver's page, as the family's pictures have them.** A club's page is on the
+club's own colour, deepened, with fine grain and a vignette. Players and Management sit at the top left and the lines
+(All, Goalkeepers, Defenders, Midfielders, Forwards; white when on) at the top right, and the squad is a carousel: the
+player in the middle large on a tall rounded panel, his cut-out photo rising above it, his number on a coin in the
+club's colour, his first name small and his surname huge, his line up the side, smaller and dimmer cards either side.
+Swipe it (it snaps to a card, a fling carries it on), tap a neighbour to bring it to the middle, tap the middle card for
+his page; the pills change it with a short cross-fade. The season, FotMob's figures and the leading players follow under
+it as before. FotMob's squad is used (the current manager with it); ESPN's adds its cut-outs and figures, and ESPN's list
+of past managers is never shown as the manager. A player's page, in the same look: his photo, number, line and place,
+his country with its flag, his age and height, and this season's figures from ESPN and FotMob, each only where a source
+gave it; swipe, or the arrows, for the one before or after him as the club page showed them, and back on the club page
+the carousel is on the last one shown. A driver in Sports' Formula 1 opens his page: his team's colour, his number huge,
+italic and faded behind him, the driver standing (formula1.com's picture, else ESPN's, else a figure drawn in the
+team's colour), the next Grand Prix with its dates and a Days, Hrs and Mins countdown that goes on by itself, the team's
+name with its logo, his number, flag and full name, his nationality and age, the team's car from the side breaking out
+past the card (formula1.com's, else one drawn), and Grands Prix, Points and Podiums this season (one read of his results
+on Jolpica); swipe through the championship, the colour turning to each team's. Upright on a phone the photo is on top
+and the rest under it; on its side and on a tablet the pages are laid out wide, as the pictures are.
