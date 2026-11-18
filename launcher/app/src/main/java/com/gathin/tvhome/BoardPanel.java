@@ -100,7 +100,7 @@ final class BoardPanel extends SportPanel {
 
     /** The pop-up's style in a word or two, for the Try rows ("classic" when it is off: a try still shows one). */
     private String popupStyleWords() {
-        return "strap".equals(ClassicIntro.popupStyle(c)) ? "in the scoreboard's look" : "classic";
+        return "strap".equals(ClassicIntro.popupStyle(c)) ? "in my scoreboard's look" : "classic";
     }
 
     /** The game a try uses, in words: the one chosen above, else the Premier League's latest played. */
@@ -403,11 +403,11 @@ final class BoardPanel extends SportPanel {
         Row classicPop = row("Kick-off pop-up", false);
         classicPop.words = () -> {
             String st = ClassicIntro.popupStyle(c);
-            return "strap".equals(st) ? "In the scoreboard's look: a strap that folds into the board; after a goal, no goal card or scorer beside the board · OK: off"
-                    : "off".equals(st) ? "Off · goals come as the card and the scorer beside the board · OK: classic (crests, trophy and teams)"
-                    : "Classic: crests, trophy and teams, from your clip; after a goal, no goal card or scorer beside the board · OK: in the scoreboard's look";
+            return "strap".equals(st) ? "In my scoreboard's look, whichever look it is: a strap that folds into the board; after a goal, no goal card or scorer beside the board · OK: classic"
+                    : "off".equals(st) ? "Off · goals come as the card and the scorer beside the board · OK: in my scoreboard's look"
+                    : "Classic: crests, trophy and teams, from your clip; after a goal, no goal card or scorer beside the board · OK: off";
         };
-        classicPop.ok = () -> ClassicIntro.setPopupStyle(c, ClassicIntro.nextStyle(ClassicIntro.popupStyle(c), "strap"));
+        classicPop.ok = () -> ClassicIntro.setPopupStyle(c, ClassicIntro.nextPopup(ClassicIntro.popupStyle(c)));
         Row classicLu = row("Line-ups before kick-off", false);
         classicLu.words = () -> {
             String st = ClassicIntro.lineupsStyle(c);

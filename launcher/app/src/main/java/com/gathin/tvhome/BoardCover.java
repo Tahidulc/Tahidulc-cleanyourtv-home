@@ -5283,7 +5283,7 @@ final class BoardCover {
 
     /** A competition's logo for the dark block: ESPN's for dark grounds; the Premier League's lion alone, in white. */
     /** The competition's logo in its own colours (ESPN's for light grounds), for the looks that set it on white. */
-    private static Bitmap compLogoLight(Context c, String url) {
+    static Bitmap compLogoLight(Context c, String url) {
         if (url == null) return null;
         String light = url.replace("/500-dark/", "/500/");
         String key = "compLight|" + light;
@@ -5294,7 +5294,7 @@ final class BoardCover {
         return b;
     }
 
-    private static Bitmap compLogo(Context c, String url) {
+    static Bitmap compLogo(Context c, String url) {
         if (url == null) return null;
         String key = "comp|" + url;
         Bitmap have = images().get(key);

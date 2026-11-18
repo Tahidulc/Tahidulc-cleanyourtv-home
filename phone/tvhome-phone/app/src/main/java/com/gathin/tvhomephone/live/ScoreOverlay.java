@@ -181,14 +181,15 @@ final class ScoreOverlay implements ScoreBoard.Source {
         intro.momentChanged(board::momentChanged);
         // An intro over the picture: the ad-break screen goes for it (the next look at the break brings it back after).
         intro.introUp(() -> { if (adBreak != null && !manualAdBreak) endAdBreak(); });
-        // the strap in the board's look folds into the board: where it is over the picture, on a 1920 x 1080 picture
+        // the strap in the board's look folds into the board: where it is over the picture, on a 1920 x 1080 picture (the
+        // board itself, not its frame with the room beside and over it for what slides out)
         intro.boardAt(() -> {
-            if (pfw <= 10 || pfh <= 10 || board.view.getWidth() <= 0) return null;
+            if (pfw <= 10 || pfh <= 10 || board.bug.getWidth() <= 0) return null;
             int[] b = new int[2], r = new int[2];
-            board.view.getLocationInWindow(b);
+            board.bug.getLocationInWindow(b);
             root.getLocationInWindow(r);
             float k = 1920f / pfw, kh = 1080f / pfh;
-            return new float[]{(b[0] - r[0] - pfx) * k, (b[1] - r[1] - pfy) * kh, board.view.getWidth() * k, board.view.getHeight() * kh};
+            return new float[]{(b[0] - r[0] - pfx) * k, (b[1] - r[1] - pfy) * kh, board.bug.getWidth() * k, board.bug.getHeight() * kh};
         });
         cover.setVisibility(View.GONE);
         // Held: dragged where the finger goes. Tapped twice: Move and resize. (The screen reader's long press: the same.)

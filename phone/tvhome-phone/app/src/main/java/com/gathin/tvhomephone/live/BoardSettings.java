@@ -205,8 +205,8 @@ public final class BoardSettings {
         row(c, col, c.getString(R.string.live28_see_through), ScoreBoard.logoSeeThrough(c), on -> ScoreBoard.setLogoSeeThrough(c, on));
         row(c, col, c.getString(R.string.live28_lineups), ScoreBoard.lineupsOn(c), on -> ScoreBoard.setLineupsOn(c, on));
         // The kick-off pop-up and the line-ups before kick-off: each in one of two styles, or off.
-        styles(c, col, c.getString(R.string.live33_classic_popup), new String[]{"classic", "strap", "off"},
-                new String[]{c.getString(R.string.live35_style_classic), c.getString(R.string.live35_style_strap), c.getString(R.string.live35_style_off)},
+        styles(c, col, c.getString(R.string.live33_classic_popup), new String[]{"strap", "classic", "off"},
+                new String[]{c.getString(R.string.live35_style_strap), c.getString(R.string.live35_style_classic), c.getString(R.string.live35_style_off)},
                 PlayerIntro.popupStyle(c), st -> PlayerIntro.setPopupStyle(c, st));
         styles(c, col, c.getString(R.string.live33_classic_lineups), new String[]{"classic", "stadium", "studio", "off"},
                 new String[]{c.getString(R.string.live35_style_beam), c.getString(R.string.live35_style_stadium),

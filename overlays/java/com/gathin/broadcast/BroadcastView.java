@@ -47,13 +47,15 @@ public final class BroadcastView extends FrameLayout {
     }
 
     private static final String TAG = "Broadcast";
-    /** Each page's sounds in broadcast/sfx: the names that start so (the strap only its look's). */
+    /** Each page's sounds in broadcast/sfx: the names that start so (the strap only its look's: BroadcastData.strapSound). */
     private static String[] sounds(Context c, String page, String cfg) {
         String prefix = "kickoff".equals(page) ? "popup-" : "lineups".equals(page) ? "swish-" : page + "-";
         if ("strap".equals(page)) {
             try {
-                String look = new JSONObject(cfg).optString("look", "CLASSIC").toLowerCase(java.util.Locale.ROOT);
-                return new String[]{"strap-" + look};
+                JSONObject o = new JSONObject(cfg);
+                String sfx = o.optString("sfx", "");
+                if (sfx.matches("strap-[a-z0-9_]+")) return new String[]{sfx};
+                return new String[]{BroadcastData.strapSound(o.optString("look", "CLASSIC"))};
             } catch (Exception ignored) {
                 // all of them, then
             }
