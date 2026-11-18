@@ -123,6 +123,8 @@ final class CineRows extends View {
 
     // The pills.
     private final List<String> pills = new ArrayList<>();
+    /** Each pill's key for its lift, the sort pill's last (kept: nothing made a frame). */
+    private final List<Object> pillKeys = new ArrayList<>();
     private int pill, pillAt;
     private String sortWords = "";
 
@@ -219,6 +221,7 @@ final class CineRows extends View {
     void pills(List<String> names, int chosen, String sort) {
         pills.clear();
         pills.addAll(names);
+        while (pillKeys.size() < pills.size() + 1) pillKeys.add(new Object());
         pill = Math.max(0, Math.min(chosen, pills.size() - 1));
         if (area != PILLS) pillAt = pill;
         sortWords = sort == null ? "" : sort;
@@ -491,7 +494,7 @@ final class CineRows extends View {
         Row on = current();
         Object focus = !active || area != SHELVES || on == null ? null : on.focus < on.tiles.size() ? on.tiles.get(on.focus) : on;
         moving |= lift.step(focus);
-        moving |= pillLift.step(active && area == PILLS ? (Object) Integer.valueOf(pillAt) : null);
+        moving |= pillLift.step(active && area == PILLS && pillAt < pillKeys.size() ? pillKeys.get(pillAt) : null);
         float risen = Ui.f(y.value());
         // The pills and the card rise away with the page (fading as they go).
         float away = Math.max(0f, Math.min(1f, y.value() / 300f));
@@ -540,7 +543,7 @@ final class CineRows extends View {
             boolean here = pillAt >= pills.size();
             float tw = sortP.measureText(sortWords), pw = Ui.f(20f) + Ui.f(20f) + Ui.f(10f) + tw + Ui.f(20f);
             float x0 = Ui.f(1920f - LEFT) - pw, hh = Ui.f(PILL_H) / 2f;
-            float up = here ? Math.max(0f, Math.min(1.1f, pillLift.of(Integer.valueOf(pillAt)))) : 0f;
+            float up = here ? Math.max(0f, Math.min(1.1f, pillLift.of(pillAt < pillKeys.size() ? pillKeys.get(pillAt) : null))) : 0f;
             r.set(x0, cy - hh, x0 + pw, cy + hh);
             c.save();
             if (up > 0.01f) {
@@ -563,7 +566,7 @@ final class CineRows extends View {
 
     /** A pill: white for the list shown; where the remote is, lifted a little (07's spring); its width. */
     private float pill(Canvas c, float x, float cy, String name, boolean on, boolean here, float pw) {
-        float up = here && area == PILLS ? Math.max(0f, Math.min(1.1f, pillLift.of(Integer.valueOf(pillAt)))) : 0f;
+        float up = here && area == PILLS ? Math.max(0f, Math.min(1.1f, pillLift.of(pillAt < pillKeys.size() ? pillKeys.get(pillAt) : null))) : 0f;
         if (up <= 0.01f) return Pills.pill(c, x, cy, name, null, on || here && area == PILLS, true, PILL_H);
         float g = 1f + 0.06f * up, hh = Ui.f(PILL_H) / 2f * g;
         r.set(x + pw / 2f - pw * g / 2f, cy - hh, x + pw / 2f + pw * g / 2f, cy + hh);
