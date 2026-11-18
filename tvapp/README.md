@@ -171,18 +171,18 @@ wordmark are Homefield; it carries no Sky logo or name.
   they come back with plain playback; their pop-ups wait for it, or are let go when stale (a kick-off after two minutes,
   a goal's after ninety seconds), and after a longer time away the board catches up without popping up what it missed.
 - **A club's page:** after the family's picture of a squad page: the club's own colour behind (ESPN's, made deep enough
-  for white writing; a white club's second colour, else FotMob's) with a fine grain and a soft vignette; the crest small
-  at the top left beside the Players and Management pills, the lines' pills (All, Goalkeepers, Defenders, Midfielders,
-  Forwards) at the top right, white when on and dark when off; then the squad as a row of cards: the one the remote is
-  on in the middle, a tall rounded panel a shade lighter than the ground, the player's cut-out photo rising out of its
-  top on a shirt drawn in the club's colour, his number in a coin of that colour at his shoulder, his first name small
-  over the card's foot and his surname huge under it, his line written down its side; two smaller, dimmer cards each
-  side with their photos, coins and names. Left and Right glide the row a player (held, it glides on); Up goes to the
-  pills, where Left and Right or OK pick one and Down comes back; OK on a card opens the player's page; Back closes.
-  Management shows the manager and any staff FotMob lists, as cards in the same row. The squad is FotMob's (the club
-  found once by its name in FotMob's search, its id then kept on this TV), else ESPN's roster for the competition the
-  club was met in (it names no manager: ESPN's list for a club is its managers of years gone by); a player with no photo
-  has a head and shoulders drawn in the club's colour.
+  for white writing; for a white or black club FotMob's, else ESPN's second colour) with a fine grain and a soft
+  vignette; the crest small at the top left beside the Players and Management pills, the lines' pills (All, Goalkeepers,
+  Defenders, Midfielders, Forwards) at the top right, white when on and dark when off; then the squad as a row of
+  cards: the one the remote is on in the middle, a tall rounded panel a shade lighter than the ground, the player's
+  cut-out photo rising out of its top on a shirt drawn in the club's colour, his number in a coin of that colour at his
+  shoulder, his first name small over the card's foot and his surname huge under it, his line written down its side;
+  two smaller, dimmer cards each side with their photos, coins and names. Left and Right glide the row a player (held,
+  it glides on); Up goes to the pills, where Left and Right or OK pick one and Down comes back; OK on a card opens the
+  player's page; Back closes. Management shows the manager and any staff FotMob lists, as cards in the same row. The
+  squad is FotMob's (the club found once by its name in FotMob's search, its id then kept on this TV), else ESPN's
+  roster for the competition the club was met in (it names no manager: ESPN's list for a club is its managers of years
+  gone by); a player with no photo has a head and shoulders drawn in the club's colour.
 - **A player's page:** in the same look: his card with his photo and number, his first name small and surname huge,
   his position, his country with its flag and his age, then this season's figures from FotMob for his main competition
   (appearances, goals, assists, clean sheets for a goalkeeper, yellow and red cards, minutes, rating; a manager's
