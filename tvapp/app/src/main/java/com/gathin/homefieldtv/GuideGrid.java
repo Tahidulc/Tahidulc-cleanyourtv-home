@@ -17,7 +17,6 @@ import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.engine.Lineup;
-import com.gathin.homefieldtv.engine.LogoPack;
 import com.gathin.homefieldtv.engine.Reminders;
 import com.gathin.homefieldtv.prefs.ChannelEdits;
 import com.gathin.homefieldtv.prefs.Look;
@@ -35,17 +34,20 @@ import java.util.Map;
  * stroke under its glowing dot; then a row a channel, 92 px apart:
  *
  * <pre>
- *   the channel's cell    426 x 84 from x 74, rounded 20, filled with its logo's colour (ChannelLook: the shared rule,
- *                         a touch richer than the logo's own tile): its number (22 px), its logo on its tile (108 x 64),
- *                         its name (22 px, white) and under it its marks: ▶ in red on the channel playing in the
- *                         preview, its HD chip, the catch-up mark on a channel whose provider keeps an archive, the
- *                         amber star on a favourite. The remote's lifts (1.035) with a white ring and a soft glow
- *   its programmes        cells 84 high with 8 px between, rounded 16, deep blue-grey: the title (21 px, semibold, one
- *                         line) and under it the times (16 px) with the minutes left for the one on now, a bell on one
- *                         with a reminder, the catch-up mark on one the archive keeps; the programme's own picture
- *                         fitted round its faces (PicTile: at its 16:9 shape on the right of a cell 330 px wide and up,
- *                         a small thumbnail on one 200 to 330, none on a narrower one), never under a scrim; the one on
- *                         now with a white line along its foot to the time now; one already shown dimmer
+ *   the channel's cell    426 x 84 from x 74, rounded 20, the logo alone (ChannelLook, as the family asked: no number,
+ *                         no tile round the logo, no name): its logo's deep colour behind (Behind logos), the logo as
+ *                         large as the cell allows with the same room all round, its own shape kept, and its marks
+ *                         small and quiet down the cell's right-hand corner: ▶ in red on the channel playing in the
+ *                         preview, the amber star on a favourite, the catch-up mark on a channel whose provider keeps
+ *                         an archive, its HD. The remote's lifts (1.035) with a white ring and a soft glow; its number
+ *                         is the grid's content description (accessibility), not drawn
+ *   its programmes        cells 84 high with 8 px between, rounded 16: the programme's own picture taking up the whole
+ *                         cell whatever its width (PicTile.fill: its faces whole; a cell the window cuts shows the
+ *                         picture made for the whole programme, on its faces), a soft shade only under the words, the
+ *                         title (21 px, semibold, one line) and under it the times (16 px) with the minutes left for
+ *                         the one on now, a bell on one with a reminder, the catch-up mark on one the archive keeps;
+ *                         the one on now with a white line along its foot to the time now over a light foot fade; one
+ *                         already shown dimmer; with no picture, deep blue-grey as before
  *   the remote's row      a soft light band behind it; its cell lifts (1.04) with a white ring, a deep shadow and a glow
  * </pre>
  *
@@ -91,8 +93,8 @@ final class GuideGrid extends View {
     static final int ABOVE = 1;
     /** A row's gap under its cells; the cells' corners; the words' inset; the band behind the remote's row. */
     static final float GAP = 8f, CELL_R = 16f, TEXT_IN = 18f, BAND_X = 74f, BAND_R = 24f;
-    /** The channel's cell and what is in it (the stills' .ep-ch). */
-    static final float CH_X = 74f, CH_W = 426f, NUM_X = 90f, TILE_X = 158f, TILE_W = 108f, TILE_H = 64f, NAME_X = 282f, NAME_R = 488f;
+    /** The channel's cell (the stills' .ep-ch): the logo alone in it (ChannelLook). */
+    static final float CH_X = 74f, CH_W = 426f;
     /** The programmes' cells: their colour (under the picture), the lift of the remote's (1.04). */
     static final int CELL = 0xFF171C2B;
     static final float CELL_LIFT = 1.04f;
@@ -125,11 +127,11 @@ final class GuideGrid extends View {
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), ring = new Paint(Paint.ANTI_ALIAS_FLAG), band = new Paint(Paint.ANTI_ALIAS_FLAG),
             nowLine = new Paint(Paint.ANTI_ALIAS_FLAG), nowGlow = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final TextPaint dateP = Type.paint(22f, Type.SEMIBOLD, Look07.AMBER), labelP = Type.clock(22f, Type.MEDIUM, Look07.L2);
-    private final TextPaint nameP = Type.paint(22f, Type.SEMIBOLD, Look07.L1), numP = Type.clock(22f, Type.SEMIBOLD, 0xE0FFFFFF);
     private final TextPaint cellP = Type.paint(21f, Type.SEMIBOLD, Look07.L1), subP = Type.clock(16f, Type.MEDIUM, Look07.L2);
-    private final TextPaint chipP = Type.paint(11f, Type.BOLD, Look07.L1);
-    /** Titles, names, second lines and numbers measured once, cut from their kept widths each frame. */
-    private final TextFit cells, names, numbers, subs;
+    /** Titles and second lines measured once, cut from their kept widths each frame. */
+    private final TextFit cells, subs;
+    /** The second line's colour over a picture (a touch brighter than on the plain cell). */
+    static final int SUB_ON_PICTURE = 0xEBFFFFFF;
     /** The programmes' pictures, a PicTile for each row on screen (so their shaders stay kept: Shaders' 32 each). */
     private final PicTile[] tiles = new PicTile[8];
     private final Art art = new Art();
@@ -149,7 +151,7 @@ final class GuideGrid extends View {
     /** The lifts: the remote's channel cell and its programme's cell (07's springy ease). */
     private final Lift07 channelLift = new Lift07();
     private final CellLift cellLift = new CellLift();
-    private final RectF r = new RectF(), area = new RectF(), o = new RectF();
+    private final RectF r = new RectF(), area = new RectF();
     private final Runnable redraw = this::invalidate;
     /** A picture's address became known (Sky answered): the cells look again. */
     private final Runnable artKnown = () -> {
@@ -164,8 +166,6 @@ final class GuideGrid extends View {
         super(c);
         this.lib = lib;
         cells = new TextFit(cellP, 640);
-        names = new TextFit(nameP, 256);
-        numbers = new TextFit(numP, 128);
         subs = new TextFit(subP, 512);
         for (int i = 0; i < tiles.length; i++) {
             tiles[i] = new PicTile(this);
@@ -376,9 +376,9 @@ final class GuideGrid extends View {
             int n = s.start.length, i = s.from(from);
             while (i < n && s.stop[i] <= from) i++;
             for (; i < n && s.start[i] < to; i++) {
-                // Only cells wide enough to show a picture.
+                // Every cell a picture can show in (it takes up the whole cell, whatever its width).
                 long a = Math.max(s.start[i], from), b = Math.min(s.stop[i], to);
-                if ((b - a) / 60_000f * PX_PER_MIN < PicTile.THUMB_W) continue;
+                if ((b - a) / 60_000f * PX_PER_MIN < PicTile.MIN_W + GAP) continue;
                 ProgrammePictures.get(getContext(), ch, s, i, artKnown);
             }
         }
@@ -389,7 +389,29 @@ final class GuideGrid extends View {
 
     private void moved() {
         invalidate();
+        describe();
         if (host != null) host.moved();
+    }
+
+    /** The channel (and its number, which its cell no longer draws) and programme the remote is on, for accessibility. */
+    private void describe() {
+        Channel ch = channel();
+        if (ch == null) {
+            setContentDescription(null);
+            return;
+        }
+        Guide.Schedule s = lib.schedule(ch.key);
+        int i = s == null ? -1 : s.at(cursor);
+        setContentDescription(describe(lib.number(ch), ChannelEdits.name(ch), i >= 0 ? s.title[i] : ""));
+    }
+
+    /** Pure: "Channel 102, Meadow 4 HD, Harbour v Granite" (no number when it has none, no title when nothing is on). */
+    static String describe(int number, String name, String title) {
+        StringBuilder b = new StringBuilder();
+        if (number > 0) b.append("Channel ").append(number).append(", ");
+        b.append(name);
+        if (title != null && !title.isEmpty()) b.append(", ").append(title);
+        return b.toString();
     }
 
     private void toRow(int to) {
@@ -760,9 +782,10 @@ final class GuideGrid extends View {
     static final int MARK_BELL = 1, MARK_ARCHIVE = 2;
 
     /**
-     * One programme's cell (or a gap's): its picture fitted round its faces where it is wide enough (PicTile), its title
-     * and under it its times, the minutes left and its mark; the one on now with its line to the time now; the remote's
-     * lifted with its ring.
+     * One programme's cell (or a gap's): its picture taking up the whole cell (PicTile.fill: its faces whole, read for
+     * the whole programme's width), a soft shade under its words only, its title and under it its times, the minutes
+     * left and its mark; the one on now with its line to the time now over a light foot fade; the remote's lifted with
+     * its ring. With no picture (or while it is read), the cell plain.
      */
     private void drawCell(Canvas c, PicTile tile, Channel ch, Guide.Schedule s, int i, long a, long b, double ws, float top, float bottom,
                           String title, int index, long now, int mark) {
@@ -771,7 +794,7 @@ final class GuideGrid extends View {
         if (right - left < Ui.f(2f)) return;
         boolean here = index == focus && a <= cursor && cursor < b;
         float up = here ? cellLift.of(index, a) : 0f;
-        boolean done = b <= now;
+        boolean done = b <= now, onNow = a <= now && now < b;
         float rad = Ui.f(CELL_R), h = bottom - top;
         r.set(left, top, right, bottom);
         boolean scaled = up > 0.001f;
@@ -783,20 +806,29 @@ final class GuideGrid extends View {
             Shadows.draw(c, r, rad, SH_CELL, u);
             Shadows.glow(c, r, rad, GLOW_CELL, u);
         }
-        // The picture (where the cell takes one), else the cell plain.
+        // Its words' extent first (kept widths): the picture's window and the shade go by it.
+        float tx = left + Ui.f(TEXT_IN), room = right - Ui.f(14f) - tx;
+        boolean two = h >= Ui.f(76f) && s != null;
+        String line = two && room > Ui.f(40f) ? lines.of(a, b, onNow ? (int) Math.max(1L, (b - now + 59_999L) / 60_000L) : -1) : null;
+        float iconRoom = mark != 0 ? Ui.f(24f) : 0f;
+        float wordsW = title.isEmpty() ? 0f : cells.width(title);
+        if (line != null) wordsW = Math.max(wordsW, subs.width(line) + iconRoom);
+        float wordsEnd = tx + Math.max(0f, Math.min(room, wordsW));
+        // The picture (where the programme has one), taking up the whole cell; else the cell plain.
         String url = s == null ? null : art.url(ch, s, i);
-        float end = url == null || url.isEmpty() ? -1f : tile.draw(c, r, rad, url, PicTile.WORDS_LEFT, here, done);
-        if (end < 0f) {
+        boolean pic = url != null && !url.isEmpty() && tile.fill(c, r, rad, url, fullWidth(a, b), Pics.FILL, wordsEnd, here, done);
+        if (pic) {
+            tile.shade(c, r, rad, wordsEnd, Look.progress && onNow);
+        } else {
             fill.setColor(CELL);
             c.drawRoundRect(r, rad, rad, fill);
             float sw = Math.max(1f, Ui.f(1f));
             ring.setStrokeWidth(sw);
             ring.setColor(0x12FFFFFF);
             c.drawRoundRect(left + sw / 2f, top + sw / 2f, right - sw / 2f, bottom - sw / 2f, rad, rad, ring);
-            end = right;
         }
-        // How far through the one on now is: a white line along its foot, to the time now (no shading over it).
-        if (Look.progress && a <= now && now < b) {
+        // How far through the one on now is: a white line along its foot, to the time now.
+        if (Look.progress && onNow) {
             float to = Math.min(right - Ui.f(6f), xAt(now, ws));
             if (to > left + Ui.f(8f)) {
                 fill.setColor(Look07.L1);
@@ -804,21 +836,18 @@ final class GuideGrid extends View {
             }
         }
         // Its words: the title, then its times (the minutes left on now) and its mark.
-        float tx = left + Ui.f(TEXT_IN), room = Math.min(end, right - Ui.f(14f)) - tx;
         if (!title.isEmpty() && room > Ui.f(18f)) {
-            boolean two = h >= Ui.f(76f) && s != null;
             cellP.setColor(done && !here ? Look07.L2 : Look07.L1);
             float base = two ? top + h * 0.393f : Type.centred(cellP, top + h / 2f);
             cells.line(c, title, tx, base, room);
-            if (two && room > Ui.f(40f)) {
-                String line = lines.of(a, b, a <= now && now < b ? (int) Math.max(1L, (b - now + 59_999L) / 60_000L) : -1);
+            if (line != null) {
                 float sb = top + h * 0.738f, cy = sb - Ui.f(6f);
-                float iconRoom = mark != 0 ? Ui.f(24f) : 0f;
+                subP.setColor(pic ? SUB_ON_PICTURE : Look07.L2);
                 float w = subs.line(c, line, tx, sb, Math.max(0f, room - iconRoom));
                 if (mark != 0 && w + Ui.f(24f) <= room) {
                     float mx = tx + w + Ui.f(8f + 8f);
                     if (mark == MARK_BELL) Icons07.draw(c, Icons07.BELL, mx, cy, Ui.f(16f), Look07.AMBER);
-                    else Icons07.draw(c, Icons07.CATCHUP, mx, cy, Ui.f(16f), Look07.L2);
+                    else Icons07.draw(c, Icons07.CATCHUP, mx, cy, Ui.f(16f), pic ? SUB_ON_PICTURE : Look07.L2);
                 }
             }
         }
@@ -833,81 +862,24 @@ final class GuideGrid extends View {
     }
 
     /**
-     * The channel's cell in its logo's colour (ChannelLook), lifted where the remote is: its number, its logo on its tile,
-     * its name and under it its marks (▶ playing, its HD chip, catch-up, the favourite's star).
+     * The width a programme's picture is read at (screen px): its whole cell's, uncut by the window (so the picture stays
+     * the same one while the times glide), at most the window's, in steps of 8 (cells of a length share it).
      */
-    private void drawChannel(Canvas c, Channel ch, float top, float bottom, float up, boolean playing) {
-        float h = bottom - top;
-        r.set(Ui.f(CH_X), top, Ui.f(CH_X + CH_W), bottom);
-        int words = ChannelLook.fillCell(c, r, Ui.f(Look07.R_CHANNEL), ch, up);
-        boolean ink = words == Look07.INK;
-        float k = 1f + (Look07.CHANNEL_LIFT - 1f) * Math.max(0f, Math.min(1f, up));
-        boolean scaled = k > 1.0005f && ChannelLook.colour(ch) != 0;
-        float cy = (top + bottom) / 2f;
-        if (scaled) {
-            c.save();
-            c.scale(k, k, r.centerX(), r.centerY());
-        }
-        if (Look.numbers) {
-            String n = Words.number(lib.number(ch));
-            numP.setColor(ink ? Look07.INK2 : 0xE0FFFFFF);
-            c.drawText(n, Ui.f(NUM_X), Type.centred(numP, cy), numP);
-        }
-        // The logo on its tile (Settings › Appearance › Logos › Behind logos), or the empty tile with a TV while there is none.
-        float th = Math.min(TILE_H, h / Ui.s - 20f), tw = th * TILE_W / TILE_H;
-        float tileX = Look.numbers ? TILE_X : NUM_X;
-        String logoUrl = LogoPack.url(ch);
-        o.set(Ui.f(tileX), cy - Ui.f(th) / 2f, Ui.f(tileX + tw), cy + Ui.f(th) / 2f);
-        if (!Logos.draw(c, logoUrl, o, redraw) && (logoUrl.isEmpty() || Pics.failed(logoUrl))) {
-            Icons07.draw(c, Icons07.TV, o.centerX(), o.centerY(), Ui.f(th * 0.5f), ink ? Look07.INK3 : Look07.L3);
-        }
-        // The name (two lines when it needs them), its marks under it.
-        float nameX = tileX + tw + 16f, room = Ui.f(NAME_R - nameX);
-        nameP.setColor(ink ? Look07.INK : Look07.L1);
-        String name = ChannelEdits.name(ch);
-        boolean fav = favourite(ch), archive = Catchup.source(ch) != null;
-        String q = qualityOf(ch);
-        boolean marks = playing || fav || archive || !q.isEmpty();
-        float marksY;
-        if (h >= Ui.f(76f) && marks) {
-            boolean one = names.fitsOne(name, room);
-            float lineH = Ui.f(26f);
-            if (one) {
-                names.line(c, name, Ui.f(nameX), top + h * 0.44f, room);
-                marksY = top + h * 0.73f;
-            } else {
-                names.lines(c, name, Ui.f(nameX), top + h * 0.30f, top + h * 0.30f, top + h * 0.30f + lineH, room, 2);
-                marksY = top + h * 0.84f;
-            }
-            drawMarks(c, Ui.f(nameX), marksY, playing, q, archive, fav, ink);
-        } else {
-            names.lines(c, name, Ui.f(nameX), Type.centred(nameP, cy), Type.centred(nameP, cy - Ui.f(13f)), Type.centred(nameP, cy + Ui.f(13f)),
-                    room, h >= Ui.f(76f) ? 2 : 1);
-        }
-        if (scaled) c.restore();
+    static int fullWidth(long a, long b) {
+        float w = (float) ((b - a) / 60_000.0) * PX_PER_MIN - GAP;
+        w = Math.min(w, RIGHT - COLUMN - GAP);
+        return Math.max(8, (int) Math.ceil(Ui.f(Math.max(1f, w)) / 8f) * 8);
     }
 
-    /** A channel's marks along cy from x: ▶ in red (playing), its HD chip, the catch-up mark, the amber star. */
-    private void drawMarks(Canvas c, float x, float cy, boolean playing, String q, boolean archive, boolean fav, boolean ink) {
-        float gap = Ui.f(8f);
-        if (playing) {
-            Icons07.draw(c, Icons07.PLAY, x + Ui.f(6f), cy, Ui.f(12f), Look07.RED);
-            x += Ui.f(12f) + gap;
-        }
-        if (!q.isEmpty()) {
-            float w = chipP.measureText(q) + Ui.f(10f), hh = Ui.f(20f), sw = Math.max(1f, Ui.f(1.5f));
-            ring.setStrokeWidth(sw);
-            ring.setColor(ink ? 0x66000000 : 0x99FFFFFF);
-            c.drawRoundRect(x + sw / 2f, cy - hh / 2f + sw / 2f, x + w - sw / 2f, cy + hh / 2f - sw / 2f, Ui.f(5f), Ui.f(5f), ring);
-            chipP.setColor(ink ? Look07.INK2 : Look07.L1);
-            c.drawText(q, x + Ui.f(5f), Type.centred(chipP, cy), chipP);
-            x += w + gap;
-        }
-        if (archive) {
-            Icons07.draw(c, Icons07.CATCHUP, x + Ui.f(7.5f), cy, Ui.f(15f), ink ? Look07.INK2 : 0xD1FFFFFF);
-            x += Ui.f(15f) + gap;
-        }
-        if (fav) Icons07.draw(c, Icons07.STAR, x + Ui.f(7.5f), cy, Ui.f(15f), Look07.AMBER);
+    /**
+     * The channel's cell, the logo alone (ChannelLook: no number, no tile, no name), lifted where the remote is, its
+     * marks small down its right-hand corner (▶ playing, the favourite's star, catch-up, its HD).
+     */
+    private void drawChannel(Canvas c, Channel ch, float top, float bottom, float up, boolean playing) {
+        r.set(Ui.f(CH_X), top, Ui.f(CH_X + CH_W), bottom);
+        int marks = (playing ? ChannelLook.PLAYING : 0) | (favourite(ch) ? ChannelLook.FAVOURITE : 0)
+                | (Catchup.source(ch) != null ? ChannelLook.ARCHIVE : 0);
+        ChannelLook.cell(c, r, Ui.f(Look07.R_CHANNEL), ch, up, marks, qualityOf(ch), true, redraw);
     }
 
     /** "HD", "4K" or "" as the channel's name says (worked out once a channel). */
@@ -1045,11 +1017,11 @@ final class GuideGrid extends View {
 
     /** Titles, names and numbers measured so far, and found already measured (the frame's text cache). */
     int textMeasured() {
-        return cells.misses + names.misses + numbers.misses + subs.misses;
+        return cells.misses + subs.misses;
     }
 
     int textKept() {
-        return cells.hits + names.hits + numbers.hits + subs.hits;
+        return cells.hits + subs.hits;
     }
 
     /** Where the rows and the times are drawn now (design pixels of scroll, ms of the window's start). */

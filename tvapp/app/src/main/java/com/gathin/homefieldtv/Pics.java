@@ -123,6 +123,21 @@ final class Pics {
      */
     static final int PANEL = 18;
     static final float PANEL_FADE = 0.3f, PANEL_RADIUS = 34f / 330f;
+    /**
+     * FILL is a programme's picture filling a whole cell of any size, w x h (the guide's cells, the mini guide's), its
+     * faces whole (PicFill: covering, else the ambient fill: the picture blurred behind and sharp where its faces are);
+     * FILL_CARD the same for the info card, its faces between its words and what's next. Opaque, nothing darkened: the
+     * words' shade is drawn over it where the words are (PicTile.shade).
+     */
+    static final int FILL = 19, FILL_CARD = 20;
+    /**
+     * CELL_COLOUR, CELL_NONE and CELL_BLACK are a channel's logo alone on its cell (ChannelLook), as large as w x h
+     * allows at its own shape (the box is the cell less its room), read sharp from the logo itself at that size: on its
+     * colour's deep cell (its colours worked out as it is read; a logo that would not read there takes tv-logos' white
+     * version, else the shared halo judged on the cell), bare on the plain row (the halo judged on 07's ground), or made
+     * ready for black (Behind logos: Black tile).
+     */
+    static final int CELL_COLOUR = 21, CELL_NONE = 22, CELL_BLACK = 23;
     /** Where across a FACE crop the faces' middle goes (words on the left). */
     static final float FACE_BIAS = 0.62f;
 
@@ -428,6 +443,11 @@ final class Pics {
         }
         if (o.outWidth <= 0 || o.outHeight <= 0) return null;
         if (mode == BLUR) return blurred(in, o, w, h);
+        if (mode == FILL || mode == FILL_CARD) return filled(in, o, url, w, h, mode);
+        if (mode == CELL_COLOUR || mode == CELL_NONE || mode == CELL_BLACK) {
+            Bitmap logo = sharp(in, o, w, h);
+            return logo == null ? null : Logos.cell(url, logo, w, h, mode);
+        }
         int sample = 1;
         boolean fit = mode == FIT || mode == TILE || mode == READY || mode == LOGO_ART || mode == LOGO || mode == TINT;
         if (!fit) {
@@ -766,6 +786,125 @@ final class Pics {
         StackBlur.colour(px, Look07.BLUR_SATURATE, Look07.BLUR_BRIGHTNESS);
         out.setPixels(px, 0, bw, 0, 0, bw, bh);
         return out;
+    }
+
+    /** The ambient fill's blurred ground: its brightness and saturation (a little quieter than the sharp picture over it). */
+    static final float FILL_GROUND_BRIGHT = 0.82f, FILL_GROUND_SATURATE = 1.15f;
+
+    /**
+     * FILL and FILL_CARD: the picture read sharp enough to be zoomed as PicFill may (ZOOM past covering), its faces found
+     * once (kept by its address), laid out by PicFill and made once at w x h: covering, or the ambient fill (the picture
+     * blurred to cover the cell, the sharp picture over it with its inner edges feathered into the blur). Opaque.
+     */
+    private static Bitmap filled(Source in, BitmapFactory.Options o, String url, int w, int h, int mode) throws IOException {
+        float cover = Math.max(w * o.outHeight / (float) o.outWidth, h), need = cover * PicFill.ZOOM;
+        int sample = 1;
+        while (o.outHeight / (sample * 2) >= need) sample *= 2;
+        BitmapFactory.Options d = new BitmapFactory.Options();
+        d.inSampleSize = sample;
+        d.inPreferredConfig = Bitmap.Config.RGB_565;
+        Bitmap src;
+        try (InputStream s = in.open()) {
+            src = BitmapFactory.decodeStream(s, null, d);
+        }
+        if (src == null) return null;
+        float[] f = facesOf(url, src);
+        float sw = src.getWidth(), sh = src.getHeight();
+        float[] lay = new float[PicFill.SIZE];
+        PicFill.layout(sw / sh, f, w, h, mode == FILL_CARD, lay);
+        Bitmap out = Bitmap.createBitmap(w, h, Bitmap.Config.RGB_565);
+        Canvas c = new Canvas(out);
+        Paint p = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG);
+        Matrix m = new Matrix();
+        float k = lay[PicFill.K] / sh;
+        m.setScale(k, k);
+        m.postTranslate(lay[PicFill.X], lay[PicFill.Y]);
+        if (lay[PicFill.KIND] == PicFill.AMBIENT) {
+            fillGround(c, src, w, h, p);
+            // The sharp picture on a clear sheet of its own (the 16-bit picture has no clear), its edges feathered.
+            Bitmap sheet = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+            Canvas sc = new Canvas(sheet);
+            sc.drawBitmap(src, m, p);
+            Paint cut = new Paint();
+            cut.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_IN));
+            float x0 = lay[PicFill.X], x1 = x0 + sw * k, fl = lay[PicFill.FEATHER_L], fr = lay[PicFill.FEATHER_R];
+            int[] ramp = {0x00000000, 0x8C000000, 0xFF000000};
+            float[] at = {0f, 0.55f, 1f};
+            if (fl > 1f) {
+                cut.setShader(new LinearGradient(x0, 0, x0 + fl, 0, ramp, at, Shader.TileMode.CLAMP));
+                sc.drawRect(x0, 0, x0 + fl, h, cut);
+            }
+            if (fr > 1f) {
+                cut.setShader(new LinearGradient(x1, 0, x1 - fr, 0, ramp, at, Shader.TileMode.CLAMP));
+                sc.drawRect(x1 - fr, 0, x1, h, cut);
+            }
+            c.drawBitmap(sheet, 0, 0, p);
+            sheet.recycle();
+        } else {
+            c.drawBitmap(src, m, p);
+        }
+        src.recycle();
+        return out;
+    }
+
+    /** The ambient fill's ground: the picture covering w x h at an eighth of its size, stack-blurred once, drawn back up. */
+    private static void fillGround(Canvas c, Bitmap src, int w, int h, Paint p) {
+        int gw = Math.max(2, w / 8), gh = Math.max(2, h / 8);
+        Bitmap g = Bitmap.createBitmap(gw, gh, Bitmap.Config.ARGB_8888);
+        float sc = Math.max(gw / (float) src.getWidth(), gh / (float) src.getHeight());
+        Matrix m = new Matrix();
+        m.setScale(sc, sc);
+        m.postTranslate((gw - src.getWidth() * sc) / 2f, (gh - src.getHeight() * sc) * 0.38f);
+        new Canvas(g).drawBitmap(src, m, p);
+        int[] px = new int[gw * gh];
+        g.getPixels(px, 0, gw, 0, 0, gw, gh);
+        StackBlur.blur(px, gw, gh, Math.max(2, Math.round(Math.min(gw, gh) * 0.6f)));
+        StackBlur.colour(px, FILL_GROUND_SATURATE, FILL_GROUND_BRIGHT);
+        g.setPixels(px, 0, gw, 0, 0, gw, gh);
+        c.drawBitmap(g, null, new android.graphics.RectF(0, 0, w, h), p);
+        g.recycle();
+    }
+
+    /**
+     * A channel logo read sharp for a cell's box w x h: sampled down only while both its sides stay at least the box's
+     * (so even after its margins are trimmed it is drawn from enough pixels), in full colour; null when it can't be.
+     */
+    private static Bitmap sharp(Source in, BitmapFactory.Options o, int w, int h) throws IOException {
+        int sample = 1;
+        while (o.outWidth / (sample * 2) >= w && o.outHeight / (sample * 2) >= h) sample *= 2;
+        BitmapFactory.Options d = new BitmapFactory.Options();
+        d.inSampleSize = sample;
+        d.inPreferredConfig = Bitmap.Config.ARGB_8888;
+        try (InputStream s = in.open()) {
+            return BitmapFactory.decodeStream(s, null, d);
+        }
+    }
+
+    /**
+     * A logo's white version from tv-logos (LogoPack.lighter), read sharp for a cell's box w x h as the logo itself is,
+     * or null (none, not one of the project's, or it can't be read). Pics' readers only.
+     */
+    static Bitmap lighterSharp(String url, int w, int h) {
+        String alt;
+        try {
+            alt = com.gathin.homefieldtv.engine.LogoPack.lighter(url);
+        } catch (RuntimeException e) {
+            alt = null;
+        }
+        if (alt == null || alt.equals(url) || failed.contains(alt)) return null;
+        Source s = source(alt);
+        if (s == null) return null;
+        try {
+            BitmapFactory.Options o = new BitmapFactory.Options();
+            o.inJustDecodeBounds = true;
+            try (InputStream i = s.open()) {
+                BitmapFactory.decodeStream(i, null, o);
+            }
+            if (o.outWidth <= 0 || o.outHeight <= 0) return null;
+            return sharp(s, o, w, h);
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
     }
 
     /** Pure: a logo's own colour, the average of its solid, coloured pixels (a grey for a white or black logo). */

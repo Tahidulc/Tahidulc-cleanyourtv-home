@@ -64,6 +64,11 @@ final class Logos {
     static final int TOP_LIGHT = 0x3DFFFFFF, RING = 0x1FFFFFFF;
     /** A neutral tile's edge (.ct-glass), a little stronger: 30 % and 14 %. */
     static final int SLATE_TOP_LIGHT = 0x4DFFFFFF, SLATE_RING = 0x24FFFFFF;
+    /**
+     * 07's approved deep shade for a channel's cell (the colour-rows stills: HSV value 0.49 at the top to 0.39 at the
+     * foot, saturation about 0.8): a cell's top and foot at most these values, a coloured cell at least this saturated.
+     */
+    static final float ROW_TOP_V = 0.50f, ROW_FOOT_V = 0.39f, ROW_SAT = 0.68f;
     /** A tile's colour this grey (HSV saturation) is the neutral slate (a logo with no real colour). */
     static final float NEUTRAL_SAT = 0.25f;
     /** The ground a bare logo is judged on for its halo (None): 07's ground. */
@@ -75,11 +80,16 @@ final class Logos {
      * A logo's colours (LogoColour's: the tile's top and foot, and its channel cell's, the number, logo and name behind
      * it, a touch lighter and richer than the tile and deep enough for white words), with their middles and the cell's
      * fall as a shader in a unit box (stretched to each cell: ChannelLook). Neutral: no real colour (the slate).
+     *
+     * <p>row: the channel cell as it is drawn now, the logo alone on it (no tile inside, so nothing for it to stand
+     * apart from): the shared row colour held to 07's approved deep shade, opaque (rowDeep: HSV value at most ROW_TOP_V
+     * at its top and ROW_FOOT_V at its foot, saturation at least ROW_SAT), so a pale logo stands out on a rich, deep
+     * cell of its own colour and the cell never comes out light or pastel.
      */
     static final class Tint {
-        final int tileTop, tileFoot, tile, cellTop, cellFoot, cell;
+        final int tileTop, tileFoot, tile, cellTop, cellFoot, cell, rowTop, rowFoot, row;
         final boolean neutral;
-        final Shader cellFall;
+        final Shader cellFall, rowFall;
 
         /** c: LogoColour's {tile top, tile foot, row top, row foot}. */
         Tint(int[] c) {
@@ -91,6 +101,11 @@ final class Logos {
             cell = Theme.mix(c[2], c[3], 0.5f) | 0xFF000000;
             neutral = saturation(tile) < NEUTRAL_SAT;
             cellFall = new LinearGradient(0, 0, 0, 1, cellTop, cellFoot, Shader.TileMode.CLAMP);
+            int[] deep = rowDeep(c[2], c[3], neutral);
+            rowTop = deep[0];
+            rowFoot = deep[1];
+            row = Theme.mix(rowTop, rowFoot, 0.5f) | 0xFF000000;
+            rowFall = new LinearGradient(0, 0, 0, 1, rowTop, rowFoot, Shader.TileMode.CLAMP);
         }
 
         /** While a logo is read (and for a channel with none): the neutral slate's (LogoColour.waiting). */
@@ -274,5 +289,133 @@ final class Logos {
         int r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, b = c & 0xFF;
         int max = Math.max(r, Math.max(g, b)), min = Math.min(r, Math.min(g, b));
         return max == 0 ? 0f : (max - min) / (float) max;
+    }
+
+    /**
+     * Pure: a channel cell's {top, foot} for the logo alone on it, from the shared row colours: opaque, its hue kept, at
+     * most ROW_TOP_V and ROW_FOOT_V bright (darker where the shared rule made it darker), at least ROW_SAT saturated; a
+     * neutral (slate) row as it is, opaque.
+     */
+    static int[] rowDeep(int top, int foot, boolean neutral) {
+        if (neutral) return new int[]{top | 0xFF000000, foot | 0xFF000000};
+        float[] t = new float[3], f = new float[3];
+        android.graphics.Color.colorToHSV(top | 0xFF000000, t);
+        android.graphics.Color.colorToHSV(foot | 0xFF000000, f);
+        float hue = t[1] >= f[1] ? t[0] : f[0], sat = Math.min(0.95f, Math.max(ROW_SAT, Math.max(t[1], f[1])));
+        float tv = Math.min(t[2], ROW_TOP_V), fv = Math.min(Math.min(f[2], ROW_FOOT_V), tv);
+        return new int[]{android.graphics.Color.HSVToColor(new float[]{hue, sat, tv}) | 0xFF000000,
+                android.graphics.Color.HSVToColor(new float[]{hue, sat, fv}) | 0xFF000000};
+    }
+
+    // ---- a channel's cell: the logo alone (ChannelLook) ---------------------------------------------------------------
+
+    /** The cell logo's picture for the setting in use (Pics.CELL_COLOUR, CELL_NONE or CELL_BLACK). */
+    static int cellMode() {
+        return behind == BLACK ? Pics.CELL_BLACK : behind == NONE ? Pics.CELL_NONE : Pics.CELL_COLOUR;
+    }
+
+    /**
+     * The channel's logo alone in a cell's box (screen px: the cell less its room), as large as the box allows at its own
+     * shape, centred on whole pixels (drawn as it was read: nothing scaled a frame); false while it loads or for none.
+     */
+    static boolean drawCell(Canvas c, String url, RectF box, Runnable redraw) {
+        int w = Math.round(box.width()), h = Math.round(box.height());
+        if (w < 2 || h < 2 || url == null || url.isEmpty()) return false;
+        Bitmap b = Pics.get(url, w, h, cellMode(), redraw);
+        if (b == null) return false;
+        BMP.setAlpha(255);
+        c.drawBitmap(b, Math.round(box.centerX() - b.getWidth() / 2f), Math.round(box.centerY() - b.getHeight() / 2f), BMP);
+        return true;
+    }
+
+    /** Read a cell's logo ahead (a row coming into sight), at its box's size (screen px). */
+    static void prefetchCell(String url, float w, float h) {
+        if (url != null && !url.isEmpty()) Pics.prefetch(url, Math.round(w), Math.round(h), cellMode());
+    }
+
+    /**
+     * Pics' readers: a logo (read sharp for a box w x h) made for its cell as the mode says, its colours worked out and
+     * kept first (its cell's colour): a plain box round it taken away and its margins trimmed at the size it was read
+     * (never through a small copy, so a large logo stays sharp), then made to read there (Black tile: made ready for
+     * black; else a logo that would not show on its ground takes tv-logos' white version, else the shared halo judged
+     * on that ground: the cell's deep colour, or 07's for None) and fitted to the box at its own shape. null: nothing
+     * of it to draw.
+     */
+    static Bitmap cell(String url, Bitmap read, int w, int h, int mode) {
+        Tint t = colours(url, read);
+        boolean black = mode == Pics.CELL_BLACK;
+        Bitmap logo = prepared(read, black);
+        read.recycle();
+        if (logo == null) return null;
+        if (black) return fitted(logo, w, h);
+        int ground = mode == Pics.CELL_COLOUR ? t.row : HALO_GROUND;
+        if (unseen(logo, ground)) {
+            Bitmap white = Pics.lighterSharp(url, w, h);
+            Bitmap ready = white == null ? null : prepared(white, false);
+            if (white != null) white.recycle();
+            if (ready != null && !unseen(ready, ground)) {
+                logo.recycle();
+                logo = ready;
+            } else if (ready != null) {
+                ready.recycle();
+            }
+        }
+        Bitmap sized = fitted(logo, w, h);
+        Bitmap out = LogoHalo.apply(sized, ground);
+        if (out != sized) sized.recycle();
+        return out;
+    }
+
+    /** Whether a made-clear logo hardly shows on a ground (mostly dark there, or too faint: LogoHalo's rule). */
+    private static boolean unseen(Bitmap logo, int ground) {
+        int w = logo.getWidth(), h = logo.getHeight();
+        int[] px = new int[w * h];
+        logo.getPixels(px, 0, w, 0, 0, w, h);
+        return LogoHalo.needs(px, w, h, ground) || ground == HALO_GROUND && dark(px);
+    }
+
+    /**
+     * A logo with a plain box round it taken away (and, flip, made ready for black: LogoTile's rule) and its empty
+     * margins trimmed, at the size it is (LogoTile.clean and bounds on all its pixels); null for nothing to draw.
+     */
+    static Bitmap prepared(Bitmap logo, boolean flip) {
+        Bitmap soft = logo.getConfig() == Bitmap.Config.HARDWARE ? logo.copy(Bitmap.Config.ARGB_8888, false) : logo;
+        if (soft == null) return null;
+        int w = soft.getWidth(), h = soft.getHeight();
+        int[] px = new int[w * h];
+        soft.getPixels(px, 0, w, 0, 0, w, h);
+        if (soft != logo) soft.recycle();
+        int[] clean = LogoTile.clean(px, w, h, flip);
+        int[] bb = LogoTile.bounds(clean, w, h);
+        if (bb == null) return null;
+        int bw = bb[2] - bb[0], bh = bb[3] - bb[1];
+        int[] cut = new int[bw * bh];
+        for (int y = 0; y < bh; y++) System.arraycopy(clean, (bb[1] + y) * w + bb[0], cut, y * bw, bw);
+        return Bitmap.createBitmap(cut, bw, bh, Bitmap.Config.ARGB_8888);
+    }
+
+    /** Pure: a logo bw x bh fitted in a box w x h at its own shape, as large as it allows: {width, height}, whole pixels. */
+    static int[] fit(int bw, int bh, int w, int h) {
+        float s = Math.min(w / (float) Math.max(1, bw), h / (float) Math.max(1, bh));
+        return new int[]{Math.max(1, Math.min(w, Math.round(bw * s))), Math.max(1, Math.min(h, Math.round(bh * s)))};
+    }
+
+    /** The logo fitted to the box (fit): halved with filtering while that is still larger, so a large logo shrinks cleanly. */
+    private static Bitmap fitted(Bitmap logo, int w, int h) {
+        int[] d = fit(logo.getWidth(), logo.getHeight(), w, h);
+        Bitmap b = logo;
+        while (b.getWidth() / 2 >= d[0] * 1.2f && b.getHeight() / 2 >= d[1] * 1.2f) {
+            Bitmap half = Bitmap.createScaledBitmap(b, Math.max(1, b.getWidth() / 2), Math.max(1, b.getHeight() / 2), true);
+            if (b != logo) b.recycle();
+            b = half;
+        }
+        if (b.getWidth() == d[0] && b.getHeight() == d[1]) {
+            if (b != logo) logo.recycle();
+            return b;
+        }
+        Bitmap out = Bitmap.createScaledBitmap(b, d[0], d[1], true);
+        if (b != logo && b != out) b.recycle();
+        if (logo != out) logo.recycle();
+        return out;
     }
 }
