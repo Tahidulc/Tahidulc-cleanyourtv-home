@@ -33,7 +33,8 @@ import java.util.Locale;
  * momentum, all as the channel being watched shows the game. When the family is watching one of the game's channels in
  * Homefield TV (or was, just before), everything is held back by that channel's delay, set by "It's just happened" or
  * nudged by Sooner and Later, so nothing is told before the picture shows it. Along the foot, the channels that show it
- * (OK watches one) and, in step, the delay's buttons.
+ * (OK watches one) and, in step, the delay's buttons. Up from the top of the page goes on to a football game's two sides
+ * in the header: Left and Right pick one, OK opens its club's page (TeamScreen), Down or Back come back.
  */
 final class GameScreen extends Screen {
     private static final long POLL_MS = 15_000L;
@@ -47,6 +48,8 @@ final class GameScreen extends Screen {
     private Page page;
     private int focus;
     private float bodyScroll;
+    /** On the header's two sides (Up from the top of the page): 0 the home side, 1 the away side; -1 not there. */
+    int side = -1;
     private final List<String[]> buttons = new ArrayList<>();
     private final Handler h = new Handler(Looper.getMainLooper());
     private final Runnable poll = this::poll;
@@ -158,6 +161,25 @@ final class GameScreen extends Screen {
     }
 
     @Override boolean key(int code, KeyEvent e) {
+        if (side >= 0) {
+            switch (code) {
+                case KeyEvent.KEYCODE_DPAD_LEFT:
+                    side = 0;
+                    break;
+                case KeyEvent.KEYCODE_DPAD_RIGHT:
+                    side = 1;
+                    break;
+                case KeyEvent.KEYCODE_DPAD_DOWN:
+                    side = -1;
+                    break;
+                case KeyEvent.KEYCODE_DPAD_UP:
+                    break;
+                default:
+                    return false;
+            }
+            page.invalidate();
+            return true;
+        }
         switch (code) {
             case KeyEvent.KEYCODE_DPAD_LEFT:
                 if (focus > 0) focus--;
@@ -166,6 +188,8 @@ final class GameScreen extends Screen {
                 if (focus < buttons.size() - 1) focus++;
                 break;
             case KeyEvent.KEYCODE_DPAD_UP:
+                // Back up the page, then on to its two clubs (a football game's).
+                if (bodyScroll <= 0f && SportsScreen.football(item)) side = 0;
                 bodyScroll = Math.max(0, bodyScroll - 120f);
                 break;
             case KeyEvent.KEYCODE_DPAD_DOWN:
@@ -178,7 +202,18 @@ final class GameScreen extends Screen {
         return true;
     }
 
+    @Override boolean back() {
+        if (side < 0) return false;
+        side = -1;
+        page.invalidate();
+        return true;
+    }
+
     @Override void ok() {
+        if (side >= 0) {
+            tv.push(new TeamScreen(tv, com.gathin.homefieldtv.sports.Squad.Club.of(item.game, side == 1)));
+            return;
+        }
         if (focus < 0 || focus >= buttons.size()) return;
         String[] b = buttons.get(focus);
         String k = inStepWith();
@@ -220,6 +255,8 @@ final class GameScreen extends Screen {
         private final Paint panel = Dark.fill(Dark.PANEL), card = Dark.fill(Dark.CARD), white = Dark.fill(0xFFFFFFFF), live = Dark.fill(0xFFE5303B);
         private final Paint homeBar = Dark.fill(0xFF5B8CFF), awayBar = Dark.fill(0xFFE8A33D), yellow = Dark.fill(0xFFF5C518), red = Dark.fill(0xFFD7192F);
         private final Paint green = Dark.fill(0xFF2EB872), line = Dark.fill(Dark.LINE), bmp = new Paint(Paint.FILTER_BITMAP_FLAG);
+        private final Paint ring = Dark.line(Dark.RING, 3f);
+        private final String homeHint = "OK  Open " + item.home + "'s page", awayHint = "OK  Open " + item.away + "'s page";
         private final RectF r = new RectF();
         private final Path p = new Path();
 
@@ -258,6 +295,13 @@ final class GameScreen extends Screen {
         private void header(Canvas c, Detail d, Game g, long now, int delay, String k) {
             r.set(x(60), x(40), x(1860), x(340));
             c.drawRoundRect(r, x(30), x(30), panel);
+            if (side >= 0) {
+                // The side the remote is on (Up from the top): OK opens its club's page.
+                float cx = side == 0 ? 330 : 1590;
+                r.set(x(cx - 215), x(116), x(cx + 215), x(326));
+                c.drawRoundRect(r, x(24), x(24), card);
+                Dark.ring(c, r, x(24), ring);
+            }
             image(c, item.compLogo, 960, 82, 52);
             String cn = item.comp;
             c.drawText(cn, x(960) - comp.measureText(cn) / 2f, x(140), comp);
@@ -307,7 +351,8 @@ final class GameScreen extends Screen {
             } else {
                 c.drawText(clk, x(960) - cw / 2f, x(294), clock);
             }
-            String note = k.isEmpty() ? "" : "In step with " + inStepName() + " · " + (delay <= 0 ? "no delay" : delay + " s behind live");
+            String note = side >= 0 ? (side == 0 ? homeHint : awayHint)
+                    : k.isEmpty() ? "" : "In step with " + inStepName() + " · " + (delay <= 0 ? "no delay" : delay + " s behind live");
             if (!note.isEmpty()) c.drawText(note, x(960) - step.measureText(note) / 2f, x(330), step);
         }
 
@@ -461,7 +506,7 @@ final class GameScreen extends Screen {
             }
             for (int i = 0; i < buttons.size(); i++) {
                 String[] b = buttons.get(i);
-                boolean on = i == focus;
+                boolean on = i == focus && side < 0;
                 String words = b[1];
                 float w = button.measureText(words) / Ui.f(1) + 64;
                 if (bx + w > 1860) break;

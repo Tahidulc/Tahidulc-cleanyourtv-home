@@ -23,6 +23,11 @@ public final class Game {
     public String homeForm = "", awayForm = "", homeColor = "", awayColor = "";
     /** Each club's second colour ("0a422d"), "" when ESPN gives none: the goal's chevron behind the crest. */
     public String homeAlt = "", awayAlt = "";
+    /**
+     * Each club's own colours as ESPN gives them, before the kits worn in this game take homeColor's place (Worn): the
+     * club's page is in these. "" when ESPN gives none.
+     */
+    public String homeOwn = "", awayOwn = "", homeOwnAlt = "", awayOwnAlt = "";
     public int homeScore, awayScore;
     /** PRE, LIVE or POST. */
     public int state = PRE;

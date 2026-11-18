@@ -128,6 +128,10 @@ public final class Espn {
         g.awayColor = at.optString("color", "");
         g.homeAlt = ht.optString("alternateColor", "");
         g.awayAlt = at.optString("alternateColor", "");
+        g.homeOwn = g.homeColor;
+        g.awayOwn = g.awayColor;
+        g.homeOwnAlt = g.homeAlt;
+        g.awayOwnAlt = g.awayAlt;
         // The kits they wear in this game where ESPN's line-ups have named them (Worn), else the clubs' colours, the
         // away side's second when they clash.
         wornOn(g);
@@ -749,14 +753,28 @@ public final class Espn {
 
     // ---- tables and clubs ----------------------------------------------------------------------------------------
 
+    /** Indexes into a table's row (table()). */
+    public static final int T_RANK = 0, T_ID = 1, T_NAME = 2, T_LOGO = 3, T_PLAYED = 4, T_GD = 5, T_POINTS = 6, T_GROUP = 7,
+            T_WON = 8, T_DRAWN = 9, T_LOST = 10, T_FULL = 11;
+
     /**
-     * One row of a table: {rank, team id, name, logo, played, goal difference, points, group or "", won, drawn, lost}
-     * (ESPN's stats "wins", "ties" and "losses"; "" when not given).
+     * One row of a table: {rank, team id, name, logo, played, goal difference, points, group or "", won, drawn, lost,
+     * full name} (ESPN's stats "wins", "ties" and "losses"; "" when not given).
      */
     public static List<String[]> table(String slug) {
         List<String[]> out = new ArrayList<>();
         try {
-            JSONObject root = new JSONObject(cached("https://site.api.espn.com/apis/v2/sports/soccer/" + slug + "/standings", 10 * 60_000L));
+            out = table(new JSONObject(cached("https://site.api.espn.com/apis/v2/sports/soccer/" + slug + "/standings", 10 * 60_000L)));
+        } catch (Exception ignored) {
+            // no table this time
+        }
+        return out;
+    }
+
+    /** Pure: a table's rows from ESPN's standings, each group's in rank order. */
+    static List<String[]> table(JSONObject root) {
+        List<String[]> out = new ArrayList<>();
+        try {
             JSONArray children = root.optJSONArray("children");
             if (children == null) children = new JSONArray().put(root);
             for (int c = 0; c < children.length(); c++) {
@@ -778,33 +796,56 @@ public final class Espn {
                     out.add(new String[]{v.getOrDefault("rank", String.valueOf(i + 1)), t.optString("id"),
                             t.optString("shortDisplayName", t.optString("displayName")), logo, v.getOrDefault("gamesPlayed", ""),
                             v.getOrDefault("pointDifferential", ""), v.getOrDefault("points", ""), group,
-                            v.getOrDefault("wins", ""), v.getOrDefault("ties", ""), v.getOrDefault("losses", "")});
+                            v.getOrDefault("wins", ""), v.getOrDefault("ties", ""), v.getOrDefault("losses", ""),
+                            t.optString("displayName", t.optString("shortDisplayName"))});
                 }
             }
             out.sort((a, b) -> a[7].equals(b[7]) ? Integer.compare(parseInt(a[0]), parseInt(b[0])) : a[7].compareTo(b[7]));
         } catch (Exception ignored) {
-            // no table this time
+            // what was read
         }
         return out;
     }
 
-    /** A competition's clubs: {id, name, logo}. */
+    /** Indexes into a competition's club (teams()). */
+    public static final int C_ID = 0, C_NAME = 1, C_LOGO = 2, C_COLOUR = 3, C_ALT = 4;
+
+    /** A competition's clubs: {id, name, logo, colour ("144992", "" none), second colour}. */
     public static List<String[]> teams(String slug) {
+        try {
+            return teams(new JSONObject(cached(SITE + slug + "/teams", 24 * 3600_000L)));
+        } catch (Exception ignored) {
+            return new ArrayList<>();
+        }
+    }
+
+    /** Pure: the clubs in ESPN's list of a competition's teams. */
+    static List<String[]> teams(JSONObject root) {
         List<String[]> out = new ArrayList<>();
         try {
-            JSONObject root = new JSONObject(cached(SITE + slug + "/teams", 24 * 3600_000L));
             JSONArray leagues = root.getJSONArray("sports").getJSONObject(0).getJSONArray("leagues");
             JSONArray teams = leagues.getJSONObject(0).getJSONArray("teams");
             for (int i = 0; i < teams.length(); i++) {
                 JSONObject t = teams.getJSONObject(i).getJSONObject("team");
                 JSONArray logos = t.optJSONArray("logos");
                 out.add(new String[]{t.optString("id"), t.optString("displayName"),
-                        logos != null && logos.length() > 0 ? logos.getJSONObject(0).optString("href") : ""});
+                        logos != null && logos.length() > 0 ? logos.getJSONObject(0).optString("href") : "",
+                        t.optString("color", ""), t.optString("alternateColor", "")});
             }
         } catch (Exception ignored) {
-            // none this time
+            // what was read
         }
         return out;
+    }
+
+    /** A club's ESPN roster for a competition (its squad, each player's season there), as given; null when not read. */
+    static JSONObject roster(String slug, String teamId) {
+        if (slug == null || teamId == null || !teamId.matches("[0-9]{1,8}") || !slug.matches("[a-z0-9._]{1,40}")) return null;
+        try {
+            return new JSONObject(cached(SITE + slug + "/teams/" + teamId + "/roster", 30 * 60_000L));
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     // ---- a club's games in one competition ------------------------------------------------------------------------

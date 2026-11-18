@@ -647,6 +647,24 @@ public final class FotMob {
         return got;
     }
 
+    /** One of FotMob's data addresses (its teams, a player's page, its search), read as the games are; off the main thread. */
+    static String data(String path) throws Exception {
+        return get(BASE + path);
+    }
+
+    /**
+     * FotMob's ids for a game's two clubs, {home, away}, when the game has been read already (the game's page reads it):
+     * nothing is fetched. Null when it hasn't been, or FotMob didn't have it.
+     */
+    static int[] teamIds(String espnId) {
+        if (espnId == null) return null;
+        synchronized (read) {
+            Object[] r = read.get(espnId);
+            Match m = r == null ? null : (Match) r[0];
+            return m == null || m.homeTeamId <= 0 || m.awayTeamId <= 0 ? null : new int[]{m.homeTeamId, m.awayTeamId};
+        }
+    }
+
     private static String get(String url) throws Exception {
         HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
         conn.setConnectTimeout(6000);
