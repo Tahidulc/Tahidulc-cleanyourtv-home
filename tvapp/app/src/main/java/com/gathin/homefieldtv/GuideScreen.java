@@ -1,11 +1,18 @@
 package com.gathin.homefieldtv;
 
+import android.graphics.Canvas;
+import android.graphics.LinearGradient;
+import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.graphics.Shader;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.KeyEvent;
+import android.text.TextPaint;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.FrameLayout;
 
 import com.gathin.homefieldtv.engine.Catchup;
@@ -15,6 +22,7 @@ import com.gathin.homefieldtv.engine.Genres;
 import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.engine.Lineup;
+import com.gathin.homefieldtv.engine.LogoPack;
 import com.gathin.homefieldtv.engine.Sources;
 import com.gathin.homefieldtv.prefs.Categories;
 import com.gathin.homefieldtv.prefs.ChannelEdits;
@@ -25,30 +33,31 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The TV guide, as the family's TiviMate shows it (DEVICE.md §2.7, §2.8, §2.10, §2.11): the preview at the top left
- * playing the channel last watched, the programme the remote is on to its right (GuideBand), the times and the rows
- * under them (GuideGrid), with nothing else on screen.
+ * The TV guide, the family's own (as their TiviMate shows it: DEVICE.md §2.7, §2.8, §2.10, §2.11) in the 07 look (the
+ * approved stills 05c, 06c and 08c), the page of the tab bar's Guide: under the bar, the preview at the left playing the
+ * channel last watched, the programme the remote is on to its right (GuideBand), the times and the rows under them
+ * (GuideGrid), all over the blurred picture of what the remote is on (Ground, changed once the remote rests).
  *
- * <p>Left from the programme on now (or Back) brings in the rail and the groups column, pushing the guide right (it is
- * never covered): Homefield's playlist with Favourites, All channels and Recently watched, then the playlist's groups
- * in Settings → Categories' order and names (hidden ones and ones locked away left out), then the guide's own kinds
- * (Sport, News…). The guide switches to a group as the remote moves onto it, with no OK. Left again (or Back) opens
- * the rail into the drawer, the guide pushed further right; Back from there leaves the guide. Right goes back each
- * step.
+ * <p>Left from the programme on now (or Back) brings in the groups column, pushing the guide right (it is never
+ * covered): Homefield's playlist with Favourites, All channels and Recently watched, then the playlist's groups in
+ * Settings → Categories' order and names (hidden ones and ones locked away left out), then the guide's own kinds (Sport,
+ * News…). The guide switches to a group as the remote moves onto it, with no OK. Right goes back to the rows. Up from
+ * the first row (or Back from the groups) goes up to the tab bar, its Guide tab lit; Down from the bar comes back.
  *
  * <p>OK on a programme on now tunes its channel in the preview; OK again on the channel playing there goes full
  * screen (Back comes back here). OK on a programme to come opens the small menu under it (Remind, Record…); on one
  * already shown that the provider's archive keeps, it plays it from its start (catch-up, CatchupScreen). OK held (or
- * MENU) opens the whole menu (GuideMenu, GuideActions): Search and Settings, the programme's lines (Remind or Watch from
- * start…), the channel's (Favourites, Catch-up: the archive by day, ArchiveScreen; Block). Play/pause shows the
- * programme's description, Stop adds the channel to the favourites or takes it off, Back held goes back to the player
- * and Menu held opens Search (the family's TV's keys); the number keys go to a channel, the channel keys page the rows,
- * rewind and fast-forward page the times (into the archive), and Back first comes back to the programmes on now.
- * Back from the player opens a new guide (TvActivity.toGuide) on the list shown last, the channel playing in its
- * preview.
+ * MENU) opens the whole menu (GuideMenu, GuideActions) at the right, the guide darkened under it but for the remote's
+ * row: Search and Settings, the programme's lines (Remind or Watch from start…), the channel's (Favourites, Rename,
+ * Change logo: its card beside the menu, the menu staying; Move, Hide, Block, Catch-up: the archive by day,
+ * ArchiveScreen). Play/pause shows the programme's description, Stop adds the channel to the favourites or takes it
+ * off, Back held goes back to the player and Menu held opens Search (the family's TV's keys); the number keys go to a
+ * channel, the channel keys page the rows, rewind and fast-forward page the times (into the archive), and Back first
+ * comes back to the programmes on now. Back from the player opens a new guide (TvActivity.toGuide) on the list shown
+ * last, the channel playing in its preview.
  */
 final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Host, GuideMenu.Host, DialogCard.Host, LiveTv.Listener {
-    private static final int GRID = 0, GROUPS = 1, DRAWER = 2;
+    private static final int GRID = 0, GROUPS = 1;
     private static final String ALL = "all", FAV = "fav", RECENT = "recent", GENRE = "genre:", GROUP = "group:", PLAYLIST = "playlist",
             KINDS = "kinds";
 
@@ -60,16 +69,20 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
     private GuideBand band;
     private GuideGrid grid;
     private GroupsPanel groups;
-    private Rail rail;
     private GuideMenu menu;
+    /** The page's blurred picture (the programme the remote rests on), and the preview's frame over the live picture. */
+    private GroundView groundView;
+    private PreviewFrame frame;
+    /** Change logo is open over the channel's menu, which stays (the remote comes back to it). */
+    private boolean holdMenu;
     private DialogCard dialog;
     private int area = GRID;
     /** The list in the grid: ALL, FAV, RECENT, or GENRE / GROUP and its name. */
     private String shown = ALL;
-    /** The rail and the groups column in (1) or out (0), the guide pushed right by them, gliding (its unit: the push). */
+    /** The groups column in (1) or out (0), the guide pushed right by it, gliding (its unit: the push). */
     private float reveal;
-    private final Glide pushing = new Glide(Math.max(GroupsPanel.SLIDE_MS, Rail.DRAWER_MS), Rail.W + GroupsPanel.W);
-    /** Steps the push and the drawer's edge each frame (Choreographer's time) while either moves. */
+    private final Glide pushing = new Glide(GroupsPanel.SLIDE_MS, GroupsPanel.W);
+    /** Steps the push each frame (Choreographer's time) while it moves. */
     private android.animation.TimeAnimator push;
     /** The playlists' names by their channels' key prefix. */
     private final Map<String, String> playlists = new HashMap<>();
@@ -110,6 +123,8 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
         // No ground of its own: the window's (TvActivity) is the guide's, so the screen is filled once, not twice.
         FrameLayout f = new FrameLayout(tv);
         Library lib = Library.get(tv);
+        groundView = new GroundView(tv);
+        frame = new PreviewFrame(tv);
         content = new FrameLayout(tv);
         band = new GuideBand(tv, lib);
         band.live = tv.live;
@@ -118,16 +133,17 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
         content.addView(band, new FrameLayout.LayoutParams(-1, -1));
         content.addView(grid, new FrameLayout.LayoutParams(-1, -1));
         groups = new GroupsPanel(tv);
+        groups.look07 = true;
         groups.setHost(this);
-        rail = new Rail(tv, Rail.GUIDE);
         menu = new GuideMenu(tv);
         menu.setHost(this);
+        menu.edgedHole = false;
         dialog = new DialogCard(tv);
         dialog.setHost(this);
         hint = new MoveMode.Hint(tv);
+        f.addView(groundView, new FrameLayout.LayoutParams(-1, -1));
         f.addView(content, new FrameLayout.LayoutParams(-1, -1));
         f.addView(groups, new FrameLayout.LayoutParams(-1, -1));
-        f.addView(rail, new FrameLayout.LayoutParams(-1, -1));
         f.addView(hint, new FrameLayout.LayoutParams(-1, -1));
         f.addView(menu, new FrameLayout.LayoutParams(-1, -1));
         f.addView(dialog, new FrameLayout.LayoutParams(-1, -1));
@@ -237,11 +253,44 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
 
     @Override void shown() {
         tv.live.addListener(this);
+        // The preview's frame goes over the live picture while the guide is on top.
+        if (frame.getParent() == null) tv.over.addView(frame, new FrameLayout.LayoutParams(-1, -1));
         playPreview();
         place();
         moved();
         grid.refresh();
-        rail.invalidate();
+        if (holdMenu) {
+            // Back from Change logo: the channel's menu again, its logo line saying what it shows now.
+            holdMenu = false;
+            if (menu.isOpen() && menuChannel != null) {
+                Guide.Schedule s = Library.get(tv).schedule(menuChannel.key);
+                List<GuideMenu.Item> items = GuideActions.card(tv, menuChannel, s, menuIndex, true, !RECENT.equals(shown));
+                int at = 0;
+                for (int i = 0; i < items.size(); i++) if (ChannelMenu.LOGO.equals(items.get(i).tag)) at = i;
+                menu.openCard(items, at, rowRect());
+            }
+        }
+    }
+
+    // ---- 07's shell -----------------------------------------------------------------------------------------------
+
+    @Override boolean shell() {
+        return true;
+    }
+
+    @Override int tab() {
+        return TabBar.GUIDE;
+    }
+
+    @Override void fromTabs() {
+        // The remote back from the bar: where it was (the rows, or the groups).
+        if (area == GROUPS) groups.setActive(true);
+        else grid.setActive(grid.count() > 0);
+        grid.invalidate();
+    }
+
+    @Override public void topEdge() {
+        if (tv.tabs() != null) tv.tabs().enter();
     }
 
     /** The preview plays the channel last watched (a programme from the archive playing there carries on). */
@@ -256,8 +305,11 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
         tv.live.removeListener(this);
         h.removeCallbacks(digitsDone);
         h.removeCallbacks(rested);
-        if (menu.isOpen()) menu.close();
+        if (menu.isOpen() && !holdMenu) menu.close();
         if (moving != null) moving.cancel();
+        // The preview's frame goes with the guide (it stays under Change logo's card, the menu's scrim over it).
+        ViewGroup p = (ViewGroup) frame.getParent();
+        if (p != null && !holdMenu) p.removeView(frame);
     }
 
     /** What the guide shows of the player (the ▶ on its channel, its frames a second): drawn again only when it changes. */
@@ -279,7 +331,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
     @Override void tick() {
         grid.tick();
         band.invalidate();
-        rail.invalidate();
+        frame.invalidate();
     }
 
     @Override void channelsChanged() {
@@ -301,17 +353,15 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
 
     // ---- where everything is ---------------------------------------------------------------------------------------
 
-    /** The rail and the groups column at the menu's edge (Rail.edge), coming in with reveal; the guide pushed right by both. */
+    /** The groups column at the screen's left, coming in with reveal; the guide pushed right by it. */
     private void place() {
-        float edge = rail.edge() / Ui.s, width = edge + GroupsPanel.W;
+        float width = GroupsPanel.W;
         float shift = width * reveal, hide = Ui.f(width * (reveal - 1f));
-        rail.setTranslationX(hide);
-        groups.x = edge;
+        groups.x = 0f;
         groups.setTranslationX(hide);
         groups.invalidate();
         content.setTranslationX(Ui.f(shift));
         int vis = reveal > 0f ? View.VISIBLE : View.INVISIBLE;
-        if (rail.getVisibility() != vis) rail.setVisibility(vis);
         if (groups.getVisibility() != vis) groups.setVisibility(vis);
         placePreview();
     }
@@ -322,6 +372,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
         Rect at = GuideBand.previewRect(content.getTranslationX() / Ui.s);
         boolean covered = asking() || menu.isOpen() && menu.box(tmp).intersects(at.left, at.top, at.right, at.bottom);
         tv.live.place(covered ? null : at);
+        frame.place(covered ? null : at, menu.isOpen());
     }
 
     /** The question over the guide is up (from the moment it is asked until it has gone). */
@@ -347,7 +398,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
                 boolean moving = pushing.step();
                 reveal = Math.max(0f, Math.min(1f, pushing.value()));
                 place();
-                if (!moving && !rail.moving()) anim.end();
+                if (!moving) anim.end();
             });
         }
         if (!push.isStarted()) push.start();
@@ -356,7 +407,6 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
     private void toGrid() {
         if (grid.count() == 0) return;
         area = GRID;
-        rail.setActive(false);
         groups.choose(shown);
         groups.setActive(false);
         grid.setActive(true);
@@ -365,19 +415,9 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
 
     private void toGroups() {
         area = GROUPS;
-        rail.setActive(false);
         groups.choose(shown);
         groups.setActive(true);
         grid.setActive(false);
-        animatePush(1f);
-    }
-
-    private void toDrawer() {
-        area = DRAWER;
-        groups.choose(shown);
-        groups.setActive(false);
-        grid.setActive(false);
-        rail.setActive(true);
         animatePush(1f);
     }
 
@@ -397,12 +437,14 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
      */
     private void rested() {
         band.settled();
+        grid.askPictures();
         Library lib = Library.get(tv);
         Channel ch = grid.channel();
         if (ch == null) return;
         long t = grid.cursor();
         Guide.Schedule s = lib.schedule(ch.key);
         int i = s == null ? -1 : s.at(t);
+        groundFor(ch, s, i);
         if (i >= 0) {
             band.art.prefetch(ch, s, i + 1);
             band.art.prefetch(ch, s, i - 1);
@@ -413,6 +455,14 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
             Guide.Schedule ns = lib.schedule(n.key);
             band.art.prefetch(n, ns, ns == null ? -1 : ns.at(t));
         }
+    }
+
+    /** The page's blurred picture: the programme's own once known (asked for now), else its channel's logo. */
+    private void groundFor(Channel ch, Guide.Schedule s, int i) {
+        String pic = i < 0 || Exec.inline ? ProgrammePictures.peek(ch, s, i) : ProgrammePictures.get(tv, ch, s, i, () -> {
+            if (grid.channel() == ch) groundFor(ch, s, i);
+        });
+        groundView.ground.set(pic != null && !pic.isEmpty() ? pic : LogoPack.url(ch));
     }
 
     @Override public void leftEdge() {
@@ -438,8 +488,8 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
     }
 
     @Override public boolean edge(GroupsPanel panel, int dir) {
-        if (dir == Ui.LEFT) toDrawer();
-        else if (dir == Ui.RIGHT) toGrid();
+        if (dir == Ui.RIGHT) toGrid();
+        else if (dir == Ui.UP) topEdge();
         return true;
     }
 
@@ -484,18 +534,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
             else h.postDelayed(digitsDone, 1500);
             return true;
         }
-        switch (area) {
-            case DRAWER:
-                if (code == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                    toGroups();
-                    return true;
-                }
-                return rail.key(code) || code == KeyEvent.KEYCODE_DPAD_LEFT;
-            case GROUPS:
-                return groups.key(code);
-            default:
-                break;
-        }
+        if (area == GROUPS) return groups.key(code);
         boolean first = e == null || e.getRepeatCount() == 0;
         switch (code) {
             case KeyEvent.KEYCODE_MENU:
@@ -508,6 +547,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
                 Channel c = grid.channel();
                 if (first && c != null) {
                     GuideActions.favourite(tv, c);
+                    grid.favouritesChanged();
                     moved();
                 }
                 return true;
@@ -562,18 +602,8 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
             moving.drop();
             return;
         }
-        switch (area) {
-            case DRAWER:
-                if (rail.focus == Rail.GUIDE) toGroups();
-                else Rail.go(tv, rail.focus, Rail.GUIDE);
-                break;
-            case GROUPS:
-                groups.ok();
-                break;
-            default:
-                okOnProgramme();
-                break;
-        }
+        if (area == GROUPS) groups.ok();
+        else okOnProgramme();
     }
 
     /**
@@ -614,10 +644,6 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
             openGroupMenu();
             return;
         }
-        if (area != GRID) {
-            ok();
-            return;
-        }
         openCard();
     }
 
@@ -641,19 +667,16 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
             band.typed("");
             return true;
         }
-        switch (area) {
-            case DRAWER:
-                // Back from the menu leaves the guide, as it leaves the app on the family's TV.
-                return false;
-            case GROUPS:
-                toDrawer();
-                return true;
-            default:
-                // Back to the programmes on now first (Use Back to return to current programs), then the groups.
-                if (grid.awayFromNow()) grid.toNow();
-                else toGroups();
-                return true;
+        if (area == GROUPS) {
+            // Back from the groups: up to the tab bar (Back there goes to Home's tab, then leaves the app).
+            if (tv.tabs() == null) return false;
+            topEdge();
+            return true;
         }
+        // Back to the programmes on now first (Use Back to return to current programs), then the groups.
+        if (grid.awayFromNow()) grid.toNow();
+        else toGroups();
+        return true;
     }
 
     // ---- the menus ------------------------------------------------------------------------------------------------
@@ -719,6 +742,14 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
             startMove(c);
             return;
         }
+        if (ChannelMenu.LOGO.equals(tag)) {
+            // Change logo: its card beside the menu (08c), the menu staying under it for the remote to come back to.
+            holdMenu = true;
+            LogoScreen logos = new LogoScreen(tv, c);
+            logos.overMenu = true;
+            tv.push(logos);
+            return;
+        }
         // Hidden: the remote stays where it was, on the channel after it.
         if (ChannelMenu.HIDE.equals(tag)) keepOn = neighbour(c);
         long[] p = menuTimes;
@@ -731,7 +762,8 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
         }
         closeMenu();
         boolean ask = GuideActions.act(tv, tag, c, title, desc, p);
-        // In Favourites: the list made again with the channel in or out.
+        // In Favourites: the list made again with the channel in or out; its star in every list.
+        if (GuideActions.FAVOURITE.equals(tag)) grid.favouritesChanged();
         if (GuideActions.FAVOURITE.equals(tag) && FAV.equals(shown)) load(FAV, c);
         if (ChannelMenu.handles(tag)) edited(ChannelMenu.HIDE.equals(tag) ? keepOn : c);
         moved();
@@ -870,7 +902,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
 
     // ---- what the tests look at -------------------------------------------------------------------------------------
 
-    /** Where the remote is: 0 the grid, 1 the groups, 2 the menu's drawer. */
+    /** Where the remote is: 0 the grid, 1 the groups (the old menu's drawer is the tab bar now). */
     int area() {
         return area;
     }
@@ -898,8 +930,122 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
         return moving != null;
     }
 
-    /** How far the guide is pushed right by the rail and the groups (design pixels). */
+    /** How far the guide is pushed right by the groups (design pixels). */
     float pushed() {
         return content.getTranslationX() / Ui.s;
+    }
+
+    /** The page's ground's picture (its address), for the previews. */
+    String groundUrl() {
+        return groundView.ground.url();
+    }
+
+    // ---- the ground and the preview's frame ------------------------------------------------------------------------
+
+    /** The page's ground: the blurred picture of what the remote rests on (Ground), under everything. */
+    private static final class GroundView extends View {
+        final Ground ground = new Ground(this);
+
+        GroundView(android.content.Context c) {
+            super(c);
+        }
+
+        @Override protected void onDraw(Canvas c) {
+            if (ground.draw(c, getWidth(), getHeight())) postInvalidateOnAnimation();
+        }
+    }
+
+    /**
+     * The preview's frame, over the live picture (its surface can't be rounded): its corners filled with the page's ground
+     * as it lies there (the blurred picture under its dim), a hairline round it, and its pill at the foot ("▶ 102 Riverside
+     * · playing"); with a menu's scrim over the guide, the scrim over the preview too. Placed with the live picture.
+     */
+    private final class PreviewFrame extends View {
+        private final Rect at = new Rect();
+        private boolean placed, dimmed;
+        private final Path corners = new Path();
+        private final RectF r = new RectF(), pill = new RectF();
+        private final Paint base = new Paint(Paint.ANTI_ALIAS_FLAG), pic = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG),
+                dim = new Paint(Paint.ANTI_ALIAS_FLAG), ring = new Paint(Paint.ANTI_ALIAS_FLAG), fill = new Paint(Paint.ANTI_ALIAS_FLAG),
+                scrim = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint tagP = Type.paint(17f, Type.SEMIBOLD, Look07.L1);
+        private int dimFor = -1;
+        private String tagKey = "", tagText = "", tagFit = "";
+        private float tagFor = -1f;
+
+        PreviewFrame(android.content.Context c) {
+            super(c);
+            ring.setStyle(Paint.Style.STROKE);
+            corners.setFillType(Path.FillType.EVEN_ODD);
+        }
+
+        /** Where the live picture is (screen px; null: not shown), and whether a menu's scrim is over the guide. */
+        void place(Rect where, boolean menuOpen) {
+            boolean s = where != null && !where.isEmpty();
+            if (s == placed && menuOpen == dimmed && (!s || at.equals(where))) return;
+            placed = s;
+            dimmed = menuOpen;
+            if (s) {
+                at.set(where);
+                r.set(at);
+                float rad = Ui.f(GuideBand.PREVIEW_R);
+                corners.reset();
+                corners.addRect(r, Path.Direction.CW);
+                corners.addRoundRect(r, rad, rad, Path.Direction.CW);
+            }
+            invalidate();
+        }
+
+        @Override protected void onDraw(Canvas c) {
+            if (!placed) return;
+            int h = getHeight();
+            if (dimFor != h) {
+                dim.setShader(new LinearGradient(0, 0, 0, h, Look07.DIM, Look07.DIM_AT, Shader.TileMode.CLAMP));
+                dimFor = h;
+            }
+            // The corners: the ground as it lies under them.
+            base.setColor(Palette.GROUND);
+            c.drawPath(corners, base);
+            android.graphics.BitmapShader under = groundView.ground.shader();
+            if (under != null) {
+                pic.setShader(under);
+                c.drawPath(corners, pic);
+            }
+            c.drawPath(corners, dim);
+            float rad = Ui.f(GuideBand.PREVIEW_R), sw = Math.max(1f, Ui.f(1f));
+            ring.setStrokeWidth(sw);
+            ring.setColor(0x24FFFFFF);
+            c.drawRoundRect(r.left + sw / 2f, r.top + sw / 2f, r.right - sw / 2f, r.bottom - sw / 2f, rad, rad, ring);
+            drawPill(c);
+            if (dimmed) {
+                scrim.setColor(Look07.SCRIM);
+                c.drawRect(r, scrim);
+            }
+        }
+
+        /** "▶ 102 Riverside · playing": glass, 40 high, 16 in from the preview's foot and left. */
+        private void drawPill(Canvas c) {
+            Channel ch = tv.live.channel();
+            if (ch == null) return;
+            boolean behind = tv.live.behind();
+            String key = ch.key + (behind ? "|b" : "|l");
+            float room = r.width() - Ui.f(32f + 34f + 24f);
+            if (!key.equals(tagKey) || room != tagFor) {
+                tagKey = key;
+                tagFor = room;
+                int n = Library.get(tv).number(ch);
+                tagText = (com.gathin.homefieldtv.prefs.Look.numbers && n > 0 ? n + " " : "") + ChannelEdits.name(ch)
+                        + (behind ? " · catch-up" : " · playing");
+                tagFit = Ui.fit(tagText, tagP, room);
+            }
+            float hh = Ui.f(40f), x = r.left + Ui.f(16f), cy = r.bottom - Ui.f(16f) - hh / 2f;
+            String t = tagFit;
+            pill.set(x, cy - hh / 2f, x + Ui.f(6f + 28f + 10f + 14f) + tagP.measureText(t), cy + hh / 2f);
+            Frost.glass(c, pill, hh / 2f, 1f);
+            fill.setColor(Look07.L1);
+            c.drawCircle(x + Ui.f(6f + 14f), cy, Ui.f(14f), fill);
+            Icons07.draw(c, Icons07.PLAY, x + Ui.f(6f + 15f), cy, Ui.f(14f), Look07.INK);
+            c.drawText(t, x + Ui.f(6f + 28f + 10f), Type.centred(tagP, cy), tagP);
+        }
     }
 }

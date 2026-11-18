@@ -143,6 +143,8 @@ final class GuideMenu extends View {
 
     private final Frost frost = new Frost(Look07.MAT_DARK);
     private final Lift07 lift = new Lift07();
+    /** The row the menu is for has a white edge round it (as it comes); the guide's own rows carry their focus instead. */
+    boolean edgedHole = true;
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), edge = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final TextPaint lineP = Type.paint(Type.MENU, Type.MEDIUM, Look07.L1), valueP = Type.paint(Type.MENU_VALUE, Type.MEDIUM, Look07.L3),
             sectionP = Type.label(14f, Look07.L3), buttonP = Type.paint(19f, Type.SEMIBOLD, Look07.L1);
@@ -393,6 +395,7 @@ final class GuideMenu extends View {
         c.clipOutRect(hole);
         c.drawRect(0, 0, getWidth(), getHeight(), fill);
         c.restore();
+        if (!edgedHole) return;
         float sw = Math.max(1f, Ui.f(2f));
         edge.setStrokeWidth(sw);
         edge.setColor(Palette.alpha(Look07.L1, Math.round(0xB3 * shown)));

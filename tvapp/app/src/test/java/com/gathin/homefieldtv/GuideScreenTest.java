@@ -35,9 +35,9 @@ import java.time.Duration;
 import java.util.List;
 
 /**
- * The TV guide as the family's TiviMate has it: back from the player onto the channel playing in its preview, the rows
- * and the programmes, the groups and the drawer pushing it right, the menus (Remind kept), Back's steps; the archive
- * by day playing from the archive; and the grid's sums.
+ * The TV guide as the family's TiviMate has it, in the 07 look under the tab bar: back from the player onto the channel
+ * playing in its preview, the rows and the programmes, the groups pushing it right, the menus (Remind kept), Up to the
+ * tab bar, Back's steps; the archive by day playing from the archive; and the grid's sums.
  */
 @RunWith(RobolectricTestRunner.class)
 @LooperMode(LooperMode.Mode.PAUSED)
@@ -78,15 +78,20 @@ public class GuideScreenTest {
     }
 
     @Test public void theGridsSums() {
-        // The remote's row sits third from the top where it can; at the list's end the last row is at the foot.
+        // The remote's row sits second from the top where it can (07's stills); at the list's end the last row is at the foot.
         assertEquals(0, GuideGrid.topFor(0, 50, 7));
         assertEquals(0, GuideGrid.topFor(1, 50, 7));
-        assertEquals(1, GuideGrid.topFor(3, 50, 7));
-        assertEquals(2, GuideGrid.topFor(4, 50, 7));
+        assertEquals(2, GuideGrid.topFor(3, 50, 7));
+        assertEquals(3, GuideGrid.topFor(4, 50, 7));
         assertEquals(43, GuideGrid.topFor(49, 50, 7));
         assertEquals(0, GuideGrid.topFor(2, 3, 7));
-        // 320 px a half hour from x 540: about 2 h 9 min across.
-        assertEquals(129, GuideGrid.SHOWN_MS / 60_000L);
+        // 300 px a half hour from x 512 to 1860: about 2 h 15 min across; six rows 92 apart under the times.
+        assertEquals(134, GuideGrid.SHOWN_MS / 60_000L);
+        assertEquals(6, GuideGrid.visible());
+        // What is left of a programme on now, as the cells write it.
+        assertEquals("40 min left", GuideGrid.leftWords(40));
+        assertEquals("1h 10m left", GuideGrid.leftWords(70));
+        assertEquals("2h 05m left", GuideGrid.leftWords(125));
         long t = 1_800_000_000_000L;
         assertEquals(0, GuideGrid.half(t + 17 * 60_000L) % GuideGrid.HALF);
         assertTrue(GuideGrid.half(t + 17 * 60_000L) <= t + 17 * 60_000L);
@@ -128,7 +133,11 @@ public class GuideScreenTest {
         GuideScreen g = (GuideScreen) a.top();
         assertEquals(ch.get(2).key, a.live.channel().key);
         assertEquals(ch.get(2).key, g.focusedChannel().key);
-        assertEquals(new Rect(32, 24, 672, 384), a.live.where());
+        assertEquals(new Rect(90, 136, 676, 466), a.live.where());
+        // The guide is the tab bar's Guide page: the bar drawn over it, the remote in the guide.
+        assertTrue(a.tabs().drawn());
+        assertEquals(TabBar.GUIDE, a.tabs().page());
+        assertFalse(a.tabs().active());
         assertEquals(0f, g.pushed(), 0f);
         assertEquals(0, g.area());
 
@@ -149,11 +158,11 @@ public class GuideScreenTest {
         assertEquals(onNow[0], g.focusedTimes()[0]);
         assertEquals(0, g.area());
 
-        // Left from the programme on now: the rail and the groups, the guide pushed right by both (112 + 504).
+        // Left from the programme on now: the groups, the guide pushed right by them (504).
         press(a, KeyEvent.KEYCODE_DPAD_LEFT);
         assertEquals(1, g.area());
-        assertEquals(616f, g.pushed(), 0.5f);
-        assertEquals(new Rect(648, 24, 1288, 384), a.live.where());
+        assertEquals(504f, g.pushed(), 0.5f);
+        assertEquals(new Rect(594, 136, 1180, 466), a.live.where());
         // Down the groups: each shows at once (All channels, Recently watched, then the playlist's groups).
         assertEquals("all", g.list());
         press(a, KeyEvent.KEYCODE_DPAD_DOWN);
@@ -161,12 +170,10 @@ public class GuideScreenTest {
         press(a, KeyEvent.KEYCODE_DPAD_DOWN);
         assertEquals("group:Entertainment", g.list());
         assertEquals("Entertainment", g.focusedChannel().group);
-        // Left: the drawer (440 + 504); Right: the groups again; Right: the grid, the guide back in place.
+        // Left: nothing further (the old menu's drawer is the tab bar now); Right: the grid, the guide back in place.
         press(a, KeyEvent.KEYCODE_DPAD_LEFT);
-        assertEquals(2, g.area());
-        assertEquals(944f, g.pushed(), 0.5f);
-        press(a, KeyEvent.KEYCODE_DPAD_RIGHT);
         assertEquals(1, g.area());
+        assertEquals(504f, g.pushed(), 0.5f);
         press(a, KeyEvent.KEYCODE_DPAD_RIGHT);
         assertEquals(0, g.area());
         assertEquals(0f, g.pushed(), 0f);
@@ -191,13 +198,23 @@ public class GuideScreenTest {
         // The first reminder asks once whether its card may show over other apps: Not now.
         press(a, KeyEvent.KEYCODE_BACK);
 
-        // Back: the programmes on now, the groups, the drawer, then out of the guide (Home).
+        // Up from the first row goes up to the tab bar (its Guide tab); Down comes back to the rows.
+        int up = 0;
+        while (!a.tabs().active() && up++ < 20) press(a, KeyEvent.KEYCODE_DPAD_UP);
+        assertTrue(a.tabs().active());
+        assertEquals(TabBar.GUIDE, a.tabs().focus());
+        press(a, KeyEvent.KEYCODE_DPAD_DOWN);
+        assertFalse(a.tabs().active());
+        assertTrue(a.top() instanceof GuideScreen);
+
+        // Back: the programmes on now, the groups, the tab bar, then Home's tab (Home).
+        press(a, KeyEvent.KEYCODE_DPAD_RIGHT);
         press(a, KeyEvent.KEYCODE_BACK);
         assertEquals(0, g.area());
         press(a, KeyEvent.KEYCODE_BACK);
         assertEquals(1, g.area());
         press(a, KeyEvent.KEYCODE_BACK);
-        assertEquals(2, g.area());
+        assertTrue(a.tabs().active());
         press(a, KeyEvent.KEYCODE_BACK);
         assertTrue(a.top() instanceof HomeScreen);
     }

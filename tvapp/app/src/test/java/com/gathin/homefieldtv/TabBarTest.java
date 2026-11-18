@@ -26,7 +26,7 @@ import java.time.Duration;
 
 /**
  * 07's shell (TabBar), the app's main way around: it starts with the remote on Home's tab; Left and Right move the pill;
- * a page still in its own look waits for OK and takes the remote (the bar never over it); Back goes to Home's tab and
+ * a page in the shell (the guide) comes up under the bar as the remote rests on its tab; Back goes to Home's tab and
  * then leaves; Down goes into the page and Up from Home's top comes back; a screen reached from another shows its back
  * line; the guide key still opens the guide from the bar.
  */
@@ -90,21 +90,26 @@ public class TabBarTest {
         assertTrue(a.top() instanceof HomeScreen);
     }
 
-    @Test public void aPageInItsOwnLookWaitsForOkAndTakesTheRemote() {
+    @Test public void theGuideComesUpUnderTheBarAndDownGoesIntoIt() {
         TvActivity a = start();
         TabBar bar = a.tabs();
         press(a, KeyEvent.KEYCODE_DPAD_RIGHT);
-        // Rested on Guide: the guide is not in the shell yet, so Home stays under the bar.
+        // Rested on Guide: the guide is a page in the shell, so it comes up under the bar, the remote staying on the bar.
         assertEquals(TabBar.GUIDE, bar.focus());
-        assertTrue(a.top() instanceof HomeScreen);
-        assertTrue(bar.active());
-        press(a, KeyEvent.KEYCODE_DPAD_CENTER);
         assertTrue(a.top() instanceof GuideScreen);
+        assertTrue(bar.active());
+        assertTrue(bar.drawn());
+        // Down: into the guide (with no playlist, its groups), the bar still drawn over it.
+        press(a, KeyEvent.KEYCODE_DPAD_DOWN);
         assertFalse("the guide has the remote", bar.active());
-        assertFalse("no bar over the guide's own look", bar.drawn());
-        // Back from the guide's root comes home in time; the bar is drawn over Home again.
-        for (int i = 0; i < 6 && !(a.top() instanceof HomeScreen); i++) press(a, KeyEvent.KEYCODE_BACK);
+        assertTrue("the bar stays drawn over the guide", bar.drawn());
+        assertEquals(TabBar.GUIDE, bar.page());
+        // Up from its top: the bar again; Back there: Home's tab, Home under it.
+        for (int i = 0; i < 8 && !bar.active(); i++) press(a, KeyEvent.KEYCODE_DPAD_UP);
+        assertTrue(bar.active());
+        press(a, KeyEvent.KEYCODE_BACK);
         assertTrue(a.top() instanceof HomeScreen);
+        assertEquals(TabBar.HOME, bar.focus());
         assertTrue(bar.drawn());
     }
 
