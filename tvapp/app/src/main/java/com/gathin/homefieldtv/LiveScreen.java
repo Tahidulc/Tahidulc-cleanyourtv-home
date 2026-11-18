@@ -843,75 +843,91 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
 
     private final class Panels extends View {
         private final InfoCard card;
-        private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final TextPaint titleP = Type.paint(36f, Type.MEDIUM, Palette.TEXT1), lineP = Type.paint(Type.ROW, Type.REGULAR, Palette.TEXT2);
-        private final TextPaint descP = Type.paint(26f, Type.REGULAR, Palette.TEXT2), digitP = Type.paint(Type.HERO, Type.MEDIUM, Palette.TEXT1);
-        private final TextPaint nameP = Type.paint(Type.ROW, Type.REGULAR, Palette.TEXT2);
+        /** The mini guide at the top right while the card is at the foot (07c), its rows' pictures once it rests. */
+        private final MiniGuide mini;
+        private final Frost frost = new Frost(Look07.MAT_DARK);
+        private final TextPaint titleP = Type.paint(36f, Type.BOLD, Look07.L1), lineP = Type.clock(20f, Type.MEDIUM, Look07.L2);
+        private final TextPaint descP = Type.paint(Type.BODY, Type.REGULAR, Look07.L2), nameP = Type.paint(19f, Type.SEMIBOLD, Look07.L2);
         private final RectF r = new RectF();
         private String descKey = "";
         private StaticLayout descTitle, descText;
+        private boolean settled;
+        private Channel settledOn;
+        private final Runnable rest = () -> {
+            settled = true;
+            invalidate();
+        };
 
         Panels(Context c) {
             super(c);
             card = new InfoCard(this);
+            mini = new MiniGuide(this);
         }
 
         @Override protected void onDraw(Canvas c) {
             Channel playing = tv.live.channel();
             long now = System.currentTimeMillis();
+            boolean moving = false;
             if (mode == BANNER) {
+                // The card for the channel shown (CH+ and CH−: another one), the mini guide round it, the keys' hints, and
+                // which channel is playing.
                 Channel ch = peek != null ? peek : playing;
                 card.draw(c, InfoCard.FOOT_Y, ch, now, false, ch == playing ? chips(tv.live) : null);
+                if (ch != settledOn) {
+                    settledOn = ch;
+                    settled = Exec.inline;
+                    removeCallbacks(rest);
+                    postDelayed(rest, ProgrammePictures.REST_MS);
+                }
+                moving = mini.draw(c, ch, playing, settled);
+                MiniGuide.hints(c);
+                if (digits.isEmpty() && playing != null) mini.watching(c, "Watching", Words.number(Library.get(getContext()).number(playing)));
             } else if (mode == OVERLAY || mode == BAR && barWithCard) {
                 card.draw(c, InfoCard.TOP_Y, playing, now, false, chips(tv.live));
             } else if (mode == DESC && playing != null) {
                 drawDescription(c, playing, now);
             }
             if (!digits.isEmpty()) drawDigits(c);
+            if (moving) postInvalidateOnAnimation();
         }
 
-        /** Right held: the programme's card at the top right, its whole description. */
+        /** Right held: the programme's card at the top right (frosted, rounded 40), its whole description. */
         private void drawDescription(Canvas c, Channel ch, long now) {
             Guide.Schedule s = Library.get(getContext()).schedule(ch.key);
             int i = s == null ? -1 : s.at(now);
             String title = i >= 0 ? s.title[i] : ChannelEdits.name(ch), desc = i >= 0 ? s.desc[i] : "";
             String k = ch.key + "|" + (i >= 0 ? s.start[i] : 0);
-            float x0 = 1152f, y0 = 48f, x1 = 1872f, inner = x1 - x0 - 64f;
+            float x0 = 1152f, y0 = 48f, x1 = 1872f, inner = x1 - x0 - 68f;
             if (!k.equals(descKey)) {
                 descKey = k;
-                descTitle = InfoCard.lines(title, titleP, Ui.px(inner), 2, 42f / 36f);
-                descText = desc.isEmpty() ? null : InfoCard.lines(desc, descP, Ui.px(inner), 5, 33f / 26f);
+                descTitle = InfoCard.lines(title, titleP, Ui.px(inner), 2, 1.08f / 1.21f);
+                descText = desc.isEmpty() ? null : InfoCard.lines(desc, descP, Ui.px(inner), 8, 1.42f / 1.21f);
             }
             float th = descTitle.getHeight() / Ui.s, dh = descText == null ? 0f : descText.getHeight() / Ui.s + 16f;
-            float hgt = 32f + th + 18f + (i >= 0 ? 40f : 0f) + dh + 28f;
+            float hgt = 34f + th + 18f + (i >= 0 ? 40f : 0f) + dh + 34f;
             r.set(Ui.f(x0), Ui.f(y0), Ui.f(x1), Ui.f(y0 + hgt));
-            fill.setColor(Palette.PLAYBACK);
-            c.drawRoundRect(r, Ui.f(16f), Ui.f(16f), fill);
-            float tx = Ui.f(x0 + 32f), y = y0 + 32f;
-            titleP.setColor(Palette.TEXT1);
+            frost.draw(c, r, Ui.f(Look07.R_MENU), 1f);
+            float tx = Ui.f(x0 + 34f), y = y0 + 34f;
             Ui.draw(c, descTitle, tx, Ui.f(y));
             y += th + 18f;
             if (i >= 0) {
-                lineP.setColor(Palette.TEXT2);
-                String sp = LiveText.span(s.start[i], s.stop[i]);
-                float base = Ui.f(y + 28f);
+                String sp = Words.span(s.start[i], s.stop[i]);
+                float cy = Ui.f(y + 14f), base = Type.centred(lineP, cy);
                 c.drawText(sp, tx, base, lineP);
-                float bx = tx + lineP.measureText(sp) + Ui.f(25);
-                Bars.thin(c, bx, base - Ui.f(10), Ui.f(80), Ui.f(6), LiveText.progress(now, s.start[i], s.stop[i]));
-                if (s.stop[i] > now) c.drawText(InfoCard.minutes(s.stop[i] - now), bx + Ui.f(104), base, lineP);
+                float bx = tx + lineP.measureText(sp) + Ui.f(16f);
+                if (s.start[i] <= now && now < s.stop[i]) {
+                    Pills.progress(c, bx, cy, Ui.f(150f), LiveText.progress(now, s.start[i], s.stop[i]));
+                    c.drawText(GuideGrid.leftWords((int) Math.max(1L, (s.stop[i] - now + 59_999L) / 60_000L)), bx + Ui.f(166f), base, lineP);
+                }
                 y += 40f + 16f;
             }
             if (descText != null) Ui.draw(c, descText, tx, Ui.f(y));
         }
 
-        /** The number being typed, at the top right, and the channel it is so far. */
+        /** The number being typed in the box at the top right ("Channel 10-"), and the channel it is so far under it. */
         private void drawDigits(Canvas c) {
-            r.set(Ui.f(1552f), Ui.f(48f), Ui.f(1872f), Ui.f(168f));
-            fill.setColor(Palette.PLAYBACK);
-            c.drawRoundRect(r, Ui.f(16f), Ui.f(16f), fill);
             String d = digits.length() >= 3 ? digits : (digits + "---").substring(0, 3);
-            digitP.setColor(Palette.TEXT1);
-            c.drawText(d, Ui.f(1584f), Ui.f(106f), digitP);
+            mini.watching(c, "Channel", d);
             int n;
             try {
                 n = Integer.parseInt(digits);
@@ -919,8 +935,9 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
                 return;
             }
             Channel ch = Library.get(getContext()).numbered(n);
-            nameP.setColor(Palette.TEXT2);
-            if (ch != null) c.drawText(Ui.fit(ChannelEdits.name(ch), nameP, Ui.f(256f)), Ui.f(1584f), Ui.f(148f), nameP);
+            if (ch == null) return;
+            String name = Ui.fit(ChannelEdits.name(ch), nameP, Ui.f(320f));
+            c.drawText(name, Ui.f(1920f - MiniGuide.RIGHT - 4f) - nameP.measureText(name), Ui.f(148f), nameP);
         }
     }
 
