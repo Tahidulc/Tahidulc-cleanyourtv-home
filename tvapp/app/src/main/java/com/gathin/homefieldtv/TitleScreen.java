@@ -182,6 +182,11 @@ final class TitleScreen extends Screen implements TitlePage.Host {
 
     /** The trailer in the TV's YouTube app (nothing is played here). */
     private void trailer(String id) {
+        trailer(tv, id);
+    }
+
+    /** A trailer (its YouTube id) in the TV's YouTube app, from any screen (Home's MENU too). */
+    static void trailer(TvActivity tv, String id) {
         try {
             tv.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=" + id))
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
