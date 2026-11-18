@@ -10,6 +10,7 @@ import android.view.animation.AnimationUtils;
 import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Guide;
+import com.gathin.homefieldtv.engine.LogoPack;
 
 /**
  * The picture of what a panel is about, behind its words, as the family asked for the guide's details and the player's
@@ -101,7 +102,8 @@ final class PanelArt {
      */
     void prefetch(Channel ch, Guide.Schedule s, int i) {
         if (ch == null || Exec.inline) return;
-        if (!ch.logo.isEmpty()) Pics.prefetch(ch.logo, pw, ph, Pics.LOGO_ART);
+        String logoUrl = LogoPack.url(ch);
+        if (!logoUrl.isEmpty()) Pics.prefetch(logoUrl, pw, ph, Pics.LOGO_ART);
         if (s == null || i < 0 || i >= s.start.length) return;
         String u = ProgrammePictures.get(owner.getContext(), ch, s, i, () -> {
             String got = ProgrammePictures.peek(ch, s, i);
@@ -123,7 +125,7 @@ final class PanelArt {
                 return;
             }
         }
-        String logo = channel.logo;
+        String logo = LogoPack.url(channel);
         boolean same = channel.key.equals(newestFor());
         if (!logo.isEmpty() && !Pics.failed(logo)) {
             // The channel's stand-in: asked for at once when the programme has no picture, else read ahead quietly.

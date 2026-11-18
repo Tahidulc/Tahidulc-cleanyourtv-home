@@ -20,6 +20,8 @@ import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.engine.MyList;
 import com.gathin.homefieldtv.engine.Reminders;
 import com.gathin.homefieldtv.engine.Resume;
+import com.gathin.homefieldtv.prefs.ChannelEdits;
+import com.gathin.homefieldtv.engine.LogoPack;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -159,8 +161,8 @@ final class MyListScreen extends Screen implements GroupsPanel.Host, ProgrammeLi
             Channel c = lib.byKey(r.key);
             e.title = r.title;
             e.when = ProgrammeList.when(r.start, r.end);
-            e.channel = c == null ? r.channel : c.name;
-            e.logo = c == null ? r.logo : c.logo;
+            e.channel = c == null ? r.channel : ChannelEdits.name(c);
+            e.logo = c == null ? r.logo : LogoPack.url(c);
             e.bell = true;
             e.now = r.start <= now;
             e.stateLit = e.now;
@@ -220,8 +222,8 @@ final class MyListScreen extends Screen implements GroupsPanel.Host, ProgrammeLi
             ProgrammeList.Entry e = new ProgrammeList.Entry(new Object[]{c, f[0], f[1], w[1]}, Ui.day(f[0], now));
             e.title = (String) w[1];
             e.when = ProgrammeList.when(f[0], f[1]);
-            e.channel = c.name;
-            e.logo = c.logo;
+            e.channel = ChannelEdits.name(c);
+            e.logo = LogoPack.url(c);
             e.about = (String) w[2];
             e.archive = Catchup.source(c) != null;
             e.now = f[0] <= now;
@@ -393,7 +395,7 @@ final class MyListScreen extends Screen implements GroupsPanel.Host, ProgrammeLi
         } else if (start <= now) {
             tv.watch(c);
         } else {
-            Toast.makeText(tv, "It's on " + Ui.day(start, now) + " at " + LiveText.hm(start) + " on " + c.name + ".", Toast.LENGTH_SHORT).show();
+            Toast.makeText(tv, "It's on " + Ui.day(start, now) + " at " + LiveText.hm(start) + " on " + ChannelEdits.name(c) + ".", Toast.LENGTH_SHORT).show();
         }
     }
 

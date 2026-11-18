@@ -18,6 +18,8 @@ import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.engine.Lineup;
 import com.gathin.homefieldtv.engine.Sources;
 import com.gathin.homefieldtv.prefs.Categories;
+import com.gathin.homefieldtv.prefs.ChannelEdits;
+import com.gathin.homefieldtv.engine.LogoPack;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -367,17 +369,17 @@ final class ChannelList extends FrameLayout implements GroupsPanel.Host {
                 if (groupsOpen) Focus.selected(c, r);
                 else Focus.pill(c, r);
             }
-            Bitmap logo = Pics.get(ch.logo, Ui.px(96), Ui.px(72), Pics.tiles ? Pics.READY : Pics.FIT, redraw);
+            Bitmap logo = Pics.get(LogoPack.url(ch), Ui.px(96), Ui.px(72), Pics.tiles ? Pics.READY : Pics.FIT, redraw);
             if (logo != null) {
                 c.drawBitmap(logo, Ui.f(x0 + 32f) + (Ui.f(96) - logo.getWidth()) / 2f, Ui.f(top + 22f) + (Ui.f(72) - logo.getHeight()) / 2f, bmp);
             } else {
                 logoP.setColor(Palette.TEXT2);
                 if (logos == null) logos = new TextFit(logoP, 64);
-                logos.line(c, ch.name, Ui.f(x0 + 32f), Ui.f(top + 66f), Ui.f(96));
+                logos.line(c, ChannelEdits.name(ch), Ui.f(x0 + 32f), Ui.f(top + 66f), Ui.f(96));
             }
             float tx = Ui.f(x0 + 144f), room = Ui.f(COL_W - 144f - 32f - (playing ? 48f : 0f));
             nameP.setColor(Palette.TEXT1);
-            names.line(c, ch.name, tx, Ui.f(top + 42f), room);
+            names.line(c, ChannelEdits.name(ch), tx, Ui.f(top + 42f), room);
             if (playing) {
                 // The channel playing: the accent's ▶.
                 float px = Ui.f(x0 + 556f), py = Ui.f(top + 32f), s = Ui.f(16f);
@@ -405,10 +407,10 @@ final class ChannelList extends FrameLayout implements GroupsPanel.Host {
                 c.drawRect(Ui.f(x0), 0, Ui.f(x1), getHeight(), fill);
             }
             // Its logo, name and where it is from at the top.
-            Bitmap logo = Pics.get(ch.logo, Ui.px(108), Ui.px(72), Pics.tiles ? Pics.READY : Pics.FIT, redraw);
+            Bitmap logo = Pics.get(LogoPack.url(ch), Ui.px(108), Ui.px(72), Pics.tiles ? Pics.READY : Pics.FIT, redraw);
             if (logo != null) c.drawBitmap(logo, Ui.f(624f) + (Ui.f(108) - logo.getWidth()) / 2f, Ui.f(20f) + (Ui.f(72) - logo.getHeight()) / 2f, bmp);
             headP.setColor(Palette.TEXT1);
-            heads.line(c, ch.name, Ui.f(748f), Ui.f(46f), Ui.f(x1 - 748f - 16f));
+            heads.line(c, ChannelEdits.name(ch), Ui.f(748f), Ui.f(46f), Ui.f(x1 - 748f - 16f));
             if (!ch.key.equals(whereKey)) {
                 whereKey = ch.key;
                 whereText = where.where(getContext(), ch);

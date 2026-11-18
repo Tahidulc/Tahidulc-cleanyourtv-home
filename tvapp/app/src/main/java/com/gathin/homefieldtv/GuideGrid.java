@@ -15,7 +15,9 @@ import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.engine.Lineup;
+import com.gathin.homefieldtv.engine.LogoPack;
 import com.gathin.homefieldtv.engine.Reminders;
+import com.gathin.homefieldtv.prefs.ChannelEdits;
 import com.gathin.homefieldtv.prefs.Look;
 
 import java.util.Collections;
@@ -95,6 +97,8 @@ final class GuideGrid extends View {
     /** Shown when there are no channels: an icon, a title and a line (EmptyState). */
     String emptyTitle = "", emptyLine = "";
     int emptyIcon = Dark.TV;
+    /** The channel lifted by Move channel (its key), drawn raised (MoveMode); null: none. */
+    String lifted;
 
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), bmp = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
     private final TextPaint dateP = Type.paint(Type.ROW, Type.MEDIUM, Palette.ACCENT_LIGHT), labelP = Type.paint(Type.ROW, Type.REGULAR, Palette.TEXT2);
@@ -488,6 +492,12 @@ final class GuideGrid extends View {
             if (y + h < ROWS_Y) continue;
             drawRow(c, i, y, h, now, ws, bells, playing);
         }
+        // A row moved by hand (Move channel): raised, its edge in the accent, ▲▼ at its right (MoveMode).
+        if (lifted != null && focus < channels.size() && channels.get(focus).key.equals(lifted)) {
+            float y = rowTop(focus, scroll);
+            r.set(Ui.f(16f), Ui.f(y + 1f), Ui.f(RIGHT - 4f), Ui.f(y + h - 1f));
+            MoveMode.drawLifted(c, r, Ui.f(RIGHT - 44f), Ui.f(y + h / 2f), Palette.PANEL);
+        }
         c.restore();
         if (moving) postInvalidateOnAnimation();
     }
@@ -637,16 +647,18 @@ final class GuideGrid extends View {
             numP.setColor(here && active ? Palette.ACCENT : Palette.TEXT2);
             c.drawText(n, Ui.f(96f) - numbers.width(n), Type.centred(numP, cy), numP);
         }
-        // The logo on its tile (Settings → Channel logos), or the tile with a TV on it while there is none.
+        // The logo on its tile (Settings → Channel logos; the new logo or the channel's own choice: LogoPack), or the tile
+        // with a TV on it while there is none.
         float lx = Ui.f(tileX), ly = cy - Ui.f(tileH) / 2f;
-        Bitmap logo = ch.logo.isEmpty() ? null : Pics.get(ch.logo, Ui.px(tileW), Ui.px(tileH), Pics.logoMode(), redraw);
+        String logoUrl = LogoPack.url(ch);
+        Bitmap logo = logoUrl.isEmpty() ? null : Pics.get(logoUrl, Ui.px(tileW), Ui.px(tileH), Pics.logoMode(), redraw);
         if (logo != null) {
             c.drawBitmap(logo, lx + (Ui.f(tileW) - logo.getWidth()) / 2f, cy - logo.getHeight() / 2f, bmp);
         } else {
             r.set(lx, ly, lx + Ui.f(tileW), ly + Ui.f(tileH));
             fill.setColor(Pics.tiles ? 0xFF000000 : Palette.SELECTED);
             c.drawRoundRect(r, Ui.f(7f), Ui.f(7f), fill);
-            if (ch.logo.isEmpty() || Pics.failed(ch.logo)) {
+            if (logoUrl.isEmpty() || Pics.failed(logoUrl)) {
                 RoundButton.glyph(c, Dark.TV, r.centerX(), r.centerY(), Ui.f(tileH * 0.5f), Palette.TEXT3);
             }
         }
@@ -662,7 +674,7 @@ final class GuideGrid extends View {
             nameRight = markX - 26f;
         }
         nameP.setColor(lit);
-        names.lines(c, ch.name, Ui.f(nameX), Type.centred(nameP, cy), Type.centred(nameP, cy - Ui.f(LINE / 2f)),
+        names.lines(c, ChannelEdits.name(ch), Ui.f(nameX), Type.centred(nameP, cy), Type.centred(nameP, cy - Ui.f(LINE / 2f)),
                 Type.centred(nameP, cy + Ui.f(LINE / 2f)), Ui.f(nameRight - nameX), h >= 88f ? 2 : 1);
     }
 

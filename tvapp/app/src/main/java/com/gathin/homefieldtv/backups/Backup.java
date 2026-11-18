@@ -19,7 +19,8 @@ import java.util.Set;
  * Settings → Backup's file: everything the family set on this TV, as one JSON document. The playlists (with their
  * logins), favourites, recent and last channels, reminders, My List and where films were left off, and every setting:
  * player, sound, stream problems, general, appearance, remote, guide, categories, parental control (the PIN as its
- * hash), live subtitles, the scoreboard, sports competitions and their timing. Not the channels, the guide or the
+ * hash), live subtitles, the scoreboard, sports competitions and their timing, and the family's edits to their channels
+ * (hidden, renamed, moved, their logos chosen: ChannelEdits). Not the channels, the guide or the
  * pictures: those are read again from the providers. Never the TorBox key: it goes nowhere but TorBox, and is typed in
  * again on a new TV (its file isn't in FILES, so it is neither written into a backup nor put back from one, even one
  * that has it). Each settings file is kept whole, with each value's type, so a restore puts back exactly what was there
@@ -35,7 +36,7 @@ public final class Backup {
     static final List<String> FILES = Collections.unmodifiableList(Arrays.asList(
             "live_sources", "live_source", "live_tv", "reminders", "reminders_ui", "my_list", "resume",
             "player", "look", "general", "remote", "guide", "live_groups", "parental",
-            "live_subs", "scoreboard", "sports_competitions", "in_step"));
+            "live_subs", "scoreboard", "sports_competitions", "in_step", "channel_edits"));
 
     /** A backup read back: when it was made, by which version, and its settings files. */
     public static final class Contents {

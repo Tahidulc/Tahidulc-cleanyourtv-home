@@ -32,6 +32,9 @@ import java.util.List;
  *   choose(tag)                    the group on screen (its selected pill), the remote put on it too
  *   mark(tag)                      the group on screen only (the remote and the list's slide left as they are)
  *   key(code) / ok()               the remote
+ *   lift(lo, hi) / drop() / cancelLift()   Move group (MoveMode): the remote's row lifted, Up and Down moving it among
+ *                                  rows lo..hi (the host not told), put down (the rows' tags in their new order) or back
+ *   focusIndex() / count() / entry(i) / focusedRow(out)   the rows as shown, and the remote's row on the screen
  * </pre>
  */
 final class GroupsPanel extends View {
@@ -212,6 +215,7 @@ final class GroupsPanel extends View {
     }
 
     boolean key(int code) {
+        if (liftFrom >= 0) return liftKey(code);
         switch (code) {
             case KeyEvent.KEYCODE_DPAD_UP:
             case KeyEvent.KEYCODE_DPAD_DOWN: {
@@ -230,6 +234,94 @@ final class GroupsPanel extends View {
             default:
                 return false;
         }
+    }
+
+    // ---- a row lifted and moved (MoveMode: Move group) --------------------------------------------------------------
+
+    /** While a row is lifted: where it was, the rows it may move among, and the rows as they were. */
+    private int liftFrom = -1, liftLo, liftHi;
+    private final List<Entry> liftAll = new ArrayList<>();
+
+    /** The remote's row lifted, to move among rows lo..hi (as shown) with Up and Down; the host isn't told of them. */
+    void lift(int lo, int hi) {
+        if (focus < lo || focus > hi) return;
+        liftFrom = focus;
+        liftLo = lo;
+        liftHi = hi;
+        liftAll.clear();
+        liftAll.addAll(all);
+        invalidate();
+    }
+
+    boolean lifted() {
+        return liftFrom >= 0;
+    }
+
+    /** Whether the lifted row is somewhere else now. */
+    boolean liftMoved() {
+        return liftFrom >= 0 && liftFrom != focus;
+    }
+
+    private boolean liftKey(int code) {
+        if (code != KeyEvent.KEYCODE_DPAD_UP && code != KeyEvent.KEYCODE_DPAD_DOWN) return true;
+        int n = focus + (code == KeyEvent.KEYCODE_DPAD_UP ? -1 : 1);
+        if (n < liftLo || n > liftHi) return true;
+        Entry a = shown.get(focus), b = shown.get(n);
+        shown.set(focus, b);
+        shown.set(n, a);
+        int ia = all.indexOf(a), ib = all.indexOf(b);
+        if (ia >= 0 && ib >= 0) {
+            all.set(ia, b);
+            all.set(ib, a);
+        }
+        focus = n;
+        settle(false);
+        invalidate();
+        return true;
+    }
+
+    /** The lifted row put down where it is: the rows lo..hi's tags in their order now. */
+    List<Object> drop() {
+        List<Object> out = new ArrayList<>();
+        if (liftFrom < 0) return out;
+        for (int i = liftLo; i <= liftHi && i < shown.size(); i++) out.add(shown.get(i).tag);
+        liftFrom = -1;
+        liftAll.clear();
+        invalidate();
+        return out;
+    }
+
+    /** The lifted row put back where it was. */
+    void cancelLift() {
+        if (liftFrom < 0) return;
+        all.clear();
+        all.addAll(liftAll);
+        liftAll.clear();
+        rebuild();
+        focus = Math.max(0, Math.min(liftFrom, shown.size() - 1));
+        liftFrom = -1;
+        settle(false);
+        invalidate();
+    }
+
+    /** The remote's row's place among the rows shown, how many there are, and a row. */
+    int focusIndex() {
+        return focus;
+    }
+
+    int count() {
+        return shown.size();
+    }
+
+    Entry entry(int i) {
+        return i >= 0 && i < shown.size() ? shown.get(i) : null;
+    }
+
+    /** The remote's row on the screen (screen pixels, the column's slide included), for a menu to leave undimmed. */
+    RectF focusedRow(RectF out) {
+        float top = TOP + focus * ROW - scroll.value(), dx = getTranslationX();
+        out.set(Ui.f(x + INSET) + dx, Ui.f(top), Ui.f(x + W - INSET) + dx, Ui.f(top + ROW));
+        return out;
     }
 
     void ok() {
@@ -272,8 +364,10 @@ final class GroupsPanel extends View {
                 TextPaint p = e.kind == BOLD ? boldP : groupP;
                 p.setColor(Palette.TEXT1);
                 float tx = e.kind == BOLD ? HEAD_X : e.kind == PLAIN ? PLAIN_X : GROUP_X;
-                c.drawText(e.fitted(p, Ui.f(W - tx - 48)), x0 + Ui.f(tx), Type.centred(p, cy), p);
+                c.drawText(e.fitted(p, Ui.f(W - tx - (i == focus && liftFrom >= 0 ? 96 : 48))), x0 + Ui.f(tx), Type.centred(p, cy), p);
             }
+            // Lifted (Move group): raised, its edge in the accent, ▲▼ at its right.
+            if (i == focus && liftFrom >= 0) MoveMode.drawLifted(c, r, x1 - Ui.f(68), cy);
         }
         c.restore();
         if (moving) postInvalidateOnAnimation();

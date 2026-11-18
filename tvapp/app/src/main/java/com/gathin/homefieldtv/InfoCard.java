@@ -16,6 +16,8 @@ import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.engine.Sources;
 import com.gathin.homefieldtv.prefs.PlayerPrefs;
+import com.gathin.homefieldtv.prefs.ChannelEdits;
+import com.gathin.homefieldtv.engine.LogoPack;
 
 import java.util.List;
 
@@ -127,17 +129,17 @@ final class InfoCard {
         if (art.draw(c, Ui.f(X + W - ART_W), Ui.f(top))) owner.postInvalidateOnAnimation();
 
         // The channel: its logo, its name under it.
-        Bitmap logo = Pics.get(ch.logo, Ui.px(LOGO_W), Ui.px(LOGO_H), Pics.tiles ? Pics.READY : Pics.FIT, redraw);
+        Bitmap logo = Pics.get(LogoPack.url(ch), Ui.px(LOGO_W), Ui.px(LOGO_H), Pics.tiles ? Pics.READY : Pics.FIT, redraw);
         float lx = Ui.f(LOGO_X), ly = Ui.f(top + 39f);
         if (logo != null) {
             c.drawBitmap(logo, lx + (Ui.f(LOGO_W) - logo.getWidth()) / 2f, ly + (Ui.f(LOGO_H) - logo.getHeight()) / 2f, bmp);
         } else {
             logoP.setColor(Palette.TEXT1);
-            c.drawText(Ui.fit(initials(ch.name), logoP, Ui.f(LOGO_W)), lx, ly + Ui.f(LOGO_H / 2f + 12f), logoP);
+            c.drawText(Ui.fit(initials(ChannelEdits.name(ch)), logoP, Ui.f(LOGO_W)), lx, ly + Ui.f(LOGO_H / 2f + 12f), logoP);
         }
         if (!ch.key.equals(nameKey) || nameL == null) {
             nameP.setColor(Palette.TEXT1);
-            nameL = lines(ch.name, nameP, Ui.px(268), 2, 1f);
+            nameL = lines(ChannelEdits.name(ch), nameP, Ui.px(268), 2, 1f);
             nameKey = ch.key;
         }
         Ui.draw(c, nameL, lx, Ui.f(top + 168f));
@@ -153,7 +155,7 @@ final class InfoCard {
         float dw = dateW;
         c.drawText(date, right - dw, base, dateP);
         titleP.setColor(Palette.TEXT1);
-        titles.line(c, i >= 0 ? s.title[i] : ch.name, x0, base, right - dw - Ui.f(40) - x0);
+        titles.line(c, i >= 0 ? s.title[i] : ChannelEdits.name(ch), x0, base, right - dw - Ui.f(40) - x0);
 
         // Its times, how far it is (or the archive's mark and its length), where the channel is from, the chips.
         float y = Ui.f(top + 118f), x = x0;

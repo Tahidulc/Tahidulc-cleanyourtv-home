@@ -5,6 +5,7 @@ import android.content.SharedPreferences;
 import android.util.JsonReader;
 import android.util.JsonToken;
 
+import com.gathin.homefieldtv.prefs.ChannelEdits;
 import com.gathin.homefieldtv.prefs.GuidePrefs;
 import com.gathin.homefieldtv.prefs.Parental;
 import com.gathin.homefieldtv.prefs.Shown;
@@ -345,7 +346,11 @@ public final class Library {
             List<Channel> fav = favouriteChannels();
             if (q.isEmpty()) return fav;
             List<Channel> out = new ArrayList<>();
-            for (Channel c : fav) if (Names.plain(c.name).toLowerCase(Locale.ROOT).contains(q)) out.add(c);
+            for (Channel c : fav) {
+                // Its playlist's name, or the family's own for it.
+                if (Names.plain(c.name).toLowerCase(Locale.ROOT).contains(q)
+                        || ChannelEdits.renamed(c) && Names.plain(ChannelEdits.name(c)).toLowerCase(Locale.ROOT).contains(q)) out.add(c);
+            }
             return out;
         }
         boolean every = group == null || group.isEmpty();
@@ -364,7 +369,8 @@ public final class Library {
         Lists.Index ix = l.index;
         List<Channel> out = new ArrayList<>();
         for (int i = 0; i < ix.channels.size() && out.size() < max; i++) {
-            if (l.at[i] < 0 || !ix.lower[i].contains(q)) continue;
+            // By its playlist's name, or by the name the family gave it.
+            if (l.at[i] < 0 || !ix.lower[i].contains(q) && !l.renamedHas(i, q)) continue;
             Channel c = ix.channels.get(i);
             if (group == null || group.equals(c.group)) out.add(c);
         }
@@ -427,6 +433,8 @@ public final class Library {
                 int e = ix.byKey.get(f.keys.get(k));
                 if (e < 0) continue;
                 c = ix.channels.get(e);
+                // A favourite the family hid (Hide channel) is off Home as off every list.
+                if (l.filter != null && l.filter.edits.hidden(c.key)) continue;
                 if (!seen.add(c.key)) continue;
             } else {
                 c = l.all.get(k - favourites);
@@ -508,6 +516,16 @@ public final class Library {
         changed();
         com.gathin.homefieldtv.sync.TvSync.changed();
         return now;
+    }
+
+    /** The favourites in a new order (Move channel in Favourites: TiviMate's Manage Favorites); any others kept after. */
+    public void orderFavourites(List<String> keys) {
+        Set<String> f = new LinkedHashSet<>();
+        for (String k : keys) if (picks().set.contains(k)) f.add(k);
+        f.addAll(favourites());
+        prefs().edit().putString("favourites", new JSONArray(f).toString()).apply();
+        changed();
+        com.gathin.homefieldtv.sync.TvSync.changed();
     }
 
     /** Favourites and recent channels as the family's other devices have them (sync.TvLiveSync); null leaves either be. */

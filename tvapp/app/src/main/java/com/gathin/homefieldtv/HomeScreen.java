@@ -10,8 +10,10 @@ import com.gathin.homefieldtv.engine.Catalog;
 import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.Library;
+import com.gathin.homefieldtv.engine.LogoPack;
 import com.gathin.homefieldtv.engine.Reminders;
 import com.gathin.homefieldtv.engine.Resume;
+import com.gathin.homefieldtv.prefs.ChannelEdits;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -99,7 +101,8 @@ final class HomeScreen extends Screen implements HomeCard.Host {
         for (Channel c : on.sport) if (sport.size() < MAX) sport.add(channelCard(lib, c, now));
         for (String k : lib.favourites()) {
             Channel c = lib.byKey(k);
-            if (c != null && favs.size() < MAX) favs.add(channelCard(lib, c, now));
+            // Not one the family hid (Hide channel): off Home as off every list.
+            if (c != null && !ChannelEdits.hidden(c.key) && favs.size() < MAX) favs.add(channelCard(lib, c, now));
         }
         if (!onNow.isEmpty()) list.add(new HomeCard.Section(lib.hasGuide() ? "On now" : "Your channels", ON_NOW, onNow));
 
@@ -149,13 +152,15 @@ final class HomeScreen extends Screen implements HomeCard.Host {
     static HomeCard.Card channelCard(Library lib, Channel c, long now) {
         Guide.Schedule s = lib.schedule(c.key);
         int i = s == null ? -1 : s.at(now);
-        String number = lib.number(c) > 0 ? lib.number(c) + "  " + c.name : c.name;
+        // The family's name for it (Rename channel) and its logo as the guide shows it (a new one, or the playlist's).
+        String name = ChannelEdits.name(c), logo = LogoPack.url(c);
+        String number = lib.number(c) > 0 ? lib.number(c) + "  " + name : name;
         if (i >= 0) {
             float done = (now - s.start[i]) / (float) Math.max(1, s.stop[i] - s.start[i]);
             return new HomeCard.Card(c, "c:" + c.key, s.title[i], new String[]{Ui.span(s.start[i], s.stop[i]), number,
-                    Ui.left(s.stop[i] - now)}, 0, "", c.logo, true, done);
+                    Ui.left(s.stop[i] - now)}, 0, "", logo, true, done);
         }
-        return new HomeCard.Card(c, "c:" + c.key, c.name, new String[]{number, c.group}, 0, "", c.logo, false, -1f);
+        return new HomeCard.Card(c, "c:" + c.key, name, new String[]{number, c.group}, 0, "", logo, false, -1f);
     }
 
     private HomeCard.Card titleCard(Catalog.Title t) {

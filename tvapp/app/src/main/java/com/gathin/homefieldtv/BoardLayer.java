@@ -31,6 +31,8 @@ import com.gathin.homefieldtv.sports.Game;
 import com.gathin.homefieldtv.sports.InStep;
 import com.gathin.homefieldtv.sports.Matching;
 import com.gathin.homefieldtv.sports.SportsData;
+import com.gathin.homefieldtv.prefs.ChannelEdits;
+import com.gathin.homefieldtv.engine.LogoPack;
 
 import org.json.JSONObject;
 
@@ -67,6 +69,11 @@ import java.util.Set;
  * for a channel; OK held over the match opens the menu (on or off, the look, timing, move and size, the line-ups, the
  * sounds). Kind to the screen: once a minute both step a pixel or two round a circle, and after five minutes without a
  * goal they dim.
+ *
+ * <p>All of it shows only while the channel plays full screen with nothing over it (BoardGate: the live screen says
+ * when, showOnlyWhen and coverChanged): the info card, the OK overlay, the bar, the channel list or anything else over
+ * the picture takes it away at once, and it comes back with plain playback; its pop-ups wait for then, or are let go
+ * when stale; after the live screen was away (another screen over it) for longer than that, it catches up quietly.
  */
 final class BoardLayer extends FrameLayout implements LiveTv.Listener {
     /** How often the scores are read: live (the launcher's poll), in the half hour before kick-off, otherwise; the summary's. */
@@ -162,12 +169,91 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         bug.style(BoardPrefs.style(tv));
     }
 
+    // ---- shown only over plain full-screen playback (BoardGate) -----------------------------------------------------
+
+    /** Whether the picture is full screen with nothing over it (the live screen says); null: always (previews). */
+    private java.util.function.BooleanSupplier plain;
+    /** Something covers the picture: everything of the board is away (at once) until it is clear again. */
+    private boolean covered;
+    /** A moment's pop-up held back while covered: shown once the picture is clear, if still fresh. */
+    private BoardGate.Held held;
+    /** When each alert waiting to slide out was queued, and when the board was last covered. */
+    private final java.util.IdentityHashMap<BoardDrop.Drop, Long> queuedAt = new java.util.IdentityHashMap<>();
+
+    /** The live screen's test for plain full-screen playback with nothing over the picture. */
+    void showOnlyWhen(java.util.function.BooleanSupplier s) {
+        plain = s;
+    }
+
+    /** The live screen's panels came or went (or a number, or a question): away at once, or back. */
+    void coverChanged() {
+        if (started) update();
+    }
+
+    private boolean clear() {
+        return plain == null || plain.getAsBoolean();
+    }
+
+    /**
+     * When the live screen last went (another screen over it); back after longer than a moment stays fresh, the board
+     * catches up (the first reading and summary since) without popping up what happened meanwhile.
+     */
+    private long stoppedAt;
+    private boolean catchingUp, summaryCatchUp, readSinceStart;
+
+    /** Still catching up after coming back: a goal, a kick-off or an event seen now is not popped up. */
+    private boolean staleSinceStop(long now) {
+        return catchingUp;
+    }
+
+    /**
+     * Covered now: everything away at once (the layer hidden, a moment's pop-up let go, the menu closed, a move kept).
+     * Clear again: shown, alerts gone stale meanwhile let go, and a pop-up held back shown if it is still fresh.
+     */
+    private boolean gate(long now) {
+        boolean clear = clear();
+        if (!clear && !covered) {
+            covered = true;
+            setVisibility(INVISIBLE);
+            menu.close();
+            endMove(true);
+            if (popup != null) {
+                BroadcastView v = popup;
+                popup = null;
+                popupKind = "";
+                v.stop();
+                removeView(v);
+            }
+        } else if (clear && covered) {
+            covered = false;
+            setVisibility(VISIBLE);
+            for (Iterator<BoardDrop.Drop> it = drops.iterator(); it.hasNext(); ) {
+                BoardDrop.Drop d = it.next();
+                if (BoardGate.stale(queuedAt.get(d), now)) {
+                    it.remove();
+                    queuedAt.remove(d);
+                }
+            }
+        }
+        if (clear && held != null && game != null && !popupShowing()) {
+            BoardGate.Held p = held;
+            held = null;
+            if (BoardGate.fresh(p.kind, p.at, now)) popup(p.kind, p.score, p.scorer, p.minute);
+        }
+        return clear;
+    }
+
     // ---- on and off ----------------------------------------------------------------------------------------------------
 
     /** The live screen is up: the board looks after the channel playing. */
     void start() {
         if (started) return;
         started = true;
+        // Back after longer than a moment stays fresh: what changed meanwhile is caught up with, not popped up.
+        boolean longAway = stoppedAt > 0 && System.currentTimeMillis() - stoppedAt > BoardGate.MOMENT_MS;
+        catchingUp = longAway;
+        summaryCatchUp = longAway;
+        readSinceStart = false;
         tv.live.addListener(this);
         bug.style(BoardPrefs.style(getContext()));
         Sfx.warm(getContext(), Sfx.SWISH, Sfx.SCORE, "goal-" + BoardPrefs.goalSound(getContext()));
@@ -177,6 +263,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
     /** The live screen gone: everything away at once. */
     void stop() {
         started = false;
+        stoppedAt = System.currentTimeMillis();
         tv.live.removeListener(this);
         h.removeCallbacksAndMessages(null);
         if (popup != null) popup.stop();
@@ -184,6 +271,9 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         card.away();
         endMove(false);
         hideAll();
+        // Covered by whatever came over the live screen: shown again once it is back and the picture is clear.
+        covered = true;
+        setVisibility(INVISIBLE);
     }
 
     @Override public void liveChanged() {
@@ -211,6 +301,8 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         if (game != null && !polling && now >= nextPoll) poll();
         if (game != null && !summarising && now >= nextSummary && (game.state != Game.PRE || game.kickoff - now < 3_600_000L)) summary();
         show(now, playing);
+        // Caught up once a reading taken since coming back has been shown (what it brought was not popped up).
+        if (catchingUp && readSinceStart) catchingUp = false;
     }
 
     private void channelChanged(Channel c, long now) {
@@ -291,6 +383,8 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         varKeys.clear();
         pending.clear();
         drops.clear();
+        queuedAt.clear();
+        held = null;
         espnHome = new ArrayList<>();
         espnAway = new ArrayList<>();
         restartUntil = 0;
@@ -349,6 +443,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         BoardClock.add(readings, r);
         SportsData.note(g, seen);
         game = g;
+        readSinceStart = true;
     }
 
     private void summary() {
@@ -379,8 +474,10 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         if (!s.awayLineup.isEmpty()) espnAway = new ArrayList<>(s.awayLineup);
         homeShape = s.homeFormation == null ? "" : s.homeFormation;
         awayShape = s.awayFormation == null ? "" : s.awayFormation;
-        boolean first = firstSummary;
+        // The first summary after a long time away is caught up with too (its events not said again).
+        boolean first = firstSummary || summaryCatchUp;
         firstSummary = false;
+        summaryCatchUp = false;
         List<String[]> subs = new ArrayList<>();
         for (String[] e : s.events) {
             if (e == null || e.length < 6 || !eventKeys.add(e[4])) continue;
@@ -597,6 +694,8 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
     private void show(long now, boolean playing) {
         Context c = getContext();
         Game g = game;
+        // Only over plain full-screen playback: covered, all of it away at once (BoardGate); the game is still followed.
+        boolean clear = gate(now);
         if (g == null || !playing || !BoardPrefs.on(c) && moving == 0) {
             if (moving == 0) {
                 boardUp(false);
@@ -638,7 +737,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         if (r != null && r.state != Game.PRE) {
             if (shownScore != null && !shownScore.equals(l.score)) {
                 int side = BoardClock.goalSide(shownScore, l.score);
-                if (side > 0) goalNow(side, l.score, r, now);
+                if (side > 0 && !staleSinceStop(now)) goalNow(side, l.score, r, now);
             }
             shownScore = l.score;
         }
@@ -650,8 +749,8 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         boolean want = moving == 1 || (phase == BoardClock.PRE || phase == BoardClock.UP) && !awayForPopup && !lineupsOn;
         if (awayForPopup) swishBack = true;
         layoutAll();
-        boardUp(want);
-        logoUp(moving == 2 || phase != BoardClock.AWAY && BoardPrefs.logoOn(c));
+        boardUp(want && clear);
+        logoUp(clear && (moving == 2 || phase != BoardClock.AWAY && BoardPrefs.logoOn(c)));
         logo.live = l.live;
         logo.invalidate();
         guard(now);
@@ -680,13 +779,15 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
                 : Moments.phase(false, r.state, r.halftime, was, BoardClock.periodOfDetail(r.detail));
         if (!ph.isEmpty()) phaseWas = ph;
         String kind = was == null || ph.isEmpty() ? null : Moments.moment(was, ph);
-        if (kind != null) {
+        // Seen only now after the live screen was away too long (BoardGate): not popped up stale.
+        boolean stale = staleSinceStop(now);
+        if (kind != null && !stale) {
             lastChange = now;
             int[] sc = "kickoff".equals(kind) || r == null ? null : new int[]{r.home, r.away};
             if (BoardPrefs.popupOn(c)) popup(kind, sc, null, null);
             else drop(momentDrop("kickoff".equals(kind) ? "KICK-OFF" : "SECOND HALF", sc == null ? null : score));
         }
-        if (was != null && !was.equals(ph)) {
+        if (was != null && !was.equals(ph) && !stale) {
             if ("ht".equals(ph)) drop(momentDrop("HALF TIME", score));
             else if ("ft".equals(ph)) drop(momentDrop("FULL TIME", score));
         }
@@ -757,7 +858,8 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
                 }
                 restartUntil = go > 0 ? SystemClock.uptimeMillis() + 3_000L : 0;
                 if (go > 0) popup("restart", score, scorer, minute);
-                if (go < 0 || popup == null && !popupMaking) drop(goalDrop(side, scorer, minute));
+                // Held back while the picture is covered: the pop-up comes then (or not at all), not an alert as well.
+                if (go < 0 || popup == null && !popupMaking && held == null) drop(goalDrop(side, scorer, minute));
             }
         }, LivePlay.FIRST_MS);
     }
@@ -803,6 +905,11 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         if (g == null) return;
         String key = g.id + "|" + kind + (score == null ? "" : "|" + score[0] + "-" + score[1]);
         if (shown.contains(key) || popupShowing()) return;
+        if (!clear()) {
+            // Something covers the picture: held until it is clear (shown then while still fresh: BoardGate).
+            held = new BoardGate.Held(kind, score, scorer, minute, System.currentTimeMillis());
+            return;
+        }
         shown.add(key);
         popupMaking = true;
         BroadcastData.Match m = match(g);
@@ -826,7 +933,8 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
     /** The classic line-ups (FotMob's elevens), once, from seven minutes before kick-off on the picture; or now, asked. */
     void lineups(boolean asked) {
         Game g = game;
-        if (g == null) return;
+        // Not over a covered picture: asked for again each second while they are due.
+        if (g == null || !asked && !clear()) return;
         String key = g.id + "|lineups";
         long now = System.currentTimeMillis();
         if (!asked && (shown.contains(key) || now - lineupsTried < Moments.RETRY_MS)) return;
@@ -886,12 +994,13 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         if (!d.lineups && !BoardPrefs.dropsOn(getContext())) return;
         // A goal is said once.
         if (d.key != null && !shown.add("drop|" + d.key)) return;
+        queuedAt.put(d, System.currentTimeMillis());
         if ("VAR".equals(d.chip)) {
             drops.addFirst(d);
-            while (drops.size() > 4) drops.removeLast();
+            while (drops.size() > 4) queuedAt.remove(drops.removeLast());
         } else {
             drops.addLast(d);
-            while (drops.size() > 4) drops.removeFirst();
+            while (drops.size() > 4) queuedAt.remove(drops.removeFirst());
         }
         if (!dropping) nextDrop();
     }
@@ -925,6 +1034,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             dropping = false;
             return;
         }
+        queuedAt.remove(d);
         LayoutParams b = (LayoutParams) bug.getLayoutParams();
         int bh = b.height;
         drop.place(bug.stripLook(), boardH * TEXT, tuck, sideLeft, 0);
@@ -1144,7 +1254,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
 
     /** Whether the board has the remote now: its menu is up, or it is being moved. */
     boolean takesKeys() {
-        return moving != 0 || menu.open;
+        return !covered && (moving != 0 || menu.open);
     }
 
     /** OK held over the match: the scoreboard's menu (true), or nothing to set (false: the live screen's own). */
@@ -1155,6 +1265,8 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
     }
 
     boolean ok() {
+        // Covered (a panel over the picture): the remote is the live screen's.
+        if (covered) return false;
         if (moving != 0) {
             endMove(true);
             return true;
@@ -1171,6 +1283,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
     }
 
     boolean key(int code) {
+        if (covered) return false;
         if (moving != 0) {
             switch (code) {
                 case KeyEvent.KEYCODE_DPAD_LEFT: moveBy(-1, 0); return true;
@@ -1184,6 +1297,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
     }
 
     boolean back() {
+        if (covered) return false;
         if (moving != 0) {
             endMove(true);
             return true;
@@ -1240,7 +1354,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             cv.drawRoundRect(r, round, round, ground);
             float tagH = live ? hh * 0.26f : 0f;
             Channel c = ch;
-            String url = c == null ? null : c.logo;
+            String url = c == null ? null : LogoPack.url(c);
             int bw = Math.max(1, Math.round(w - 4 * e - w * 0.16f)), bh = Math.max(1, Math.round(hh - 4 * e - tagH - hh * 0.12f));
             Bitmap b = Pics.get(url, bw, bh, Pics.FIT, this::invalidate);
             float midY = (hh - tagH) / 2f;
@@ -1249,7 +1363,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             } else if (c != null) {
                 name.setColor(look.ink);
                 name.setTextSize(Math.min(hh * 0.3f, w * 0.16f));
-                String n = TextFit.fit(c.name, name, w - 4 * e);
+                String n = TextFit.fit(ChannelEdits.name(c), name, w - 4 * e);
                 cv.drawText(n, (w - name.measureText(n)) / 2f, midY + name.getTextSize() * 0.35f, name);
             }
             if (live) {

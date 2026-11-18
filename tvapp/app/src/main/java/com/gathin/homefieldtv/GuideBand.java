@@ -16,6 +16,7 @@ import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.engine.Reminders;
+import com.gathin.homefieldtv.prefs.ChannelEdits;
 
 /**
  * The top of the TV guide, as the family's TiviMate draws it (DEVICE.md §2.7): the preview at the top left, 640 x 360
@@ -126,7 +127,7 @@ final class GuideBand extends View {
         RoundButton.glyph(c, favourite ? Dark.STAR : Dark.STAR_LINE, Ui.f(STAR_X), Ui.f(STAR_Y), Ui.f(36f),
                 favourite ? Palette.ACCENT : Palette.TEXT2);
         titleP.setColor(Palette.TEXT1);
-        titles.line(c, i >= 0 ? s.title[i] : ch.name, Ui.f(TEXT_X), Ui.f(TITLE_Y), Ui.f(STAR_X - 40f - TEXT_X));
+        titles.line(c, i >= 0 ? s.title[i] : ChannelEdits.name(ch), Ui.f(TEXT_X), Ui.f(TITLE_Y), Ui.f(STAR_X - 40f - TEXT_X));
 
         // The times, how far through and what's left (on now), or Homefield's marks; the playlist and group at the right.
         metaP.setColor(Palette.TEXT2);
