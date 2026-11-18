@@ -133,9 +133,14 @@ final class SportsScreen extends Screen {
         if (hub != null) hub.invalidate();
     }
 
+    /** Its page draws an opaque ground over the whole screen (the window's own isn't drawn under it). */
+    @Override boolean opaque() {
+        return true;
+    }
+
     @Override View build() {
         FrameLayout f = new FrameLayout(tv);
-        f.setBackgroundColor(Look07.GROUND);
+        // No background of its own: its page draws its opaque ground first (a full screen of fill saved each frame).
         hub = new Hub();
         f.addView(hub, new FrameLayout.LayoutParams(-1, -1));
         return f;

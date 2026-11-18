@@ -84,7 +84,9 @@ public final class TvActivity extends Activity {
         boolean fresh = state == null && reopenSettings < 0;
         // The theme's colours before any screen is made, its dark ground behind them all.
         Theme.apply(this);
-        getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Dark.GROUND));
+        // Settings → Appearance → Animations: Full or Lite (Automatic: Lite on a slower TV), before any screen draws.
+        Motion.load(this);
+        getWindow().setBackgroundDrawable(windowGround = new WindowGround(Dark.GROUND));
         Dark.init(this);
         PosterArt.init(this);
         Pics.init(this);
@@ -104,6 +106,8 @@ public final class TvActivity extends Activity {
         root.addView(video, full());
         root.addView(over, full());
         setContentView(root);
+        // Each screen's frame times, for the memory log and for Automatic's Lite (FrameStats).
+        FrameStats.start(this);
         live = new LiveTv(this, video);
         live.addListener(awake);
         Library lib = Library.get(this);
@@ -288,6 +292,7 @@ public final class TvActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        FrameStats.stop(this);
         Library.get(this).removeListener(channels);
         Catalog.get(this).removeListener(catalog);
         Updates.removeListener(updates);
@@ -332,6 +337,7 @@ public final class TvActivity extends Activity {
         View v = s.view();
         (s.overVideo() ? over : screens).addView(v, full());
         if (tabs != null) tabs.pushed(s);
+        FrameStats.on(s);
         if (s.overlay()) {
             v.animate().cancel();
             v.setAlpha(1f);
@@ -340,6 +346,7 @@ public final class TvActivity extends Activity {
         } else {
             crossFade(v, was == null ? null : was.view(), false);
         }
+        covered();
         if (resumed) s.shown();
     }
 
@@ -356,6 +363,7 @@ public final class TvActivity extends Activity {
         if (resumed) s.hidden();
         Screen t = top();
         if (tabs != null) tabs.follow(t);
+        FrameStats.on(t);
         View under = t.view();
         under.animate().cancel();
         under.setAlpha(1f);
@@ -366,6 +374,7 @@ public final class TvActivity extends Activity {
             detach(gone);
         } else if (s.overlay() && s.closing(() -> detach(gone))) {
             // The overlay goes its own way (its panel sliding out), then is taken away.
+            covered();
             if (resumed) t.shown();
             return;
         } else {
@@ -373,8 +382,10 @@ public final class TvActivity extends Activity {
                     .withEndAction(() -> {
                         detach(gone);
                         gone.setAlpha(1f);
+                        covered();
                     }).start();
         }
+        covered();
         if (resumed) t.shown();
     }
 
@@ -392,7 +403,9 @@ public final class TvActivity extends Activity {
         stack.add(s);
         (s.overVideo() ? over : screens).addView(s.view(), full());
         if (tabs != null) tabs.pushed(s);
+        FrameStats.on(s);
         crossFade(s.view(), showing, !homeShowing);
+        covered();
         if (resumed) s.shown();
     }
 
@@ -419,13 +432,71 @@ public final class TvActivity extends Activity {
             return;
         }
         in.setAlpha(0f);
-        in.animate().alpha(1f).setStartDelay(0).setDuration(PAGE_MS).setInterpolator(Fade.EASE).withLayer().start();
         out.animate().cancel();
-        out.animate().alpha(0f).setStartDelay(0).setDuration(PAGE_MS).setInterpolator(Fade.EASE).withLayer().withEndAction(() -> {
+        Runnable done = () -> {
             out.setAlpha(1f);
             if (gone) detach(out);
             else out.setVisibility(View.GONE);
-        }).start();
+            covered();
+        };
+        if (above(in, out)) {
+            // The new page fades in over the one it leaves, which stays whole under it until then: the same cross-fade
+            // (in at k over out), with one page drawn through a layer, not two.
+            out.setAlpha(1f);
+            in.animate().alpha(1f).setStartDelay(0).setDuration(PAGE_MS).setInterpolator(Fade.EASE).withLayer().withEndAction(done).start();
+        } else {
+            in.animate().alpha(1f).setStartDelay(0).setDuration(PAGE_MS).setInterpolator(Fade.EASE).withLayer().start();
+            out.animate().alpha(0f).setStartDelay(0).setDuration(PAGE_MS).setInterpolator(Fade.EASE).withLayer().withEndAction(done).start();
+        }
+    }
+
+    /** Whether a is drawn over b (the layers: the screens, the live picture, what goes over it; then their order). */
+    private boolean above(View a, View b) {
+        int la = layerOf(a), lb = layerOf(b);
+        if (la != lb) return la > lb;
+        ViewGroup p = (ViewGroup) a.getParent();
+        return p != null && p == b.getParent() && p.indexOfChild(a) > p.indexOfChild(b);
+    }
+
+    private int layerOf(View v) {
+        Object p = v.getParent();
+        return p == over ? 2 : p == video ? 1 : 0;
+    }
+
+    // ---- the window's own ground --------------------------------------------------------------------------------
+
+    /**
+     * The window's ground, drawn only where no page covers the screen: under a page that draws its own opaque ground
+     * (Screen.opaque) it would be a full screen of fill wasted on every frame. Still there (as before) whenever a page
+     * fades or nothing opaque is up (the live picture over a hidden Home).
+     */
+    private static final class WindowGround extends android.graphics.drawable.ColorDrawable {
+        boolean covered;
+
+        WindowGround(int colour) {
+            super(colour);
+        }
+
+        @Override public void draw(android.graphics.Canvas c) {
+            if (!covered) super.draw(c);
+        }
+    }
+
+    private WindowGround windowGround;
+
+    /** Whether an opaque page is whole on screen now (in the screens' layer, shown, not fading): then no window ground. */
+    private void covered() {
+        if (windowGround == null) return;
+        boolean c = false;
+        for (Screen s : stack) {
+            if (s.overlay() || s.overVideo() || !s.opaque() || !s.built()) continue;
+            View v = s.view();
+            if (v.getParent() == screens && v.getVisibility() == View.VISIBLE && v.getAlpha() >= 0.999f) c = true;
+        }
+        if (c != windowGround.covered) {
+            windowGround.covered = c;
+            windowGround.invalidateSelf();
+        }
     }
 
     private static void detach(View v) {

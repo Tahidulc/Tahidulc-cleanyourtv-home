@@ -675,33 +675,16 @@ final class TitlePage extends View {
 
         int w = getWidth(), h = getHeight();
         float risen = Ui.f(page.value());
-        // The page's colour, its picture across the right fading into it, its shade and its glow.
-        ground.setColor(wash.colour());
-        c.drawRect(0, 0, w, h, ground);
-        Bitmap b = backdrop.isEmpty() ? null : Pics.get(backdrop, 1280, 720, Pics.CROP, redraw);
-        if (b != null) {
-            float lower = lowerPage() ? Math.min(1f, page.value() / LOWER) : 0f;
-            art.setAlpha(Math.round(255 * (1f - 0.65f * lower)));
-            float ax = Ui.f(ART_X), aw = Ui.f(ART_W), ah = Ui.f(ART_H);
-            float s = Math.max(aw / b.getWidth(), ah / b.getHeight());
-            m.setScale(s, s);
-            m.postTranslate(ax + (aw - b.getWidth() * s) / 2f, (ah - b.getHeight() * s) * 0.3f);
-            c.save();
-            c.clipRect(ax, 0, ax + aw, ah);
-            c.drawBitmap(b, m, art);
-            c.restore();
-            wash.draw(c);
-        }
-        c.drawRect(0, 0, w, h, darkLeft);
-        c.drawRect(0, 0, w, h, darkFoot);
-        float k = wash.fading();
-        if (glowWasColour != 0 && k < 1f) {
-            glowWas.setAlpha(Math.round(255 * (1f - k)));
-            c.drawRect(0, 0, w, h, glowWas);
-        }
-        glowNow.setAlpha(glowWasColour != 0 ? Math.round(255 * k) : 255);
-        c.drawRect(0, 0, w, h, glowNow);
-        if (k >= 1f) glowWasColour = 0;
+        // The page's colour, its picture across the right fading into it, its shade and its glow: five screens of fill
+        // that don't move as the rows do, kept as one picture (Cached) and drawn again only when they change.
+        groundPic = backdrop.isEmpty() ? null : Pics.get(backdrop, 1280, 720, Pics.CROP, redraw);
+        float lower = groundPic != null && lowerPage() ? Math.min(1f, page.value() / LOWER) : 0f;
+        groundArt = Math.round(255 * (1f - 0.65f * lower));
+        groundFade = wash.fading();
+        long key = Cached.key(Cached.key(wash.colour(), groundArt), Cached.key(Math.round(groundFade * 255f), glowWasColour)
+                + Cached.key(glowColour, Math.round(Ui.s * 1000f)));
+        still.draw(c, w, h, groundPic, key, paintGround, 1f, 0f);
+        if (groundFade >= 1f) glowWasColour = 0;
 
         c.save();
         c.translate(0, -risen);
@@ -723,6 +706,49 @@ final class TitlePage extends View {
         }
         c.restore();
         if (moving) postInvalidateOnAnimation();
+    }
+
+    private final Cached still = new Cached(true);
+    private final Cached.Painter paintGround = this::paintGround;
+    /** What the kept ground was drawn with: the picture, its opacity (lower on the page's lower part), the glow's fade. */
+    private Bitmap groundPic;
+    private int groundArt = 255;
+    private float groundFade = 1f;
+
+    /** The page's ground: its colour, the picture across the right fading into it, its shade and its glow. */
+    private void paintGround(Canvas c) {
+        int w = getWidth(), h = getHeight();
+        ground.setColor(wash.colour());
+        c.drawRect(0, 0, w, h, ground);
+        Bitmap b = groundPic;
+        if (b != null) {
+            art.setAlpha(groundArt);
+            float ax = Ui.f(ART_X), aw = Ui.f(ART_W), ah = Ui.f(ART_H);
+            float s = Math.max(aw / b.getWidth(), ah / b.getHeight());
+            m.setScale(s, s);
+            m.postTranslate(ax + (aw - b.getWidth() * s) / 2f, (ah - b.getHeight() * s) * 0.3f);
+            c.save();
+            c.clipRect(ax, 0, ax + aw, ah);
+            c.drawBitmap(b, m, art);
+            c.restore();
+            wash.draw(c);
+        }
+        // The shades only where they shade (the left's clear from 75 % across, the foot's above 55 % down).
+        c.drawRect(0, 0, w * 0.75f, h, darkLeft);
+        c.drawRect(0, h * 0.55f, w, h, darkFoot);
+        // The glow only where it glows (1000 x 520 at the foot, 12 % across, clear by 70 %).
+        float k = groundFade, gr = Ui.f(940f), gt = h - Ui.f(372f);
+        if (glowWasColour != 0 && k < 1f) {
+            glowWas.setAlpha(Math.round(255 * (1f - k)));
+            c.drawRect(0, gt, gr, h, glowWas);
+        }
+        glowNow.setAlpha(glowWasColour != 0 ? Math.round(255 * k) : 255);
+        c.drawRect(0, gt, gr, h, glowNow);
+    }
+
+    @Override protected void onDetachedFromWindow() {
+        super.onDetachedFromWindow();
+        still.forget();
     }
 
     private void drawTop(Canvas c, int a) {

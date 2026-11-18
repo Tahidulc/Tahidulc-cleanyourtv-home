@@ -76,6 +76,11 @@ final class PlayerScreen extends Screen {
         if (page != null) page.forget(p);
     }
 
+    /** Its page draws an opaque ground over the whole screen (the window's own isn't drawn under it). */
+    @Override boolean opaque() {
+        return true;
+    }
+
     @Override View build() {
         FrameLayout f = new FrameLayout(tv);
         page = new Page();
@@ -296,12 +301,26 @@ final class PlayerScreen extends Screen {
             return b.toString();
         }
 
-        @Override protected void onDraw(Canvas c) {
-            boolean moving = pos.step();
+        /** The ground, its grain and its vignette: three screens of fill that don't move, kept as one picture (Cached). */
+        private final Cached still = new Cached(true);
+        private final Cached.Painter paintStill = this::paintStill;
+
+        private void paintStill(Canvas c) {
             int w = getWidth(), h = getHeight();
             c.drawRect(0, 0, w, h, ground);
             c.drawRect(0, 0, w, h, grain);
             c.drawRect(0, 0, w, h, vignette);
+        }
+
+        @Override protected void onDetachedFromWindow() {
+            super.onDetachedFromWindow();
+            still.forget();
+        }
+
+        @Override protected void onDraw(Canvas c) {
+            boolean moving = pos.step();
+            int w = getWidth(), h = getHeight();
+            still.draw(c, w, h, ground.getShader(), Math.round(Ui.s * 1000f), paintStill, 1f, 0f);
             float p = pos.value();
             int a = Math.max(0, Math.min(list.size() - 1, (int) Math.floor(p))), b = Math.min(list.size() - 1, a + 1);
             if (art != null) {

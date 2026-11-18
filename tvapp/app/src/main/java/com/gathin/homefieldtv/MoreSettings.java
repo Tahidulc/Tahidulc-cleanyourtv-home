@@ -24,6 +24,7 @@ import java.util.Locale;
  * <pre>
  *   general              Auto start app on boot · Start on · Back up data · Restore data › · Sync › · Remove everything
  *   appearance           TV guide › · Player › · Groups › · Logos › · Font size · Color theme › · Posters · Programme times
+ *                        · Animations (Automatic, Full or Lite: Motion)
  *                        (TV guide, Groups and Logos are EditSettings' pages)
  *   appearance.player    Clock · Panels timeout, sec · Live TV's channel tiles
  *   playback             Buffer size · Decoder · Auto frame rate (AFR) · Audio passthrough · Tunneled playback; Picture;
@@ -102,7 +103,7 @@ final class MoreSettings implements SettingsScreen.Pages {
     static String pageOf(String key) {
         switch (key) {
             case "start": return "general";
-            case "text": case "posters": case "times": return "appearance";
+            case "text": case "posters": case "times": case "motion": return "appearance";
             case "rows": case "csort": case "editor": case "gstyle": return "appearance.guide";
             case "clock": case "banner": case "tiles": return "appearance.player";
             case "logos": case "lpriority": return "appearance.logos";
@@ -190,6 +191,13 @@ final class MoreSettings implements SettingsScreen.Pages {
         out.add(page("theme", "Color theme", Theme.name()));
         out.add(pick("posters", "Posters", POSTER_NAMES[PosterArt.landscape ? 1 : 0]));
         out.add(pick("times", "Programme times", Look.TIMES_NAMES[Look.times24 ? 0 : 1]));
+        out.add(pick("motion", "Animations", motionWords()));
+    }
+
+    /** Animations' value: the choice, and for Automatic the tier it chose ("Automatic (Lite)"). */
+    static String motionWords() {
+        String n = Motion.NAMES[Motion.choice()];
+        return Motion.choice() == Motion.AUTO ? n + " (" + (Motion.lite() ? "Lite" : "Full") + ")" : n;
     }
 
     /** Playback: the other app's lines first, then Homefield's picture, sound, subtitles and stream settings. */
@@ -446,6 +454,9 @@ final class MoreSettings implements SettingsScreen.Pages {
                             + "the grids and More like this.");
             case "times": return new SettingsScreen.Picker("Programme times", Look.TIMES_NAMES, Look.times24 ? 0 : 1,
                     Look.TIMES_ABOUT[0] + ", or " + Look.TIMES_ABOUT[1]);
+            case "motion": return new SettingsScreen.Picker("Animations", Motion.NAMES, Motion.choice(),
+                    "Lite keeps the cards lifting and the pictures fading, without the cards' tilt and shine or the pictures "
+                            + "changing behind while you move: smoother on a slower TV. On this TV Automatic is " + Motion.autoWords() + ".");
             case "rows": return new SettingsScreen.Picker("Rows in the guide", Look.ROWS_NAMES, Look.rows, null);
             case "clock": return new SettingsScreen.Picker("Clock", Look.CLOCK_NAMES, Look.clock, "The time in the screens' corners.");
             case "banner": return new SettingsScreen.Picker("Panels timeout, sec", TIMEOUT_NAMES, bannerIndex(),
@@ -529,6 +540,7 @@ final class MoreSettings implements SettingsScreen.Pages {
                 }
                 break;
             case "times": Look.setTimes24(tv, i == 0); break;
+            case "motion": Motion.set(tv, i); break;
             case "rows": Look.setRows(tv, i); break;
             case "clock": Look.setClock(tv, i); break;
             case "banner": PlayerPrefs.setBannerSeconds(tv, PlayerPrefs.BANNER_SECONDS[i]); break;

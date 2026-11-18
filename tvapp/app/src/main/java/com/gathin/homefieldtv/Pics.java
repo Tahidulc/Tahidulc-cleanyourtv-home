@@ -427,7 +427,7 @@ final class Pics {
             BitmapFactory.decodeStream(s, null, o);
         }
         if (o.outWidth <= 0 || o.outHeight <= 0) return null;
-        if (mode == BLUR) return blurred(in, o, w, h);
+        if (mode == BLUR) return blurred(in, url, o, w, h);
         int sample = 1;
         boolean fit = mode == FIT || mode == TILE || mode == READY || mode == LOGO_ART || mode == LOGO || mode == TINT;
         if (!fit) {
@@ -739,7 +739,7 @@ final class Pics {
      * BLUR: the picture read at an eighth of w x h, filling it (its middle kept), stack-blurred once and its colour pushed
      * (Look07: blur 50, saturate 1.75, brightness 0.86); drawn at w x h it is the 07 page's blurred picture.
      */
-    private static Bitmap blurred(Source in, BitmapFactory.Options o, int w, int h) throws IOException {
+    private static Bitmap blurred(Source in, String url, BitmapFactory.Options o, int w, int h) throws IOException {
         int bw = Math.max(2, Math.round(w / (float) Look07.BLUR_DOWNSCALE)), bh = Math.max(2, Math.round(h / (float) Look07.BLUR_DOWNSCALE));
         int sample = 1;
         while (o.outWidth / (sample * 2) >= bw && o.outHeight / (sample * 2) >= bh) sample *= 2;
@@ -765,7 +765,33 @@ final class Pics {
         StackBlur.blur(px, bw, bh, Math.max(1, Math.round(sigma * 2.45f)));
         StackBlur.colour(px, Look07.BLUR_SATURATE, Look07.BLUR_BRIGHTNESS);
         out.setPixels(px, 0, bw, 0, 0, bw, bh);
+        TINTS.put(url, average(px));
         return out;
+    }
+
+    /** Each page picture's own colour (the average of its blurred copy), by its address, for Ground's Lite tint. */
+    private static final java.util.Map<String, Integer> TINTS = java.util.Collections.synchronizedMap(new java.util.LinkedHashMap<String, Integer>(64, 0.75f, true) {
+        @Override protected boolean removeEldestEntry(java.util.Map.Entry<String, Integer> e) {
+            return size() > 800;
+        }
+    });
+
+    /** A page picture's own colour once its blurred copy has been made (Ground, Lite), or 0 before. */
+    static int tintOf(String url) {
+        Integer c = url == null || url.isEmpty() ? null : TINTS.get(url);
+        return c == null ? 0 : c;
+    }
+
+    /** Pure: the average colour of some pixels (opaque). */
+    static int average(int[] px) {
+        long r = 0, g = 0, b = 0;
+        for (int c : px) {
+            r += (c >> 16) & 0xFF;
+            g += (c >> 8) & 0xFF;
+            b += c & 0xFF;
+        }
+        int n = Math.max(1, px.length);
+        return 0xFF000000 | (int) (r / n) << 16 | (int) (g / n) << 8 | (int) (b / n);
     }
 
     /** Pure: a logo's own colour, the average of its solid, coloured pixels (a grey for a white or black logo). */

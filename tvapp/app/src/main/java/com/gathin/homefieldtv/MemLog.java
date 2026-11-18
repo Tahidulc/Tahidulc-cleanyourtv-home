@@ -29,6 +29,15 @@ import java.util.Locale;
  *   blocking=0 channels=50000 guide=2000ch/96000p/5904kc catalog=40000 buffer=3.2s screen=GuideScreen
  * </pre>
  *
+ * Then, for each minute the app drew anything, a second line: each screen's frame times (FrameStats), the tier in use
+ * (Motion: auto-lite, auto-full, lite, full) and, per screen, the frames drawn, their median and 95th percentile (ms),
+ * the share over 20 ms and the graphics chip's 95th percentile:
+ *
+ * <pre>
+ *   2026-11-18 20:31 frames motion=auto-lite Home n=812 p50=11.2 p95=19.8 over20=3.1% gpu95=9.0 | Guide n=140 p50=13.0
+ *   p95=22.4 over20=7.9% gpu95=12.1
+ * </pre>
+ *
  * heap: the Java heap in use, its size now and its most; native: the native heap in use (bitmaps' pixels among it); rss:
  * what the process holds in RAM (VmRSS); pics: the picture cache's bytes and its budget, the pictures found in it and
  * read since the start; gc: collections and their time since the start (blocking: those that held up a thread);
@@ -38,8 +47,8 @@ import java.util.Locale;
 final class MemLog {
     private MemLog() {}
 
-    /** A day of lines, one a minute. */
-    static final int KEEP = 24 * 60;
+    /** A day of lines: one a minute, and a frames line for each minute the app drew. */
+    static final int KEEP = 2 * 24 * 60;
     private static final String NAME = "memlog.txt";
 
     /** The line for now: the main thread's part (the player, the screen) given, the rest read here. */
@@ -49,9 +58,12 @@ final class MemLog {
         int channels = lib.count();
         int catalog = Catalog.get(app).films().size() + Catalog.get(app).series().size();
         long now = System.currentTimeMillis();
+        String frames = FrameStats.line();
         Exec.io(() -> {
             try {
-                append(file(app), line(now, lib, channels, catalog, bufferedMs, screen));
+                File f = file(app);
+                append(f, line(now, lib, channels, catalog, bufferedMs, screen));
+                if (frames != null) append(f, String.format(Locale.ROOT, "%1$tF %1$tR ", now) + frames);
             } catch (IOException | RuntimeException ignored) {
                 // no log this minute
             }
