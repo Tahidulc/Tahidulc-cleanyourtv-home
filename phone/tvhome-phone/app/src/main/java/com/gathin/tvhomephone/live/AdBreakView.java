@@ -335,7 +335,8 @@ final class AdBreakView extends FrameLayout {
     /** The line over the cards as it is now (the tick's, each second). */
     private void line() {
         if (k == null || tagView == null) return;
-        Game g = k.game;
+        // The game as the picture shows it (the board's, in step with the channel), never ahead of it.
+        Game g = k.game == null ? null : ScreenTime.game(k.game, System.currentTimeMillis());
         int phase = k.general ? AdBreak.NO_GAME : AdBreak.phase(g);
         tagView.setText(AdBreak.tag(phase));
         if (g == null) {
@@ -373,7 +374,8 @@ final class AdBreakView extends FrameLayout {
                     }
                     Game f = fresh;
                     App.main.post(() -> {
-                        if (!ending && f != null && k.game == g) k.game = f;
+                        // As the picture shows it: the end of half time on the picture is the second half in the real game.
+                        if (!ending && f != null && k.game == g) k.game = ScreenTime.game(f, System.currentTimeMillis());
                     });
                 });
             }
@@ -533,7 +535,7 @@ final class AdBreakView extends FrameLayout {
         boolean full = g.state == Game.POST;
         if ((full || AdBreak.atHalfTime(g)) && (!k.firstHalf.isEmpty() || !g.goals.isEmpty())) {
             match.add(new Widget(compMark(), full ? "FULL\nTIME" : "FIRST\nHALF", c -> {
-                Game now = k.game != null ? k.game : g;
+                Game now = ScreenTime.game(k.game != null ? k.game : g, System.currentTimeMillis());
                 String hs = AdBreak.scorers(now, "home"), as = AdBreak.scorers(now, "away");
                 List<View> out = new ArrayList<>();
                 if (!k.firstHalf.isEmpty()) {

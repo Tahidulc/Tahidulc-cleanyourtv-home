@@ -2090,6 +2090,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
             AdBreakData.Content k = g != null ? AdBreakData.load(app, g) : AdBreakData.general(app, title);
             App.main.post(() -> {
                 if (adBreak != view) return;
+                // The game as the picture shows it (the board's, in step), never as the scores have it now.
+                if (k.game != null) k.game = ScreenTime.game(k.game, System.currentTimeMillis());
                 // Nothing real to show (nothing could be read): away again, and not tried again until the next break.
                 if (!AdBreakView.worth(k)) {
                     adBreakHidden = true;

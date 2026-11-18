@@ -6,6 +6,7 @@ import org.json.JSONObject;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -246,22 +247,82 @@ public final class MatchStats {
             if (s == null) continue;
             String id = s.optString("id", "");
             if (id.isEmpty() || shown != null && shown.contains(id)) continue;
-            String type = s.optString("eventType"), who = lastName(s);
-            String[] said = null;
-            if ("AttemptSaved".equals(type) && s.optBoolean("isOnTarget") && !s.optBoolean("isBlocked")
-                    && s.optDouble("expectedGoalsOnTarget", 0) >= 0.45) {
-                said = new String[]{"Big save", String.format(Locale.UK, "%.2f xGOT from %s's shot", s.optDouble("expectedGoalsOnTarget", 0), who), "",
-                        ONE};
-            } else if ("Goal".equals(type) && !s.optBoolean("isOwnGoal") && !"Penalty".equalsIgnoreCase(s.optString("situation"))
-                    && s.has("expectedGoals") && s.optDouble("expectedGoals", 1) <= 0.08) {
-                said = new String[]{"Great finish", String.format(Locale.UK, "%s scored a %.2f xG chance", who, s.optDouble("expectedGoals", 0)), "",
-                        ONE};
-            }
+            String[] said = shotSaid(s);
             if (said == null) continue;
             if (shown != null) shown.add(id);
             return said;
         }
         return null;
+    }
+
+    /**
+     * Pure (but for shown): as shotMoment, only once the picture has shown the shot (AsSeen): the board's clock a minute
+     * past the end of its minute (FotMob's min, minAdded and period), and for a goal the board showing it (its score has
+     * it). Without the channel's own clock (the board's is the scores' guess), it waits the longest a channel runs behind
+     * from when FotMob first had it (firstSeen, by the shot's id; now when not there), and a goal its board's score too. A
+     * shot not yet shown is left for later; one gone stale (AsSeen.stale) is dropped unsaid. homeTeamId is FotMob's.
+     */
+    public static String[] shotMoment(JSONArray shots, Set<String> shown, AsSeen.Picture picture, Map<String, Long> firstSeen,
+            int homeTeamId) {
+        if (shots == null || picture == null) return null;
+        for (int i = shots.length() - 1; i >= 0; i--) {
+            JSONObject s = shots.optJSONObject(i);
+            if (s == null) continue;
+            String id = s.optString("id", "");
+            if (id.isEmpty() || shown != null && shown.contains(id)) continue;
+            String[] said = shotSaid(s);
+            if (said == null) continue;
+            AsSeen.Stamp st = shotStamp(shots, i, firstSeen, homeTeamId, picture.now);
+            if (AsSeen.stale(picture, st)) {
+                if (shown != null) shown.add(id);
+                continue;
+            }
+            if (!AsSeen.due(picture, st)) continue;
+            if (shown != null) shown.add(id);
+            return said;
+        }
+        return null;
+    }
+
+    /** Pure: what a shot gives away: when FotMob first had it, its minute, and for a goal its side's goals with it. */
+    static AsSeen.Stamp shotStamp(JSONArray shots, int i, Map<String, Long> firstSeen, int homeTeamId, long now) {
+        JSONObject s = shots.optJSONObject(i);
+        String id = s == null ? "" : s.optString("id", "");
+        Long seen = firstSeen == null ? null : firstSeen.get(id);
+        int at = AsSeen.shotAt(s);
+        int[] goals = AsSeen.goalOnBoard(shots, i, homeTeamId);
+        return new AsSeen.Stamp(seen == null ? now : seen, AsSeen.PLAY, AsSeen.periodOf(at), at, goals == null ? -1 : goals[0],
+                goals == null ? -1 : goals[1]);
+    }
+
+    /** Pure: a shot's word ({"Big save", …} or {"Great finish", …}); null when it is worth none. */
+    private static String[] shotSaid(JSONObject s) {
+        String type = s.optString("eventType"), who = lastName(s);
+        if ("AttemptSaved".equals(type) && s.optBoolean("isOnTarget") && !s.optBoolean("isBlocked")
+                && s.optDouble("expectedGoalsOnTarget", 0) >= 0.45 && AsSeen.period(s.optString("period", "")) != 5) {
+            return new String[]{"Big save", String.format(Locale.UK, "%.2f xGOT from %s's shot", s.optDouble("expectedGoalsOnTarget", 0), who), "",
+                    ONE};
+        }
+        if ("Goal".equals(type) && !s.optBoolean("isOwnGoal") && !"Penalty".equalsIgnoreCase(s.optString("situation"))
+                && s.has("expectedGoals") && s.optDouble("expectedGoals", 1) <= 0.08 && AsSeen.period(s.optString("period", "")) != 5) {
+            return new String[]{"Great finish", String.format(Locale.UK, "%s scored a %.2f xG chance", who, s.optDouble("expectedGoals", 0)), "",
+                    ONE};
+        }
+        return null;
+    }
+
+    /**
+     * Pure: each shot FotMob has now that was not there before, kept with when it was first seen (now), so a moment can
+     * wait the channel's longest lag from then; the oldest let go past a few hundred.
+     */
+    public static void firstSeen(JSONArray shots, Map<String, Long> seen, long now) {
+        if (shots == null || seen == null) return;
+        for (int i = 0; i < shots.length(); i++) {
+            JSONObject s = shots.optJSONObject(i);
+            String id = s == null ? "" : s.optString("id", "");
+            if (!id.isEmpty() && !seen.containsKey(id)) seen.put(id, now);
+        }
+        if (seen.size() > 600) seen.clear();
     }
 
     private static String lastName(JSONObject s) {

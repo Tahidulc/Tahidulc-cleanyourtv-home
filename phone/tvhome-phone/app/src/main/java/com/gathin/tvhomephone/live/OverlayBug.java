@@ -1872,12 +1872,9 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         return th * 0.5f + com.gathin.broadcast.BoardFx.pensCols(pensHome.size(), pensAway.size()) * th * 0.46f;
     }
 
-    /** The shootout's tab's height at board height h: the added time's, or along a competition look's main row. */
+    /** The shootout's tab's height at board height h: the added time's (AddedTime.band, along a competition look's main row). */
     private float pensTabH(int h) {
-        CompBug.Kind k = kind();
-        if (k == null) return tabH(h);
-        float[] row = CompBug.bar(k, h);
-        return (row[1] - row[0]) * 0.8f;
+        return tabH(h);
     }
 
     /**
@@ -1888,9 +1885,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
     private void pensTab(Canvas cv, int bodyW, int full, int h) {
         float gap = h * 0.06f, th = pensTabH(h), tw = Math.min(pensTabW(h), full - bodyW - gap);
         if (tw <= 0 || th <= 0) return;
-        CompBug.Kind k = kind();
-        float[] row = k != null ? CompBug.bar(k, h) : null;
-        float x = bodyW + gap, y = row != null ? row[0] + (row[1] - row[0] - th) / 2f : tallTab() ? h - th : (h - th) / 2f;
+        float x = bodyW + gap, y = tabBand(h)[0];
         boolean own = (p.clock >>> 24) >= 0xC0;
         int ground = 0xFF000000 | ((own ? p.clock : p.ground) & 0xFFFFFF), ink = own ? p.clockInk : p.ink;
         fill.setShader(null);
@@ -1901,21 +1896,29 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         fx.pensDots(cv, x + th * 0.25f, y + th * 0.08f, x + tw - th * 0.25f, y + th * 0.92f, pensHome, pensAway, ink);
     }
 
-    /** The tab's room beside a board w wide in all, h high: none when its own part would be narrower than twice its height. */
+    /**
+     * The tab's room beside a board w wide in all, h high (AddedTime.outside, as every look and the TV's): none when its own
+     * part would be narrower than twice its height, unless the look cannot write the minutes inside (CompBug's).
+     */
     int tabIn(int w, int h) {
         int room = tabRoom(h);
-        return outside(w - room, room, h) ? room : 0;
+        return tabOutside(w - room, room, h) ? room : 0;
     }
 
-    /** The tab's room beside a board whose own part is own wide: none when that is too narrow for it. */
+    /** The tab's room beside a board whose own part is own wide: none when that is too narrow for it (as tabIn). */
     int tabFor(int own, int h) {
         int room = tabRoom(h);
-        return outside(own, room, h) ? room : 0;
+        return tabOutside(own, room, h) ? room : 0;
+    }
+
+    private boolean tabOutside(int own, int room, int h) {
+        return com.gathin.broadcast.AddedTime.outside(com.gathin.broadcast.AddedTime.drawsInside(kind()), own, room, h,
+                style == Style.CARD ? com.gathin.broadcast.AddedTime.LEAST_CARD : com.gathin.broadcast.AddedTime.LEAST);
     }
 
     /** Pure: the minutes added go beside the board (not inside, by the clock) when its own part is at least twice its height. */
     static boolean outside(int own, int room, int h) {
-        return room > 0 && own >= 2 * h;
+        return com.gathin.broadcast.AddedTime.outside(true, own, room, h, com.gathin.broadcast.AddedTime.LEAST);
     }
 
     /**
@@ -1935,13 +1938,16 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         return getWidth() - tabIn(getWidth(), getHeight());
     }
 
-    /** One-row looks have a tab 0.8 of the board's height, in its middle; the taller (Stacked, Card) half, on its foot. */
-    private boolean tallTab() {
-        return style == Style.STACKED || style == Style.CARD;
+    /**
+     * The tab's band, {top, height} (AddedTime.band, as every look and the TV's): a competition look's beside its main row,
+     * a tall look's (Stacked, Card, the 3D kits) half its height on its foot, else 0.8 of it in its middle.
+     */
+    float[] tabBand(int h) {
+        return com.gathin.broadcast.AddedTime.band(kind(), com.gathin.broadcast.AddedTime.tall(tall()), h);
     }
 
     private float tabH(int h) {
-        return h * (tallTab() ? 0.5f : 0.8f);
+        return tabBand(h)[1];
     }
 
     private float tabW(int h) {
@@ -2144,7 +2150,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
                 : android.os.SystemClock.uptimeMillis() - tabAt;
         // Out from behind the board, then still: no white flash as it lands.
         float f = Math.min(1f, since / (float) TAB_IN_MS), lit = 0f;
-        float x = bodyW + gap - (1f - ease(f)) * (tw + gap), y = tallTab() ? h - th : (h - th) / 2f;
+        float x = bodyW + gap - (1f - ease(f)) * (tw + gap), y = tabBand(h)[0];
         cv.save();
         // Behind the board until it has slid out.
         cv.clipRect(bodyW, 0, full, h);

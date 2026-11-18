@@ -227,6 +227,15 @@ final class BoardPanel extends SportPanel {
         logo.words = () -> "Whitebrook Road over the logo, top right";
         logo.ok = () -> BoardCover.setLogoOn(c, !BoardCover.logoOn(c));
         add(board, logo);
+        // The channel's own pop-ups (a scorer, a card, a sub, its added time growing out of its scoreboard): covered where
+        // they are in your board's look, or left to show (BugCover). The same switch as on the phone, and in the hold-OK menu.
+        Row popOuts = row(BoardCover.POP_UPS, true);
+        popOuts.on = () -> BugCover.popOutsOn(c);
+        popOuts.words = () -> !ScreenShots.available() ? "Needs the search helper on (Android 14): it watches the channel's own scoreboard"
+                : BugCover.popOutsOn(c) ? "Whatever comes out of the channel's scoreboard is covered where it is, in your board's look and letters"
+                : "Off · the channel's own pop-ups show round your board";
+        popOuts.ok = () -> BugCover.setPopOutsOn(c, !BugCover.popOutsOn(c));
+        add(popOuts);
         Row drops = row("Alerts from the scoreboard", true);
         drops.on = () -> BoardCover.dropsOn(c);
         drops.words = () -> BoardCover.dropsOn(c) ? "Goals, cards, line-ups slide out beside it" : "Off · the usual cards";
@@ -313,12 +322,7 @@ final class BoardPanel extends SportPanel {
                 : BugCover.replaysOn(c) ? "Your board goes as the channel's does for a replay, and comes back with it for live play"
                 : "Off · your board stays up through replays";
         replays.ok = () -> BugCover.setReplaysOn(c, !BugCover.replaysOn(c));
-        Row popOuts = row("Cover the channel's pop-outs", true);
-        popOuts.on = () -> BugCover.popOutsOn(c);
-        popOuts.words = () -> BugCover.popOutsOn(c) ? "Anything coming out of the channel's scoreboard is covered where it is, in your board's look and letters"
-                : "Off · the channel's strips and tabs show round your board";
-        popOuts.ok = () -> BugCover.setPopOutsOn(c, !BugCover.popOutsOn(c));
-        add(replays, popOuts);
+        add(replays);
         Row fot = row("FotMob's stats and pictures", true);
         fot.on = () -> BoardCover.fotmobOn(c);
         fot.words = () -> BoardCover.fotmobOn(c) ? "Expected goals, big chances, ratings, who is on top, players' pictures"
