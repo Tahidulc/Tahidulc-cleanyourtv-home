@@ -19,30 +19,36 @@ import com.gathin.homefieldtv.engine.Reminders;
 import com.gathin.homefieldtv.prefs.ChannelEdits;
 
 /**
- * The top of the TV guide, as the family's TiviMate draws it (DEVICE.md §2.7): the preview at the top left, 640 x 360
- * with rounded corners (the live picture goes over it; black while it tunes), and to its right the programme the
- * remote is on: its title (41 px, medium), a star at the right (filled in the accent for a favourite channel), then its
- * times ("10:00 — 11:00"), for one on now a bar of how far through it is and the minutes left ("16 min"), and the
- * playlist and the group at the right ("Home  •  UK | Sport"); under them what it is about, in grey, as many lines as
- * fit. Homefield's own on the times' line: the catch-up mark and its length for a programme the archive keeps, a bell
- * for one with a reminder, HD or 4K as the channel's name says, and the picture's frames a second ("50 FPS") for the
- * channel playing (or one seen before: FrameRates), as the player's chips. The channel number being typed shows at the
- * top right.
+ * The top of the TV guide in the 07 look (the approved stills 05c and 06c), under the tab bar: the preview at the left,
+ * 586 x 330 rounded 30 with its deep shadow (the live picture goes over it, its corners and its "playing" pill drawn over
+ * the picture by GuideScreen's frame; black while it tunes), and to its right, on a frosted panel of its own (Frost,
+ * 1130 x 330, rounded 34), the programme the remote is on:
  *
- * <p>As the family asked, the whole details panel has a background of its own: a card in the panel's colour (TiviMate's
- * info block, [692,24]–[1896,384], rounded as the preview) with the picture of the programme the remote is on across its
- * right-hand part (PanelArt: Sky's picture of it, else the channel's logo on its own tinted ground), faded into the
- * panel's colour from the left and from the foot so the words stay readable; moving to another programme (Left, Right,
- * Up, Down) cross-fades to its picture in 200 ms. GuideScreen asks for the picture once the remote rests and reads its
- * neighbours' ahead (settled, prefetch), so a move finds it ready.
+ * <pre>
+ *   the kicker      the amber star for a favourite channel, then the playlist and the group ("Home  •  UK Sport"), 17 px
+ *   the title       36 px bold, two lines at most
+ *   its line        its times ("19:30 — 22:00"), for one on now a bar and the minutes left ("40 min"), the chips (HD or
+ *                   4K as the channel's name says, the picture's frames a second for the channel playing or one seen
+ *                   before: "50 FPS", its sound), and the catch-up mark for one the archive keeps (with its length for
+ *                   one already shown); a bell and "Reminder set" for one to come with a reminder
+ *   what it's about 20 px, three lines
+ *   its picture     at its own shape on the panel's right (587 x 330), fitted round its faces with its left edge faded
+ *                   into the panel and nothing over it (PanelArt, Pics.PANEL), cross-fading as the remote moves; with
+ *                   no picture the words take the whole panel
+ * </pre>
+ *
+ * The channel number being typed shows in a frosted box at the panel's top right. GuideScreen asks for the picture once
+ * the remote rests and reads its neighbours' ahead (settled, prefetch), so a move finds it ready.
  */
 final class GuideBand extends View {
     // Where things go (design pixels), the side panels closed: the whole guide moves right with them.
-    static final float PREVIEW_X = 32f, PREVIEW_Y = 24f, PREVIEW_W = 640f, PREVIEW_H = 360f, PREVIEW_R = 17f;
-    private static final float TEXT_X = 716f, TEXT_R = 1872f, TITLE_Y = 78f, META_Y = 132f, BAR_Y = 123f, DESC_TOP = 152f,
-            DESC_BOTTOM = 360f, STAR_X = 1856f, STAR_Y = 66f, GAP = 24f;
-    /** The details' card (TiviMate's info block), and the picture's box across its right-hand part. */
-    static final float CARD_X = 692f, CARD_R = 1896f, CARD_Y = PREVIEW_Y, CARD_B = PREVIEW_Y + PREVIEW_H, ART_W = 840f;
+    static final float PREVIEW_X = 90f, PREVIEW_Y = 136f, PREVIEW_W = 586f, PREVIEW_H = 330f, PREVIEW_R = 30f;
+    /** The details' panel, and the picture's box across its right-hand part. */
+    static final float CARD_X = 700f, CARD_W = 1130f, CARD_R = 34f, CARD_Y = PREVIEW_Y, CARD_B = PREVIEW_Y + PREVIEW_H, ART_W = 587f;
+    /** The words: from x 736, 600 wide beside a picture (1058 without), the kicker's, the title's and the line's places. */
+    static final float TEXT_X = 736f, TEXT_W = 600f, TEXT_W_WIDE = 1058f, KICK_Y = 178f, TITLE_Y = 223f, TITLE_LINE = 39f;
+    /** The preview's shadow (0 24 50 black 50 %). */
+    static final float[] SH_PREVIEW = {24f, 50f, 0f, 128f};
 
     private final Library lib;
     /** The player (its channel's frames a second); null in a test that makes the band alone. */
@@ -54,22 +60,26 @@ final class GuideBand extends View {
     private boolean favourite;
     private String group = "", typed = "", descFor = "";
     private StaticLayout descL;
-    private int descWidth;
-    /** The programme's picture behind the words. */
+    private int descWidth, descLines;
+    /** The programme's picture beside the words. */
     final PanelArt art;
 
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final TextPaint titleP = Type.paint(Type.HERO, Type.MEDIUM, Palette.TEXT1), metaP = Type.paint(Type.ROW, Type.REGULAR, Palette.TEXT2);
-    private final TextPaint groupP = Type.paint(Type.ROW, Type.REGULAR, Palette.TEXT1), descP = Type.paint(Type.ROW, Type.REGULAR, Palette.TEXT2);
-    private final TextPaint typedP = Type.paint(48f, Type.MEDIUM, Palette.TEXT1);
-    /** The title and the playlist and group, measured once and cut each frame (TextFit). */
-    private final TextFit titles = new TextFit(titleP, 64), groups = new TextFit(groupP, 32), metas = new TextFit(metaP, 64);
+    private final Frost panel = new Frost(Look07.MAT), box = new Frost(Look07.MAT_DARK);
+    private final TextPaint kickP = Type.paint(17f, Type.SEMIBOLD, Look07.L2), titleP = Type.paint(36f, Type.BOLD, Look07.L1);
+    private final TextPaint metaP = Type.clock(19f, Type.MEDIUM, Look07.L2), descP = Type.paint(20f, Type.REGULAR, Look07.L2);
+    private final TextPaint typedP = Type.clock(46f, Type.BOLD, Look07.L1), typedLabel = Type.label(Type.LABEL, Look07.L3);
+    /** The title and the kicker, measured once and cut each frame (TextFit). */
+    private final TextFit titles = new TextFit(titleP, 64), kicks = new TextFit(kickP, 32), metas = new TextFit(metaP, 64);
     private final RectF r = new RectF();
 
     GuideBand(Context c, Library lib) {
         super(c);
         this.lib = lib;
-        art = new PanelArt(this, ART_W, PREVIEW_H, 0.75f);
+        art = new PanelArt(this, ART_W, PREVIEW_H, 1f);
+        art.mode = Pics.PANEL;
+        art.standIn = false;
+        Shadows.prepare(SH_PREVIEW, PREVIEW_R);
     }
 
     /** The preview's place on the screen (screen pixels) with the guide pushed right by shift (design pixels). */
@@ -104,15 +114,15 @@ final class GuideBand extends View {
     }
 
     @Override protected void onDraw(Canvas c) {
-        // The preview's frame: black until the picture comes over it.
+        // The preview's shadow and frame: black until the picture comes over it.
         r.set(Ui.f(PREVIEW_X), Ui.f(PREVIEW_Y), Ui.f(PREVIEW_X + PREVIEW_W), Ui.f(PREVIEW_Y + PREVIEW_H));
+        Shadows.draw(c, r, Ui.f(PREVIEW_R), SH_PREVIEW, 1f);
         fill.setColor(0xFF000000);
         c.drawRoundRect(r, Ui.f(PREVIEW_R), Ui.f(PREVIEW_R), fill);
-        // The details' card and the programme's picture across its right-hand part, cross-fading as the remote moves.
-        r.set(Ui.f(CARD_X), Ui.f(CARD_Y), Ui.f(CARD_R), Ui.f(CARD_B));
-        fill.setColor(Palette.PANEL);
-        c.drawRoundRect(r, Ui.f(PREVIEW_R), Ui.f(PREVIEW_R), fill);
-        boolean fading = art.draw(c, Ui.f(CARD_R - ART_W), Ui.f(CARD_Y));
+        // The details' panel and the programme's picture at its right, cross-fading as the remote moves.
+        r.set(Ui.f(CARD_X), Ui.f(CARD_Y), Ui.f(CARD_X + CARD_W), Ui.f(CARD_B));
+        panel.draw(c, r, Ui.f(CARD_R), 1f);
+        boolean fading = art.draw(c, Ui.f(CARD_X + CARD_W - ART_W), Ui.f(CARD_Y));
         if (ch != null) drawDetails(c);
         if (!typed.isEmpty()) drawTyped(c);
         if (fading) postInvalidateOnAnimation();
@@ -122,74 +132,75 @@ final class GuideBand extends View {
         long now = System.currentTimeMillis();
         Guide.Schedule s = lib.schedule(ch.key);
         int i = s != null && programme >= 0 && programme < s.start.length ? programme : -1;
+        float tx = Ui.f(TEXT_X), tw = Ui.f(art.none() ? TEXT_W_WIDE : TEXT_W);
 
-        // The star: a favourite channel's filled in the accent.
-        RoundButton.glyph(c, favourite ? Dark.STAR : Dark.STAR_LINE, Ui.f(STAR_X), Ui.f(STAR_Y), Ui.f(36f),
-                favourite ? Palette.ACCENT : Palette.TEXT2);
-        titleP.setColor(Palette.TEXT1);
-        titles.line(c, i >= 0 ? s.title[i] : ChannelEdits.name(ch), Ui.f(TEXT_X), Ui.f(TITLE_Y), Ui.f(STAR_X - 40f - TEXT_X));
+        // The kicker: the favourite's star, the playlist and the group.
+        float kx = tx;
+        if (favourite) {
+            Icons07.draw(c, Icons07.STAR, kx + Ui.f(9f), Ui.f(KICK_Y - 6f), Ui.f(18f), Look07.AMBER);
+            kx += Ui.f(26f);
+        }
+        if (!group.isEmpty()) kicks.line(c, group, kx, Ui.f(KICK_Y), tw - (kx - tx));
 
-        // The times, how far through and what's left (on now), or Homefield's marks; the playlist and group at the right.
-        metaP.setColor(Palette.TEXT2);
-        float x = Ui.f(TEXT_X), base = Ui.f(META_Y), cy = Ui.f(BAR_Y);
+        // The title, two lines at most.
+        String title = i >= 0 ? s.title[i] : ChannelEdits.name(ch);
+        boolean one = titles.fitsOne(title, tw);
+        titles.lines(c, title, tx, Ui.f(TITLE_Y), Ui.f(TITLE_Y), Ui.f(TITLE_Y + TITLE_LINE), tw, 2);
+        float rowCy = Ui.f(TITLE_Y + (one ? 33.5f : 33.5f + TITLE_LINE));
+
+        // Its line: the times, how far through and what's left (on now), the chips, the catch-up mark; or a reminder.
+        float x = tx, gap = Ui.f(12f), base = Type.centred(metaP, rowCy);
         if (i >= 0) {
             String span = Words.span(start, end);
             if (!Words.sameDay(start, now)) span = dayAndSpan(now);
             c.drawText(span, x, base, metaP);
-            x += metas.width(span) + Ui.f(GAP);
+            x += metas.width(span) + gap;
             if (start <= now && now < end) {
                 if (com.gathin.homefieldtv.prefs.Look.progress) {
-                    Bars.thin(c, x, cy, Ui.f(80f), Ui.f(6f), LiveText.progress(now, start, end));
-                    x += Ui.f(80f + GAP);
+                    Pills.progress(c, x, rowCy, Ui.f(96f), LiveText.progress(now, start, end));
+                    x += Ui.f(96f) + gap;
                 }
                 String left = Words.minutes(end - now);
                 c.drawText(left, x, base, metaP);
-                x += metas.width(left) + Ui.f(GAP);
+                x += metas.width(left) + gap;
             } else if (end <= now && Catchup.has(ch, start, now)) {
-                // Already shown, in the archive: the catch-up mark and how long it is (as the player's banner has it).
-                RoundButton.glyph(c, Dark.HISTORY, x + Ui.f(14f), cy, Ui.f(28f), Palette.TEXT2);
-                x += Ui.f(36f);
+                // Already shown, in the archive: how long it is (the catch-up mark after the chips).
                 String len = Words.minutes(end - start);
                 c.drawText(len, x, base, metaP);
-                x += metas.width(len) + Ui.f(GAP);
+                x += metas.width(len) + gap;
             } else if (start > now && Reminders.has(getContext(), ch.key, start)) {
-                fill.setColor(Palette.TEXT2);
-                Dark.bell(c, x + Ui.f(12f), cy, Ui.f(12f), fill);
-                x += Ui.f(34f);
+                Icons07.draw(c, Icons07.BELL, x + Ui.f(9f), rowCy, Ui.f(18f), Look07.AMBER);
+                x += Ui.f(26f);
                 c.drawText("Reminder set", x, base, metaP);
-                x += metas.width("Reminder set") + Ui.f(GAP);
+                x += metas.width("Reminder set") + gap;
             }
         } else {
             String none = "No information";
             c.drawText(none, x, base, metaP);
-            x += metas.width(none) + Ui.f(GAP);
+            x += metas.width(none) + gap;
         }
         String q = qualityFor(ch);
-        if (!q.isEmpty()) x += Chips.media(c, x, cy, q) + Ui.f(Chips.GAP);
+        if (!q.isEmpty()) x += Pills.chipFilled(c, x, rowCy, q) + gap;
         String fps = fpsFor(ch);
-        if (!fps.isEmpty()) x += Chips.media(c, x, cy, fps) + Ui.f(Chips.GAP);
-        if (!q.isEmpty() || !fps.isEmpty()) x += Ui.f(GAP - Chips.GAP);
-        if (!group.isEmpty()) {
-            groupP.setColor(Palette.TEXT1);
-            float room = Ui.f(TEXT_R) - x, gw = Math.min(room, groups.width(group));
-            groups.line(c, group, Ui.f(TEXT_R) - gw, base, room);
+        if (!fps.isEmpty()) x += Pills.chipFilled(c, x, rowCy, fps) + gap;
+        if (i >= 0 && (start <= now && now < end || end <= now) && Catchup.has(ch, start, now)) {
+            Icons07.draw(c, Icons07.CATCHUP, x + Ui.f(9f), rowCy, Ui.f(18f), Look07.L2);
         }
 
-        // What it is about, as many lines as fit.
+        // What it is about, three lines.
         if (i >= 0 && !s.desc[i].isEmpty()) {
-            int w = Ui.px(TEXT_R - TEXT_X);
+            int w = Math.round(tw);
             if (descL == null || w != descWidth || !ch.key.equals(descFor) || descStart != start) {
-                descP.setColor(Palette.TEXT2);
-                Paint.FontMetrics fm = descP.getFontMetrics();
-                int lines = Math.max(1, (int) (Ui.f(DESC_BOTTOM - DESC_TOP) / (fm.descent - fm.ascent)));
                 String d = s.desc[i];
-                descL = StaticLayout.Builder.obtain(d, 0, d.length(), descP, w).setAlignment(Layout.Alignment.ALIGN_NORMAL)
-                        .setLineSpacing(0f, 1f).setIncludePad(false).setMaxLines(lines).setEllipsize(TextUtils.TruncateAt.END).build();
+                descL = StaticLayout.Builder.obtain(d, 0, d.length(), descP, Math.max(1, w)).setAlignment(Layout.Alignment.ALIGN_NORMAL)
+                        .setLineSpacing(0f, 1.42f / 1.21f).setIncludePad(false).setMaxLines(3).setEllipsize(TextUtils.TruncateAt.END).build();
                 descFor = ch.key;
                 descStart = start;
                 descWidth = w;
+                descLines = descL.getLineCount();
             }
-            Ui.draw(c, descL, Ui.f(TEXT_X), Ui.f(DESC_TOP));
+            float top = rowCy + Ui.f(13f + 14f + 2f);
+            if (descLines > 0) Ui.draw(c, descL, tx, top);
         }
     }
 
@@ -227,13 +238,13 @@ final class GuideBand extends View {
         return Math.max(1L, (ms + 59_999L) / 60_000L) + " min";
     }
 
-    /** The channel number being typed, "10-" until it is done, on a card at the top right. */
+    /** The channel number being typed, "10-" until it is done, in a frosted box at the panel's top right. */
     private void drawTyped(Canvas c) {
-        r.set(Ui.f(TEXT_R - 220f), Ui.f(PREVIEW_Y), Ui.f(TEXT_R + 24f), Ui.f(PREVIEW_Y + 104f));
-        fill.setColor(Palette.HEADER);
-        c.drawRoundRect(r, Ui.f(16f), Ui.f(16f), fill);
+        float right = CARD_X + CARD_W - 24f, top = CARD_Y + 24f;
+        r.set(Ui.f(right - 220f), Ui.f(top), Ui.f(right), Ui.f(top + 112f));
+        box.draw(c, r, Ui.f(26f), 1f);
+        c.drawText("CHANNEL", r.left + Ui.f(24f), r.top + Ui.f(34f), typedLabel);
         String d = typed.length() >= 3 ? typed : (typed + "---").substring(0, 3);
-        typedP.setColor(Palette.TEXT1);
-        c.drawText(d, r.centerX() - typedP.measureText(d) / 2f, Type.centred(typedP, r.centerY()), typedP);
+        c.drawText(d, r.left + Ui.f(24f), r.top + Ui.f(88f), typedP);
     }
 }

@@ -13,8 +13,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Settings, as the family's other app has it: a panel down the right over the screen it was opened from (RightPanel:
- * that screen dimmed, the page's name in the panel's band), its sections in that app's order and with its names:
+ * Settings, as the family's other app has it, in the 07 look (the approved still 28): one frosted panel over the screen
+ * it was opened from (SettingsPanel: that screen dimmed) in two panes, the sections down its left and the page chosen
+ * beside them (where it is, its name and a line about it over its rows), the sections in that app's order and with its
+ * names:
  *
  * <pre>
  *   General            Auto start app on boot, Start on, Back up data, Restore data ›, then Homefield's Sync ›, Remove everything
@@ -45,7 +47,7 @@ import java.util.List;
  * Settings can be opened on a page (new SettingsScreen(tv, "other.recording")), and opens again where it was after the
  * screens are made again for a new colour theme, font size or posters.
  */
-final class SettingsScreen extends Screen implements RightPanel.Host, Keyboard.Host, DialogCard.Host {
+final class SettingsScreen extends Screen implements SettingsPanel.Host, Keyboard.Host, DialogCard.Host {
     /** The sections, in the other app's order, by page and by name. */
     static final String[] SECTIONS = {"general", "playlists", "epg", "appearance", "playback", "remote", "parental", "other", "about"};
     static final String[] SECTION_NAMES = {"General", "Playlists", "EPG", "Appearance", "Playback", "Remote control",
@@ -97,7 +99,7 @@ final class SettingsScreen extends Screen implements RightPanel.Host, Keyboard.H
         }
     }
 
-    private RightPanel panel;
+    private SettingsPanel panel;
     private Keyboard keys;
     private Sheet sheet;
     private DialogCard dialog;
@@ -129,7 +131,7 @@ final class SettingsScreen extends Screen implements RightPanel.Host, Keyboard.H
 
     @Override View build() {
         FrameLayout f = new FrameLayout(tv);
-        panel = new RightPanel(tv);
+        panel = new SettingsPanel(tv);
         panel.setHost(this);
         sheet = new Sheet(tv);
         keys = new Keyboard(tv, Keyboard.FULL);
@@ -422,7 +424,7 @@ final class SettingsScreen extends Screen implements RightPanel.Host, Keyboard.H
         return true;
     }
 
-    @Override public void chosen(RightPanel p, RowList.Row row) {
+    @Override public void chosen(SettingsPanel p, RowList.Row row) {
         String page = page();
         if (page.isEmpty()) {
             if (row.tag instanceof String && ((String) row.tag).startsWith("page:")) openSection(((String) row.tag).substring(5));
@@ -459,11 +461,44 @@ final class SettingsScreen extends Screen implements RightPanel.Host, Keyboard.H
         }
     }
 
-    @Override public void focused(RightPanel p, RowList.Row row) {}
+    @Override public void focused(SettingsPanel p, RowList.Row row) {}
 
-    /** Left, Right and the lists' ends: nothing more to go to inside the panel. */
-    @Override public boolean edge(RightPanel p, int dir) {
+    /** Left from a section's own page: back to the sections; Right and the lists' ends: nothing more to go to. */
+    @Override public boolean edge(SettingsPanel p, int dir) {
+        if (dir == Ui.LEFT && pages.size() == 2 && !editing) up();
         return true;
+    }
+
+    /** A section's rows, shown beside the sections while the remote is on them. */
+    @Override public List<RowList.Row> preview(String page) {
+        return rows(page);
+    }
+
+    /** A page's line under its name, as the still has Logos' ("" for none). */
+    @Override public String about(String page) {
+        return aboutOf(page);
+    }
+
+    /** Pure: the line under a page's name. */
+    static String aboutOf(String page) {
+        switch (page == null ? "" : page) {
+            case "general": return "Starting up, backups, sync and this TV";
+            case "playlists": return "Your playlists, TorBox and catch-up";
+            case "epg": return "Where the guide comes from, and when it is read";
+            case "appearance": return "How Homefield looks";
+            case "appearance.guide": return "How the guide looks and lists your channels";
+            case "appearance.player": return "The clock, the panels and the channel tiles";
+            case "appearance.logos": return "The pictures for your channels in the guide and the player";
+            case "appearance.groups": return "How the groups are sorted";
+            case "theme": return "Homefield's colours";
+            case "playback": return "The picture, the sound, subtitles and streams";
+            case "remote": return "What the remote's keys do";
+            case "remote.player": return "The keys while a channel plays full screen";
+            case "parental": return "A PIN for what the family chooses";
+            case "other": return "Search, reminders, recording and the scoreboard";
+            case "about": return "This Homefield TV and its updates";
+            default: return "";
+        }
     }
 
     @Override public void answered(DialogCard d, RowList.Row answer) {

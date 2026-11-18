@@ -25,11 +25,14 @@ public final class Look {
     public static final String[] ROWS_ABOUT = {"Titles only", "Times over titles", "Times over titles, more room"};
     public static final String[] TILES_NAMES = {"Programme pictures", "Channel logos"};
     public static final String[] TILES_ABOUT = {"What's on, with the channel's logo on it", "The channel's logo, what's on under it"};
+    /** Appearance › TV guide › Guide style: the family's grid (as it comes) or 07's shelves. */
+    public static final int GUIDE_GRID = 0, GUIDE_SHELVES = 1;
+    public static final String[] GUIDE_NAMES = {"Grid", "Shelves"};
 
     /** As the screens draw them now. */
     public static volatile int clock = CLOCK_24;
     public static volatile boolean times24 = true, numbers = true, progress = true, logos;
-    public static volatile int textSize = 1, rows = ROWS_NORMAL;
+    public static volatile int textSize = 1, rows = ROWS_NORMAL, guideStyle = GUIDE_GRID;
     public static volatile float text = 1f;
 
     static SharedPreferences prefs(Context c) {
@@ -47,6 +50,12 @@ public final class Look {
         textSize = PlayerPrefs.clamp(p.getInt("text", 1), 0, TEXT_SCALES.length - 1);
         text = TEXT_SCALES[textSize];
         rows = PlayerPrefs.clamp(p.getInt("rows", ROWS_NORMAL), 0, 2);
+        guideStyle = PlayerPrefs.clamp(p.getInt("guide_style", GUIDE_GRID), 0, 1);
+    }
+
+    public static void setGuideStyle(Context c, int v) {
+        guideStyle = PlayerPrefs.clamp(v, 0, 1);
+        prefs(c).edit().putInt("guide_style", guideStyle).apply();
     }
 
     public static void setClock(Context c, int v) {

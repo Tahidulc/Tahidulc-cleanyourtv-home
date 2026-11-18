@@ -115,6 +115,14 @@ final class Pics {
      * before the faces. Pics.faces(url) gives the box found.
      */
     static final int FACE = 16, FACE_MID = 17;
+    /**
+     * PANEL is 07's panel picture (the guide's details panel, the shelf guide's sheet, catch-up's and the reminder's
+     * cards): FACE's crop round the faces, at its own shape, its left edge faded to nothing over at most PANEL_FADE of
+     * its width and ending before the faces, its right-hand corners rounded (PANEL_RADIUS of its height); no darkening
+     * and no foot fade (the family: "you can see faces clearly").
+     */
+    static final int PANEL = 18;
+    static final float PANEL_FADE = 0.3f, PANEL_RADIUS = 34f / 330f;
     /** Where across a FACE crop the faces' middle goes (words on the left). */
     static final float FACE_BIAS = 0.62f;
 
@@ -469,7 +477,7 @@ final class Pics {
             src = ready;
         }
         Paint p = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
-        if (!fit && (mode == FACE || mode == FACE_MID || mode == ART)) {
+        if (!fit && (mode == FACE || mode == FACE_MID || mode == ART || mode == PANEL)) {
             // A programme's picture: its faces found once (kept by its address), the crop round them, whole.
             float[] box = facesOf(url, src);
             float sw = src.getWidth(), sh = src.getHeight(), bias = mode == FACE_MID ? 0.5f : FACE_BIAS;
@@ -479,11 +487,11 @@ final class Pics {
             new Canvas(out).drawBitmap(src, new android.graphics.Rect(Math.round(win.left), Math.round(win.top), Math.round(win.right),
                     Math.round(win.bottom)), new android.graphics.RectF(0, 0, w, h), p);
             src.recycle();
-            if (mode != ART) return out;
+            if (mode != ART && mode != PANEL) return out;
             // The panel's picture: its left fade ends before the faces.
             android.graphics.RectF f = new android.graphics.RectF();
             Faces.place(sw, sh, w / (float) h, box, bias, w, h, f);
-            return art(out, true, f.left);
+            return mode == PANEL ? panel(out, f.left) : art(out, true, f.left);
         }
         if (!fit) {
             float sc = Math.max(w / (float) src.getWidth(), h / (float) src.getHeight());
@@ -616,6 +624,29 @@ final class Pics {
         m.setShader(new LinearGradient(0, foot, 0, h, new int[]{0xFF000000, 0x80000000, 0x00000000},
                 new float[]{0f, 0.6f, 1f}, Shader.TileMode.CLAMP));
         c.drawRect(0, foot, w, h, m);
+        return out;
+    }
+
+    /**
+     * 07's panel picture (PANEL): its left edge faded to nothing over PANEL_FADE of its width at most, the fade ending
+     * before faceLeft (px across it), a sixth of it at least; its right-hand corners rounded. Nothing darkened.
+     */
+    private static Bitmap panel(Bitmap src, float faceLeft) {
+        int w = src.getWidth(), h = src.getHeight();
+        float fade = Math.max(w / 6f, Math.min(w * PANEL_FADE, faceLeft - w * 0.02f));
+        Bitmap out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(out);
+        Paint shape = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        shape.setShader(new android.graphics.BitmapShader(src, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP));
+        float r = h * PANEL_RADIUS;
+        // Rounded at the right only: the left is faded away anyway.
+        c.drawRoundRect(-r * 2f, 0, w, h, r, r, shape);
+        src.recycle();
+        Paint m = new Paint();
+        m.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_IN));
+        m.setShader(new LinearGradient(0, 0, fade, 0, new int[]{0x00000000, 0x8C000000, 0xFF000000}, new float[]{0f, 0.55f, 1f},
+                Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, fade, h, m);
         return out;
     }
 

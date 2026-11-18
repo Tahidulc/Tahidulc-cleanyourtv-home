@@ -210,6 +210,8 @@ final class GroupsPanel extends View {
 
     private void settle(boolean now) {
         float target = scrollFor(focus);
+        // 07's panel: the list starts at the panel's top, sliding only once the remote's row would pass FOCUS_Y.
+        if (look07) target = Math.max(TOP - Look07.TOP - 30f, target);
         if (now) scroll.jump(target);
         else scroll.to(target);
     }
@@ -338,9 +340,67 @@ final class GroupsPanel extends View {
         if (host != null) host.chosen(this, e);
     }
 
+    /**
+     * 07's look (the TV guide's groups): a frosted panel under the tab bar (Frost, mat-dark, rounded 34), the playlist's
+     * name as an amber label in capitals, each group a row 64 high rounded 18 (21 px); the remote's row white with dark
+     * words, the group on screen white at 16 % while the remote is elsewhere. Off as it comes (the other lists' look).
+     */
+    boolean look07;
+    private Frost frost;
+    private TextPaint label07, group07, groupOn07;
+
+    private void draw07(Canvas c, float sc) {
+        if (frost == null) {
+            frost = new Frost(Look07.MAT_DARK);
+            label07 = Type.label(Type.LABEL, Look07.AMBER);
+            group07 = Type.paint(Type.MENU, Type.MEDIUM, Look07.L2);
+            groupOn07 = Type.paint(Type.MENU, Type.SEMIBOLD, Look07.INK);
+        }
+        float x0 = Ui.f(x + 24f), x1 = Ui.f(x + W - 12f), top = Ui.f(Look07.TOP), foot = getHeight() - Ui.f(36f);
+        r.set(x0, top, x1, foot);
+        frost.draw(c, r, Ui.f(Look07.R_PANEL), 1f);
+        c.save();
+        c.clipRect(x0, top + Ui.f(8f), x1, foot - Ui.f(8f));
+        for (int i = 0; i < shown.size(); i++) {
+            float rowTop = TOP + i * ROW - sc;
+            if (rowTop > 1080f || rowTop + ROW < 0f) continue;
+            Entry e = shown.get(i);
+            float cy = Ui.f(rowTop + ROW / 2f);
+            r.set(x0 + Ui.f(14f), cy - Ui.f(32f), x1 - Ui.f(14f), cy + Ui.f(32f));
+            boolean on = i == focus && active, chosen = current != null && current.equals(e.tag) && e.kind != HEADING;
+            if (on) {
+                Shadows.draw(c, r, Ui.f(Look07.R_ROW), Look07.SH_ROW, 1f);
+                back.setColor(Look07.FOCUS_FILL);
+                c.drawRoundRect(r, Ui.f(Look07.R_ROW), Ui.f(Look07.R_ROW), back);
+            } else if (chosen) {
+                back.setColor(Look07.SELECTED);
+                c.drawRoundRect(r, Ui.f(Look07.R_ROW), Ui.f(Look07.R_ROW), back);
+            }
+            if (e.kind == HEADING) {
+                label07.setColor(on ? Look07.INK2 : Look07.AMBER);
+                c.drawText(e.fitted(label07, x1 - x0 - Ui.f(96f)), r.left + Ui.f(18f), Type.centred(label07, cy), label07);
+                chevron.setColor(on ? Look07.INK2 : Look07.L3);
+                chevron.setStrokeWidth(Math.max(1f, Ui.f(2.5f)));
+                Ui.chevron(c, r.right - Ui.f(26f), cy, Ui.f(8f), e.folded ? Ui.DOWN : Ui.UP, chevron);
+            } else {
+                TextPaint p = on ? groupOn07 : group07;
+                p.setColor(on ? Look07.INK : chosen ? Look07.L1 : Look07.L2);
+                float tx = r.left + Ui.f(e.kind == GROUP ? 30f : 18f);
+                c.drawText(e.fitted(p, r.right - tx - Ui.f(i == focus && liftFrom >= 0 ? 60f : 18f)), tx, Type.centred(p, cy), p);
+            }
+            if (i == focus && liftFrom >= 0) MoveMode.drawLifted(c, r, r.right - Ui.f(36f), cy);
+        }
+        c.restore();
+    }
+
     @Override protected void onDraw(Canvas c) {
         boolean moving = scroll.step();
         float sc = scroll.value();
+        if (look07) {
+            draw07(c, sc);
+            if (moving) postInvalidateOnAnimation();
+            return;
+        }
         float x0 = Ui.f(x), x1 = Ui.f(x + W);
         back.setColor(background != 0 ? background : Palette.GROUND);
         c.drawRect(x0, 0, x1, getHeight(), back);

@@ -103,7 +103,7 @@ final class MoreSettings implements SettingsScreen.Pages {
         switch (key) {
             case "start": return "general";
             case "text": case "posters": case "times": return "appearance";
-            case "rows": case "csort": case "editor": return "appearance.guide";
+            case "rows": case "csort": case "editor": case "gstyle": return "appearance.guide";
             case "clock": case "banner": case "tiles": return "appearance.player";
             case "logos": case "lpriority": return "appearance.logos";
             case "subs.look": case "subs.size": return "playback.subtitles";

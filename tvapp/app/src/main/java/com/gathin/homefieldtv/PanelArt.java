@@ -59,6 +59,13 @@ final class PanelArt {
     /** decide()'s answer: the picture to show (null: none), or keep what is shown. */
     private Bitmap want;
     private boolean keep;
+    /**
+     * How the programme's picture is read (Pics.ART as it came; the 07 panel's Pics.PANEL: at its own shape, fitted round
+     * its faces, its left edge faded to nothing, no darkening), and whether the channel's logo stands in for a programme
+     * with no picture (07's panel: no, its words then take the room).
+     */
+    int mode = Pics.ART;
+    boolean standIn = true;
 
     PanelArt(View owner, float w, float h, float read) {
         this.owner = owner;
@@ -103,13 +110,18 @@ final class PanelArt {
     void prefetch(Channel ch, Guide.Schedule s, int i) {
         if (ch == null || Exec.inline) return;
         String logoUrl = LogoPack.url(ch);
-        if (!logoUrl.isEmpty()) Pics.prefetch(logoUrl, pw, ph, Pics.LOGO_ART);
+        if (standIn && !logoUrl.isEmpty()) Pics.prefetch(logoUrl, pw, ph, Pics.LOGO_ART);
         if (s == null || i < 0 || i >= s.start.length) return;
         String u = ProgrammePictures.get(owner.getContext(), ch, s, i, () -> {
             String got = ProgrammePictures.peek(ch, s, i);
-            if (got != null && !got.isEmpty()) Pics.prefetch(got, pw, ph, Pics.ART);
+            if (got != null && !got.isEmpty()) Pics.prefetch(got, pw, ph, mode);
         });
-        if (u != null && !u.isEmpty()) Pics.prefetch(u, pw, ph, Pics.ART);
+        if (u != null && !u.isEmpty()) Pics.prefetch(u, pw, ph, mode);
+    }
+
+    /** The programme shown is known to have no picture (Sky has none, or it could not be read): its words take the room. */
+    boolean none() {
+        return channel == null || pic != null && (pic.isEmpty() || Pics.failed(pic));
     }
 
     /** What it should show now (want, or keep what is shown); the pictures it needs asked for. */
@@ -119,14 +131,19 @@ final class PanelArt {
         if (channel == null) return;
         boolean coming = pic == null || !pic.isEmpty() && !Pics.failed(pic);
         if (pic != null && !pic.isEmpty() && !Pics.failed(pic)) {
-            Bitmap b = Pics.get(pic, pw, ph, Pics.ART, redraw);
+            Bitmap b = Pics.get(pic, pw, ph, mode, redraw);
             if (b != null) {
                 want = b;
                 return;
             }
         }
-        String logo = LogoPack.url(channel);
         boolean same = channel.key.equals(newestFor());
+        if (!standIn) {
+            // No stand-in: nothing for a programme with no picture; the last picture stays while this one's comes.
+            keep = coming && same;
+            return;
+        }
+        String logo = LogoPack.url(channel);
         if (!logo.isEmpty() && !Pics.failed(logo)) {
             // The channel's stand-in: asked for at once when the programme has no picture, else read ahead quietly.
             Bitmap l;

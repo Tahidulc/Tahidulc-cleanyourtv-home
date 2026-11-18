@@ -38,6 +38,8 @@ final class LogoScreen extends Screen {
             + "then by the playlist's.";
 
     private final Channel ch;
+    /** Opened beside the channel's menu, which stays on screen with its scrim (08c): no scrim of its own then. */
+    boolean overMenu;
     /** The logos found (null while they are looked for). */
     private List<LogoMatch.Found> found;
     private final List<String[]> rows = new ArrayList<>();
@@ -178,8 +180,10 @@ final class LogoScreen extends Screen {
         }
 
         @Override protected void onDraw(Canvas c) {
-            fill.setColor(Look07.SCRIM);
-            c.drawRect(0, 0, getWidth(), getHeight(), fill);
+            if (!overMenu) {
+                fill.setColor(Look07.SCRIM);
+                c.drawRect(0, 0, getWidth(), getHeight(), fill);
+            }
             float top0 = cardTop(), h = cardH();
             r.set(Ui.f(CARD_LEFT), Ui.f(top0), Ui.f(CARD_LEFT + CARD_W), Ui.f(top0 + h));
             frost.draw(c, r, Ui.f(Look07.R_LOGO_CARD), 1f);

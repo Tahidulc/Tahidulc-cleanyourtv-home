@@ -61,11 +61,17 @@ final class Shadows {
     private static Sprite sprite(float radius, float blur) {
         if (madeFor != Ui.s) {
             SPRITES.clear();
+            java.util.Arrays.fill(recent, null);
             madeFor = Ui.s;
         }
         long k = key(radius, blur);
+        // The sprites drawn lately, looked up without boxing the key (a frame draws many shadows: nothing made).
+        for (int i = 0; i < RECENT; i++) if (recentKeys[i] == k && recent[i] != null) return recent[i];
         Sprite s = SPRITES.get(k);
-        if (s != null) return s;
+        if (s != null) {
+            remember(k, s);
+            return s;
+        }
         // CSS: a blur of b is a Gaussian of sigma b / 2, reaching about 1.5 b past the box.
         float reach = blur * 1.5f;
         int r = Math.max(1, Math.round(radius * SCALE)), m = Math.max(1, Math.round(reach * SCALE));
@@ -86,7 +92,20 @@ final class Shadows {
         Bitmap b = Bitmap.createBitmap(px, size, size, Bitmap.Config.ARGB_8888);
         s = new Sprite(b, corner, reach);
         SPRITES.put(k, s);
+        remember(k, s);
         return s;
+    }
+
+    /** The last RECENT sprites by key (main thread), so a frame's lookups make nothing. */
+    private static final int RECENT = 24;
+    private static final long[] recentKeys = new long[RECENT];
+    private static final Sprite[] recent = new Sprite[RECENT];
+    private static int recentNext;
+
+    private static void remember(long k, Sprite s) {
+        recentKeys[recentNext] = k;
+        recent[recentNext] = s;
+        recentNext = (recentNext + 1) % RECENT;
     }
 
     /** Made now (a view's constructor), so no frame has to: spec as Look07's SH_ kinds (design px), radius design px. */
