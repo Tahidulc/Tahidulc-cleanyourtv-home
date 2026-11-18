@@ -240,6 +240,12 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
         return shown.startsWith(GENRE) ? shown.substring(GENRE.length()) : "All channels";
     }
 
+    /** The channel number being typed, in the details panel's box (or the shelves'). */
+    private void typed(String d) {
+        band.typed(d);
+        shelves.typed(d);
+    }
+
     /** Whether the guide is drawn as 07's shelves (Settings › Appearance › TV guide › Guide style). */
     private boolean shelves() {
         return com.gathin.homefieldtv.prefs.Look.guideStyle == com.gathin.homefieldtv.prefs.Look.GUIDE_SHELVES;
@@ -319,8 +325,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
             // Back from Change logo: the channel's menu again, its logo line saying what it shows now.
             holdMenu = false;
             if (menu.isOpen() && menuChannel != null) {
-                Guide.Schedule s = Library.get(tv).schedule(menuChannel.key);
-                List<GuideMenu.Item> items = GuideActions.card(tv, menuChannel, s, menuIndex, true, !RECENT.equals(shown));
+                List<GuideMenu.Item> items = cardItems();
                 int at = 0;
                 for (int i = 0; i < items.size(); i++) if (ChannelMenu.LOGO.equals(items.get(i).tag)) at = i;
                 menu.openCard(items, at, rowRect());
@@ -597,7 +602,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
         if (moving != null) return moving.key(code);
         if (code >= KeyEvent.KEYCODE_0 && code <= KeyEvent.KEYCODE_9) {
             digits += (char) ('0' + code - KeyEvent.KEYCODE_0);
-            band.typed(digits);
+            typed(digits);
             h.removeCallbacks(digitsDone);
             if (digits.length() >= 4) jump();
             else h.postDelayed(digitsDone, 1500);
@@ -639,7 +644,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
         h.removeCallbacks(digitsDone);
         String d = digits;
         digits = "";
-        band.typed("");
+        typed("");
         if (d.isEmpty()) return;
         int n;
         try {
@@ -735,7 +740,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
         if (!digits.isEmpty()) {
             h.removeCallbacks(digitsDone);
             digits = "";
-            band.typed("");
+            typed("");
             return true;
         }
         if (area == GROUPS) {
@@ -772,9 +777,25 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
     private void openCard() {
         remember();
         if (menuChannel == null) return;
-        Guide.Schedule s = Library.get(tv).schedule(menuChannel.key);
-        menu.openCard(GuideActions.card(tv, menuChannel, s, menuIndex, true, !RECENT.equals(shown)), 0, rowRect());
+        menu.openCard(cardItems(), 0, rowRect());
         placePreview();
+    }
+
+    /**
+     * The whole menu's lines for the channel and programme remembered (GuideActions.card), then the channel's group's
+     * Sort channels at the card's foot (08c), where the guide lists that group.
+     */
+    private List<GuideMenu.Item> cardItems() {
+        Guide.Schedule s = Library.get(tv).schedule(menuChannel.key);
+        List<GuideMenu.Item> items = GuideActions.card(tv, menuChannel, s, menuIndex, true, !RECENT.equals(shown));
+        menuGroup = null;
+        String g = menuChannel.group;
+        if (!g.isEmpty() && listed.contains(GROUP + g)) {
+            menuGroup = GROUP + g;
+            items.add(GuideMenu.Item.section(Categories.label(tv, g) + " · Group"));
+            items.add(GuideMenu.Item.item(GroupMenu.SORT, "Sort channels").value(ChannelEdits.SORT_NAMES[GroupMenu.sortOf(tv, g)]));
+        }
+        return items;
     }
 
     /** The programme's description, for the programme the remote is on (from the menu, or Play/pause). */
@@ -940,7 +961,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
     private void groupChosen(String tag) {
         String g = groupOf(menuGroup);
         if (GroupMenu.SORT.equals(tag)) {
-            if (g != null) menu.openCard(GroupMenu.sortItems(tv, g), GroupMenu.sortFocus(tv, g), groups.focusedRow(new RectF()));
+            if (g != null) menu.openCard(GroupMenu.sortItems(tv, g), GroupMenu.sortFocus(tv, g), area == GROUPS ? groups.focusedRow(new RectF()) : rowRect());
             return;
         }
         menu.close();

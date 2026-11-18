@@ -23,7 +23,6 @@ import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.prefs.RemoteKeys;
 import com.gathin.homefieldtv.prefs.ChannelEdits;
-import com.gathin.homefieldtv.engine.LogoPack;
 
 import java.util.ArrayList;
 import java.util.HashMap;

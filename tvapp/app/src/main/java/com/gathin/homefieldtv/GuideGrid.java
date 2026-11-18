@@ -355,7 +355,7 @@ final class GuideGrid extends View {
     /** The remote's whole row (its channel's cell to the window's end, with its lift), for the menus to leave undimmed. */
     RectF focusedRow(RectF out) {
         float y = rowTop(focus, rows.target());
-        out.set(Ui.f(CH_X - 10f), Ui.f(y - 5f), Ui.f(RIGHT), Ui.f(y + cellH() + 5f));
+        out.set(Ui.f(CH_X - 9f), Ui.f(y - 5f), Ui.f(RIGHT - 8f), Ui.f(y + cellH() + 5f));
         return out;
     }
 

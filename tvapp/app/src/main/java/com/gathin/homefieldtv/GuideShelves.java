@@ -3,10 +3,8 @@ package com.gathin.homefieldtv;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
-import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.RectF;
-import android.graphics.Shader;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
@@ -24,7 +22,6 @@ import com.gathin.homefieldtv.prefs.ChannelEdits;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.TextStyle;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
@@ -174,6 +171,25 @@ final class GuideShelves extends View {
         invalidate();
     }
 
+    /** The channel number being typed ("10-" until it is done), in a frosted box at the top right; "" for none. */
+    void typed(String digits) {
+        typed = digits == null ? "" : digits;
+        invalidate();
+    }
+
+    private String typed = "";
+    private final Frost typedBox = new Frost(Look07.MAT_DARK);
+    private final TextPaint typedP = Type.clock(46f, Type.BOLD, Look07.L1), typedLabel = Type.label(Type.LABEL, Look07.L3);
+
+    private void drawTyped(Canvas c) {
+        float right = 1830f, top = 240f;
+        r.set(Ui.f(right - 220f), Ui.f(top), Ui.f(right), Ui.f(top + 112f));
+        typedBox.draw(c, r, Ui.f(26f), 1f);
+        c.drawText("CHANNEL", r.left + Ui.f(24f), r.top + Ui.f(34f), typedLabel);
+        String d = typed.length() >= 3 ? typed : (typed + "---").substring(0, 3);
+        c.drawText(d, r.left + Ui.f(24f), r.top + Ui.f(88f), typedP);
+    }
+
     // ---- drawing ------------------------------------------------------------------------------------------------------
 
     @Override protected void onDraw(Canvas c) {
@@ -216,6 +232,7 @@ final class GuideShelves extends View {
         if (here != null) drawShelf(c, here, 0, SHELVES_Y + off * SHELF, now);
         c.restore();
         if (here != null) drawSheet(c, here, now);
+        if (!typed.isEmpty()) drawTyped(c);
         if (moving) postInvalidateOnAnimation();
     }
 
