@@ -1,7 +1,9 @@
 package com.gathin.homefieldtv;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.robolectric.Shadows.shadowOf;
@@ -385,7 +387,130 @@ public class ClubPagesTest {
         assertTrue(hsv[0] < 15f || hsv[0] > 345f);
     }
 
+    @Test public void theSportsPagesAreIn07sShellWithTheirBackLines() {
+        SportsScreen hub = new SportsScreen(a);
+        a.fromHome(hub);
+        idle();
+        hub.preview(today(), new HashMap<String, List<Matching.Row>>());
+        assertTrue(hub.shell());
+        assertEquals(TabBar.SPORTS, hub.tab());
+        assertEquals(TabBar.SPORTS, a.tabs().page());
+        assertTrue(a.tabs().drawn());
+        assertEquals("Sports · Today", hub.backWords());
+        // The game's page and, from it, a club's: each with its "‹ back" line where Back goes.
+        press(KeyEvent.KEYCODE_DPAD_CENTER);
+        assertTrue(a.top() instanceof GameScreen);
+        assertTrue(a.top().shell());
+        assertEquals("Sports · Today", a.tabs().backWords());
+        press(KeyEvent.KEYCODE_DPAD_UP);
+        press(KeyEvent.KEYCODE_DPAD_CENTER);
+        assertTrue(a.top() instanceof TeamScreen);
+        assertEquals("Harbour Town v Riverside", a.tabs().backWords());
+        TeamScreen club = (TeamScreen) a.top();
+        club.preview(squad());
+        idle();
+        press(KeyEvent.KEYCODE_DPAD_CENTER);
+        assertTrue(a.top() instanceof PlayerScreen);
+        assertEquals("the club's page", "Harbour Town", a.tabs().backWords());
+        press(KeyEvent.KEYCODE_BACK);
+        press(KeyEvent.KEYCODE_BACK);
+        // The game's page: Back comes down from its side first, then closes it.
+        press(KeyEvent.KEYCODE_BACK);
+        press(KeyEvent.KEYCODE_BACK);
+        assertSame(hub, a.top());
+        assertNull(a.tabs().backWords());
+        DriverScreen ds = new DriverScreen(a, drivers(), 0, null);
+        for (F1.Standing st : ds.drivers) ds.previewPictures.put(st, new String[]{null, null, null, null});
+        a.push(ds);
+        idle();
+        assertEquals("Sports · Formula 1", a.tabs().backWords());
+    }
+
+    @Test public void backAtTheHubsRootAndUpFromItsPillsGoToTheTabBar() {
+        SportsScreen hub = new SportsScreen(a);
+        a.fromHome(hub);
+        idle();
+        hub.preview(today(), new HashMap<String, List<Matching.Row>>());
+        assertFalse(a.tabs().active());
+        press(KeyEvent.KEYCODE_BACK);
+        assertTrue("Back at the list's root: the tab bar", a.tabs().active());
+        assertSame(hub, a.top());
+        // Down from the bar: the sections' pills; Down again the list; Up and Up the bar.
+        press(KeyEvent.KEYCODE_DPAD_DOWN);
+        assertFalse(a.tabs().active());
+        assertEquals(SportsScreen.PILLS, hub.zone);
+        press(KeyEvent.KEYCODE_DPAD_DOWN);
+        assertEquals(SportsScreen.LIST, hub.zone);
+        press(KeyEvent.KEYCODE_DPAD_UP);
+        assertEquals(SportsScreen.PILLS, hub.zone);
+        press(KeyEvent.KEYCODE_DPAD_UP);
+        assertTrue(a.tabs().active());
+    }
+
+    @Test public void aPremierLeagueClubsPicturesAreLookedUpAsTheirCardsComeNear() {
+        Squad.Club club = new Squad.Club();
+        club.slug = "eng.1";
+        club.name = "Harbour Town";
+        club.fullName = "Harbour Town";
+        com.gathin.homefieldtv.sports.LeaguePhotos.GIVEN.put("Kofi Mensah", "file:/previews/premierleague.com/p2.png");
+        try {
+            TeamScreen t = new TeamScreen(a, club);
+            a.push(t);
+            idle();
+            Squad s = squad();
+            t.preview(s);
+            idle();
+            assertEquals(com.gathin.homefieldtv.sports.LeaguePhotos.PREMIER, t.league);
+            // The cards in sight and those either side are looked up (none further away yet).
+            assertEquals("file:/previews/premierleague.com/p2.png", s.players.get(2).league);
+            assertEquals("", s.players.get(0).league);
+            assertNull(s.players.get(9).league);
+            assertEquals(Squad.LEAGUE, Squad.kind(Squad.photos(s.players.get(2))[0]));
+            for (int i = 0; i < 9; i++) press(KeyEvent.KEYCODE_DPAD_RIGHT);
+            assertEquals("", s.players.get(9).league);
+        } finally {
+            com.gathin.homefieldtv.sports.LeaguePhotos.GIVEN.clear();
+        }
+    }
+
+    @Test public void noDrawnPersonIsLeftToStandInForAPicture() {
+        // The family's change: no shirt under a face, no head and shoulders, no figure; only an F1 car may be drawn.
+        for (java.lang.reflect.Method m : ClubLook.class.getDeclaredMethods()) {
+            String n = m.getName().toLowerCase(java.util.Locale.ROOT);
+            assertFalse(m.getName(), n.contains("bust") || n.contains("shirt") || n.contains("collar") || n.equals("kit")
+                    || n.contains("standing") || n.contains("figure") || n.contains("silhouette"));
+        }
+    }
+
+    @Test public void theHubsColoursZonesAndCapitals() {
+        assertTrue("Northland's red and Marisca's red", SportsScreen.clash(0xFFC8102E, 0xFFD7263D));
+        assertFalse(SportsScreen.clash(0xFFC8102E, 0xFF1F7A3A));
+        assertEquals(0xFF3F8CFF, SportsScreen.zone("Champions League"));
+        assertEquals(0xFF3F8CFF, SportsScreen.zone("Promotion"));
+        assertEquals(0xFFFF8A3D, SportsScreen.zone("Europa League"));
+        assertEquals(0xFFFF8A3D, SportsScreen.zone("Promotion Playoff"));
+        assertEquals(0xFFFF453A, SportsScreen.zone("Relegation"));
+        assertEquals(0xFFFF453A, SportsScreen.zone("Relegation Playoff"));
+        assertEquals(0, SportsScreen.zone(""));
+        assertArrayEquals(new String[]{"NATIONS", "LEAGUE"}, SportsScreen.tag("UEFA Nations League"));
+        assertArrayEquals(new String[]{"FRIENDLY"}, SportsScreen.tag("International Friendly"));
+        assertArrayEquals(new String[]{"PREMIER", "LEAGUE"}, SportsScreen.tag("Premier League"));
+        assertArrayEquals(new String[]{"NBA"}, SportsScreen.tag("NBA"));
+        assertArrayEquals(new String[]{"WORLD CUP", "QUALIFYING"}, SportsScreen.tag("FIFA World Cup Qualifying"));
+    }
+
     @Test public void theDriversPagesDatesCountdownAndAge() {
+        ZoneId utc0 = ZoneId.of("UTC");
+        long fri0 = java.time.Instant.parse("2026-11-20T11:30:00Z").toEpochMilli(), sun0 = java.time.Instant.parse("2026-11-22T14:00:00Z").toEpochMilli();
+        assertEquals("Fri 20 – Sun 22 Nov", DriverScreen.days(fri0, sun0, utc0));
+        assertEquals("Fri 30 Oct – Sun 1 Nov", DriverScreen.days(java.time.Instant.parse("2026-10-30T11:30:00Z").toEpochMilli(),
+                java.time.Instant.parse("2026-11-01T14:00:00Z").toEpochMilli(), utc0));
+        assertEquals("Sun 22 Nov", DriverScreen.days(0, sun0, utc0));
+        assertEquals("", DriverScreen.days(fri0, 0, utc0));
+        theDriversDatesCountdownAndAge();
+    }
+
+    private void theDriversDatesCountdownAndAge() {
         ZoneId utc = ZoneId.of("UTC");
         long fri = java.time.Instant.parse("2026-11-20T11:30:00Z").toEpochMilli(), sun = java.time.Instant.parse("2026-11-22T14:00:00Z").toEpochMilli();
         assertEquals("20 – 22 Nov", DriverScreen.dates(fri, sun, utc));

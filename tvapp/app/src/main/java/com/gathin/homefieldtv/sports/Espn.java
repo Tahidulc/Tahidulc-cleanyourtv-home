@@ -755,11 +755,12 @@ public final class Espn {
 
     /** Indexes into a table's row (table()). */
     public static final int T_RANK = 0, T_ID = 1, T_NAME = 2, T_LOGO = 3, T_PLAYED = 4, T_GD = 5, T_POINTS = 6, T_GROUP = 7,
-            T_WON = 8, T_DRAWN = 9, T_LOST = 10, T_FULL = 11;
+            T_WON = 8, T_DRAWN = 9, T_LOST = 10, T_FULL = 11, T_NOTE = 12;
 
     /**
      * One row of a table: {rank, team id, name, logo, played, goal difference, points, group or "", won, drawn, lost,
-     * full name} (ESPN's stats "wins", "ties" and "losses"; "" when not given).
+     * full name, ESPN's note on its place ("Champions League", "Relegation": the table's zones)} (ESPN's stats "wins",
+     * "ties" and "losses"; "" when not given).
      */
     public static List<String[]> table(String slug) {
         List<String[]> out = new ArrayList<>();
@@ -797,7 +798,7 @@ public final class Espn {
                             t.optString("shortDisplayName", t.optString("displayName")), logo, v.getOrDefault("gamesPlayed", ""),
                             v.getOrDefault("pointDifferential", ""), v.getOrDefault("points", ""), group,
                             v.getOrDefault("wins", ""), v.getOrDefault("ties", ""), v.getOrDefault("losses", ""),
-                            t.optString("displayName", t.optString("shortDisplayName"))});
+                            t.optString("displayName", t.optString("shortDisplayName")), note(en)});
                 }
             }
             out.sort((a, b) -> a[7].equals(b[7]) ? Integer.compare(parseInt(a[0]), parseInt(b[0])) : a[7].compareTo(b[7]));
@@ -805,6 +806,14 @@ public final class Espn {
             // what was read
         }
         return out;
+    }
+
+    /** Pure: ESPN's note on a table entry's place ("Champions League", "Relegation"), "" when it gives none. */
+    static String note(JSONObject entry) {
+        JSONObject n = entry == null ? null : entry.optJSONObject("note");
+        if (n == null) return "";
+        String d = n.optString("description", "");
+        return "null".equals(d) ? "" : d.trim();
     }
 
     /** Indexes into a competition's club (teams()). */

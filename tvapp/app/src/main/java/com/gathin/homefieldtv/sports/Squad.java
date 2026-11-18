@@ -94,6 +94,13 @@ public final class Squad {
         public String photo = "", flag = "";
         /** The photo is a face (FotMob's, square) rather than head and shoulders (ESPN's, wide). */
         public boolean face;
+        /** ESPN's head and shoulders of him (its roster's, matched to FotMob's player by name: merge), "" when none. */
+        public String espn = "";
+        /**
+         * His league's own cut-out (the Premier League's or La Liga's, head to waist in the club's kit: LeaguePhotos),
+         * looked up when his card first asks for its picture: null until then, "" when the league has none of him.
+         */
+        public volatile String league;
         /** FotMob's: his season can be read (season()). */
         public boolean fotmob;
         /** The season's figures as the squad lists them, {label, value}, in the page's order (ORDER). */
@@ -103,7 +110,104 @@ public final class Squad {
     public String name = "";
     /** The club's own colour as the source gives it (0xFFrrggbb), 0 when it gives none. */
     public int colour;
+    /** FotMob's main league for the club (47 the Premier League, 87 La Liga: whose own pictures it has), 0 not given. */
+    public int fotmobLeague;
     public final List<Person> players = new ArrayList<>(), staff = new ArrayList<>();
+
+    // ---- the pictures ---------------------------------------------------------------------------------------------
+
+    /** A picture's kind, by its address: the league's own cut-out, ESPN's head and shoulders, a face alone, none. */
+    public static final int LEAGUE = 0, SHOULDERS = 1, HEAD = 2, NONE = 3;
+
+    /**
+     * Pure: the real pictures of him to try, best first (the phone's order, SquadFilter.photos): his league's own cut-out
+     * (the Premier League's for a Premier League club, La Liga's for a La Liga club: head to waist in the kit), ESPN's
+     * head and shoulders, and only then FotMob's face. Each once; never a drawn person (none at all: the crest and his
+     * initials).
+     */
+    public static String[] photos(Person p) {
+        List<String> out = new ArrayList<>(3);
+        String league = p.league;
+        if (league != null && !league.isEmpty()) out.add(league);
+        if (!p.espn.isEmpty()) out.add(p.espn);
+        else if (!p.face && !p.photo.isEmpty()) out.add(p.photo);
+        if (p.face && !p.photo.isEmpty() && !out.contains(p.photo)) out.add(p.photo);
+        return out.toArray(new String[0]);
+    }
+
+    /** Pure: a picture's kind by its address (the phone's SquadFilter.kind). */
+    public static int kind(String url) {
+        if (url == null || url.isEmpty()) return NONE;
+        if (url.contains("premierleague.com") || url.contains(LeaguePhotos.LA_LIGA_DIR)) return LEAGUE;
+        return url.contains("espncdn.com") ? SHOULDERS : HEAD;
+    }
+
+    /** Pure: a name's initials for the card with no picture: "Ashby Varley" "AV", "Kettering" "K" (the phone's). */
+    public static String initials(String name) {
+        if (name == null) return "";
+        String[] w = name.trim().split("\\s+");
+        if (w.length == 0 || w[0].isEmpty()) return "";
+        String first = w[0].substring(0, 1);
+        return (w.length == 1 ? first : first + w[w.length - 1].substring(0, 1)).toUpperCase(Locale.ROOT);
+    }
+
+    /**
+     * Pure: ESPN's head and shoulders for each of FotMob's players, as the phone merges them (TeamData.merge): ESPN's
+     * player of the same name (the same shirt number first), else of the same number and surname.
+     */
+    static void merge(List<Person> fotmob, List<Person> espn) {
+        if (espn == null || espn.isEmpty()) return;
+        for (Person p : fotmob) {
+            if (p.line == STAFF || !p.espn.isEmpty()) continue;
+            Person e = match(p, espn);
+            if (e != null && !e.photo.isEmpty()) p.espn = e.photo;
+        }
+    }
+
+    /** Pure: ESPN's player for one of FotMob's: the same name; else the same shirt number and the same surname. */
+    static Person match(Person p, List<Person> espn) {
+        Person nameOnly = null;
+        for (Person e : espn) {
+            if (sameName(p.name, e.name)) {
+                if (p.number.isEmpty() || e.number.isEmpty() || p.number.equals(e.number)) return e;
+                if (nameOnly == null) nameOnly = e;
+            }
+        }
+        if (nameOnly != null) return nameOnly;
+        if (p.number.isEmpty()) return null;
+        String surname = lastWord(letters(p.name));
+        for (Person e : espn) {
+            if (p.number.equals(e.number) && !surname.isEmpty() && surname.equals(lastWord(letters(e.name)))) return e;
+        }
+        return null;
+    }
+
+    /**
+     * Pure: one player's two names (the phone's PlayerPhotos.sameName): the same surname, and the same first name or one
+     * the start of the other ("Alex" and "Alexander", "B." and "Ben").
+     */
+    static boolean sameName(String a, String b) {
+        String[] x = letters(a).split(" "), y = letters(b).split(" ");
+        if (x.length == 0 || y.length == 0 || x[0].isEmpty() || y[0].isEmpty()) return false;
+        if (!x[x.length - 1].equals(y[y.length - 1])) return false;
+        if (x.length == 1 || y.length == 1) return true;
+        return x[0].equals(y[0]) || x[0].charAt(0) == y[0].charAt(0) && (x[0].length() <= 2 || y[0].length() <= 2
+                || x[0].startsWith(y[0]) || y[0].startsWith(x[0]));
+    }
+
+    /** Pure: a name in plain lower-case letters and single spaces, accents and ß, ø, æ, œ, ł, đ, ı folded (the phone's). */
+    static String letters(String s) {
+        String t = (s == null ? "" : s).replace("ß", "ss").replace("ø", "o").replace("Ø", "O").replace("æ", "ae")
+                .replace("Æ", "Ae").replace("œ", "oe").replace("ł", "l").replace("Ł", "L").replace("đ", "d").replace("Đ", "D")
+                .replace("ı", "i");
+        String n = Normalizer.normalize(t, Normalizer.Form.NFD).replaceAll("\\p{M}", "");
+        return n.toLowerCase(Locale.ROOT).replaceAll("[^a-z ]", " ").replaceAll("\\s+", " ").trim();
+    }
+
+    private static String lastWord(String s) {
+        int sp = s.lastIndexOf(' ');
+        return sp >= 0 ? s.substring(sp + 1) : s;
+    }
 
     /** Pure: who the page shows: the staff, else the players of a line (-1: every line), in the squad's order. */
     public List<Person> shown(boolean management, int line) {
@@ -122,6 +226,7 @@ public final class Squad {
         if (details != null) {
             s.name = text(details, "name");
             s.colour = colour(text(details, "teamColor"));
+            s.fotmobLeague = Math.max(0, details.optInt("primaryLeagueId", 0));
         }
         JSONObject sq = d.optJSONObject("squad");
         JSONArray groups = sq == null ? null : sq.optJSONArray("squad");
@@ -269,6 +374,7 @@ public final class Squad {
             JSONObject hs = a.optJSONObject("headshot");
             String shot = hs == null ? "" : text(hs, "href");
             p.photo = shot.startsWith("https://a.espncdn.com/") ? shot : "";
+            p.espn = p.photo;
             p.face = false;
             Map<String, String> st = new HashMap<>();
             JSONObject stats = a.optJSONObject("statistics");
@@ -421,10 +527,14 @@ public final class Squad {
                 s = null;
             }
         }
+        // ESPN's roster for the competition the club was met in: the squad when FotMob can't be read, else each of
+        // FotMob's players' head and shoulders from it (the better picture than FotMob's face: Squad.photos).
+        JSONObject r = Espn.roster(club.slug, club.espnId);
+        Squad e = r == null ? null : espn(r);
         if (s == null || s.players.isEmpty()) {
-            JSONObject r = Espn.roster(club.slug, club.espnId);
-            Squad e = r == null ? null : espn(r);
             if (e != null && !e.players.isEmpty()) s = e;
+        } else if (e != null) {
+            merge(s.players, e.players);
         }
         if (s == null || s.players.isEmpty() && s.staff.isEmpty()) return null;
         synchronized (KEPT) {

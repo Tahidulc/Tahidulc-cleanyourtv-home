@@ -24,7 +24,7 @@ public final class F1 {
 
     /** One line of the drivers' or the teams' standings. */
     public static final class Standing {
-        /** Place, name ("Lando Norris" or "McLaren"), the driver's team's name, points and (teams) wins. */
+        /** Place, name ("Lando Norris" or "McLaren"), the driver's team's name, points and wins ("" when not given). */
         public String position = "", name = "", team = "", points = "", wins = "";
         /** Jolpica's constructor id ("mclaren", "red_bull"): the team's colour and logo; "" when not known. */
         public String teamId = "";
@@ -32,6 +32,8 @@ public final class F1 {
         public String family = "", headshot;
         /** The season the standings are for: formula1.com files the team logos by it. */
         public int season;
+        /** How many rounds the standings are after ("20"), "" when not given. */
+        public String round = "";
         /**
          * A driver's Jolpica id ("max_verstappen"), his race number, his given name, his nationality as Jolpica writes it
          * ("Dutch") and his date of birth ("1997-09-30"); "" when not given.
@@ -67,6 +69,7 @@ public final class F1 {
         JSONArray lists = table.getJSONArray("StandingsLists");
         if (lists.length() == 0) return out;
         int season = Espn.parseInt(table.optString("season", lists.getJSONObject(0).optString("season")));
+        String round = lists.getJSONObject(0).optString("round", "");
         JSONArray s = lists.getJSONObject(0).getJSONArray("DriverStandings");
         for (int i = 0; i < s.length(); i++) {
             JSONObject d = s.getJSONObject(i), dr = d.getJSONObject("Driver");
@@ -81,7 +84,9 @@ public final class F1 {
             st.team = team == null ? "" : team.optString("name");
             st.teamId = team == null ? "" : team.optString("constructorId");
             st.points = d.optString("points");
+            st.wins = d.optString("wins").matches("[0-9]{1,3}") ? d.optString("wins") : "";
             st.season = season;
+            st.round = round.matches("[0-9]{1,2}") ? round : "";
             st.driverId = dr.optString("driverId");
             st.number = dr.optString("permanentNumber").matches("[0-9]{1,3}") ? dr.optString("permanentNumber") : "";
             st.nationality = dr.optString("nationality");

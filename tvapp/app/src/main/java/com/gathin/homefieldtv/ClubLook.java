@@ -5,6 +5,8 @@ import android.graphics.BitmapShader;
 import android.graphics.Canvas;
 import android.graphics.ColorFilter;
 import android.graphics.LightingColorFilter;
+import android.graphics.LinearGradient;
+import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RadialGradient;
@@ -15,18 +17,23 @@ import android.text.TextPaint;
 import java.util.Random;
 
 /**
- * The look of the sports pages in a club's or a team's own colour (the squad, a player, an F1 driver), after the family's
- * two pictures: the ground in the colour, deep enough for white writing, with a fine grain and a soft vignette; the
- * cards a shade lighter; the number's coin in the colour at its brightest that still carries white; the pills (white
- * when on, dark when off, a ring where the remote is); and the shapes drawn where a source has no picture (a head and
- * shoulders, a driver standing, a car from the side), in the colour. Colours are worked out when a page is given them,
- * never while a frame is drawn; the grain and the shapes are made once.
+ * The look of the sports pages in a club's or a team's own colour (the squad, a player, an F1 driver), in 07 (the
+ * approved mock-ups 19 to 24): the ground in the colour, brightest a little above the middle and deepening to its edges
+ * (radial-gradient(1200px 800px at 50% 40%)), with a fine grain and a soft vignette; the cards of frosted glass over it,
+ * the remote's brighter; the number's coin in the colour, lit from its top left; the pills (white when on, glass when
+ * off, a white ring where the remote is). Where a picture is missing, the pages draw the club's crest and the man's
+ * initials, never a drawn person (PlayerArt); only an F1 car with no picture is drawn, in the team's colour. Colours are
+ * worked out when a page is given them, never while a frame is drawn; the grain and the shapes are made once.
  */
 final class ClubLook {
     private ClubLook() {}
 
     /** How light the ground, a card (its foot, its top) and the coin are, as relative luminance: white reads on each. */
     static final double GROUND = 0.036, CARD = 0.066, CARD_TOP = 0.10, COIN = 0.14;
+    /** 07's ground: its middle, its 55 % ring and its edge (the mock-ups' #1a2cc0, #0c1680, #060b45 for Everton). */
+    static final double GROUND_MID = 0.058, GROUND_RING = 0.022, GROUND_EDGE = 0.0072;
+    /** 07's coin: its lit top left and its body (the mock-ups' #4f63ff and #2233ee). */
+    static final double COIN_LIGHT = 0.17, COIN_BODY = 0.088;
     /** The colour for a club the sources give none for. */
     static final int NEUTRAL = 0xFF465068;
     /** The writing on a white pill. */
@@ -86,18 +93,39 @@ final class ClubLook {
         return Cine.colour(hsv[0], s, lo);
     }
 
-    /** The page's ground: deep, the colour still plain. */
+    /** The page's ground: deep, the colour still plain (what the page fades to; 07's middle is groundMid). */
     static int ground(int c) {
         return at(c, GROUND, 0.55f);
     }
 
-    /** A card's foot, a shade lighter than the ground; its top, lighter again. */
+    /** 07's ground at its middle, its ring and its edge. */
+    static int groundMid(int c) {
+        return at(c, GROUND_MID, 0.75f);
+    }
+
+    static int groundRing(int c) {
+        return at(c, GROUND_RING, 0.8f);
+    }
+
+    static int groundEdge(int c) {
+        return at(c, GROUND_EDGE, 0.8f);
+    }
+
+    /** A card's foot, a shade lighter than the ground; its top, lighter again (an F1 card, a table's zones). */
     static int card(int c) {
         return at(c, CARD, 0.5f);
     }
 
     static int cardTop(int c) {
         return at(c, CARD_TOP, 0.45f);
+    }
+
+    /**
+     * The club's colour under 07's glass on its page (the mock-ups' glass saturates what is behind it, 180 %, so their
+     * tiles and pills are a vivid shade of the club's colour, not a grey): drawn under Frost.glass.
+     */
+    static int glassTint(int c) {
+        return at(c, 0.07, 0.9f);
     }
 
     /** The shirt number's coin: the colour at its brightest that still carries white. */
@@ -125,7 +153,23 @@ final class ClubLook {
         return DIMS[i];
     }
 
-    // ---- the grain and the vignette ---------------------------------------------------------------------------------
+    // ---- the ground, the grain and the vignette -------------------------------------------------------------------
+
+    /**
+     * 07's ground for a page w by h (screen pixels) in the club's colour: brightest at the middle a little above half
+     * way, deepening through its ring at 55 % to the edge (an ellipse 1200 by 800 design px, as the mock-ups' CSS).
+     */
+    static void ground(Paint p, int colour, int w, int h) {
+        float rx = Ui.f(1200f), ry = Ui.f(800f);
+        RadialGradient g = new RadialGradient(0, 0, Math.max(1f, rx), new int[]{groundMid(colour), groundRing(colour), groundEdge(colour)},
+                new float[]{0f, 0.55f, 1f}, Shader.TileMode.CLAMP);
+        Matrix m = new Matrix();
+        m.setScale(1f, ry / Math.max(1f, rx));
+        m.postTranslate(w / 2f, h * 0.4f);
+        g.setLocalMatrix(m);
+        p.setShader(g);
+        p.setDither(true);
+    }
 
     private static Bitmap grain;
 
@@ -146,68 +190,151 @@ final class ClubLook {
         return p;
     }
 
-    /** The vignette for a page w by h (screen pixels): clear over the middle, darker to the edges and corners. */
+    /** 07's vignette for a page w by h (screen pixels): clear over the middle 55 %, black at 45 % at the edge (1300 by 900). */
     static void vignette(Paint p, int w, int h) {
-        float r = (float) Math.hypot(w, h) * 0.58f;
-        p.setShader(new RadialGradient(w / 2f, h * 0.48f, Math.max(1f, r), new int[]{0x00000000, 0x00000000, 0x33000000, 0x99000000},
-                new float[]{0f, 0.42f, 0.74f, 1f}, Shader.TileMode.CLAMP));
+        float rx = Ui.f(1300f), ry = Ui.f(900f);
+        RadialGradient g = new RadialGradient(0, 0, Math.max(1f, rx), new int[]{0x00000000, 0x00000000, 0x73000000},
+                new float[]{0f, 0.55f, 1f}, Shader.TileMode.CLAMP);
+        Matrix m = new Matrix();
+        m.setScale(1f, ry / Math.max(1f, rx));
+        m.postTranslate(w / 2f, h * 0.45f);
+        g.setLocalMatrix(m);
+        p.setShader(g);
+        p.setDither(true);
     }
 
-    /** A soft light behind the middle of a page (over any ground): white fading to nothing. */
-    static void glow(Paint p, float cx, float cy, float r) {
-        p.setShader(new RadialGradient(cx, cy, Math.max(1f, r), new int[]{0x2EFFFFFF, 0x12FFFFFF, 0x00FFFFFF},
-                new float[]{0f, 0.5f, 1f}, Shader.TileMode.CLAMP));
-    }
+    // ---- the cards' glass (07's .pc .panel) -------------------------------------------------------------------------
 
-    // ---- shapes where there is no picture (made once, at 100 units, drawn scaled) -------------------------------------
+    /**
+     * A card of frosted glass over the club's ground: white at 20 % fading to 8 % down it, a line of light along its top
+     * (35 %), a hairline round it (12 %) and a soft shadow (0 24 50 black 30 %); the remote's card brighter (26 % to 10 %,
+     * its light 50 %, its ring 20 %, a deeper shadow: 0 40 80 navy 50 %). Made for a card's height in its own units
+     * (draw it under the card's scale); nothing made a frame.
+     */
+    static final class Glass {
+        private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG), more = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG),
+                light = new Paint(Paint.ANTI_ALIAS_FLAG), ring = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final RectF r = new RectF();
+        private float madeTop = Float.NaN, madeH = Float.NaN;
+        static final float[] SHADOW = {24f, 50f, 0f, 77f}, SHADOW_UP = {40f, 80f, 0f, 128f};
 
-    private static Path bust, figure, car, rim;
-
-    /** A head and shoulders h tall, the middle of its foot at (cx, bottom) (screen pixels). */
-    static void bust(Canvas c, float cx, float bottom, float h, Paint p) {
-        if (bust == null) {
-            Path b = new Path();
-            b.moveTo(-47f, 0f);
-            b.cubicTo(-47f, -21f, -40f, -35f, -21f, -40f);
-            b.lineTo(-9f, -43f);
-            b.lineTo(9f, -43f);
-            b.lineTo(21f, -40f);
-            b.cubicTo(40f, -35f, 47f, -21f, 47f, 0f);
-            b.close();
-            b.addRect(-8f, -54f, 8f, -40f, Path.Direction.CW);
-            b.addOval(new RectF(-17f, -95f, 17f, -50f), Path.Direction.CW);
-            bust = b;
+        Glass() {
+            light.setStyle(Paint.Style.STROKE);
+            ring.setStyle(Paint.Style.STROKE);
+            Shadows.prepare(SHADOW, 30f);
+            Shadows.prepare(SHADOW_UP, 30f);
         }
-        c.save();
-        c.translate(cx, bottom);
-        c.scale(h / 100f, h / 100f);
-        c.drawPath(bust, p);
-        c.restore();
+
+        private void made(float top, float h) {
+            if (top == madeTop && h == madeH) return;
+            madeTop = top;
+            madeH = h;
+            fill.setShader(new LinearGradient(0, top, 0, top + Math.max(1f, h), 0x33FFFFFF, 0x14FFFFFF, Shader.TileMode.CLAMP));
+            more.setShader(new LinearGradient(0, top, 0, top + Math.max(1f, h), 0x0FFFFFFF, 0x05FFFFFF, Shader.TileMode.CLAMP));
+            light.setShader(new LinearGradient(0, top, 0, top + Ui.f(40f), 0xFFFFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP));
+        }
+
+        /**
+         * The glass card r (in the canvas's own units: a card drawn scaled), rounded by radius, up (0 a side card, 1 the
+         * remote's) and its opacity; shadows: whether to draw its shadow (screen px scale s for its size).
+         */
+        void draw(Canvas c, RectF box, float radius, float up, float alpha, float scale) {
+            float k = Math.max(0f, Math.min(1f, up)), a = Math.max(0f, Math.min(1f, alpha));
+            if (a <= 0.004f) return;
+            made(box.top, box.height());
+            // The shadows are worked out in screen px: undo the card's scale for them.
+            c.save();
+            c.scale(1f / scale, 1f / scale);
+            r.set(box.left * scale, box.top * scale, box.right * scale, box.bottom * scale);
+            Shadows.draw(c, r, radius * scale, SHADOW, (1f - k) * a);
+            Shadows.draw(c, r, radius * scale, SHADOW_UP, k * a);
+            c.restore();
+            fill.setAlpha(Math.round(255 * a));
+            c.drawRoundRect(box, radius, radius, fill);
+            if (k > 0.004f) {
+                more.setAlpha(Math.round(255 * a * k));
+                c.drawRoundRect(box, radius, radius, more);
+            }
+            float sw = Math.max(1f, Ui.f(1.5f)) / scale;
+            r.set(box);
+            r.inset(sw / 2f, sw / 2f);
+            light.setStrokeWidth(sw);
+            light.setAlpha(Math.round(255 * a * (0.35f + 0.15f * k)));
+            c.drawRoundRect(r, radius, radius, light);
+            ring.setStrokeWidth(Math.max(1f, Ui.f(1f)) / scale);
+            ring.setColor(0xFFFFFFFF);
+            ring.setAlpha(Math.round(255 * a * (0.12f + 0.08f * k)));
+            c.drawRoundRect(r, radius, radius, ring);
+        }
     }
 
-    /** A driver standing, h tall, the middle of his head's top at (cx, top) (screen pixels). */
-    static void standing(Canvas c, float cx, float top, float h, Paint p) {
-        if (figure == null) {
-            Path f = new Path();
-            f.addOval(new RectF(-6.5f, 0f, 6.5f, 15f), Path.Direction.CW);
-            f.addRect(-3f, 13f, 3f, 19f, Path.Direction.CW);
-            f.moveTo(-15f, 21f);
-            f.quadTo(0f, 16f, 15f, 21f);
-            f.lineTo(13f, 54f);
-            f.lineTo(-13f, 54f);
-            f.close();
-            f.addRoundRect(new RectF(-21f, 21f, -14f, 53f), 3.5f, 3.5f, Path.Direction.CW);
-            f.addRoundRect(new RectF(14f, 21f, 21f, 53f), 3.5f, 3.5f, Path.Direction.CW);
-            f.addRoundRect(new RectF(-12.5f, 50f, -1.5f, 99f), 4f, 4f, Path.Direction.CW);
-            f.addRoundRect(new RectF(1.5f, 50f, 12.5f, 99f), 4f, 4f, Path.Direction.CW);
-            figure = f;
+    // ---- the number's coin (07's .pc .coin) ---------------------------------------------------------------------------
+
+    /**
+     * The shirt number's coin in the club's colour: lit from its top left (radial-gradient(circle at 35% 30%) from the
+     * colour's light to its body at 70 %), a line of light at its top and a soft navy shadow (0 10 24, 45 %); the number
+     * in Barlow Condensed, white. One per page, its shader remade when the colour or the size changes.
+     */
+    static final class Coin {
+        private final Paint body = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG), light = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint number;
+        private final RectF r = new RectF();
+        private int madeFor = 1;
+        private float madeR = -1f;
+        static final float[] SHADOW = {10f, 24f, 0f, 115f};
+
+        Coin(float numberSize) {
+            number = Cine.text(numberSize, Cine.condensed(), 0xFFFFFFFF);
+            light.setStyle(Paint.Style.STROKE);
+            light.setStrokeCap(Paint.Cap.ROUND);
+            Shadows.prepare(SHADOW, 46f);
         }
-        c.save();
-        c.translate(cx, top);
-        c.scale(h / 100f, h / 100f);
-        c.drawPath(figure, p);
-        c.restore();
+
+        /** The colours for a club (when it is given), the coin radius rad (screen px at scale 1). */
+        void colour(int club, float rad) {
+            if (club == madeFor && rad == madeR) return;
+            madeFor = club;
+            madeR = rad;
+            float d = rad * 2f, far = d * 0.955f;
+            body.setShader(new RadialGradient(-rad + d * 0.35f, -rad + d * 0.30f, Math.max(1f, far),
+                    new int[]{at(club, COIN_LIGHT, 0.7f), at(club, COIN_BODY, 0.8f), at(club, COIN_BODY, 0.8f)},
+                    new float[]{0f, 0.7f, 1f}, Shader.TileMode.CLAMP));
+        }
+
+        /**
+         * The coin centred on (cx, cy) (the canvas's units: under a card's scale, scale is that scale), its number, at
+         * an opacity; darkened by dim (0 to 1).
+         */
+        void draw(Canvas c, float cx, float cy, float rad, String n, float alpha, float scale, float dim) {
+            int a = Math.round(255 * Math.max(0f, Math.min(1f, alpha)));
+            if (a <= 0) return;
+            c.save();
+            c.scale(1f / scale, 1f / scale);
+            r.set((cx - rad) * scale, (cy - rad) * scale, (cx + rad) * scale, (cy + rad) * scale);
+            Shadows.draw(c, r, rad * scale, SHADOW, alpha);
+            c.restore();
+            c.save();
+            c.translate(cx, cy);
+            body.setAlpha(a);
+            body.setColorFilter(dimmed(dim));
+            c.drawCircle(0, 0, rad, body);
+            light.setStrokeWidth(Math.max(1f, Ui.f(1.5f)) / scale);
+            light.setColor(0xFFFFFFFF);
+            light.setAlpha(Math.round(a * 0.4f));
+            r.set(-rad + light.getStrokeWidth(), -rad + light.getStrokeWidth(), rad - light.getStrokeWidth(), rad - light.getStrokeWidth());
+            c.drawArc(r, 215f, 110f, false, light);
+            if (n != null && !n.isEmpty()) {
+                number.setAlpha(a);
+                number.setTextSize(rad * 1.0f);
+                c.drawText(n, -number.measureText(n) / 2f, Cine.mid(number, 0f), number);
+            }
+            c.restore();
+        }
     }
+
+    // ---- a car with no picture (made once, at 100 units, drawn scaled): never a person --------------------------------
+
+    private static Path car, rim;
 
     /** A car from the side, its nose to the right, length long, on the ground at (left, ground) (screen pixels). */
     static void car(Canvas c, float left, float ground, float length, Paint body, Paint wheels) {
@@ -248,84 +375,41 @@ final class ClubLook {
         c.restore();
     }
 
-    private static Path shirt, collar;
+    // ---- pills (07's .pill: the squad's Players | Management and lines, the hub's sections) -----------------------------
 
     /**
-     * The shirt a face stands on, at 100 units the face's size: its round neck's ends at (±17, 0), its shoulders out to
-     * ±54, down to 66 (where its paint, kit(), has faded out). Made once.
-     */
-    static Path shirt() {
-        if (shirt == null) {
-            Path s = new Path();
-            s.moveTo(-17f, 0f);
-            s.quadTo(0f, 10f, 17f, 0f);
-            s.cubicTo(29f, 3f, 46f, 6f, 52f, 19f);
-            s.lineTo(55f, 66f);
-            s.lineTo(-55f, 66f);
-            s.lineTo(-52f, 19f);
-            s.cubicTo(-46f, 6f, -29f, 3f, -17f, 0f);
-            s.close();
-            shirt = s;
-        }
-        return shirt;
-    }
-
-    /** The shirt's round neck, a band for collar's paint. */
-    static Path collar() {
-        if (collar == null) {
-            Path s = new Path();
-            s.moveTo(-17f, 0f);
-            s.quadTo(0f, 10f, 17f, 0f);
-            collar = s;
-        }
-        return collar;
-    }
-
-    static Paint collarPaint() {
-        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-        p.setStyle(Paint.Style.STROKE);
-        p.setStrokeWidth(2.6f);
-        p.setStrokeCap(Paint.Cap.ROUND);
-        p.setColor(0xFFFFFFFF);
-        return p;
-    }
-
-    /** The shirt's paint for a club's colour: a shade lighter than the cards, fading out down its body (shirt()'s units). */
-    static void kit(Paint p, int colour) {
-        int k = at(colour, 0.095, 0.65f);
-        p.setShader(new android.graphics.LinearGradient(0, 0, 0, 66f, new int[]{k, k, Cine.alpha(k, 0)}, new float[]{0f, 0.42f, 1f},
-                Shader.TileMode.CLAMP));
-    }
-
-    // ---- pills ------------------------------------------------------------------------------------------------------
-
-    /**
-     * A row of pills, after the squad page's "Players | Management": white with dark writing when on, dark glass with
-     * white writing when off, a white ring round the one the remote is on. Measured once; drawing makes nothing new.
+     * A row of 07's capital pills (the club page's PLAYERS | MANAGEMENT and its lines, the hub's TODAY | TABLES |
+     * FORMULA 1): white with dark writing when on, glass with light writing when off, a white ring (3 px, at its edge)
+     * where the remote is. Measured once; drawing makes nothing new.
      */
     static final class Pills {
-        static final float H = 52f, PAD = 28f;
         final String[] words;
         /** Each pill's left edge and width (screen pixels), as last laid out. */
         final float[] x, w;
+        private final float h;
         private final TextPaint on, off;
-        private final Paint white = new Paint(Paint.ANTI_ALIAS_FLAG), glass = new Paint(Paint.ANTI_ALIAS_FLAG),
-                ring = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint white = new Paint(Paint.ANTI_ALIAS_FLAG), ring = new Paint(Paint.ANTI_ALIAS_FLAG),
+                tinted = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final RectF r = new RectF();
+        /** The colour under an off pill's glass (glassTint: on a club's page), 0 for the glass alone. */
+        int tint;
 
-        Pills(String[] words, float size) {
+        /** words in capitals; height, letter size and side padding in design px; spacing in em. */
+        Pills(String[] words, float height, float size, float pad, float spacing) {
             this.words = words;
+            h = height;
             x = new float[words.length];
             w = new float[words.length];
-            on = Cine.text(size, Cine.outfit(700), INK);
-            off = Cine.text(size, Cine.outfit(700), 0xFFFFFFFF);
-            on.setLetterSpacing(0.08f);
-            off.setLetterSpacing(0.08f);
-            white.setColor(0xFFFFFFFF);
+            on = Type.paint(size, Type.BOLD, INK);
+            off = Type.paint(size, Type.BOLD, Look07.L2);
+            on.setLetterSpacing(spacing);
+            off.setLetterSpacing(spacing);
+            white.setColor(Look07.FOCUS_FILL);
             ring.setStyle(Paint.Style.STROKE);
             ring.setStrokeWidth(Math.max(1f, Ui.f(3f)));
             ring.setColor(0xFFFFFFFF);
-            for (int i = 0; i < words.length; i++) w[i] = off.measureText(words[i]) + Ui.f(2 * PAD);
+            for (int i = 0; i < words.length; i++) w[i] = off.measureText(words[i]) - off.getLetterSpacing() * off.getTextSize() + Ui.f(2 * pad);
+            Shadows.prepare(Look07.SH_GLASS, height / 2f);
         }
 
         /** Pills from..to laid out left to right from left (screen pixels), gap apart; the right edge. */
@@ -351,24 +435,29 @@ final class ClubLook {
 
         /** Pill i at cy (screen pixels): chosen (white), the remote on it (the ring), at an opacity (0 to 1). */
         void draw(Canvas c, int i, float cy, boolean chosen, boolean focused, float alpha) {
-            float h = Ui.f(H);
-            r.set(x[i], cy - h / 2f, x[i] + w[i], cy + h / 2f);
-            int a = Math.round(255 * Math.max(0f, Math.min(1f, alpha)));
+            float hh = Ui.f(h);
+            r.set(x[i], cy - hh / 2f, x[i] + w[i], cy + hh / 2f);
+            float a = Math.max(0f, Math.min(1f, alpha));
+            int ai = Math.round(255 * a);
             if (chosen) {
-                white.setAlpha(a);
-                c.drawRoundRect(r, h / 2f, h / 2f, white);
+                white.setAlpha(Math.round((Look07.FOCUS_FILL >>> 24) * a));
+                c.drawRoundRect(r, hh / 2f, hh / 2f, white);
             } else {
-                glass.setColor(focused ? 0x52FFFFFF : 0x33000000);
-                glass.setAlpha(Math.round(glass.getAlpha() * a / 255f));
-                c.drawRoundRect(r, h / 2f, h / 2f, glass);
+                if (tint != 0) {
+                    tinted.setColor(tint);
+                    tinted.setAlpha(ai);
+                    c.drawRoundRect(r, hh / 2f, hh / 2f, tinted);
+                }
+                Frost.glass(c, r, hh / 2f, a);
             }
             TextPaint t = chosen ? on : off;
-            t.setAlpha(chosen ? a : Math.round((focused ? 255 : 215) * a / 255f));
-            c.drawText(words[i], r.centerX() - (t.measureText(words[i]) - t.getLetterSpacing() * t.getTextSize()) / 2f, Cine.mid(t, cy), t);
+            t.setAlpha(chosen ? ai : Math.round((Look07.L2 >>> 24) * a));
+            float tw = t.measureText(words[i]) - t.getLetterSpacing() * t.getTextSize();
+            c.drawText(words[i], r.centerX() - tw / 2f, Type.centred(t, cy), t);
             if (focused) {
-                float k = Ui.f(6f);
-                ring.setAlpha(a);
-                c.drawRoundRect(r.left - k, r.top - k, r.right + k, r.bottom + k, h / 2f + k, h / 2f + k, ring);
+                float k = ring.getStrokeWidth() / 2f;
+                ring.setAlpha(ai);
+                c.drawRoundRect(r.left - k, r.top - k, r.right + k, r.bottom + k, hh / 2f + k, hh / 2f + k, ring);
             }
         }
     }

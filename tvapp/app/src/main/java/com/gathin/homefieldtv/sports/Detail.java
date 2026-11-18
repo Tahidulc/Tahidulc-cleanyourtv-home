@@ -22,6 +22,8 @@ public final class Detail {
     /** Each side's line-up as Espn.P_* indexes it, the starters first. */
     public final List<String[]> homeLineup = new ArrayList<>(), awayLineup = new ArrayList<>();
     public String homeFormation = "", awayFormation = "", referee = "";
+    /** How many were there (ESPN's gameInfo), 0 when not given. */
+    public int attendance;
     /** FotMob's momentum, {minute, value} (above 0: the home side on top); empty without. */
     public final List<int[]> momentum = new ArrayList<>();
     /** The minutes added in each half (and extra time's), -1 until put up. */
@@ -44,6 +46,7 @@ public final class Detail {
             d.homeFormation = s.homeFormation;
             d.awayFormation = s.awayFormation;
             d.referee = s.referee;
+            d.attendance = Math.max(0, s.attendance);
             System.arraycopy(s.added, 0, d.added, 0, Math.min(4, s.added.length));
         }
         if (g != null && g.state != Game.PRE && g.id != null) {
