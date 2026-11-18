@@ -195,8 +195,8 @@ final class ReminderCard {
                     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                     PixelFormat.TRANSLUCENT);
             lp.gravity = Gravity.TOP | Gravity.END;
-            lp.x = Ui.px(56);
-            lp.y = Ui.px(52);
+            lp.x = Ui.px(70);
+            lp.y = Ui.px(60);
             lp.setTitle("Homefield TV reminder");
         }
 
@@ -262,7 +262,14 @@ final class ReminderCard {
         }
     }
 
-    /** The card itself: drawn here, used by the window and by ReminderActivity. */
+    /**
+     * The card itself in the 07 look (the approved still 29): drawn here, used by the window and by ReminderActivity. A
+     * frosted dark card 660 wide, rounded 40 (the plain dark material: it may be over another app): the channel's logo
+     * on its tile (in its own colour: Logos), Homefield's mark and name with "Starts in 1 min" by a bell in amber, the
+     * title (36 px), the channel, its number and times, two lines about the programme (from the guide, where the app
+     * has it), the programme's picture faint at the top right (fitted round its faces), and the keys as buttons: OK
+     * Watch now (white) and BACK Not now; a thin amber bar along its foot runs out as the card's time does.
+     */
     static final class Face extends View {
         interface Answer {
             void ok();
@@ -270,17 +277,27 @@ final class ReminderCard {
             void close();
         }
 
-        static final float W = 700f, H = 212f;
+        /** Its window (design px): the card at its tallest; a card with nothing to say about the programme is shorter. */
+        static final float W = 660f, H = 310f;
         private final Reminders.Reminder r;
         private final Answer answer;
-        private final Paint card = Dark.fill(Dark.RAIL), edge = Dark.line(0x33FFFFFF, 1.5f), tile = Dark.fill(0xFF000000);
-        private final Paint pill = Dark.fill(Dark.ACCENT), ink = Dark.fill(Dark.ACCENT_INK), line = Dark.fill(Dark.LINE);
-        private final Paint chip = Dark.line(0x8CFFFFFF, 1.5f), bmp = new Paint(Paint.FILTER_BITMAP_FLAG);
-        private final TextPaint pillP = Dark.text(22, 700, Dark.ACCENT_INK), titleP = Dark.text(32, 700, Dark.TEXT);
-        private final TextPaint subP = Dark.text(24, 500, Dark.SOFT), nameP = Dark.text(26, 700, Dark.TEXT);
-        private final TextPaint chipP = Dark.text(19, 700, Dark.SOFT), hintP = Dark.text(21, 500, Dark.MUTED);
+        private final long shownAt = android.os.SystemClock.uptimeMillis();
+        private final Frost frost = new Frost(Look07.MAT_DARK);
+        private final Paint amber = new Paint(Paint.ANTI_ALIAS_FLAG), amberInk = new Paint(Paint.ANTI_ALIAS_FLAG),
+                fill = new Paint(Paint.ANTI_ALIAS_FLAG), bmp = new Paint(Paint.FILTER_BITMAP_FLAG);
+        private final TextPaint kickP = Type.paint(19f, Type.BOLD, Look07.AMBER), brandP = Type.paint(19f, Type.BOLD, Look07.L2),
+                titleP = Type.paint(36f, Type.BOLD, Look07.L1), subP = Type.paint(19f, Type.REGULAR, Look07.L2),
+                descP = Type.paint(19f, Type.REGULAR, Look07.L2), keyP = Type.paint(14f, Type.EXTRABOLD, Look07.INK),
+                buttonP = Type.paint(22f, Type.SEMIBOLD, Look07.INK), nameP = Type.paint(26f, Type.BOLD, Look07.L1);
         private final RectF rect = new RectF();
         private final Runnable redraw = this::invalidate;
+        /** What the guide says of the programme (its channel, schedule and index), read once; the words cut to fit once. */
+        private String sub = "", desc = "", pic, titleFit, subFit;
+        private com.gathin.homefieldtv.engine.Channel ch;
+        private com.gathin.homefieldtv.engine.Guide.Schedule sched;
+        private int index = -1;
+        private android.text.StaticLayout descL;
+        private boolean read;
 
         Face(Context c, Reminders.Reminder r, Answer answer) {
             super(c);
@@ -288,6 +305,8 @@ final class ReminderCard {
             this.answer = answer;
             setFocusable(true);
             setFocusableInTouchMode(true);
+            amber.setColor(Look07.AMBER);
+            amberInk.setColor(Look07.AMBER_INK);
         }
 
         @Override public boolean dispatchKeyEvent(KeyEvent e) {
@@ -315,47 +334,113 @@ final class ReminderCard {
             }
         }
 
-        @Override protected void onDraw(Canvas c) {
-            float w = getWidth(), h = getHeight(), pad = Ui.f(24);
-            rect.set(0, 0, w, h);
-            c.drawRoundRect(rect, Ui.f(24), Ui.f(24), card);
-            rect.inset(Ui.f(0.75f), Ui.f(0.75f));
-            c.drawRoundRect(rect, Ui.f(24), Ui.f(24), edge);
-
-            // The channel's logo on its tile (its name when there is no logo).
-            float lx = pad, ly = Ui.f(26), lw = Ui.f(192), lh = Ui.f(108);
-            rect.set(lx, ly, lx + lw, ly + lh);
-            if (!Logos.draw(c, r.logo, rect, redraw)) {
-                String n = Ui.fit(r.channel, nameP, lw - Ui.f(20));
-                c.drawText(n, lx + (lw - nameP.measureText(n)) / 2f, ly + lh / 2f + Ui.f(9), nameP);
+        /** The programme's line, what it is about and its picture, from the guide where the app has it (once). */
+        private void read() {
+            if (read) return;
+            read = true;
+            com.gathin.homefieldtv.engine.Library lib = com.gathin.homefieldtv.engine.Library.get(getContext());
+            ch = lib.byKey(r.key);
+            com.gathin.homefieldtv.engine.Guide.Schedule s = ch == null ? null : lib.schedule(ch.key);
+            int i = s == null ? -1 : s.at(r.start + 1);
+            int n = ch == null ? 0 : lib.number(ch);
+            String times = r.end > r.start ? LiveText.hm(r.start) + " – " + LiveText.hm(r.end) : LiveText.hm(r.start);
+            sub = (n > 0 ? n + " " : "") + r.channel + "  ·  " + times;
+            if (i >= 0 && s.start[i] == r.start) {
+                sched = s;
+                index = i;
+                desc = s.desc[i] == null ? "" : s.desc[i].trim();
+                // Asked for once (drawn again when it is known).
+                pic = com.gathin.homefieldtv.engine.Exec.inline ? ProgrammePictures.peek(ch, s, i) : ProgrammePictures.get(getContext(), ch, s, i, redraw);
             }
-
-            // "Starts in 1 min", the bell in front, on the accent.
-            float x0 = Ui.f(240), room = w - x0 - pad;
-            String when = when(System.currentTimeMillis(), r.start);
-            float pw = Ui.f(52) + pillP.measureText(when) + Ui.f(18), ph = Ui.f(40), py = Ui.f(24);
-            rect.set(x0, py, x0 + pw, py + ph);
-            c.drawRoundRect(rect, ph / 2f, ph / 2f, pill);
-            Dark.bell(c, x0 + Ui.f(27), py + ph / 2f, Ui.f(11), ink);
-            c.drawText(when, x0 + Ui.f(48), py + ph / 2f + Ui.f(8), pillP);
-
-            c.drawText(Ui.fit(r.title, titleP, room), x0, Ui.f(106), titleP);
-            c.drawText(Ui.fit(r.channel + "  ·  " + LiveText.hm(r.start), subP, room), x0, Ui.f(142), subP);
-
-            // What the keys do.
-            c.drawRect(pad, Ui.f(160), w - pad, Ui.f(161.5f), line);
-            float kx = keyHint(c, "OK", "Watch", pad, Ui.f(192));
-            keyHint(c, "Back", "Dismiss", kx + Ui.f(28), Ui.f(192));
         }
 
-        private float keyHint(Canvas c, String key, String what, float x, float base) {
-            float cw = chipP.measureText(key) + Ui.f(20), ch = Ui.f(28);
-            rect.set(x, base - Ui.f(21), x + cw, base - Ui.f(21) + ch);
-            c.drawRoundRect(rect, Ui.f(7), Ui.f(7), chip);
-            c.drawText(key, x + Ui.f(10), base - Ui.f(1), chipP);
-            float tx = x + cw + Ui.f(10);
-            c.drawText(what, tx, base, hintP);
-            return tx + hintP.measureText(what);
+        /** Where the buttons go (design px): under the lines about the programme, as many as there are (two at most). */
+        private float buttonsTop() {
+            int lines = descL == null ? 0 : descL.getLineCount();
+            return 128f + (lines == 0 ? 0f : 14f + 26.6f * lines);
+        }
+
+        @Override protected void onDraw(Canvas c) {
+            read();
+            // Its picture asked for: looked at again as it comes.
+            if (pic == null && index >= 0) pic = ProgrammePictures.peek(ch, sched, index);
+            float w = getWidth(), pad = Ui.f(28f);
+            if (!desc.isEmpty() && descL == null && w > 0) descL = InfoCard.lines(desc, descP, Math.round(w - pad * 2f), 2, 1.4f / 1.21f);
+            float y = buttonsTop(), h = Ui.f(y + 22f + 62f + 30f);
+            rect.set(0, 0, w, h);
+            frost.draw(c, rect, Ui.f(Look07.R_MENU), 1f);
+            // The programme's picture, faint at the top right.
+            if (pic != null && !pic.isEmpty()) {
+                android.graphics.Bitmap b = Pics.get(pic, Ui.px(360f), Ui.px(220f), Pics.PANEL, redraw);
+                if (b != null) {
+                    c.save();
+                    c.clipRect(0, 0, w, h);
+                    rect.set(w - Ui.f(360f), 0, w, Ui.f(220f));
+                    bmp.setAlpha(0x57);
+                    c.drawBitmap(b, null, rect, bmp);
+                    c.restore();
+                }
+            }
+            // The channel's logo on its tile (its name when there is no logo).
+            float lx = pad, ly = Ui.f(26f + 8f), lw = Ui.f(110f), lh = Ui.f(72f);
+            rect.set(lx, ly, lx + lw, ly + lh);
+            if (!Logos.draw(c, r.logo, rect, redraw)) {
+                String n = Ui.fit(r.channel, nameP, lw - Ui.f(16f));
+                c.drawText(n, rect.centerX() - nameP.measureText(n) / 2f, Type.centred(nameP, rect.centerY()), nameP);
+            }
+            // Homefield · the bell and "Starts in 1 min"; the title; the channel and its time.
+            float x0 = lx + lw + Ui.f(18f), room = w - x0 - pad, ky = Ui.f(45f);
+            float ms = Ui.f(24f);
+            Dark.mark(c, x0, ky - Ui.f(19f), ms, amber, amberInk);
+            float kx = x0 + ms + Ui.f(10f);
+            c.drawText("Homefield", kx, ky, brandP);
+            kx += brandP.measureText("Homefield") + Ui.f(10f);
+            c.drawText("·", kx, ky, kickP);
+            kx += kickP.measureText("·") + Ui.f(10f);
+            Icons07.draw(c, Icons07.BELL, kx + Ui.f(9f), ky - Ui.f(7f), Ui.f(18f), Look07.AMBER);
+            kx += Ui.f(18f + 10f);
+            c.drawText(when(System.currentTimeMillis(), r.start), kx, ky, kickP);
+            if (titleFit == null) {
+                titleFit = Ui.fit(r.title, titleP, room);
+                subFit = Ui.fit(sub, subP, room);
+            }
+            c.drawText(titleFit, x0, Ui.f(87f), titleP);
+            c.drawText(subFit, x0, Ui.f(118f), subP);
+            // What it is about, two lines at most.
+            if (descL != null) Ui.draw(c, descL, pad, Ui.f(128f + 14f));
+            // The keys as buttons: OK Watch now, BACK Not now.
+            float cy = Ui.f(y + 22f + 31f), bx = pad;
+            bx += button(c, bx, cy, "OK", "Watch now", true) + Ui.f(14f);
+            button(c, bx, cy, "BACK", "Not now", false);
+            // The card's time running out, along its foot.
+            float k = 1f - Math.min(1f, (android.os.SystemClock.uptimeMillis() - shownAt) / (float) SHOW_MS);
+            fill.setColor(0x1FFFFFFF);
+            c.save();
+            rect.set(0, 0, w, h);
+            c.clipRect(0, h - Ui.f(6f), w, h);
+            c.drawRoundRect(rect, Ui.f(Look07.R_MENU), Ui.f(Look07.R_MENU), fill);
+            c.clipRect(0, h - Ui.f(6f), w * k, h);
+            fill.setColor(Look07.AMBER);
+            c.drawRoundRect(rect, Ui.f(Look07.R_MENU), Ui.f(Look07.R_MENU), fill);
+            c.restore();
+            if (k > 0f && !com.gathin.homefieldtv.engine.Exec.inline) postInvalidateDelayed(250);
+        }
+
+        /** A key's button: its key in a chip, then what it does; the first white (OK), the other on glass. */
+        private float button(Canvas c, float x, float cy, String key, String what, boolean lit) {
+            float h = Ui.f(62f), kw = Math.max(Ui.f(40f), keyP.measureText(key) + Ui.f(16f)), kh = Ui.f(30f);
+            float w = Ui.f(16f) + kw + Ui.f(14f) + buttonP.measureText(what) + Ui.f(30f);
+            rect.set(x, cy - h / 2f, x + w, cy + h / 2f);
+            fill.setColor(lit ? Look07.L1 : Look07.BUTTON);
+            c.drawRoundRect(rect, h / 2f, h / 2f, fill);
+            rect.set(x + Ui.f(16f), cy - kh / 2f, x + Ui.f(16f) + kw, cy + kh / 2f);
+            fill.setColor(lit ? 0x1F000000 : 0x2EFFFFFF);
+            c.drawRoundRect(rect, Ui.f(9f), Ui.f(9f), fill);
+            keyP.setColor(lit ? Look07.INK : Look07.L1);
+            c.drawText(key, rect.centerX() - keyP.measureText(key) / 2f, Type.centred(keyP, cy), keyP);
+            buttonP.setColor(lit ? Look07.INK : Look07.L1);
+            c.drawText(what, rect.right + Ui.f(14f), Type.centred(buttonP, cy), buttonP);
+            return w;
         }
     }
 }

@@ -1,13 +1,9 @@
 package com.gathin.homefieldtv;
 
 import android.content.Context;
-import android.graphics.Bitmap;
 import android.graphics.Canvas;
-import android.graphics.LinearGradient;
 import android.graphics.Paint;
-import android.graphics.Path;
 import android.graphics.RectF;
-import android.graphics.Shader;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.Layout;
@@ -23,11 +19,10 @@ import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.Library;
-import com.gathin.homefieldtv.engine.Reminders;
-import com.gathin.homefieldtv.prefs.Categories;
-import com.gathin.homefieldtv.prefs.Look;
-import com.gathin.homefieldtv.prefs.ChannelEdits;
 import com.gathin.homefieldtv.engine.LogoPack;
+import com.gathin.homefieldtv.engine.Reminders;
+import com.gathin.homefieldtv.prefs.ChannelEdits;
+import com.gathin.homefieldtv.prefs.Look;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -38,25 +33,26 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Catch-up's archive: a channel's programmes by day, as TiviMate 5 shows them (its public picture, SPEC.md §2.5, in the
- * family's colours and focus). Along the top the channel (its logo on its tile, its number and name, how far back its
- * archive goes) and the date and the clock at the right. Down the left its programmes, each day under its name in the
- * light accent, a row 75 high with the time and the title, the remote's row always at the same height in the focus
- * pill with a ▶ on one that plays, the list sliding under it and fading at its ends (the programme on now in the light
- * accent, one the archive no longer keeps greyed, a bell on one with a reminder). Beside them the days, weekday over
- * date, today's in the light accent and the remote's day in a pill level with its programme. At the right the
- * programme's picture (Sky's, else the channel's logo) over a card with its title, its day and times and what it is
- * about.
+ * Catch-up's archive in the 07 look (the approved still 27): a channel's programmes by day, reached from its menu in
+ * the guide ("‹ Guide" in the shell's place of the tabs), over the blurred picture of the programme the remote is on.
+ * At the top the channel (its logo on its tile, "104 Ember · Catch-up" and how far back its archive goes), under it the
+ * days as pills (weekday over date, the day of the remote's programme white); down the left its programmes, each a row
+ * 84 high on glass with its picture fitted round its faces, its time, its title and its length (the one on now with
+ * "Start over" in amber, one the archive keeps with the catch-up mark, a bell on one with a reminder, one the archive no
+ * longer keeps quieter), the remote's row white and lifted, the list sliding to keep it in sight; at the right the
+ * programme's picture (870 x 489, faces whole) over a frosted card with its day and times, its title, two lines about it
+ * and what OK does (Play from Start, Watch Live or Remind Me), My List and its description.
  *
- * <p>Up and Down go through the programmes, across the days; Right goes to the days and Left (or OK) back, Up and Down
- * there going to another day. OK plays a programme already shown from the archive (CatchupScreen, as the guide does),
- * watches the one on now, and opens the small menu under one to come (Remind, Record…); OK held opens the whole menu.
- * Back goes back to the guide. Built from the channel's own schedule only.
+ * <p>Up and Down go through the programmes, across the days (each day's name over its first); Right (or Up from the
+ * first) goes to the days, where Left and Right go to another day and Down or OK come back. OK plays a programme already
+ * shown from the archive (CatchupScreen, as the guide does), watches the one on now, and opens the small menu under one
+ * to come (Remind, Record…); OK held opens the whole menu; Play/pause its description. Back goes back to the guide.
+ * Built from the channel's own schedule only.
  */
 final class ArchiveScreen extends Screen implements GuideMenu.Host, DialogCard.Host {
-    // Design pixels.
-    static final float HEAD_H = 112f, LIST_W = 960f, DAYS_X = 960f, DETAIL_X = 1146f, ROW = 75f, FOCUS_TOP = 502f, DAY_H = 96f,
-            DAY_PITCH = 104f, PIC_X = 1186f, PIC_Y = 112f, PIC_W = 694f, PIC_H = 390f, CARD_Y = 526f, FADE = 130f;
+    // Design pixels (the still's .cu-*).
+    static final float HEAD_Y = 136f, DAYS_Y = 252f, DAY_H = 64f, LIST_X = 90f, LIST_W = 820f, LIST_Y = 346f, ROW = 84f, PITCH = 92f,
+            HEADER_H = 52f, SLOT = 4 * PITCH, PIC_X = 960f, PIC_Y = 252f, PIC_W = 870f, PIC_H = 489f, CARD_Y = 770f, CARD_H = 270f;
     static final long SCROLL_MS = 200;
     private static final int HEADER = 0, PROGRAMME = 1;
 
@@ -65,6 +61,8 @@ final class ArchiveScreen extends Screen implements GuideMenu.Host, DialogCard.H
     private Guide.Schedule s;
     /** The rows (a day's name, or a programme by its index in the schedule) and the days (their first row). */
     private final List<int[]> rows = new ArrayList<>();
+    /** Each row's top in the list (design px from its first), worked out with the rows. */
+    private float[] rowY = new float[0];
     private final List<Day> days = new ArrayList<>();
     private int focus = -1;
     private boolean inDays;
@@ -75,6 +73,7 @@ final class ArchiveScreen extends Screen implements GuideMenu.Host, DialogCard.H
     private final Runnable askPicture = () -> {
         if (page != null) {
             page.settled = true;
+            page.groundNow();
             page.invalidate();
         }
     };
@@ -83,14 +82,15 @@ final class ArchiveScreen extends Screen implements GuideMenu.Host, DialogCard.H
     private static final class Day {
         final LocalDate date;
         final int firstRow;
-        final String name, weekday, dayMonth;
+        final String name, weekday, dayMonth, caps;
 
-        Day(LocalDate date, int firstRow, String name, String weekday, String dayMonth) {
+        Day(LocalDate date, int firstRow, String name, String weekday, String dayMonth, String caps) {
             this.date = date;
             this.firstRow = firstRow;
             this.name = name;
             this.weekday = weekday;
             this.dayMonth = dayMonth;
+            this.caps = caps;
         }
     }
 
@@ -103,7 +103,6 @@ final class ArchiveScreen extends Screen implements GuideMenu.Host, DialogCard.H
 
     @Override View build() {
         FrameLayout f = new FrameLayout(tv);
-        // No ground of its own: the window's (TvActivity) is the screen's, so it is filled once, not twice.
         page = new Page(tv);
         menu = new GuideMenu(tv);
         menu.setHost(this);
@@ -114,6 +113,16 @@ final class ArchiveScreen extends Screen implements GuideMenu.Host, DialogCard.H
         f.addView(dialog, new FrameLayout.LayoutParams(-1, -1));
         make(at);
         return f;
+    }
+
+    // ---- 07's shell: reached from the guide ----------------------------------------------------------------------
+
+    @Override boolean shell() {
+        return true;
+    }
+
+    @Override String backLine() {
+        return "Guide";
     }
 
     /** The rows and days from the channel's schedule (one channel's programmes: a few days of them), the remote at t. */
@@ -131,12 +140,23 @@ final class ArchiveScreen extends Screen implements GuideMenu.Host, DialogCard.H
                 String name = Ui.day(s.start[i], now);
                 String weekday = d.getDayOfWeek().getDisplayName(TextStyle.SHORT, Locale.UK);
                 String dayMonth = d.getDayOfMonth() + " " + d.getMonth().getDisplayName(TextStyle.SHORT, Locale.UK);
-                days.add(new Day(d, rows.size(), d.equals(today) ? "Today" : name, weekday, dayMonth));
+                boolean isToday = d.equals(today);
+                String caps = (isToday ? "Today" : d.getDayOfWeek().getDisplayName(TextStyle.FULL, Locale.UK) + " " + d.getDayOfMonth() + " "
+                        + d.getMonth().getDisplayName(TextStyle.FULL, Locale.UK)).toUpperCase(Locale.UK);
+                days.add(new Day(d, rows.size(), isToday ? "Today" : name, isToday ? "Today" : weekday,
+                        isToday ? weekday + " " + d.getDayOfMonth() : dayMonth, caps));
                 rows.add(new int[]{HEADER, days.size() - 1});
                 last = d;
             }
             rows.add(new int[]{PROGRAMME, i, days.size() - 1});
         }
+        rowY = new float[rows.size() + 1];
+        float y = 0f;
+        for (int k = 0; k < rows.size(); k++) {
+            rowY[k] = y;
+            y += rows.get(k)[0] == HEADER ? HEADER_H : PITCH;
+        }
+        rowY[rows.size()] = y;
         int want = -1;
         if (n > 0) {
             int i = s.at(t);
@@ -198,12 +218,26 @@ final class ArchiveScreen extends Screen implements GuideMenu.Host, DialogCard.H
         if (asking()) return dialog.key(code);
         if (menu.isOpen()) return menu.key(code);
         boolean first = e == null || e.getRepeatCount() == 0;
+        if (inDays) {
+            switch (code) {
+                case KeyEvent.KEYCODE_DPAD_LEFT:
+                case KeyEvent.KEYCODE_DPAD_RIGHT:
+                    toDay(dayOfFocus() + (code == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1));
+                    return true;
+                case KeyEvent.KEYCODE_DPAD_DOWN:
+                    toList();
+                    return true;
+                case KeyEvent.KEYCODE_DPAD_UP:
+                    return true;
+                default:
+                    break;
+            }
+        }
         switch (code) {
             case KeyEvent.KEYCODE_DPAD_UP:
             case KeyEvent.KEYCODE_DPAD_DOWN: {
                 int dir = code == KeyEvent.KEYCODE_DPAD_UP ? -1 : 1;
-                if (inDays) toDay(dayOfFocus() + dir);
-                else move(dir, 1);
+                if (!move(dir, 1) && dir < 0 && !days.isEmpty()) toDays();
                 return true;
             }
             case KeyEvent.KEYCODE_CHANNEL_UP:
@@ -215,16 +249,9 @@ final class ArchiveScreen extends Screen implements GuideMenu.Host, DialogCard.H
                 move(1, 6);
                 return true;
             case KeyEvent.KEYCODE_DPAD_RIGHT:
-                if (!inDays && !days.isEmpty()) {
-                    inDays = true;
-                    page.invalidate();
-                }
+                if (!days.isEmpty()) toDays();
                 return true;
             case KeyEvent.KEYCODE_DPAD_LEFT:
-                if (inDays) {
-                    inDays = false;
-                    page.invalidate();
-                }
                 return true;
             case KeyEvent.KEYCODE_MENU:
                 if (first) openCard();
@@ -237,8 +264,18 @@ final class ArchiveScreen extends Screen implements GuideMenu.Host, DialogCard.H
         }
     }
 
-    /** Steps programmes up or down (passing the days' names), no wrap-around. */
-    private void move(int dir, int steps) {
+    private void toDays() {
+        inDays = true;
+        page.invalidate();
+    }
+
+    private void toList() {
+        inDays = false;
+        page.invalidate();
+    }
+
+    /** Steps programmes up or down (passing the days' names), no wrap-around; false when there was none to go to. */
+    private boolean move(int dir, int steps) {
         int k = focus, to = focus;
         for (int done = 0; done < steps; ) {
             k += dir;
@@ -251,7 +288,9 @@ final class ArchiveScreen extends Screen implements GuideMenu.Host, DialogCard.H
         if (to != focus && to >= 0) {
             focus = to;
             page.moved();
+            return true;
         }
+        return false;
     }
 
     /** Another day: its programme on now (today), else its first. */
@@ -278,8 +317,7 @@ final class ArchiveScreen extends Screen implements GuideMenu.Host, DialogCard.H
             return;
         }
         if (inDays) {
-            inDays = false;
-            page.invalidate();
+            toList();
             return;
         }
         int i = programme();
@@ -316,8 +354,7 @@ final class ArchiveScreen extends Screen implements GuideMenu.Host, DialogCard.H
             return true;
         }
         if (inDays) {
-            inDays = false;
-            page.invalidate();
+            toList();
             return true;
         }
         return false;
@@ -325,9 +362,10 @@ final class ArchiveScreen extends Screen implements GuideMenu.Host, DialogCard.H
 
     // ---- the menus ------------------------------------------------------------------------------------------------
 
-    /** The remote's row as it is drawn (screen pixels): the focus pill's place. */
+    /** The remote's row as it is drawn (screen pixels). */
     private RectF rowRect() {
-        return new RectF(Ui.f(16f), Ui.f(FOCUS_TOP), Ui.f(LIST_W - 16f), Ui.f(FOCUS_TOP + ROW));
+        float top = page.rowTop(focus);
+        return new RectF(Ui.f(LIST_X - 12f), Ui.f(top - 4f), Ui.f(LIST_X + LIST_W + 12f), Ui.f(top + ROW + 4f));
     }
 
     private long[] times() {
@@ -338,9 +376,7 @@ final class ArchiveScreen extends Screen implements GuideMenu.Host, DialogCard.H
     private void openPopup() {
         long[] p = times();
         if (p == null) return;
-        RectF row = rowRect();
-        row.left += Ui.f(3f);
-        menu.openPopup(GuideActions.popup(tv, ch, p[0], s.title[programme()]), row, 16f);
+        menu.openPopup(GuideActions.popup(tv, ch, p[0], s.title[programme()]), rowRect(), LIST_X);
     }
 
     private void openCard() {
@@ -375,250 +411,287 @@ final class ArchiveScreen extends Screen implements GuideMenu.Host, DialogCard.H
 
     // ---- the page -----------------------------------------------------------------------------------------------
 
-    /** The whole page in one view: the channel, the programmes, the days, the picture and the card. */
+    /** The whole page in one view: the ground, the channel, the days, the programmes, the picture and the card. */
     private final class Page extends View {
-        private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), bmp = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
-        private final Paint fadeTop = new Paint(), fadeFoot = new Paint();
-        private final TextPaint nameP = Type.paint(Type.ROW, Type.MEDIUM, Palette.TEXT1), subP = Type.paint(Type.SMALL, Type.REGULAR, Palette.TEXT2);
-        private final TextPaint clockP = Type.paint(Type.ROW, Type.MEDIUM, Palette.ACCENT_LIGHT), headP = Type.paint(Type.SMALL, Type.MEDIUM, Palette.ACCENT_LIGHT);
-        private final TextPaint timeP = Type.paint(Type.ROW, Type.REGULAR, Palette.TEXT2), titleP = Type.paint(Type.ROW, Type.REGULAR, Palette.TEXT2);
-        private final TextPaint dayP = Type.paint(Type.ROW, Type.REGULAR, Palette.TEXT2);
-        private final TextPaint cardTitleP = Type.paint(Type.ITEM, Type.MEDIUM, Palette.TEXT1), cardP = Type.paint(Type.SMALL, Type.REGULAR, Palette.TEXT2);
-        private final RectF r = new RectF();
-        private final Path clip = new Path();
+        private final Ground ground = new Ground(this);
+        private final Frost card = new Frost(Look07.MAT), glass = new Frost(Look07.GLASS);
+        private final PicTile thumbs = new PicTile(this), picture = new PicTile(this);
+        private final Lift07 lift = new Lift07();
+        private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), ring = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint nameP = Type.paint(Type.TITLE40, Type.BOLD, Look07.L1), subP = Type.paint(21f, Type.MEDIUM, Look07.L2);
+        private final TextPaint dayP = Type.paint(21f, Type.MEDIUM, Look07.L2), dateP = Type.paint(15f, Type.SEMIBOLD, Look07.L3);
+        private final TextPaint timeP = Type.clock(23f, Type.BOLD, Look07.L1), titleP = Type.paint(23f, Type.SEMIBOLD, Look07.L1);
+        private final TextPaint lenP = Type.paint(17f, Type.MEDIUM, Look07.L3), markP = Type.paint(16f, Type.SEMIBOLD, Look07.AMBER);
+        private final TextPaint headP = Type.label(Type.LABEL, Look07.L3), kickP = Type.label(16f, Look07.L3);
+        private final TextPaint cardTitleP = Type.paint(36f, Type.BOLD, Look07.L1), cardP = Type.paint(19f, Type.REGULAR, Look07.L2);
+        private final TextFit titles = new TextFit(titleP, 128), lens = new TextFit(lenP, 128), cardTitles = new TextFit(cardTitleP, 32);
+        private final RectF r = new RectF(), t = new RectF();
         private final Runnable redraw = this::invalidate;
-        /** The list's place (rows, fractional while it slides to the remote's row) and the days' (days). */
-        private float listAt, dayAt;
+        /** Each row's second line, kept by row and minute (nothing made a frame). */
+        private String[] lenText = new String[0];
+        private long[] lenMinute = new long[0];
+        /** The list's scroll (design px) and the days', gliding on the display's frame clock. */
+        private final Glide listGlide = new Glide(SCROLL_MS), dayGlide = new Glide(SCROLL_MS);
         boolean settled;
-        private int fadeFor = -1;
-        private String cardFor = "";
-        private StaticLayout cardTitle, cardDesc;
+        private String cardFor = "", headFor = "", headText = "", subText = "";
+        private StaticLayout cardDesc;
+        private String kicker = "";
 
         Page(Context c) {
             super(c);
+            ring.setStyle(Paint.Style.STROKE);
+            Shadows.prepare(Look07.SH_ROW, 24f);
+            Shadows.prepare(Look07.SH_PANEL, Look07.R_PANEL);
         }
 
-        /** The list's and the days' places, gliding on the display's frame clock (a held key glides on smoothly). */
-        private final Glide listGlide = new Glide(SCROLL_MS, 75f), dayGlide = new Glide(SCROLL_MS, 75f);
+        /** The list's scroll that keeps row k in sight, at most four rows down (design px). */
+        private float scrollFor(int k) {
+            return k < 0 || k >= rowY.length ? 0f : Math.max(0f, rowY[k] - SLOT);
+        }
+
+        /** Row k's top on the screen now (design px). */
+        float rowTop(int k) {
+            return k < 0 || k >= rowY.length ? LIST_Y : LIST_Y + rowY[k] - listGlide.value();
+        }
 
         /** In place at once (opening, the lists made again). */
         void jump() {
-            listGlide.jump(Math.max(0, focus));
-            dayGlide.jump(dayOfFocus());
-            listAt = listGlide.value();
-            dayAt = dayGlide.value();
+            lenText = new String[0];
+            listGlide.jump(scrollFor(focus));
+            dayGlide.jump(0f);
             settled = Exec.inline;
+            groundNow();
             h.removeCallbacks(askPicture);
             if (!Exec.inline) h.postDelayed(askPicture, ProgrammePictures.REST_MS);
             invalidate();
         }
 
-        /** The remote moved: the list and the days slide to it; the picture asked for once it rests. */
+        /** The remote moved: the list slides to it; the pictures asked for once it rests. */
         void moved() {
-            listGlide.to(focus);
-            dayGlide.to(dayOfFocus());
-            listAt = listGlide.value();
-            dayAt = dayGlide.value();
+            listGlide.to(scrollFor(focus));
             settled = Exec.inline;
             h.removeCallbacks(askPicture);
             if (!Exec.inline) h.postDelayed(askPicture, ProgrammePictures.REST_MS);
             invalidate();
         }
 
-        private boolean step() {
-            boolean moving = listGlide.step() | dayGlide.step();
-            listAt = listGlide.value();
-            dayAt = dayGlide.value();
-            return moving;
+        /** The ground: the programme's own picture once known, else the channel's logo. */
+        void groundNow() {
+            int i = programme();
+            String pic = i < 0 ? "" : settled && !Exec.inline ? ProgrammePictures.get(getContext(), ch, s, i, () -> {
+                groundNow();
+                invalidate();
+            }) : ProgrammePictures.peek(ch, s, i);
+            ground.set(pic != null && !pic.isEmpty() ? pic : LogoPack.url(ch));
         }
 
         @Override protected void onDraw(Canvas c) {
             long now = System.currentTimeMillis();
-            boolean moving = step();
-            drawHead(c, now);
-            fill.setColor(Palette.PANEL);
-            c.drawRect(0, Ui.f(HEAD_H), Ui.f(DETAIL_X), getHeight(), fill);
-            fill.setColor(Palette.DIVIDER);
-            c.drawRect(Ui.f(DAYS_X), Ui.f(HEAD_H), Ui.f(DAYS_X + 2f), getHeight(), fill);
+            boolean moving = ground.draw(c, getWidth(), getHeight());
+            moving |= listGlide.step() | dayGlide.step();
+            int i = programme();
+            moving |= lift.step(inDays ? null : i >= 0 ? rows.get(focus) : null);
+            drawHead(c);
             if (rows.isEmpty()) {
-                r.set(0, Ui.f(HEAD_H), Ui.f(LIST_W), getHeight());
+                r.set(0, Ui.f(LIST_Y), Ui.f(PIC_X - 20f), getHeight());
                 EmptyState.draw(c, r, Dark.TV, 96f, "No programmes", "The guide has nothing for this channel yet");
             } else {
+                drawDays(c);
                 drawList(c, now);
-                drawDays(c, now);
-                drawFades(c);
-                drawDetail(c, now);
+                if (i >= 0) drawDetail(c, i, now);
             }
             if (moving) postInvalidateOnAnimation();
         }
 
-        /** The channel along the top: its logo on its tile, its number and name, its archive; the date and the clock. */
-        private void drawHead(Canvas c, long now) {
-            fill.setColor(Palette.HEADER);
-            c.drawRect(0, 0, Ui.f(DETAIL_X), Ui.f(HEAD_H), fill);
-            float tx = Ui.f(32f), ty = Ui.f(20f), tw = Ui.f(108f), th = Ui.f(72f);
-            r.set(tx, ty, tx + tw, ty + th);
-            if (!Logos.draw(c, ch, r, redraw)) RoundButton.glyph(c, Dark.TV, r.centerX(), r.centerY(), Ui.f(36f), Palette.TEXT3);
-            Library lib = Library.get(getContext());
-            String name = (Look.numbers ? lib.number(ch) + "  " : "") + ChannelEdits.name(ch);
-            nameP.setColor(Palette.TEXT1);
-            c.drawText(Ui.fit(name, nameP, Ui.f(DETAIL_X - 200f)), Ui.f(164f), Ui.f(54f), nameP);
-            Channel kept = Catchup.source(ch);
-            String sub = kept == null ? "No catch-up for this channel"
-                    : "Catch-up: up to " + kept.archiveDays + (kept.archiveDays == 1 ? " day" : " days");
-            subP.setColor(Palette.TEXT2);
-            c.drawText(Ui.fit(sub + "  •  " + Categories.label(getContext(), ch.group), subP, Ui.f(DETAIL_X - 200f)), Ui.f(164f), Ui.f(90f), subP);
-            clockP.setColor(Palette.ACCENT_LIGHT);
-            String clock = Ui.dateClock(now);
-            c.drawText(clock, Ui.f(PIC_X + PIC_W) - clockP.measureText(clock), Ui.f(64f), clockP);
+        /** The channel: its logo on its tile, "104 Ember · Catch-up", how far back its archive goes. */
+        private void drawHead(Canvas c) {
+            r.set(Ui.f(LIST_X), Ui.f(HEAD_Y), Ui.f(LIST_X + 132f), Ui.f(HEAD_Y + 88f));
+            if (!Logos.draw(c, ch, r, redraw)) Icons07.draw(c, Icons07.TV, r.centerX(), r.centerY(), Ui.f(40f), Look07.L3);
+            String key = ch.key + (Look.numbers ? "|n" : "|");
+            float tx = Ui.f(LIST_X + 132f + 22f);
+            if (!key.equals(headFor)) {
+                headFor = key;
+                int n = Library.get(getContext()).number(ch);
+                headText = Ui.fit((Look.numbers && n > 0 ? n + " " : "") + ChannelEdits.name(ch) + " · Catch-up", nameP, Ui.f(PIC_X + PIC_W) - tx);
+                Channel kept = Catchup.source(ch);
+                subText = kept == null ? "No catch-up for this channel"
+                        : "Keeps programmes for " + kept.archiveDays + (kept.archiveDays == 1 ? " day" : " days") + " · OK plays one from its start";
+            }
+            c.drawText(headText, tx, Ui.f(HEAD_Y + 44f), nameP);
+            Icons07.draw(c, Icons07.CATCHUP, tx + Ui.f(10f), Ui.f(HEAD_Y + 72f), Ui.f(20f), Look07.L2);
+            c.drawText(subText, tx + Ui.f(28f), Ui.f(HEAD_Y + 79f), subP);
         }
 
+        /** The days as pills: weekday over date, the remote's day white (lifted while the remote is on them). */
+        private void drawDays(Canvas c) {
+            int sel = dayOfFocus();
+            float x = Ui.f(LIST_X), cy = Ui.f(DAYS_Y + DAY_H / 2f), hh = Ui.f(DAY_H) / 2f, pad = Ui.f(22f);
+            // Only the days that fit in the list's width, ending with the remote's.
+            int from = 0;
+            float total = 0f;
+            for (int d = sel; d >= 0; d--) {
+                total += pillW(days.get(d), pad) + Ui.f(8f);
+                if (total > Ui.f(LIST_W + 20f)) break;
+                from = d;
+            }
+            for (int d = from; d < days.size(); d++) {
+                Day day = days.get(d);
+                float w = pillW(day, pad);
+                if (x + w > Ui.f(LIST_X + LIST_W + 40f)) break;
+                r.set(x, cy - hh, x + w, cy + hh);
+                boolean on = d == sel;
+                if (on) {
+                    if (inDays) {
+                        c.save();
+                        c.scale(1.05f, 1.05f, r.centerX(), r.centerY());
+                        Shadows.draw(c, r, hh, Look07.SH_ROW, 1f);
+                    }
+                    fill.setColor(Look07.FOCUS_FILL);
+                    c.drawRoundRect(r, hh, hh, fill);
+                } else {
+                    glass.draw(c, r, hh, 1f);
+                }
+                dayP.setColor(on ? Look07.INK : Look07.L2);
+                dateP.setColor(on ? Look07.INK2 : Look07.L3);
+                float mid = r.centerX();
+                c.drawText(day.weekday, mid - dayP.measureText(day.weekday) / 2f, cy - Ui.f(2f), dayP);
+                c.drawText(day.dayMonth, mid - dateP.measureText(day.dayMonth) / 2f, cy + Ui.f(19f), dateP);
+                if (on && inDays) c.restore();
+                x += w + Ui.f(8f);
+            }
+        }
+
+        private float pillW(Day d, float pad) {
+            return Math.max(dayP.measureText(d.weekday), dateP.measureText(d.dayMonth)) + pad * 2f;
+        }
+
+        /** The programmes, each a row on glass; the remote's white and lifted; each day's name over its first. */
         private void drawList(Canvas c, long now) {
             c.save();
-            c.clipRect(0, Ui.f(HEAD_H), Ui.f(LIST_W), getHeight());
+            c.clipRect(0, Ui.f(LIST_Y - 8f), Ui.f(PIC_X - 20f), getHeight());
             int nowAt = s == null ? -1 : s.at(now);
             long kept = Catchup.earliest(ch, now);
             boolean bells = Reminders.any(getContext());
-            int from = Math.max(0, (int) Math.floor(listAt - (FOCUS_TOP - HEAD_H) / ROW) - 1);
-            for (int k = from; k < rows.size(); k++) {
-                float top = FOCUS_TOP + (k - listAt) * ROW;
+            for (int k = 0; k < rows.size(); k++) {
+                float top = rowTop(k);
                 if (top > 1080f) break;
-                if (top + ROW < HEAD_H) continue;
+                if (top + PITCH < LIST_Y - 8f) continue;
                 int[] row = rows.get(k);
-                float cy = Ui.f(top + ROW / 2f);
                 if (row[0] == HEADER) {
-                    headP.setColor(Palette.ACCENT_LIGHT);
-                    c.drawText(days.get(row[1]).name, Ui.f(48f), Type.centred(headP, cy), headP);
+                    c.drawText(days.get(row[1]).caps, Ui.f(LIST_X + 12f), Ui.f(top + 34f), headP);
                     continue;
                 }
-                int i = row[1];
-                boolean here = k == focus;
-                if (here) {
-                    r.set(Ui.f(16f), Ui.f(top), Ui.f(LIST_W - 16f), Ui.f(top + ROW));
-                    if (inDays) Focus.selected(c, r);
-                    else Focus.pill(c, r);
-                }
-                boolean over = s.stop[i] <= now, on = i == nowAt, gone = over && s.start[i] < kept;
-                int ink = here ? Palette.TEXT1 : on ? Palette.ACCENT_LIGHT : over && (gone || Catchup.source(ch) == null) ? Palette.TEXT3 : Palette.TEXT2;
-                timeP.setColor(ink);
-                titleP.setColor(ink);
-                c.drawText(LiveText.hm(s.start[i]), Ui.f(48f), Type.centred(timeP, cy), timeP);
-                boolean plays = on || over && !gone && Catchup.source(ch) != null;
-                float right = LIST_W - 40f;
-                if (here && plays) {
-                    RoundButton.glyph(c, Dark.PLAY, Ui.f(LIST_W - 52f), cy, Ui.f(28f), Palette.TEXT1);
-                    right -= 40f;
-                } else if (bells && s.start[i] > now && Reminders.has(getContext(), ch.key, s.start[i])) {
-                    fill.setColor(here ? Palette.TEXT1 : Palette.TEXT2);
-                    Dark.bell(c, Ui.f(LIST_W - 52f), cy, Ui.f(12f), fill);
-                    right -= 40f;
-                }
-                c.drawText(Ui.fit(s.title[i], titleP, Ui.f(right - 160f)), Ui.f(160f), Type.centred(titleP, cy), titleP);
+                if (k != focus) drawRow(c, k, row, top, now, nowAt, kept, bells);
             }
+            if (focus >= 0 && rows.get(focus)[0] == PROGRAMME) drawRow(c, focus, rows.get(focus), rowTop(focus), now, nowAt, kept, bells);
             c.restore();
         }
 
-        /** The days, weekday over date: the remote's day in a pill level with its programme, today's in the light accent. */
-        private void drawDays(Canvas c, long now) {
+        private void drawRow(Canvas c, int k, int[] row, float top, long now, int nowAt, long kept, boolean bells) {
+            int i = row[1];
+            boolean here = k == focus;
+            float up = here ? Math.max(0f, lift.of(row)) : 0f;
+            boolean white = here && !inDays;
+            r.set(Ui.f(LIST_X), Ui.f(top), Ui.f(LIST_X + LIST_W), Ui.f(top + ROW));
+            float rad = Ui.f(24f);
             c.save();
-            c.clipRect(Ui.f(DAYS_X + 2f), Ui.f(HEAD_H), Ui.f(DETAIL_X), getHeight());
-            LocalDate today = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()).toLocalDate();
-            int sel = dayOfFocus();
-            float centre = FOCUS_TOP + ROW / 2f;
-            for (int d = 0; d < days.size(); d++) {
-                float cy = centre + (d - dayAt) * DAY_PITCH;
-                if (cy - DAY_H / 2f > 1080f || cy + DAY_H / 2f < HEAD_H) continue;
-                Day day = days.get(d);
-                r.set(Ui.f(DAYS_X + 18f), Ui.f(cy - DAY_H / 2f), Ui.f(DETAIL_X - 16f), Ui.f(cy + DAY_H / 2f));
-                if (d == sel) {
-                    if (inDays) Focus.pill(c, r);
-                    else Focus.selected(c, r);
-                }
-                int ink = d == sel ? Palette.TEXT1 : day.date.equals(today) ? Palette.ACCENT_LIGHT : Palette.TEXT2;
-                dayP.setColor(ink);
-                float mx = r.centerX();
-                c.drawText(day.weekday, mx - dayP.measureText(day.weekday) / 2f, Type.centred(dayP, Ui.f(cy - 17f)), dayP);
-                c.drawText(day.dayMonth, mx - dayP.measureText(day.dayMonth) / 2f, Type.centred(dayP, Ui.f(cy + 17f)), dayP);
+            if (white) {
+                float g = 1f + 0.025f * Math.min(1.1f, up);
+                c.scale(g, g, r.centerX(), r.centerY());
+                Shadows.draw(c, r, rad, Look07.SH_ROW, Math.min(1f, up));
+                fill.setColor(Look07.FOCUS_FILL);
+                c.drawRoundRect(r, rad, rad, fill);
+            } else if (here) {
+                fill.setColor(Look07.SELECTED);
+                c.drawRoundRect(r, rad, rad, fill);
+            } else {
+                glass.draw(c, r, rad, 1f);
             }
+            boolean over = s.stop[i] <= now, on = i == nowAt, gone = over && (s.start[i] < kept || Catchup.source(ch) == null);
+            // Its picture, fitted round its faces (or the channel's logo).
+            float cy = r.centerY();
+            t.set(r.left + Ui.f(12f), cy - Ui.f(30f), r.left + Ui.f(12f + 107f), cy + Ui.f(30f));
+            thumbs.draw(c, t, Ui.f(12f), ch, s, i, PicTile.COVER, true, gone, settled);
+            // Its time, title and length; its mark at the right.
+            int ink = white ? Look07.INK : gone ? Look07.L3 : Look07.L1;
+            timeP.setColor(ink);
+            c.drawText(Words.hm(s.start[i]), r.left + Ui.f(137f), Type.centred(timeP, cy), timeP);
+            float tx = r.left + Ui.f(225f), right = r.right - Ui.f(20f);
+            float markW = 0f;
+            if (on) {
+                markP.setColor(white ? Look07.INK : Look07.AMBER);
+                markW = Ui.f(18f + 8f) + markP.measureText("Start over");
+                Icons07.draw(c, Icons07.PLAY, right - markW + Ui.f(9f), cy, Ui.f(18f), white ? Look07.INK : Look07.AMBER);
+                c.drawText("Start over", right - markP.measureText("Start over"), Type.centred(markP, cy), markP);
+            } else if (over && !gone) {
+                markW = Ui.f(20f);
+                Icons07.draw(c, Icons07.CATCHUP, right - Ui.f(10f), cy, Ui.f(20f), white ? Look07.INK2 : Look07.L3);
+            } else if (bells && s.start[i] > now && Reminders.has(getContext(), ch.key, s.start[i])) {
+                markW = Ui.f(20f);
+                Icons07.draw(c, Icons07.BELL, right - Ui.f(10f), cy, Ui.f(20f), white ? Look07.INK : Look07.AMBER);
+            }
+            float room = right - markW - Ui.f(16f) - tx;
+            titleP.setColor(ink);
+            titles.line(c, s.title[i], tx, cy - Ui.f(4f), room);
+            lenP.setColor(white ? Look07.INK2 : Look07.L3);
+            lens.line(c, lengthWords(k, i, now, on), tx, cy + Ui.f(21f), room);
             c.restore();
         }
 
-        /** The list and the days fading into the panel at their top and foot. */
-        private void drawFades(Canvas c) {
-            int h = getHeight();
-            if (fadeFor != h) {
-                int p = Palette.PANEL | 0xFF000000;
-                fadeTop.setShader(new LinearGradient(0, Ui.f(HEAD_H), 0, Ui.f(HEAD_H + FADE), p, p & 0x00FFFFFF, Shader.TileMode.CLAMP));
-                fadeFoot.setShader(new LinearGradient(0, h - Ui.f(FADE), 0, h, p & 0x00FFFFFF, p, Shader.TileMode.CLAMP));
-                fadeFor = h;
+        /** "30m", "On now · 1h 00m left": a row's second line (kept for its row, made again each minute on now). */
+        private String lengthWords(int k, int i, long now, boolean on) {
+            if (lenText.length != rows.size()) {
+                lenText = new String[rows.size()];
+                lenMinute = new long[rows.size()];
             }
-            c.drawRect(0, Ui.f(HEAD_H), Ui.f(DETAIL_X), Ui.f(HEAD_H + FADE), fadeTop);
-            c.drawRect(0, h - Ui.f(FADE), Ui.f(DETAIL_X), h, fadeFoot);
-            fill.setColor(Palette.DIVIDER);
-            c.drawRect(Ui.f(DAYS_X), Ui.f(HEAD_H), Ui.f(DAYS_X + 2f), h, fill);
-        }
-
-        /** The programme's picture (Sky's, else the channel's logo) over its card: title, day and times, what it is about. */
-        private void drawDetail(Canvas c, long now) {
-            int i = programme();
-            if (i < 0) return;
-            r.set(Ui.f(PIC_X), Ui.f(PIC_Y), Ui.f(PIC_X + PIC_W), Ui.f(PIC_Y + PIC_H));
-            fill.setColor(0xFF000000);
-            c.drawRoundRect(r, Ui.f(16f), Ui.f(16f), fill);
-            String url = settled ? ProgrammePictures.get(getContext(), ch, s, i, redraw) : ProgrammePictures.peek(ch, s, i);
-            Bitmap pic = url == null || url.isEmpty() ? null : Pics.get(url, Ui.px(PIC_W), Ui.px(PIC_H), Pics.CROP, redraw);
-            if (pic != null) {
-                clip.reset();
-                clip.addRoundRect(r, Ui.f(16f), Ui.f(16f), Path.Direction.CW);
-                c.save();
-                c.clipPath(clip);
-                c.drawBitmap(pic, null, r, bmp);
-                c.restore();
+            long minute = on ? now / 60_000L : -1L;
+            if (lenText[k] != null && lenMinute[k] == minute) return lenText[k];
+            String w;
+            if (on) {
+                w = "On now · " + GuideGrid.leftWords((int) Math.max(1L, (s.stop[i] - now + 59_999L) / 60_000L));
             } else {
-                float cx = r.centerX(), cy = r.centerY();
-                r.set(cx - Ui.f(150f), cy - Ui.f(90f), cx + Ui.f(150f), cy + Ui.f(90f));
-                if (!Logos.draw(c, ch, r, redraw)) RoundButton.glyph(c, Dark.TV, cx, cy, Ui.f(96f), Palette.TEXT3);
+                long m = Math.max(1L, (s.stop[i] - s.start[i] + 30_000L) / 60_000L);
+                w = m >= 60 ? m / 60 + "h" + (m % 60 > 0 ? " " + m % 60 + "m" : "") : m + "m";
             }
-
-            // The card.
-            int w = Ui.px(PIC_W - 56f);
-            String key = ch.key + "|" + s.start[i] + "|" + w;
-            if (!key.equals(cardFor)) {
-                cardTitle = layout(s.title[i], cardTitleP, w, 2);
-                cardDesc = s.desc[i].isEmpty() ? null : layout(s.desc[i], cardP, w, 9);
-                cardFor = key;
-            }
-            String day = Ui.day(s.start[i], now), span = LiveText.span(s.start[i], s.stop[i]);
-            String when = ("Today".equals(day) ? "" : day + ", ") + span;
-            boolean over = s.stop[i] <= now, on = s.start[i] <= now && !over;
-            String state = on ? "On now" : over ? (Catchup.has(ch, s.start[i], now) ? "Catch-up" : "")
-                    : Reminders.has(getContext(), ch.key, s.start[i]) ? "Reminder set" : "";
-            float top = Ui.f(CARD_Y), pad = Ui.f(28f);
-            float body = cardTitle.getHeight() + Ui.f(16f + 30f) + (cardDesc == null ? 0f : Ui.f(16f) + cardDesc.getHeight());
-            r.set(Ui.f(PIC_X), top, Ui.f(PIC_X + PIC_W), top + pad * 2f + body);
-            fill.setColor(Palette.PANEL);
-            c.drawRoundRect(r, Ui.f(12f), Ui.f(12f), fill);
-            cardTitleP.setColor(Palette.TEXT1);
-            Ui.draw(c, cardTitle, r.left + pad, top + pad);
-            float base = top + pad + cardTitle.getHeight() + Ui.f(16f + 24f);
-            cardP.setColor(Palette.TEXT2);
-            c.drawText(when, r.left + pad, base, cardP);
-            if (!state.isEmpty()) {
-                float x = r.left + pad + cardP.measureText(when) + Ui.f(24f);
-                if (over && !state.isEmpty()) {
-                    RoundButton.glyph(c, Dark.HISTORY, x + Ui.f(12f), base - Ui.f(8f), Ui.f(24f), Palette.ACCENT_LIGHT);
-                    x += Ui.f(32f);
-                }
-                cardP.setColor(on || over ? Palette.ACCENT_LIGHT : Palette.TEXT2);
-                c.drawText(state, x, base, cardP);
-                cardP.setColor(Palette.TEXT2);
-            }
-            if (cardDesc != null) Ui.draw(c, cardDesc, r.left + pad, base + Ui.f(22f));
+            lenText[k] = w;
+            lenMinute[k] = minute;
+            return w;
         }
 
-        private StaticLayout layout(String text, TextPaint p, int width, int lines) {
-            return StaticLayout.Builder.obtain(text, 0, text.length(), p, Math.max(1, width)).setAlignment(Layout.Alignment.ALIGN_NORMAL)
-                    .setLineSpacing(0f, 1.08f).setIncludePad(false).setMaxLines(lines).setEllipsize(TextUtils.TruncateAt.END).build();
+        /** The programme's picture (faces whole) over its frosted card: its day and times, title, two lines and what OK does. */
+        private void drawDetail(Canvas c, int i, long now) {
+            r.set(Ui.f(PIC_X), Ui.f(PIC_Y), Ui.f(PIC_X + PIC_W), Ui.f(PIC_Y + PIC_H));
+            float rad = Ui.f(Look07.R_PANEL);
+            Shadows.draw(c, r, rad, Look07.SH_PANEL, 1.2f);
+            picture.draw(c, r, rad, ch, s, i, PicTile.COVER, true, false, settled);
+            float sw = Math.max(1f, Ui.f(1f));
+            ring.setStrokeWidth(sw);
+            ring.setColor(0x24FFFFFF);
+            c.drawRoundRect(r.left + sw / 2f, r.top + sw / 2f, r.right - sw / 2f, r.bottom - sw / 2f, rad, rad, ring);
+
+            r.set(Ui.f(PIC_X), Ui.f(CARD_Y), Ui.f(PIC_X + PIC_W), Ui.f(CARD_Y + CARD_H));
+            card.draw(c, r, rad, 1f);
+            String key = ch.key + "|" + s.start[i];
+            if (!key.equals(cardFor)) {
+                cardFor = key;
+                String day = Ui.day(s.start[i], now);
+                kicker = (day + " · " + LiveText.hm(s.start[i]) + " – " + LiveText.hm(s.stop[i])).toUpperCase(Locale.UK);
+                cardDesc = s.desc[i].isEmpty() ? null : StaticLayout.Builder.obtain(s.desc[i], 0, s.desc[i].length(), cardP, Ui.px(PIC_W - 68f))
+                        .setAlignment(Layout.Alignment.ALIGN_NORMAL).setLineSpacing(0f, 1.4f / 1.21f).setIncludePad(false).setMaxLines(2)
+                        .setEllipsize(TextUtils.TruncateAt.END).build();
+            }
+            float tx = r.left + Ui.f(34f);
+            c.drawText(kicker, tx, r.top + Ui.f(28f + 15f), kickP);
+            cardTitles.line(c, s.title[i], tx, r.top + Ui.f(28f + 23f + 8f + 35f), r.width() - Ui.f(68f));
+            if (cardDesc != null) Ui.draw(c, cardDesc, tx, r.top + Ui.f(28f + 23f + 8f + 44f + 6f));
+            // What OK does, My List, its description.
+            boolean over = s.stop[i] <= now, on = s.start[i] <= now && !over;
+            String main = on ? "Watch Live" : over ? "Play from Start" : "Remind Me";
+            int icon = on ? Icons07.PLAY : over ? Icons07.RESTART : Icons07.BELL;
+            float bcy = r.bottom - Ui.f(26f + 35f), bx = tx;
+            bx += Pills.button(c, bx, bcy, main, icon, !inDays, false) + Ui.f(14f);
+            bx += Pills.button(c, bx, bcy, "My List", Icons07.PLUS, false, false) + Ui.f(14f);
+            Pills.circle(c, bx + Ui.f(35f), bcy, Icons07.INFO, false, false);
         }
     }
 }
