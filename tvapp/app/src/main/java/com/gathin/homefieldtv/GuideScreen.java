@@ -712,6 +712,20 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
         });
     }
 
+    /** A channel's quality chosen in its card: it plays in the preview (on the shelves, which have none, full screen). */
+    private void playChosen(Channel c) {
+        if (shelves()) {
+            GuideActions.watch(tv, c);
+            return;
+        }
+        PinScreen.forChannel(tv, c, () -> {
+            tv.live.play(c);
+            placePreview();
+            grid.invalidate();
+            band.invalidate();
+        });
+    }
+
     /** OK held: the whole menu, for the programme the remote is on (or anything else, as OK). */
     @Override void okLong() {
         if (asking() || menu.isOpen() || moving != null) return;
@@ -792,7 +806,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
         String g = menuChannel.group;
         if (!g.isEmpty() && listed.contains(GROUP + g)) {
             menuGroup = GROUP + g;
-            items.add(GuideMenu.Item.section(Categories.label(tv, g) + " · Group"));
+            items.add(GuideMenu.Item.section(Categories.label(tv, g) + " · Category"));
             items.add(GuideMenu.Item.item(GroupMenu.SORT, "Sort channels").value(ChannelEdits.SORT_NAMES[GroupMenu.sortOf(tv, g)]));
         }
         return items;
@@ -852,6 +866,14 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
             openAbout();
             return;
         }
+        if (tag.startsWith(GuideActions.QUALITY)) {
+            // Best or one of its versions: kept, and played (carrying on in it when it plays; else in the preview).
+            closeMenu();
+            if (!GuideActions.chooseQuality(tv, c, tag)) playChosen(c);
+            moved();
+            grid.invalidate();
+            return;
+        }
         closeMenu();
         boolean ask = GuideActions.act(tv, tag, c, title, desc, p);
         // In Favourites: the list made again with the channel in or out; its star in every list.
@@ -899,7 +921,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
         String group = null;
         if (!FAV.equals(shown)) {
             if (c.group.isEmpty() || !listed.contains(GROUP + c.group)) {
-                android.widget.Toast.makeText(tv, "This channel's group isn't in the guide's groups to move it in",
+                android.widget.Toast.makeText(tv, "This channel's category isn't in the guide's categories to move it in",
                         android.widget.Toast.LENGTH_LONG).show();
                 return;
             }

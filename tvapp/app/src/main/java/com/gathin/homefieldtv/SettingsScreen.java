@@ -23,8 +23,10 @@ import java.util.List;
  *   Playlists          each playlist › (its own details), TorBox ›, Add playlist ›, Update all playlists, how often
  *   EPG                EPG sources ›, the guide's time shift, Update options: Update interval, hours, Update on app start,
  *                      Update EPG, Clear EPG, Latest update status
- *   Appearance         TV guide ›, Player ›, Groups ›, Logos ›, Font size, Color theme ›, then Homefield's Posters and
- *                      programme times
+ *   Appearance         TV guide ›, Player ›, Categories ›, Logos ›, Font size, Color theme ›, then Homefield's Posters
+ *                      and programme times
+ *   Channels &amp; categories   One row per channel (merge qualities), Hidden channels ›, Manage categories ›, Rename
+ *                      channels ›, Channels sorting (the same pages as Appearance › TV guide's)
  *   Playback           Buffer size, Decoder, Auto frame rate (AFR), Audio passthrough, Tunneled playback, then Homefield's
  *                      picture, sound, subtitles and stream settings under their section names
  *   Remote control     Player › (the keys while watching full screen)
@@ -42,16 +44,18 @@ import java.util.List;
  * ever show as dots, an address only its server's name.
  *
  * <p>The pages are MoreSettings' (General, Appearance, Playback, Remote control, Other, About), ExtraSettings'
- * (Playlists, EPG, Parental controls, Restore data) and EditSettings' (Appearance › TV guide with Hidden channels and
- * Manage groups and each group's page, Groups, Logos); each page is named by a path ("appearance", "pick:clock").
+ * (Playlists, EPG, Parental controls, Restore data) and EditSettings' (Channels &amp; categories, Appearance › TV guide
+ * with Hidden channels and Manage categories and each category's page, Categories, Logos); each page is named by a path
+ * ("appearance", "pick:clock").
  * Settings can be opened on a page (new SettingsScreen(tv, "other.recording")), and opens again where it was after the
  * screens are made again for a new colour theme, font size or posters.
  */
 final class SettingsScreen extends Screen implements SettingsPanel.Host, Keyboard.Host, DialogCard.Host {
     /** The sections, in the other app's order, by page and by name. */
-    static final String[] SECTIONS = {"general", "playlists", "epg", "appearance", "playback", "remote", "parental", "other", "about"};
-    static final String[] SECTION_NAMES = {"General", "Playlists", "EPG", "Appearance", "Playback", "Remote control",
-            "Parental controls", "Other", "About"};
+    static final String[] SECTIONS = {"general", "playlists", "epg", "appearance", "channels", "playback", "remote", "parental",
+            "other", "about"};
+    static final String[] SECTION_NAMES = {"General", "Playlists", "EPG", "Appearance", "Channels & categories", "Playback",
+            "Remote control", "Parental controls", "Other", "About"};
     static final String ROOT = "";
     /** A page of a setting's choices: "pick:" and the setting. */
     static final String PICK = "pick:";
@@ -233,10 +237,14 @@ final class SettingsScreen extends Screen implements SettingsPanel.Host, Keyboar
             out.add("playlists");
             out.add(base);
         } else if (base.startsWith("group:")) {
-            // A group's page, in Appearance › TV guide › Manage groups (EditSettings).
-            out.add("appearance");
-            out.add("appearance.guide");
-            out.add("appearance.guide.groups");
+            // A category's page, in Channels & categories › Manage categories (EditSettings).
+            out.add("channels");
+            out.add("channels.categories");
+            out.add(base);
+        } else if (base.startsWith("rename:")) {
+            // A category's channels to rename, in Channels & categories › Rename channels (its name may hold dots).
+            out.add("channels");
+            out.add("channels.rename");
             out.add(base);
         } else if (base.equals("theme")) {
             out.add("appearance");
@@ -489,7 +497,10 @@ final class SettingsScreen extends Screen implements SettingsPanel.Host, Keyboar
             case "appearance.guide": return "How the guide looks and lists your channels";
             case "appearance.player": return "The clock, the panels and the channel tiles";
             case "appearance.logos": return "The pictures for your channels in the guide and the player";
-            case "appearance.groups": return "How the groups are sorted";
+            case "appearance.groups": return "How the categories are sorted";
+            case "channels": return "One row a channel, hidden channels, categories and names";
+            case "channels.rename": return "A name of your own for any channel";
+            case "channels.categories": case "appearance.guide.groups": return "Show, hide, move, rename and sort them";
             case "theme": return "Homefield's colours";
             case "playback": return "The picture, the sound, subtitles and streams";
             case "remote": return "What the remote's keys do";

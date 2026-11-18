@@ -24,8 +24,8 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Settings' Playlists, EPG, Parental controls and General › Restore data pages (the groups' are EditSettings', in
- * Appearance › TV guide › Manage groups), and Groups sorting's choices:
+ * Settings' Playlists, EPG, Parental controls and General › Restore data pages (the categories' are EditSettings', in
+ * Channels &amp; categories › Manage categories), and Categories sorting's choices:
  *
  * <pre>
  *   playlists               each playlist › · TorBox › · Add playlist › · Use all playlists together · Update options:
@@ -234,7 +234,7 @@ final class ExtraSettings implements SettingsScreen.Pages {
         out.add(enabled(MoreSettings.tog("x.locksettings", "Settings", "", Parental.locksSettings(tv)), on));
         Library lib = Library.get(tv);
         List<String> every = Categories.every(tv, lib.groups());
-        if (!every.isEmpty()) out.add(RowList.Row.header("Locked groups"));
+        if (!every.isEmpty()) out.add(RowList.Row.header("Locked categories"));
         for (String g : every) {
             boolean locked = Parental.lockedGroups(tv).contains(g);
             out.add(enabled(RowList.Row.toggle("lockcat:" + g, Categories.label(tv, g), "", locked), on));
@@ -242,8 +242,11 @@ final class ExtraSettings implements SettingsScreen.Pages {
         out.add(RowList.Row.header("Locked channels"));
         List<String> keys = new ArrayList<>(Parental.lockedChannels(tv));
         java.util.Collections.sort(keys);
+        // One row per channel: a channel's versions, all locked with it, are one line.
+        java.util.Set<String> seen = new java.util.HashSet<>();
         for (String k : keys) {
             Channel c = lib.byKey(k);
+            if (c != null && !seen.add(c.key)) continue;
             out.add(enabled(RowList.Row.item("unlockch:" + k, c == null ? "A channel not in your playlists now" : ChannelEdits.name(c),
                     "Locked  ·  OK to unlock"), on));
         }
@@ -308,7 +311,11 @@ final class ExtraSettings implements SettingsScreen.Pages {
             Parental.lockGroup(tv, g, !Parental.lockedGroups(tv).contains(g));
             s.refresh();
         } else if (t.startsWith("unlockch:")) {
-            Parental.lockChannel(tv, t.substring(9), false);
+            String k = t.substring(9);
+            Channel c = Library.get(tv).byKey(k);
+            // The channel with every one of its versions (one row per channel); one gone from the playlists by its key.
+            if (c != null) Parental.lockChannel(tv, c, false);
+            Parental.lockChannel(tv, k, false);
             s.refresh();
         } else if (t.startsWith("restore:")) {
             restoreAsk(t.substring(8));
@@ -485,9 +492,9 @@ final class ExtraSettings implements SettingsScreen.Pages {
                 int m = Parental.hides(tv) ? 1 : 0;
                 return new SettingsScreen.Picker("Locked channels", Parental.MODE_NAMES, m, Parental.MODE_ABOUT[m]);
             }
-            case "x.sorting": return new SettingsScreen.Picker("Groups sorting", SORTING, Categories.ordered(tv) ? 1 : 0,
-                    "Your own order: the groups moved in TV guide › Manage groups, or with Move group (hold OK on a group in "
-                            + "the TV guide).");
+            case "x.sorting": return new SettingsScreen.Picker("Categories sorting", SORTING, Categories.ordered(tv) ? 1 : 0,
+                    "Your own order: the categories moved in Channels & categories › Manage categories, or with Move category "
+                            + "(hold OK on a category in the TV guide).");
             default: return null;
         }
     }

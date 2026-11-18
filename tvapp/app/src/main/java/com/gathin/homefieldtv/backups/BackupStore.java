@@ -158,6 +158,7 @@ public final class BackupStore {
         Categories.forget();
         Parental.forget();
         com.gathin.homefieldtv.prefs.ChannelEdits.forget();
+        com.gathin.homefieldtv.prefs.QualityPicks.forget();
         // A file chosen is used once.
         if (PICKED.equals(k.which)) {
             //noinspection ResultOfMethodCallIgnored

@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 
 import com.gathin.homefieldtv.engine.Channel;
+import com.gathin.homefieldtv.engine.Versions;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -28,6 +29,13 @@ import java.util.Map;
  * <p>Read at once from memory (the screens draw names with name()); a change that the lists show (hidden, a name, a
  * place, the sorting) makes them again off the main thread (Shown.changed), and the lists read a Snapshot, all of it
  * at one moment.
+ *
+ * <p>One row per channel (Settings › Channels &amp; categories, on as it comes: merging()): a channel's quality versions
+ * (engine.Versions) are one channel, and its edits are the channel's: a record on any of its versions still counts (its
+ * own first, then its versions' best first), and an edit made now goes on every version (Rename, Change logo, Hide
+ * channel; Restore channel name and showing it again take them off every version). It is hidden once every version is;
+ * a version hidden by itself (before) is only left out of its Quality choice. With the setting off each version is a
+ * channel of its own, its records its own, as before.
  */
 public final class ChannelEdits {
     private ChannelEdits() {}
@@ -37,7 +45,7 @@ public final class ChannelEdits {
     public static final String[] SORT_NAMES = {"By order in playlist", "By name", "By number", "Manual"};
     /** A channel's logo choice: the playlist's own. */
     public static final String LOGO_PLAYLIST = "-";
-    static final String PREFS = "channel_edits", RECORDS = "records", SORT = "sort", EDITOR = "editor";
+    static final String PREFS = "channel_edits", RECORDS = "records", SORT = "sort", EDITOR = "editor", MERGE = "merge";
     /** A name of the family's own is at most this long. */
     public static final int NAME_MAX = 60;
 
@@ -84,22 +92,29 @@ public final class ChannelEdits {
      * group's own, and the family's order of the groups. Never changes.
      */
     public static final class Snapshot {
-        static final Snapshot EMPTY = new Snapshot(Collections.emptyMap(), PLAYLIST, Collections.emptyMap(), Collections.emptyList());
+        static final Snapshot EMPTY = new Snapshot(Collections.emptyMap(), PLAYLIST, Collections.emptyMap(), Collections.emptyList(), true);
 
         public final Map<String, Rec> recs;
         public final int sort;
         public final Map<String, Integer> groupSorts;
         public final List<String> groupOrder;
+        /** One row per channel: a channel's quality versions listed as one (merging()). */
+        public final boolean merge;
         private final int hiddenCount, renamedCount, placedCount;
 
         /** Shown's version it was made at: made again once that has moved on. */
         int version = -1;
 
         Snapshot(Map<String, Rec> recs, int sort, Map<String, Integer> groupSorts, List<String> groupOrder) {
+            this(recs, sort, groupSorts, groupOrder, true);
+        }
+
+        Snapshot(Map<String, Rec> recs, int sort, Map<String, Integer> groupSorts, List<String> groupOrder, boolean merge) {
             this.recs = recs;
             this.sort = sort;
             this.groupSorts = groupSorts;
             this.groupOrder = groupOrder;
+            this.merge = merge;
             int h = 0, n = 0, p = 0;
             for (Rec r : recs.values()) {
                 if (r.hidden) h++;
@@ -131,6 +146,32 @@ public final class ChannelEdits {
             return r == null ? -1 : r.place;
         }
 
+        /** A channel's own name: its own record's, else (one row per channel) one of its versions', best first; or null. */
+        public String nameOf(Channel c) {
+            if (c == null) return null;
+            String n = name(c.key);
+            if (n != null || !merge || c.versions == null || renamedCount == 0) return n;
+            for (Channel o : c.versions.all) if ((n = name(o.key)) != null) return n;
+            return null;
+        }
+
+        /** A channel's place in its group (Move channel): its own, else (one row per channel) one of its versions'; or -1. */
+        public int placeOf(Channel c) {
+            if (c == null) return -1;
+            int p = place(c.key);
+            if (p >= 0 || !merge || c.versions == null || placedCount == 0) return p;
+            for (Channel o : c.versions.all) if ((p = place(o.key)) >= 0) return p;
+            return -1;
+        }
+
+        /** Whether the family hid a channel: itself, or (one row per channel) every one of its versions. */
+        public boolean hiddenOf(Channel c) {
+            if (c == null || hiddenCount == 0) return false;
+            if (!merge || c.versions == null) return hidden(c.key);
+            for (Channel o : c.versions.all) if (!hidden(o.key)) return false;
+            return true;
+        }
+
         /** How a group's channels are sorted: its own, else as all the channels are. */
         public int sortOf(String group) {
             Integer s = group == null ? null : groupSorts.get(group);
@@ -155,7 +196,7 @@ public final class ChannelEdits {
 
     private static volatile Map<String, Rec> recs;
     private static volatile int sort = -1;
-    private static volatile Boolean editor;
+    private static volatile Boolean editor, merge;
     private static volatile Snapshot snap;
 
     private static SharedPreferences prefs(Context c) {
@@ -167,6 +208,7 @@ public final class ChannelEdits {
         recs = null;
         sort = -1;
         editor = null;
+        merge = null;
         Shown.changed();
     }
 
@@ -183,6 +225,7 @@ public final class ChannelEdits {
                 SharedPreferences p = prefs(c);
                 recs = Collections.unmodifiableMap(parse(p.getString(RECORDS, "")));
                 sort = PlayerPrefs.clamp(p.getInt(SORT, PLAYLIST), PLAYLIST, MANUAL);
+                merge = p.getBoolean(MERGE, true);
             }
             return recs;
         }
@@ -190,18 +233,100 @@ public final class ChannelEdits {
 
     // ---- what the screens read ------------------------------------------------------------------------------------
 
-    /** The name a channel shows under: the family's own, else the playlist's. At once (no settings read). */
+    /**
+     * The name a channel shows under: the family's own (one row per channel: given to it or to any of its versions),
+     * else the playlist's (a channel in several qualities: without its quality tags, "ITV 1"). At once (no settings read).
+     */
     public static String name(Channel ch) {
         if (ch == null) return "";
-        Map<String, Rec> m = recs;
-        Rec r = m == null ? null : m.get(ch.key);
-        return r == null || r.name.isEmpty() ? ch.name : r.name;
+        String own = ownName(recs, ch);
+        if (own != null) return own;
+        Versions v = Versions.of(ch);
+        return v != null ? v.title : ch.name;
+    }
+
+    /** The playlist's name for a channel: its own, or (one row per channel) its versions' without their quality tags. */
+    public static String playlistName(Channel ch) {
+        if (ch == null) return "";
+        Versions v = Versions.of(ch);
+        return v != null ? v.title : ch.name;
+    }
+
+    /** The family's own name for a channel or (one row per channel) one of its versions, best first; null for none. */
+    private static String ownName(Map<String, Rec> m, Channel ch) {
+        if (m == null || m.isEmpty()) return null;
+        Rec r = m.get(ch.key);
+        if (r != null && !r.name.isEmpty()) return r.name;
+        Versions v = Versions.of(ch);
+        if (v == null) return null;
+        for (Channel o : v.all) {
+            r = m.get(o.key);
+            if (r != null && !r.name.isEmpty()) return r.name;
+        }
+        return null;
     }
 
     public static boolean renamed(Channel ch) {
+        return ch != null && ownName(recs, ch) != null;
+    }
+
+    /** The keys an edit on a channel goes on: every one of its versions' (one row per channel), else its own. */
+    public static List<String> keysOf(Channel ch) {
+        List<String> out = new ArrayList<>(2);
+        if (ch == null) return out;
+        Versions v = Versions.of(ch);
+        if (v == null) {
+            out.add(ch.key);
+        } else {
+            for (Channel o : v.all) out.add(o.key);
+            if (!out.contains(ch.key)) out.add(ch.key);
+        }
+        return out;
+    }
+
+    /** Whether the family hid a channel: itself, or (one row per channel) every one of its versions. At once. */
+    public static boolean hidden(Channel ch) {
+        if (ch == null) return false;
+        Versions v = Versions.of(ch);
+        if (v == null) return hidden(ch.key);
+        for (Channel o : v.all) if (!hidden(o.key)) return false;
+        return true;
+    }
+
+    /** A channel's logo as chosen (one row per channel: its own choice, else one of its versions'); see logo(key). */
+    public static String logo(Channel ch) {
+        if (ch == null) return "";
+        String own = logo(ch.key);
+        if (!own.isEmpty()) return own;
+        Versions v = Versions.of(ch);
         Map<String, Rec> m = recs;
-        Rec r = m == null || ch == null ? null : m.get(ch.key);
-        return r != null && !r.name.isEmpty();
+        if (v == null || m == null || m.isEmpty()) return own;
+        for (Channel o : v.all) {
+            Rec r = m.get(o.key);
+            if (r != null && !r.logo.isEmpty()) return r.logo;
+        }
+        return own;
+    }
+
+    /**
+     * Settings › Channels &amp; categories › One row per channel (merge qualities): a channel's FHD, HD and SD as one row,
+     * its best played (on as it comes). At once: on until the settings are read.
+     */
+    public static boolean merging() {
+        Boolean b = merge;
+        return b == null || b;
+    }
+
+    public static boolean merging(Context c) {
+        records(c);
+        return merging();
+    }
+
+    public static void setMerging(Context c, boolean on) {
+        records(c);
+        prefs(c).edit().putBoolean(MERGE, on).apply();
+        merge = on;
+        changed(true);
     }
 
     /** Whether the family hid a channel (Hide channel). At once. */
@@ -225,6 +350,13 @@ public final class ChannelEdits {
         return out;
     }
 
+    /** The channels given a name of the family's own, by key (Settings › Channels &amp; categories › Rename channels). */
+    public static List<String> renamedKeys(Context c) {
+        List<String> out = new ArrayList<>();
+        for (Map.Entry<String, Rec> e : records(c).entrySet()) if (!e.getValue().name.isEmpty()) out.add(e.getKey());
+        return out;
+    }
+
     /**
      * Everything at one moment, for the lists; made once for each change to what the lists show (Shown's version, read
      * first: a change while it is made makes it stale, never wrong).
@@ -234,7 +366,7 @@ public final class ChannelEdits {
         Snapshot s = snap;
         if (s != null && s.version == v) return s;
         Map<String, Rec> m = records(c);
-        s = new Snapshot(m, sort(c), Categories.sorts(c), Categories.order(c));
+        s = new Snapshot(m, sort(c), Categories.sorts(c), Categories.order(c), merging());
         s.version = v;
         snap = s;
         return s;
@@ -256,7 +388,10 @@ public final class ChannelEdits {
         changed(true);
     }
 
-    /** Appearance › TV guide › Channel names editor: Rename channel in a channel's menu (on as it comes). */
+    /**
+     * The old Appearance › TV guide › Channel names editor (on as it comes; kept for backups and sync): Rename channel is
+     * always in a channel's menu now, as the family asked, so nothing shows or reads it.
+     */
     public static boolean editor(Context c) {
         Boolean b = editor;
         if (b == null) editor = b = prefs(c).getBoolean(EDITOR, true);
@@ -272,6 +407,17 @@ public final class ChannelEdits {
 
     public static void setHidden(Context c, String key, boolean hide) {
         edit(c, key, r -> r.hidden(hide), true);
+    }
+
+    /** Hide channel (or shown again): the channel with every one of its versions (one row per channel). */
+    public static void setHidden(Context c, Channel ch, boolean hide) {
+        if (ch == null) return;
+        edit(c, keysOf(ch), r -> r.hidden(hide), true);
+    }
+
+    /** These channels hidden or shown again at once (a channel's versions in Hidden channels). */
+    public static void setHidden(Context c, List<String> keys, boolean hide) {
+        edit(c, keys, r -> r.hidden(hide), true);
     }
 
     /** Every channel hidden shown again. */
@@ -292,21 +438,32 @@ public final class ChannelEdits {
         changed(true);
     }
 
-    /** A name of the family's own ("" or the playlist's own: back to the playlist's), at most NAME_MAX long. */
+    /**
+     * A name of the family's own ("" or the playlist's own: back to the playlist's), at most NAME_MAX long; one row per
+     * channel, the channel's as a whole: on every one of its versions (and "" takes it off every one).
+     */
     public static void rename(Context c, Channel ch, String name) {
         if (ch == null) return;
         String v = tidy(name);
-        if (v.equals(ch.name)) v = "";
+        if (v.equals(ch.name) || v.equals(playlistName(ch))) v = "";
         String n = v;
+        List<String> keys = keysOf(ch);
         // Its new logo looked for again by the new name too.
-        com.gathin.homefieldtv.engine.LogoPack.forget(ch.key);
-        edit(c, ch.key, r -> r.named(n), true);
+        for (String k : keys) com.gathin.homefieldtv.engine.LogoPack.forget(k);
+        edit(c, keys, r -> r.named(n), true);
     }
 
     /** The logo chosen for a channel: "" as Settings say, "-" the playlist's, or a new logo's path. */
     public static void setLogo(Context c, String key, String choice) {
         String v = choice == null ? "" : choice.replace('\t', ' ').replace('\n', ' ').trim();
         edit(c, key, r -> r.logo(v), false);
+    }
+
+    /** The logo chosen for a channel and (one row per channel) every one of its versions. */
+    public static void setLogo(Context c, Channel ch, String choice) {
+        if (ch == null) return;
+        String v = choice == null ? "" : choice.replace('\t', ' ').replace('\n', ' ').trim();
+        edit(c, keysOf(ch), r -> r.logo(v), false);
     }
 
     /** A group's channels in this order (Move channel): each one's place kept, the others' left as they were. */
@@ -330,12 +487,21 @@ public final class ChannelEdits {
 
     private static void edit(Context c, String key, Change change, boolean lists) {
         if (key == null || key.isEmpty()) return;
+        edit(c, Collections.singletonList(key), change, lists);
+    }
+
+    /** One change made to several channels' records at once (a channel's versions), saved once. */
+    private static void edit(Context c, List<String> keys, Change change, boolean lists) {
+        if (keys == null || keys.isEmpty()) return;
         synchronized (ChannelEdits.class) {
             Map<String, Rec> m = new LinkedHashMap<>(records(c));
-            Rec was = m.get(key);
-            Rec now = change.apply(was == null ? NONE : was);
-            if (now.empty()) m.remove(key);
-            else m.put(key, now);
+            for (String key : keys) {
+                if (key == null || key.isEmpty()) continue;
+                Rec was = m.get(key);
+                Rec now = change.apply(was == null ? NONE : was);
+                if (now.empty()) m.remove(key);
+                else m.put(key, now);
+            }
             save(c, m);
         }
         changed(lists);

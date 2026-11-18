@@ -11,6 +11,7 @@ import com.gathin.homefieldtv.engine.LogoPack;
 import com.gathin.homefieldtv.engine.Reminders;
 import com.gathin.homefieldtv.prefs.ChannelEdits;
 import com.gathin.homefieldtv.prefs.Parental;
+import com.gathin.homefieldtv.prefs.QualityPicks;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -27,6 +28,8 @@ final class GuideActions {
     static final String SEARCH = "search", SETTINGS = "settings", WATCH = "watch", START = "start", REMIND = "remind",
             UNREMIND = "unremind", RECORD = "record", MY_LIST = "mylist", ABOUT = "about", FAVOURITE = "fav", ARCHIVE = "archive",
             BLOCK = "block";
+    /** The Quality choice's lines: Best (automatic), and a version by its key ("q.v:" + key). */
+    static final String QUALITY = "q.", Q_BEST = "q.best", Q_VERSION = "q.v:";
 
     /**
      * OK on a programme to come: Remind (Cancel reminder once set), Record (on a channel with catch-up: a recording
@@ -55,19 +58,68 @@ final class GuideActions {
     }
 
     /**
+     * The Quality choice for a channel in several qualities (one row per channel), as the hold-OK card and the player's
+     * Video tracks list it: Best (its best version, automatically; "In use" while it is), then each version by its own
+     * name, best first, the one playing ticked (the one that would play, when it isn't playing). Nothing for a channel in
+     * one version.
+     */
+    static void quality(Context c, Channel ch, List<GuideMenu.Item> out) {
+        List<Channel> vs = Library.get(c).versions(ch);
+        if (vs.size() < 2) return;
+        Channel pick = QualityPicks.of(c, ch, vs), tick = playingVersion(c, ch);
+        if (tick == null) tick = pick != null ? pick : vs.get(0);
+        out.add(GuideMenu.Item.section("Quality"));
+        out.add(GuideMenu.Item.item(Q_BEST, "Best").value(pick == null ? "In use" : ""));
+        for (Channel v : vs) out.add(GuideMenu.Item.choice(Q_VERSION + v.key, v.name, v == tick));
+    }
+
+    /** The version of channel ch playing live now, or null (another channel, behind live, or nothing). */
+    static Channel playingVersion(Context c, Channel ch) {
+        if (!(c instanceof TvActivity) || ch == null) return null;
+        LiveTv live = ((TvActivity) c).live;
+        Channel now = live == null ? null : live.channel();
+        if (now == null || !now.key.equals(ch.key) || live.behind() || live.state() == LiveTv.FAILED) return null;
+        return live.version();
+    }
+
+    /**
+     * A Quality line chosen for a channel: the version kept as the one picked by hand (Best: none, automatic again) and
+     * said in a toast; the channel playing it carries on in it at once. True when the channel is playing now (the screen
+     * starts it otherwise: in the guide's preview, or full screen).
+     */
+    static boolean chooseQuality(TvActivity tv, Channel ch, String tag) {
+        if (ch == null || tag == null) return false;
+        List<Channel> vs = Library.get(tv).versions(ch);
+        Channel v = null;
+        if (tag.startsWith(Q_VERSION)) {
+            String k = tag.substring(Q_VERSION.length());
+            for (Channel o : vs) if (o.key.equals(k)) v = o;
+            if (v == null) return false;
+        }
+        QualityPicks.set(tv, ch, v);
+        Toast.makeText(tv, v == null ? ChannelEdits.name(ch) + ": its best quality, chosen as it plays" : "Playing " + v.name,
+                Toast.LENGTH_SHORT).show();
+        Channel now = tv.live.channel();
+        if (now == null || !now.key.equals(ch.key) || tv.live.behind()) return false;
+        tv.live.repick();
+        return true;
+    }
+
+    /**
      * OK held: Search and Settings; under the programme's name what can be done with it (to come: Remind; on now: Watch
      * from start where the archive has its start; shown: Watch, from the archive; and Record wherever the channel's
      * catch-up can keep it), Add to (or Remove from) My list and Programme description; under the channel's name (the
      * family's own, where given) TiviMate's Add to (or Remove from) Favourites, Block channel and Hide channel, then
      * Rename channel, Change logo, Move channel (movable: the guide's lists but Recently watched) and Homefield's
      * Catch-up (the archive's programmes by day, where the provider keeps them; not from the archive view itself):
-     * ChannelMenu.
+     * ChannelMenu. The guide's card (archiveLink) starts with the channel's Quality choice, for a channel in several.
      */
     static List<GuideMenu.Item> card(Context c, Channel ch, Guide.Schedule s, int i, boolean archiveLink, boolean movable) {
         long now = System.currentTimeMillis();
         List<GuideMenu.Item> out = new ArrayList<>();
         out.add(GuideMenu.Item.icon(SEARCH, Dark.SEARCH, "Search"));
         out.add(GuideMenu.Item.icon(SETTINGS, Dark.GEAR, "Settings"));
+        if (archiveLink) quality(c, ch, out);
         if (s != null && i >= 0 && i < s.start.length) {
             long a = s.start[i], b = s.stop[i];
             boolean kept = Catchup.source(ch) != null;
@@ -132,6 +184,11 @@ final class GuideActions {
                 block(tv, c);
                 return false;
             default:
+                // Best or a version: the channel's quality (its screen starts it, when it isn't playing).
+                if (tag.startsWith(QUALITY)) {
+                    chooseQuality(tv, c, tag);
+                    return false;
+                }
                 // Hide, Rename, Change logo: the channel's edits (Move channel is the guide's own).
                 if (ChannelMenu.handles(tag)) ChannelMenu.act(tv, tag, c);
                 return false;
@@ -192,19 +249,22 @@ final class GuideActions {
         Toast.makeText(tv, on ? name + " added to Favourites" : name + " removed from Favourites", Toast.LENGTH_SHORT).show();
     }
 
-    /** Block channel: Settings → Parental control's lock (the PIN asked before it plays); unblocking asks for the PIN. */
+    /**
+     * Block channel: Settings → Parental control's lock (the PIN asked before it plays); unblocking asks for the PIN. One
+     * row per channel: every one of its versions.
+     */
     static void block(TvActivity tv, Channel c) {
         if (!Parental.hasPin(tv)) {
             Toast.makeText(tv, "Choose a PIN in Settings → Parental control to block channels", Toast.LENGTH_LONG).show();
             return;
         }
-        if (Parental.lockedChannels(tv).contains(c.key)) {
+        if (Parental.lockedHere(tv, c)) {
             PinScreen.check(tv, "Unblock " + ChannelEdits.name(c), () -> {
-                Parental.lockChannel(tv, c.key, false);
+                Parental.lockChannel(tv, c, false);
                 Toast.makeText(tv, ChannelEdits.name(c) + " unblocked", Toast.LENGTH_SHORT).show();
             });
         } else {
-            Parental.lockChannel(tv, c.key, true);
+            Parental.lockChannel(tv, c, true);
             Toast.makeText(tv, ChannelEdits.name(c) + " blocked: the PIN is asked before it plays", Toast.LENGTH_SHORT).show();
         }
     }

@@ -19,6 +19,9 @@ import java.util.function.Predicate;
  * category stays in Favourites and Recent; one locked away or hidden itself doesn't. A list is read through a Filter,
  * which reads what is hidden and locked once for the whole list, never once a channel; it carries the family's edits
  * and sorting (ChannelEdits.Snapshot) for the lists to be made in their order.
+ *
+ * <p>One row per channel (ChannelEdits.merging): a channel in several qualities is locked when any of its versions is,
+ * and hidden by the family only once every version is.
  */
 public final class Shown {
     private Shown() {}
@@ -83,12 +86,16 @@ public final class Shown {
 
         /** Whether a channel stays in Favourites and Recent (Shown.kept): not hidden by the family, nor locked away. */
         public boolean kept(Channel ch) {
-            return ch != null && !(hides && blocks(ch)) && !edits.hidden(ch.key);
+            return ch != null && !(hides && blocks(ch)) && !edits.hiddenOf(ch);
         }
 
-        /** Whether a channel needs the PIN before it plays (Parental.blocks). */
+        /** Whether a channel needs the PIN before it plays (Parental.blocks): it, its category, or one of its versions locked. */
         public boolean blocks(Channel ch) {
-            return ch != null && pin && !open && (lockedChannels.contains(ch.key) || lockedGroups.contains(ch.group));
+            if (ch == null || !pin || open) return false;
+            if (lockedChannels.contains(ch.key) || lockedGroups.contains(ch.group)) return true;
+            if (!edits.merge || ch.versions == null || lockedChannels.isEmpty()) return false;
+            for (Channel o : ch.versions.all) if (lockedChannels.contains(o.key)) return true;
+            return false;
         }
 
         /** Whether nothing is hidden or locked away from the lists. */
@@ -119,7 +126,7 @@ public final class Shown {
     public static boolean kept(Context c, Channel ch) {
         if (ch == null) return false;
         ChannelEdits.load(c);
-        return !(Parental.hides(c) && Parental.blocks(c, ch)) && !ChannelEdits.hidden(ch.key);
+        return !(Parental.hides(c) && Parental.blocks(c, ch)) && !ChannelEdits.hidden(ch);
     }
 
     /**

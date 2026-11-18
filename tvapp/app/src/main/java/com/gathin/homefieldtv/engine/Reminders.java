@@ -104,12 +104,28 @@ public final class Reminders {
         return new ArrayList<>(kept);
     }
 
+    /** Whether a reminder is set for a programme on a channel; one row per channel, on any of its quality versions. */
     public static synchronized boolean has(Context c, String key, long start) {
         all(c);
+        if (at(key, start)) return true;
+        if (starts.isEmpty()) return false;
+        Versions v = versionsOf(c, key);
+        if (v == null) return false;
+        for (Channel o : v.all) if (!o.key.equals(key) && at(o.key, start)) return true;
+        return false;
+    }
+
+    private static boolean at(String key, long start) {
         long[] at = starts.get(key);
         if (at == null) return false;
         for (long t : at) if (t == start) return true;
         return false;
+    }
+
+    /** A channel's quality versions by its key (one row per channel), or null. */
+    private static Versions versionsOf(Context c, String key) {
+        if (key == null || !com.gathin.homefieldtv.prefs.ChannelEdits.merging()) return null;
+        return Versions.of(Library.get(c).exact(key));
     }
 
     /** Whether any is set (the guide looks for bells only then). */
@@ -130,12 +146,16 @@ public final class Reminders {
         save(c, sort(list));
     }
 
+    /** A reminder cancelled; one row per channel, set on any of the channel's quality versions. */
     public static synchronized void remove(Context c, String key, long start) {
-        String gone = id(key, start);
+        Set<String> gone = new HashSet<>();
+        gone.add(id(key, start));
+        Versions v = versionsOf(c, key);
+        if (v != null) for (Channel o : v.all) gone.add(id(o.key, start));
         List<Reminder> list = new ArrayList<>(all(c));
         boolean changed = false;
         for (int i = list.size() - 1; i >= 0; i--) {
-            if (list.get(i).id().equals(gone)) {
+            if (gone.contains(list.get(i).id())) {
                 list.remove(i);
                 changed = true;
             }

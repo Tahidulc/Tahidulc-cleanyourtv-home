@@ -69,6 +69,22 @@ public final class BigPlaylist {
         return out;
     }
 
+    /**
+     * The same 50,000 channels with each one in three qualities side by side in its group (FHD, HD, SD; One row per
+     * channel makes them about 16,700 rows), numbered 1 on, every third with a guide id its versions share.
+     */
+    public static List<Channel> inQualities() {
+        String[] q = {" FHD", " HD", " SD"};
+        List<Channel> out = new ArrayList<>(CHANNELS);
+        for (int i = 0; i < CHANNELS; i++) {
+            int b = i / 3;
+            String name = BRANDS[b % BRANDS.length] + " " + WORDS[(b / 7) % WORDS.length] + " " + (b % 97 + 1) + q[i % 3];
+            out.add(new Channel(keyOf(i), name, groupOf(i), "", "http://provider.invalid/live/" + i + ".ts",
+                    b % GUIDE_EVERY == 0 ? "g" + b : "", null, null, i + 1));
+        }
+        return out;
+    }
+
     /** 24 hours of half-hour programmes (12 back, 12 on) for every 25th channel: 2,000 channels. */
     public static Map<String, Guide.Schedule> guide(List<Channel> chans, long now) {
         Map<String, Guide.Schedule> out = new HashMap<>();

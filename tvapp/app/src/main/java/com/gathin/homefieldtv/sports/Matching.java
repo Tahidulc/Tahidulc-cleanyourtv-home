@@ -84,7 +84,8 @@ public final class Matching {
             for (Channel ch : lib.named(name)) if (lib.listed(ch)) same.add(ch);
             Channel[] tier = tiers(same, name);
             for (int t = 1; t >= 0; t--) {
-                Channel ch = tier[t];
+                // One row per channel: a broadcaster's 4K and HD versions of one channel are its one row.
+                Channel ch = lib.row(tier[t]);
                 if (ch == null) continue;
                 Row r = byKey.get(ch.key);
                 if (r == null) {
