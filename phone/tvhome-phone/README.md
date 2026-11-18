@@ -702,7 +702,7 @@ past the card (formula1.com's, else one drawn), and Grands Prix, Points and Podi
 on Jolpica); swipe through the championship, the colour turning to each team's. Upright on a phone the photo is on top
 and the rest under it; on its side and on a tablet the pages are laid out wide, as the pictures are.
 
-**Each channel's logo on its own colour, and every player's own picture.** Wherever a channel's logo sits on a tile (the
+**Each channel's logo on its own colour, and every player's own picture (5.29).** Wherever a channel's logo sits on a tile (the
 guide, Live TV's lists, favourites and hidden channels, the player and its channels, Also Showing On, the info tile,
 Recently watched, a game's channels, Sports and its notifications), the tile is a rich, deeper shade of the logo's own
 colour (a green logo on deep green, a red one on deep red; a white, black or grey mark on a neutral dark, never black),
