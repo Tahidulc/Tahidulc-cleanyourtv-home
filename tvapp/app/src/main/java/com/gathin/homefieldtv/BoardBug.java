@@ -337,6 +337,11 @@ final class BoardBug extends View {
         invalidate();
     }
 
+    /** The competition's logo it draws on light grounds (null: none, the one for dark grounds then); the strap takes the same. */
+    Bitmap competitionLight() {
+        return compLight;
+    }
+
     /** The competition look drawn now (its own, or By competition's for the game's), or null for the board's own looks. */
     CompBug.Kind kind() {
         return kindOf(style, gameKind);
