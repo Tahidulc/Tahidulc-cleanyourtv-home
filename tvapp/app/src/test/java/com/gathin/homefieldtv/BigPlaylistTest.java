@@ -16,8 +16,10 @@ import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Genres;
 import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.Library;
+import com.gathin.homefieldtv.engine.LogoPack;
 import com.gathin.homefieldtv.engine.Resume;
 import com.gathin.homefieldtv.prefs.Categories;
+import com.gathin.homefieldtv.prefs.ChannelEdits;
 import com.gathin.homefieldtv.prefs.RemoteKeys;
 
 import org.junit.After;
@@ -154,6 +156,28 @@ public class BigPlaylistTest {
         }, null);
         time("Library: the index made (each load)", false, 3, null, () -> BigPlaylist.index(every), null);
         time("Library: the lists made (each load, each hidden or locked)", false, 3, null, () -> BigPlaylist.lists(app, every), null);
+        // The family's edits (ChannelEdits): 500 channels hidden, 500 renamed, every list sorted by name, then by number.
+        StringBuilder edits = new StringBuilder();
+        for (int k = 0; k < 500; k++) {
+            edits.append(BigPlaylist.keyOf(k * 97)).append("\t1\t\t\t\n");
+            edits.append(BigPlaylist.keyOf(k * 97 + 13)).append("\t\t\tRenamed ").append(k).append("\t\n");
+        }
+        app.getSharedPreferences("channel_edits", Context.MODE_PRIVATE).edit().putString("records", edits.toString())
+                .putInt("sort", ChannelEdits.NAME).commit();
+        ChannelEdits.forget();
+        time("Library: the lists made, by name, 500 hidden, 500 renamed", false, 3, null, () -> BigPlaylist.lists(app, every), null);
+        ChannelEdits.setSort(app, ChannelEdits.NUMBER);
+        time("Library: the lists made, by number, 500 hidden, 500 renamed", false, 3, null, () -> BigPlaylist.lists(app, every), null);
+        time("Library: search a name the family gave, 8 channels", false, 5, null, () -> lib.search("renamed 4", 8), null);
+        // The new logos: a screenful of channels' matches worked out as they are first drawn (on the main thread).
+        LogoPack.useForPreview(new String(java.nio.file.Files.readAllBytes(new java.io.File("src/main/assets/logos/fallback.txt").toPath()),
+                java.nio.charset.StandardCharsets.UTF_8));
+        int[] screen = {0};
+        time("LogoPack.auto: 12 channels' new logos matched (first drawn)", true, 5, null, () -> {
+            for (int k = 0; k < 12; k++) LogoPack.auto(every.get(screen[0]++ * 7 % every.size()));
+        }, null);
+        app.getSharedPreferences("channel_edits", Context.MODE_PRIVATE).edit().clear().commit();
+        ChannelEdits.forget();
         time("Library: Home's rows found (each minute)", false, 3, null, () -> BigPlaylist.onNow(app), null);
         time("Library: search \"lantern\", 8 channels", false, 5, null, () -> lib.search("lantern", 8), null);
         time("Catalog.search(\"lantern\") films + series", false, 5, null, () -> {
@@ -166,6 +190,15 @@ public class BigPlaylistTest {
         String flip = BigPlaylist.groupOf(30_000);
         time("Library.all(), once a category is hidden or shown", true, 3,
                 () -> Categories.setHidden(app, flip, !Categories.isHidden(app, flip)), lib::all, BigPlaylistTest::settle);
+        String one = BigPlaylist.keyOf(30_001);
+        time("Library.all(), once a channel is hidden or shown (Hide channel)", true, 3,
+                () -> ChannelEdits.setHidden(app, one, !ChannelEdits.hidden(one)), lib::all, BigPlaylistTest::settle);
+        time("Library.all(), once the channels are sorted another way", true, 3,
+                () -> ChannelEdits.setSort(app, ChannelEdits.sort(app) == ChannelEdits.NAME ? ChannelEdits.PLAYLIST : ChannelEdits.NAME), lib::all,
+                BigPlaylistTest::settle);
+        ChannelEdits.setHidden(app, one, false);
+        ChannelEdits.setSort(app, ChannelEdits.PLAYLIST);
+        settle();
         time("Library.list(a group)", 5, () -> lib.list(BigPlaylist.groupOf(25_000), ""));
         time("Library.list(FAVOURITES) + recent(null) + favourites()", 5, () -> {
             lib.list(Library.FAVOURITES, "");

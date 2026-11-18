@@ -11,6 +11,7 @@ import android.view.View;
 import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.Library;
+import com.gathin.homefieldtv.prefs.ChannelEdits;
 
 /**
  * Home's mini TV: the channel last watched playing in a window at the top right (the live picture goes over the
@@ -67,7 +68,7 @@ final class MiniTv extends View {
         c.drawRoundRect(r, Ui.f(5), Ui.f(5), live);
         c.drawText("LIVE", x + Ui.f(8), Type.centred(liveP, r.centerY()), liveP);
         Library lib = Library.get(getContext());
-        String name = (com.gathin.homefieldtv.prefs.Look.numbers ? lib.number(ch) + "  " : "") + ch.name;
+        String name = (com.gathin.homefieldtv.prefs.Look.numbers ? lib.number(ch) + "  " : "") + ChannelEdits.name(ch);
         c.drawText(Ui.fit(name, nameP, Ui.f(TV_W) - lw - Ui.f(14)), x + lw + Ui.f(14), y, nameP);
         long now = System.currentTimeMillis();
         Guide.Schedule s = lib.schedule(ch.key);

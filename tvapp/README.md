@@ -38,17 +38,38 @@ wordmark are Homefield; it carries no Sky logo or name.
   starts at the left (both glide on the display's own clock, and on smoothly while a key is held, never starting over);
   the channel keys page the rows, rewind and fast forward the times (back into an archive too).
   Left from the programme on now brings in the menu's rail and the groups beside it, pushing the guide right: the
-  playlist's Favourites, All channels and Recently watched, its groups in Settings, Categories' order and names (hidden
-  and locked-away ones left out), then the guide's own categories; the guide shows a group as soon as the remote is on
-  it. Left again opens the drawer. OK on a programme on now plays its channel in the preview, and OK on the channel
-  playing there goes full screen (Back from the player comes back to the guide); OK on a programme to come opens a small
-  menu under it (Remind, Record on a channel with catch-up, Add to My list, Programme description); on one already shown
-  that the archive keeps, OK plays it from its start. OK held (or MENU) opens the whole menu: Search (for the programme's
-  title) and Settings, the programme's lines (Remind, Watch from start, Watch, Record, My list, its description), then
-  the channel's (Add to or Remove from Favourites, Catch-up, Block channel). Play/pause shows the description, Stop
-  adds the channel to the favourites or takes it off, Back held goes back to the player and MENU held opens Search; the
-  number keys go to a channel. Back comes back to the programmes on now, then opens the groups, then the drawer, then
-  leaves the guide.
+  playlist's Favourites, All channels and Recently watched, its groups in the family's order and names (hidden and
+  locked-away ones left out), then the guide's own categories; the guide shows a group as soon as the remote is on it.
+  OK held on a group opens its menu, as TiviMate's: Rename group (Restore group name once renamed), Hide group, Move
+  group (its row lifts, Up and Down carry it past the others, OK puts it down, Back leaves it), Sort channels (By order
+  in playlist, By name, By number or Manual, the one in use ticked), then Show all groups, Hide all groups and Manage
+  groups (Settings); on Favourites, All channels or Recently watched, those last three. Left again opens the drawer. OK
+  on a programme on now plays its channel in the preview, and OK on the channel playing there goes full screen (Back
+  from the player comes back to the guide); OK on a programme to come opens a small menu under it (Remind, Record on a
+  channel with catch-up, Add to My list, Programme description); on one already shown that the archive keeps, OK plays it
+  from its start. OK held (or MENU) opens the whole menu: Search (for the programme's title) and Settings, the
+  programme's lines (Remind, Watch from start, Watch, Record, My list, its description), then under the channel's name
+  TiviMate's Add to or Remove from Favourites, Block channel and Hide channel (out of every list at once: the guide, the
+  channel lists, channel up and down, the numbers, search, Home's rows and the sports pages' Watch on), then Rename
+  channel (with Settings, Appearance, TV guide, Channel names editor on, as it comes: the keyboard over the guide, the
+  name shown everywhere and found by search with its old one too; Restore channel name), Change logo (the new logos found
+  for it, the best first, each on its tile with its country and kind, and the playlist's own; the one chosen kept for
+  that channel), Move channel (TiviMate's Manage positions: its row lifts in its group, or among the favourites, Up and
+  Down move it, OK puts it down and the group keeps that order, Sort channels then Manual; Back leaves it) and Catch-up.
+  Play/pause shows the description, Stop adds the channel to the favourites or takes it off, Back held goes back to the
+  player and MENU held opens Search; the number keys go to a channel. Back comes back to the programmes on now, then
+  opens the groups, then the drawer, then leaves the guide.
+- **Channel logos:** the new logos (Settings, Appearance, Logos: New logos (Homefield), as it comes, or the playlist's
+  own) are the tv-logo project's free logos for dark grounds (github.com/tv-logo/tv-logos, free for personal use: here
+  for the family's own viewing only; no logo is in the app or this repository). The TV asks GitHub for the list of the
+  project's logos' names once a week (the small list the app comes with until then: the United Kingdom's, Ireland's and
+  the international ones), and fetches each logo it shows from GitHub with Homefield's plain User-Agent and nothing
+  about the family, keeping it with its other pictures at the size it is drawn. A channel's name is matched to a logo's
+  with its quality and country tags left out ("UK: BBC ONE FHD", "|UK| …", "[UK] …"), a list number before it too, One
+  as 1, a "+1" kept apart, a few aliases (ITV as ITV1, More4, CBBC, Sky Main Event) and its numbers always counting;
+  where the playlist's country says otherwise, another country's. A new logo shows only where the match is sure (else
+  the playlist's); Change logo in a channel's menu offers every one found. On the guide's rows, the channel lists, the
+  info card, Home's tiles, search, History, My list and the sports pages' Watch on.
 - **Catch-up's archive:** from a channel's Catch-up in the guide's menu: the channel along the top, its programmes down
   the left under each day's name, the remote's always at the same height with the list sliding under it (the one on now
   in the light accent, those the archive no longer keeps greyed), the days beside them (today's in the light accent), and
@@ -132,7 +153,11 @@ wordmark are Homefield; it carries no Sky logo or name.
   buttons (English channels first), all held back to match the channel being watched. Over a match in the player, the
   scoreboard: the game found from the channel and its guide, its clock set at kick-off with OK, alerts beside it, the
   kick-off and after-goal pop-ups and the line-ups, a cover for the channel's logo, its menu from the player's bar
-  (Scoreboard), and a Scoreboard section in Settings.
+  (Scoreboard), and a Scoreboard section in Settings. The scoreboard and the logo cover show only while the channel
+  plays full screen with nothing over it: the info card, the OK overlay, the bar, the channel list, a number being typed
+  or any screen or panel over the picture (the guide's preview, Home's mini TV, Settings) takes them away at once, and
+  they come back with plain playback; their pop-ups wait for it, or are let go when stale (a kick-off after two minutes,
+  a goal's after ninety seconds), and after a longer time away the board catches up without popping up what it missed.
 - **Moving about:** on the dark screens the picture behind cross-fades as the remote moves to another title or
   channel, the words fade in and rise into place a moment after, pages cross-fade into each other, and the poster or
   tile the remote is on grows a little inside a soft white ring. Opacity, a small move and scale only, nothing
@@ -238,11 +263,15 @@ wordmark are Homefield; it carries no Sky logo or name.
   EPG: its sources (the playlists' own guides, then more XMLTV guides that fill in what they leave out), a time shift
   for a guide whose times are out, how often it is read again and reading it as the app starts, Update EPG, Clear EPG,
   and the latest update ("EPG is successfully updated for 16436 channels on 17/11/2026 08:34").
-  Appearance: TV guide (channel numbers, the guide's rows, progress bars); Player (the clock, 24-hour as it comes,
-  12-hour or off; how long the panels stay; live TV's channel tiles); Groups (how they are sorted, and the live
-  categories hidden, out of the guide, Live TV, channel up and down and Search with favourites staying, moved and
-  renamed); Logos (on black tiles, each trimmed and set in the middle with a dark one turned light, or as the playlist
-  gives them); Font size; Color theme: a primary colour (Indigo as it comes, Blue, Deep purple, Purple, Teal, Green,
+  Appearance: TV guide (Channels sorting: By order in playlist as it comes, By name, By number or Manual, a group able to
+  have its own; Channel names editor, on as it comes; channel numbers, the guide's rows, progress bars; Hidden channels,
+  each one hidden with OK to show it again and Show all channels; Manage groups: Show all groups, Hide all groups and
+  each group's page, shown or hidden (out of the guide, Live TV, channel up and down and Search, favourites staying),
+  moved, renamed and its Sort channels); Player (the clock, 24-hour as it comes, 12-hour or off; how long the panels
+  stay; live TV's channel tiles); Groups (how they are sorted); Logos (Logos priority: New logos (Homefield) as it comes,
+  or Playlist's logos; Refresh logos, with how many logos the list has and from when; and the logos on black tiles,
+  each trimmed and set in the middle with a dark one turned light, or as they come); Font size; Color theme: a primary
+  colour (Indigo as it comes, Blue, Deep purple, Purple, Teal, Green,
   Red, Brown, Blue grey, Grey or Black) with an accent (Blue as it comes, Red, Pink, Purple, Indigo, Cyan, Teal, Green,
   Lime, Yellow, Amber, Orange or Deep orange), each a disc, the pair in use ticked and named ("Indigo • Blue"); OK keeps
   one and the screens start again in it, back on Settings. The themes from before are gone: a TV that had one comes up

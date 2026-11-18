@@ -230,9 +230,15 @@ final class MoveMode {
 
     // ---- the hint at the foot ---------------------------------------------------------------------------------------
 
-    /** "Moving BBC One  ·  Up and Down move it  ·  OK puts it here  ·  Back leaves it", centred at the foot. */
+    /**
+     * "Moving BBC One  ·  Up and Down move it  ·  OK puts it here  ·  Back leaves it where it was", centred at the foot (of
+     * the guide right of the groups column while a group moves).
+     */
     static final class Hint extends View {
+        static final String KEYS = "Up and Down move it  ·  OK puts it here  ·  Back leaves it where it was";
         private String what = "";
+        /** Where the room for it starts (design pixels). */
+        private float left;
         private final Paint back = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final TextPaint nameP = Type.paint(Type.SMALL, Type.MEDIUM, Palette.TEXT1), keysP = Type.paint(Type.SMALL, Type.REGULAR, Palette.TEXT2);
         private final RectF r = new RectF();
@@ -243,7 +249,13 @@ final class MoveMode {
         }
 
         void show(String name) {
-            what = name == null ? "" : name;
+            show(name, 0f);
+        }
+
+        /** Shown for a row named so, centred right of left (design pixels: the groups column's edge, for a group). */
+        void show(String name, float left) {
+            what = "Moving " + (name == null ? "" : name);
+            this.left = left;
             setVisibility(VISIBLE);
             invalidate();
         }
@@ -253,11 +265,12 @@ final class MoveMode {
         }
 
         @Override protected void onDraw(Canvas c) {
-            String name = "Moving " + what, keys = "Up and Down move it  ·  OK puts it here  ·  Back leaves it where it was";
+            String name = what, keys = KEYS;
             nameP.setColor(Palette.TEXT1);
             keysP.setColor(Palette.TEXT2);
-            float gap = Ui.f(28f), nw = Math.min(nameP.measureText(name), Ui.f(560f)), kw = keysP.measureText(keys);
-            float w = nw + gap + kw + Ui.f(96f), h = Ui.f(64f), cx = getWidth() / 2f, bottom = Ui.f(1080f - 36f);
+            float x0 = Ui.f(left), room = getWidth() - x0 - Ui.f(32f), gap = Ui.f(28f), kw = keysP.measureText(keys);
+            float nw = Math.min(nameP.measureText(name), Math.max(Ui.f(160f), Math.min(Ui.f(560f), room - gap - kw - Ui.f(96f))));
+            float w = nw + gap + kw + Ui.f(96f), h = Ui.f(64f), cx = (x0 + getWidth()) / 2f, bottom = Ui.f(1080f - 36f);
             r.set(cx - w / 2f, bottom - h, cx + w / 2f, bottom);
             back.setColor(Palette.alpha(Palette.PANEL, 0xF2));
             c.drawRoundRect(r, h / 2f, h / 2f, back);

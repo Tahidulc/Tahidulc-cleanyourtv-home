@@ -24,6 +24,8 @@ import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.engine.Sources;
 import com.gathin.homefieldtv.prefs.OtherPrefs;
+import com.gathin.homefieldtv.prefs.ChannelEdits;
+import com.gathin.homefieldtv.engine.LogoPack;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -181,7 +183,7 @@ final class SearchScreen extends Screen implements Keyboard.Host {
         // The strip's suggestions: names found that start with the words.
         List<String> words = new ArrayList<>();
         String low = q.toLowerCase(Locale.ROOT);
-        for (Channel c : ch) if (words.size() < 3 && c.name.toLowerCase(Locale.ROOT).startsWith(low)) words.add(c.name);
+        for (Channel c : ch) if (words.size() < 3 && ChannelEdits.name(c).toLowerCase(Locale.ROOT).startsWith(low)) words.add(ChannelEdits.name(c));
         for (Catalog.Title t : films) if (words.size() < 5 && t.name.toLowerCase(Locale.ROOT).startsWith(low)) words.add(t.name);
         for (Catalog.Title t : shows) if (words.size() < 6 && t.name.toLowerCase(Locale.ROOT).startsWith(low)) words.add(t.name);
         keys.suggest(words);
@@ -641,7 +643,7 @@ final class SearchScreen extends Screen implements Keyboard.Host {
             r.set(Ui.f(x), Ui.f(y), Ui.f(x + TILE_W), Ui.f(y + TILE_H));
             fill.setColor(on ? Palette.over(Palette.GROUND, Palette.FOCUS) : Palette.PANEL);
             c.drawRoundRect(r, Ui.f(12), Ui.f(12), fill);
-            Bitmap b = ch.logo.isEmpty() ? null : Pics.get(ch.logo, Ui.px(100), Ui.px(66), Pics.logoMode(), redraw);
+            Bitmap b = LogoPack.url(ch).isEmpty() ? null : Pics.get(LogoPack.url(ch), Ui.px(100), Ui.px(66), Pics.logoMode(), redraw);
             float lx = Ui.f(x + TILE_W / 2f), ly = Ui.f(y + 52);
             if (b != null) {
                 c.drawBitmap(b, lx - b.getWidth() / 2f, ly - b.getHeight() / 2f, bmp);
@@ -656,7 +658,7 @@ final class SearchScreen extends Screen implements Keyboard.Host {
             long now = System.currentTimeMillis();
             int p = s == null ? -1 : s.at(now);
             nameP.setColor(Palette.TEXT1);
-            c.drawText(PosterArt.fitDots(ch.name, nameP, Ui.f(TILE_W - 32)), Ui.f(x + 16), Ui.f(y + 124), nameP);
+            c.drawText(PosterArt.fitDots(ChannelEdits.name(ch), nameP, Ui.f(TILE_W - 32)), Ui.f(x + 16), Ui.f(y + 124), nameP);
             lineP.setColor(Palette.TEXT2);
             String what = p >= 0 ? s.title[p] : "No information";
             c.drawText(PosterArt.fitDots(what, lineP, Ui.f(TILE_W - 32)), Ui.f(x + 16), Ui.f(y + 156), lineP);

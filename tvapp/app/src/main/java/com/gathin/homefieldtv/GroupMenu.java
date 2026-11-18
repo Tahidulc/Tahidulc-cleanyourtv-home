@@ -43,7 +43,8 @@ final class GroupMenu {
             if (Categories.renamed(c, group)) out.add(GuideMenu.Item.item(UNNAME, "Restore group name"));
             out.add(GuideMenu.Item.item(HIDE, "Hide group"));
             out.add(GuideMenu.Item.item(MOVE, "Move group"));
-            out.add(GuideMenu.Item.item(SORT, "Sort channels  ·  " + ChannelEdits.SORT_NAMES[sortOf(c, group)]));
+            // The one in use is ticked on its own card (sortItems): the card is too narrow for it here.
+            out.add(GuideMenu.Item.item(SORT, "Sort channels"));
         }
         out.add(GuideMenu.Item.section("Groups"));
         out.add(GuideMenu.Item.item(SHOW_ALL, "Show all groups"));

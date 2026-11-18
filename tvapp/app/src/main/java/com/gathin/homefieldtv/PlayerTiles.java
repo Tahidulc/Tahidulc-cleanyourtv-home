@@ -14,6 +14,8 @@ import android.view.View;
 import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.Library;
+import com.gathin.homefieldtv.prefs.ChannelEdits;
+import com.gathin.homefieldtv.engine.LogoPack;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -213,15 +215,15 @@ final class PlayerTiles extends View {
             c.drawText(t, x + (tw - labelP.measureText(t)) / 2f, y + Ui.f(147f), labelP);
             return;
         }
-        Bitmap logo = Pics.get(ch.logo, Ui.px(208), Ui.px(78), Pics.tiles ? Pics.READY : Pics.FIT, redraw);
+        Bitmap logo = Pics.get(LogoPack.url(ch), Ui.px(208), Ui.px(78), Pics.tiles ? Pics.READY : Pics.FIT, redraw);
         if (logo != null) c.drawBitmap(logo, x + (tw - logo.getWidth()) / 2f, y + Ui.f(12f) + (Ui.f(78f) - logo.getHeight()) / 2f, bmp);
         else {
             logoP.setColor(Palette.TEXT1);
-            float nw = Math.min(logos.width(ch.name), tw - Ui.f(32));
-            logos.line(c, ch.name, x + (tw - nw) / 2f, y + Ui.f(60f), tw - Ui.f(32));
+            float nw = Math.min(logos.width(ChannelEdits.name(ch)), tw - Ui.f(32));
+            logos.line(c, ChannelEdits.name(ch), x + (tw - nw) / 2f, y + Ui.f(60f), tw - Ui.f(32));
         }
         nameP.setColor(Palette.TEXT1);
-        names.line(c, ch.name, x + Ui.f(16f), y + Ui.f(127f), tw - Ui.f(32));
+        names.line(c, ChannelEdits.name(ch), x + Ui.f(16f), y + Ui.f(127f), tw - Ui.f(32));
         Guide.Schedule s = lib.schedule(ch.key);
         int i = s == null ? -1 : s.at(now);
         if (i >= 0) {

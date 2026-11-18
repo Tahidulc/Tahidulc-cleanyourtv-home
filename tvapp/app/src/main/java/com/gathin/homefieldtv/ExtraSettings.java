@@ -14,6 +14,7 @@ import com.gathin.homefieldtv.prefs.Categories;
 import com.gathin.homefieldtv.prefs.GuidePrefs;
 import com.gathin.homefieldtv.prefs.Parental;
 import com.gathin.homefieldtv.prefs.PlayerPrefs;
+import com.gathin.homefieldtv.prefs.ChannelEdits;
 
 import java.io.IOException;
 import java.text.SimpleDateFormat;
@@ -243,7 +244,7 @@ final class ExtraSettings implements SettingsScreen.Pages {
         java.util.Collections.sort(keys);
         for (String k : keys) {
             Channel c = lib.byKey(k);
-            out.add(enabled(RowList.Row.item("unlockch:" + k, c == null ? "A channel not in your playlists now" : c.name,
+            out.add(enabled(RowList.Row.item("unlockch:" + k, c == null ? "A channel not in your playlists now" : ChannelEdits.name(c),
                     "Locked  ·  OK to unlock"), on));
         }
         out.add(RowList.Row.note(keys.isEmpty() ? "None yet: hold OK on a channel in Live TV and choose Lock this channel."

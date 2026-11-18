@@ -16,6 +16,7 @@ import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.prefs.Look;
+import com.gathin.homefieldtv.prefs.ChannelEdits;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -406,7 +407,7 @@ final class Rows extends View {
                 c.drawBitmap(logo, x + (w - logo.getWidth()) / 2f, y + Ui.f(72) - logo.getHeight() / 2f, bmp);
             } else if (ch != null) {
                 logoName.setAlpha(a);
-                String nm = Ui.fit(ch.name, logoName, w - Ui.f(32));
+                String nm = Ui.fit(ChannelEdits.name(ch), logoName, w - Ui.f(32));
                 c.drawText(nm, x + (w - logoName.measureText(nm)) / 2f, y + Ui.f(82), logoName);
             }
         }
@@ -426,7 +427,7 @@ final class Rows extends View {
         if (t.fitMinute != minute && ch != null) {
             t.fitLeft = i >= 0 ? LiveText.left(now, s.stop[i]) : "";
             float lw = t.fitLeft.isEmpty() ? 0f : leftP.measureText(t.fitLeft) + Ui.f(16);
-            t.fitName = Ui.fit((Look.numbers ? Library.get(getContext()).number(ch) + "  " : "") + ch.name, nameOn, w - lw);
+            t.fitName = Ui.fit((Look.numbers ? Library.get(getContext()).number(ch) + "  " : "") + ChannelEdits.name(ch), nameOn, w - lw);
             t.fitMinute = minute;
         }
         tTitle.setAlpha(a);

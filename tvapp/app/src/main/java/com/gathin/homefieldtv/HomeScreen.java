@@ -11,6 +11,8 @@ import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.engine.Resume;
+import com.gathin.homefieldtv.prefs.ChannelEdits;
+import com.gathin.homefieldtv.engine.LogoPack;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -210,13 +212,13 @@ final class HomeScreen extends Screen implements Rows.Host, LiveTv.Listener {
 
     static Rows.Tile channelTile(Library lib, Channel c, Guide.Schedule s, int i, long now) {
         Rows.Tile t = new Rows.Tile(c);
-        t.logo = c.logo;
+        t.logo = LogoPack.url(c);
         if (i >= 0) {
             t.title = s.title[i];
-            t.subtitle = lib.number(c) + "  " + c.name + "  ·  " + Ui.left(s.stop[i] - now);
+            t.subtitle = lib.number(c) + "  " + ChannelEdits.name(c) + "  ·  " + Ui.left(s.stop[i] - now);
             t.progress = (now - s.start[i]) / (float) Math.max(1, s.stop[i] - s.start[i]);
         } else {
-            t.title = c.name;
+            t.title = ChannelEdits.name(c);
             t.subtitle = String.valueOf(lib.number(c));
         }
         return t;
@@ -285,10 +287,10 @@ final class HomeScreen extends Screen implements Rows.Host, LiveTv.Listener {
             Guide.Schedule s = lib.schedule(c.key);
             int i = s == null ? -1 : s.at(now);
             if (i >= 0) {
-                hero.show("", c.logo, s.title[i], "Now  ·  " + Ui.span(s.start[i], s.stop[i]) + "  ·  " + lib.number(c) + " " + c.name, 0,
+                hero.show("", LogoPack.url(c), s.title[i], "Now  ·  " + Ui.span(s.start[i], s.stop[i]) + "  ·  " + lib.number(c) + " " + ChannelEdits.name(c), 0,
                         s.desc[i], "", false);
             } else {
-                hero.show("", c.logo, c.name, lib.number(c) + "  ·  " + c.group, 0, "", "", false);
+                hero.show("", LogoPack.url(c), ChannelEdits.name(c), lib.number(c) + "  ·  " + c.group, 0, "", "", false);
             }
             return;
         }

@@ -92,6 +92,8 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
     private MoveMode.Hint hint;
     private Channel keepOn;
     private String menuGroup;
+    /** The channels changed while a row was lifted: the lists made again once it is put down or back. */
+    private boolean changedWhileMoving;
 
     /** The list shown last forgotten: the next guide opens on all the channels (a test's own channels gone). */
     static void forgetList() {
@@ -281,8 +283,11 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
     }
 
     @Override void channelsChanged() {
-        // A row being moved is put back: the lists changed under it.
-        if (moving != null) moving.cancel();
+        // A row lifted stays lifted: the new lists once it is put down or back.
+        if (moving != null) {
+            changedWhileMoving = true;
+            return;
+        }
         Channel on = keepOn != null ? keepOn : grid.channel();
         keepOn = null;
         fillGroups();
@@ -719,7 +724,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
         long[] p = menuTimes;
         Guide.Schedule s = Library.get(tv).schedule(c.key);
         boolean has = s != null && menuIndex >= 0 && menuIndex < s.title.length;
-        String title = has ? s.title[menuIndex] : c.name, desc = has ? s.desc[menuIndex] : "";
+        String title = has ? s.title[menuIndex] : ChannelEdits.name(c), desc = has ? s.desc[menuIndex] : "";
         if (GuideActions.ABOUT.equals(tag)) {
             openAbout();
             return;
@@ -767,7 +772,8 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
         String group = null;
         if (!FAV.equals(shown)) {
             if (c.group.isEmpty() || !listed.contains(GROUP + c.group)) {
-                android.widget.Toast.makeText(tv, "This channel's group isn't in the guide's groups to move it in", android.widget.Toast.LENGTH_LONG).show();
+                android.widget.Toast.makeText(tv, "This channel's group isn't in the guide's groups to move it in",
+                        android.widget.Toast.LENGTH_LONG).show();
                 return;
             }
             group = c.group;
@@ -790,6 +796,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
                 hint.hide();
                 if (moved) edited(lifted);
                 else load(shown, lifted);
+                afterMove(lifted);
                 moved();
             }
 
@@ -800,6 +807,14 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
         grid.lifted = c.key;
         grid.invalidate();
         hint.show(ChannelEdits.name(c));
+    }
+
+    /** A row put down or back: the channels changed meanwhile shown now. */
+    private void afterMove(Channel focusOn) {
+        if (!changedWhileMoving) return;
+        changedWhileMoving = false;
+        if (keepOn == null) keepOn = focusOn;
+        channelsChanged();
     }
 
     /** OK held on the groups column: the menu for the group the remote is on (or the other entries' Groups lines). */
@@ -848,8 +863,9 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
             moving = null;
             hint.hide();
             if (moved) edited(grid.channel());
+            afterMove(grid.channel());
         });
-        hint.show(e == null ? "" : e.name);
+        hint.show(e == null ? "" : e.name, groups.x + GroupsPanel.W);
     }
 
     // ---- what the tests look at -------------------------------------------------------------------------------------
@@ -875,6 +891,11 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
 
     boolean menuOpen() {
         return menu.isOpen();
+    }
+
+    /** Whether a row is lifted (Move channel, Move group). */
+    boolean moving() {
+        return moving != null;
     }
 
     /** How far the guide is pushed right by the rail and the groups (design pixels). */

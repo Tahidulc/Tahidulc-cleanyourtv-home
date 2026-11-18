@@ -22,6 +22,8 @@ import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.prefs.RemoteKeys;
+import com.gathin.homefieldtv.prefs.ChannelEdits;
+import com.gathin.homefieldtv.engine.LogoPack;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -140,6 +142,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
     @Override View build() {
         FrameLayout root = new FrameLayout(tv);
         board = new BoardLayer(tv);
+        board.showOnlyWhen(this::plain);
         browse = new FrameLayout(tv);
         View shade = new View(tv);
         shade.setBackgroundColor(Palette.alpha(Palette.GROUND, 0xE0));
@@ -221,6 +224,17 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
         browse.setVisibility(View.GONE);
     }
 
+    /**
+     * Plain full-screen playback with nothing over the picture: on top and in front, the picture on the whole screen, none
+     * of this screen's panels up, no number being typed and no question. The scoreboard and the logo cover show only then
+     * (BoardGate).
+     */
+    private boolean plain() {
+        android.graphics.Rect w = tv.live.where(), f = tv.fullScreen();
+        boolean full = w != null && !w.isEmpty() && w.width() >= f.width() - 1 && w.height() >= f.height() - 1;
+        return BoardGate.plain(tv.showing(this), full, mode == NONE, !digits.isEmpty(), dialog.showing());
+    }
+
     @Override public void liveChanged() {
         panels.invalidate();
     }
@@ -282,6 +296,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
         float above = m == BANNER ? InfoCard.FOOT_Y - 16f : m == OVERLAY || m == BAR ? PlayerTiles.SCRIM_Y + 40f : -1f;
         tv.live.subs.room(m != LIST && m != BROWSE, above);
         panels.invalidate();
+        board.coverChanged();
     }
 
     /** The panels' wait starts again (a key in them). */
@@ -396,10 +411,11 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
         answers.add(RowList.Row.item("no", "Not now", null));
         h.removeCallbacks(hide);
         dialog.show("Automatic subtitles", LiveSubs.askLine(), answers, 0);
+        board.coverChanged();
     }
 
     @Override public void answered(DialogCard d, RowList.Row answer) {
-        d.hide(null);
+        d.hide(board::coverChanged);
         if ("get".equals(answer.tag)) tv.live.subs.fetch();
         if (mode != NONE) poke();
     }
@@ -409,6 +425,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
         String d = digits;
         digits = "";
         panels.invalidate();
+        board.coverChanged();
         if (mode == NONE) Fade.show(panels, false, 110);
         if (d.isEmpty()) return;
         // Settings → Remote → The channel before: 0 on its own, if chosen.
@@ -491,6 +508,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
             else h.postDelayed(digitsDone, RemoteKeys.waitMs(tv));
             Fade.show(panels, true, 110);
             panels.invalidate();
+            board.coverChanged();
             return true;
         }
         boolean reversed = RemoteKeys.reversed(tv);
@@ -626,7 +644,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
             case RemoteKeys.FAVOURITE: {
                 if (c == null) return true;
                 boolean on = Library.get(tv).toggleFavourite(c);
-                android.widget.Toast.makeText(tv, on ? c.name + " added to your favourites" : c.name + " taken off your favourites",
+                android.widget.Toast.makeText(tv, on ? ChannelEdits.name(c) + " added to your favourites" : ChannelEdits.name(c) + " taken off your favourites",
                         android.widget.Toast.LENGTH_SHORT).show();
                 return true;
             }
@@ -661,7 +679,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
 
     @Override boolean back() {
         if (dialog.showing()) {
-            dialog.hide(null);
+            dialog.hide(board::coverChanged);
             return true;
         }
         if (mode == BAR) {
@@ -856,7 +874,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
         private void drawDescription(Canvas c, Channel ch, long now) {
             Guide.Schedule s = Library.get(getContext()).schedule(ch.key);
             int i = s == null ? -1 : s.at(now);
-            String title = i >= 0 ? s.title[i] : ch.name, desc = i >= 0 ? s.desc[i] : "";
+            String title = i >= 0 ? s.title[i] : ChannelEdits.name(ch), desc = i >= 0 ? s.desc[i] : "";
             String k = ch.key + "|" + (i >= 0 ? s.start[i] : 0);
             float x0 = 1152f, y0 = 48f, x1 = 1872f, inner = x1 - x0 - 64f;
             if (!k.equals(descKey)) {
@@ -902,7 +920,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
             }
             Channel ch = Library.get(getContext()).numbered(n);
             nameP.setColor(Palette.TEXT2);
-            if (ch != null) c.drawText(Ui.fit(ch.name, nameP, Ui.f(256f)), Ui.f(1584f), Ui.f(148f), nameP);
+            if (ch != null) c.drawText(Ui.fit(ChannelEdits.name(ch), nameP, Ui.f(256f)), Ui.f(1584f), Ui.f(148f), nameP);
         }
     }
 
@@ -1052,12 +1070,12 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
                 c.drawRect(x, y - Ui.f(18), x + Math.max(1f, Ui.f(2f)), y + Ui.f(4), sep);
                 x += Ui.f(22);
             }
-            Bitmap logo = Pics.get(ch.logo, Ui.px(200), Ui.px(72), Pics.tiles ? Pics.READY : Pics.FIT, redraw);
+            Bitmap logo = Pics.get(LogoPack.url(ch), Ui.px(200), Ui.px(72), Pics.tiles ? Pics.READY : Pics.FIT, redraw);
             if (logo != null) c.drawBitmap(logo, x0, Ui.f(100) + (Ui.f(72) - logo.getHeight()) / 2f, bmp);
-            else c.drawText(Ui.fit(ch.name, logoName, Ui.f(600)), x0, Ui.f(150), logoName);
-            String title = i >= 0 ? s.title[i] : ch.name;
+            else c.drawText(Ui.fit(ChannelEdits.name(ch), logoName, Ui.f(600)), x0, Ui.f(150), logoName);
+            String title = i >= 0 ? s.title[i] : ChannelEdits.name(ch);
             c.drawText(Ui.fit(title, titleP, Ui.f(1400)), x0, Ui.f(250), titleP);
-            String chan = lib.number(ch) + "  " + ch.name + (ch.group.isEmpty() ? "" : "  ·  " + ch.group);
+            String chan = lib.number(ch) + "  " + ChannelEdits.name(ch) + (ch.group.isEmpty() ? "" : "  ·  " + ch.group);
             c.drawText(Ui.fit(chan, chanP, Ui.f(1400)), x0, Ui.f(294), chanP);
             if (i >= 0) {
                 String t = LiveText.span(s.start[i], s.stop[i]) + "  ·  " + InfoCard.minutes(Math.max(0, s.stop[i] - now));
@@ -1197,20 +1215,20 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
             r.set(x, y, x + w, y + hgt);
             if (pic != null) {
                 c.drawBitmap(pic, x, y, bmp);
-                Bitmap logo = Pics.get(ch.logo, Ui.px(120), Ui.px(46), logoMode, redraw);
+                Bitmap logo = Pics.get(LogoPack.url(ch), Ui.px(120), Ui.px(46), logoMode, redraw);
                 if (logo != null) c.drawBitmap(logo, x + Ui.f(16), y + Ui.f(14), bmp);
             } else {
                 tileBack.setColor(Palette.PANEL);
                 c.drawRoundRect(r, Ui.f(12), Ui.f(12), tileBack);
-                Bitmap logo = Pics.get(ch.logo, Ui.px(170), Ui.px(62), logoMode, redraw);
+                Bitmap logo = Pics.get(LogoPack.url(ch), Ui.px(170), Ui.px(62), logoMode, redraw);
                 if (logo != null) c.drawBitmap(logo, x + (w - logo.getWidth()) / 2f, y + Ui.f(58) - logo.getHeight() / 2f, bmp);
                 else {
-                    String nm = Ui.fit(ch.name, logoName, w - Ui.f(32));
+                    String nm = Ui.fit(ChannelEdits.name(ch), logoName, w - Ui.f(32));
                     c.drawText(nm, x + (w - logoName.measureText(nm)) / 2f, y + Ui.f(66), logoName);
                 }
             }
             float room = w - Ui.f(32);
-            String title = i >= 0 ? s.title[i] : ch.name;
+            String title = i >= 0 ? s.title[i] : ChannelEdits.name(ch);
             c.drawText(Ui.fit(title, tTitle, room), x + Ui.f(16), y + hgt - Ui.f(46), tTitle);
             String about = i < 0 ? "No programme information" : s.desc[i].isEmpty() ? LiveText.span(s.start[i], s.stop[i]) : s.desc[i];
             c.drawText(Ui.fit(about, tDesc, room), x + Ui.f(16), y + hgt - Ui.f(22), tDesc);
@@ -1225,7 +1243,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
             }
             c.restore();
             TextPaint np = l > 0.5f ? nameOn : nameP;
-            String nm = Ui.fit((com.gathin.homefieldtv.prefs.Look.numbers ? lib.number(ch) + "  " : "") + ch.name, np, w);
+            String nm = Ui.fit((com.gathin.homefieldtv.prefs.Look.numbers ? lib.number(ch) + "  " : "") + ChannelEdits.name(ch), np, w);
             c.drawText(nm, x, y + hgt + Ui.f(32) + (LIFT - 1f) * hgt / 2f * l, np);
         }
     }

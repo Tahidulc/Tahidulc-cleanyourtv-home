@@ -5,6 +5,7 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.RectF;
+import android.text.StaticLayout;
 import android.text.TextPaint;
 import android.view.KeyEvent;
 import android.view.View;
@@ -21,14 +22,19 @@ import java.util.List;
 /**
  * Change logo, from a channel's menu in the TV guide: the new logos that may be the channel's, the best first, each on
  * its tile as the guide draws it, with its name, its country and kind ("United Kingdom  ·  HD") and how sure the match
- * is, then the playlist's own logo; the one shown now ticked. On a card where the long-OK card is ([1392,32], 496 wide,
- * the panel's colour) over the screen dimmed. Up and Down move, OK keeps one for this channel (ChannelEdits: the best
- * match is kept as "automatic", so a newer list of logos can still change it), Back leaves it as it was.
+ * is, then the playlist's own logo; the one shown now ticked. On a card as tall as the long-OK card and at its right
+ * edge ([1192,32], 696 wide: wider, for the logos' names and kinds; the panel's colour) over the screen dimmed. Up and
+ * Down move, OK keeps one for this channel (ChannelEdits: the best match is kept as "automatic", so a newer list of
+ * logos can still change it), Back leaves it as it was.
  */
 final class LogoScreen extends Screen {
-    static final float CARD_LEFT = GuideMenu.CARD_X, CARD_TOP = GuideMenu.CARD_Y, CARD_W = GuideMenu.CARD_W, CARD_H = GuideMenu.CARD_H, HEAD = 96f, ROW = 112f,
-            TILE_W = 150f, TILE_H = 100f;
+    /** The card: the long-OK card's top, height and right edge (GuideMenu), wider; its head, rows and tiles (design pixels). */
+    static final float CARD_W = 696f, CARD_LEFT = GuideMenu.CARD_X + GuideMenu.CARD_W - CARD_W, CARD_TOP = GuideMenu.CARD_Y,
+            CARD_H = GuideMenu.CARD_H;
+    static final float HEAD = 96f, ROW = 112f, TILE_W = 120f, TILE_H = 80f;
     static final String PLAYLIST = ChannelEdits.LOGO_PLAYLIST;
+    static final String NONE = "No new logo matches this channel's name. A channel renamed is matched by its new name, "
+            + "then by the playlist's.";
 
     private final Channel ch;
     /** The logos found (null while they are looked for). */
@@ -151,6 +157,7 @@ final class LogoScreen extends Screen {
         private final TextPaint titleP = Type.paint(Type.ROW, Type.REGULAR, Palette.TEXT1), aboutP = Type.paint(Type.SMALL, Type.REGULAR, Palette.TEXT2);
         private final RectF r = new RectF();
         private final Runnable redraw = this::invalidate;
+        private StaticLayout none;
 
         Card(Context c) {
             super(c);
@@ -180,8 +187,8 @@ final class LogoScreen extends Screen {
                 c.drawText("Looking for logos…", Ui.f(tx), Ui.f(top + rows.size() * ROW + 40f), aboutP);
             } else if (found.isEmpty()) {
                 aboutP.setColor(Palette.TEXT2);
-                c.drawText(Ui.fit("No new logo matches this channel's name", aboutP, Ui.f(CARD_W - 80f)), Ui.f(tx),
-                        Ui.f(top + rows.size() * ROW + 40f), aboutP);
+                if (none == null) none = Ui.layout(NONE, aboutP, Ui.px(CARD_W - 80f), 3);
+                Ui.draw(c, none, Ui.f(tx), Ui.f(top + rows.size() * ROW + 12f));
             }
             c.restore();
         }

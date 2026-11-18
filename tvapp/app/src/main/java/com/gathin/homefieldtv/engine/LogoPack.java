@@ -1,5 +1,6 @@
 package com.gathin.homefieldtv.engine;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.util.JsonReader;
@@ -60,11 +61,18 @@ public final class LogoPack {
     /** Whether a picture could not be read (the app's pictures say so): its playlist's logo then. */
     public static volatile Predicate<String> failed = u -> false;
 
+    /** The application's context, never an activity's (init). */
+    @SuppressLint("StaticFieldLeak")
     private static volatile Context app;
     private static volatile LogoMatch match;
     private static volatile Set<String> countries = Collections.emptySet();
     /** Each channel's automatic logo, by its key ("" for none sure enough), worked out as it is first drawn. */
     private static final Map<String, String> best = new ConcurrentHashMap<>();
+    /** Each logo's address by its path, made once (nothing made each frame a row is drawn), for the base they were made on. */
+    private static final Map<String, String> addresses = new ConcurrentHashMap<>();
+    private static volatile String addressesBase = RAW;
+    /** Robolectric (the tests): no logo fetched, unless a preview gives its own folder. */
+    private static final boolean TESTS = "robolectric".equals(android.os.Build.FINGERPRINT);
     private static final List<Runnable> listeners = new CopyOnWriteArrayList<>();
     private static final AtomicBoolean reading = new AtomicBoolean(), fetching = new AtomicBoolean();
     private static volatile boolean on = true;
@@ -111,10 +119,20 @@ public final class LogoPack {
         return failed.test(u) ? ch.logo : u;
     }
 
-    /** A logo's address: the project's file (made new by Refresh logos). */
+    /** A logo's address: the project's file (made new by Refresh logos); made once a path. */
     public static String urlOf(String path) {
         String b = base;
-        return b + path + (bust > 0 && b.startsWith("http") ? "?v=" + bust : "");
+        if (!b.equals(addressesBase)) {
+            // Another base (a preview's folder, or back to the project's): the addresses made on the old one go.
+            addresses.clear();
+            addressesBase = b;
+        }
+        String u = addresses.get(path);
+        if (u == null) {
+            u = b + path + (bust > 0 && b.startsWith("http") ? "?v=" + bust : "");
+            addresses.put(path, u);
+        }
+        return u;
     }
 
     /** The channel's automatic logo's path (sure enough), or null; worked out once (a few lookups). */
@@ -162,6 +180,7 @@ public final class LogoPack {
         bust++;
         prefs(a).edit().putInt(BUST, bust).apply();
         best.clear();
+        addresses.clear();
         changed();
         Exec.io(() -> fetch(a));
     }
@@ -210,7 +229,7 @@ public final class LogoPack {
 
     /** No logos fetched in tests (Robolectric): the playlists' own, unless a preview gives its own folder. */
     static boolean offline() {
-        return "robolectric".equals(android.os.Build.FINGERPRINT) && RAW.equals(base);
+        return TESTS && RAW.equals(base);
     }
 
     /** The index read (the one fetched last, else the app's own) for the countries the playlist has. Off the main thread. */
@@ -363,6 +382,7 @@ public final class LogoPack {
     public static void useForPreview(String indexText) {
         match = LogoMatch.parse(indexText, null);
         best.clear();
+        addresses.clear();
         changed();
     }
 }

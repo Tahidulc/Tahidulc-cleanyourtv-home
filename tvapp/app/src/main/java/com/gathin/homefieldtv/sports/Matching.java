@@ -110,8 +110,9 @@ public final class Matching {
     private static Row row(Channel ch, Channel playing, Set<String> fav) {
         Row r = new Row();
         r.ch = ch;
-        r.name = tidy(ch.name);
-        r.logo = ch.logo == null ? "" : ch.logo;
+        // As the family named it, with its logo as chosen (the new logos: LogoPack); found by its playlist's name.
+        r.name = tidy(com.gathin.homefieldtv.prefs.ChannelEdits.name(ch));
+        r.logo = com.gathin.homefieldtv.engine.LogoPack.url(ch);
         r.uhd = Names.uhd(ch.name);
         r.now = playing != null && playing.key.equals(ch.key);
         r.english = english(ch.name + " " + (ch.group == null ? "" : ch.group));

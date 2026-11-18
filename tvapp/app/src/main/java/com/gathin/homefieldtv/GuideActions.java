@@ -188,7 +188,8 @@ final class GuideActions {
 
     static void favourite(TvActivity tv, Channel c) {
         boolean on = Library.get(tv).toggleFavourite(c);
-        Toast.makeText(tv, on ? ChannelEdits.name(c) + " added to Favourites" : ChannelEdits.name(c) + " removed from Favourites", Toast.LENGTH_SHORT).show();
+        String name = ChannelEdits.name(c);
+        Toast.makeText(tv, on ? name + " added to Favourites" : name + " removed from Favourites", Toast.LENGTH_SHORT).show();
     }
 
     /** Block channel: Settings → Parental control's lock (the PIN asked before it plays); unblocking asks for the PIN. */

@@ -15,6 +15,7 @@ import com.gathin.homefieldtv.engine.Catalog;
 import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Library;
+import com.gathin.homefieldtv.prefs.ChannelEdits;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -198,7 +199,7 @@ public final class TvActivity extends Activity {
         Channel c = Library.get(this).byKey(key);
         if (c == null) return;
         watch(c);
-        android.widget.Toast.makeText(this, "Playing " + c.name + (from == null || from.isEmpty() ? "" : " from " + from),
+        android.widget.Toast.makeText(this, "Playing " + ChannelEdits.name(c) + (from == null || from.isEmpty() ? "" : " from " + from),
                 android.widget.Toast.LENGTH_LONG).show();
     }
 

@@ -62,7 +62,7 @@ public final class LogoMatch {
             this.timeshift = timeshift;
         }
 
-        /** Its name as the family reads it: "Bbc One" from bbc-one-uk, its kind after it ("HD", "Wide"…). */
+        /** Its name as the family reads it, from its file's name: "BBC One" from bbc-one-uk (its kind is about()'s). */
         public String label() {
             String file = path.substring(path.lastIndexOf('/') + 1);
             if (file.endsWith(".png")) file = file.substring(0, file.length() - 4);
@@ -73,8 +73,7 @@ public final class LogoMatch {
                 String w = t[i];
                 if (w.isEmpty() || VARIANT_WORDS.contains(w)) continue;
                 if (b.length() > 0) b.append(' ');
-                b.append(w.length() <= 3 && !w.equals("and") && !w.equals("one") && !w.equals("two") ? w.toUpperCase(Locale.ROOT)
-                        : Character.toUpperCase(w.charAt(0)) + w.substring(1));
+                b.append(ACRONYMS.contains(w) || w.length() == 1 ? w.toUpperCase(Locale.ROOT) : Character.toUpperCase(w.charAt(0)) + w.substring(1));
             }
             return b.toString();
         }
@@ -108,16 +107,19 @@ public final class LogoMatch {
         }
     }
 
-    /** A channel's name made comparable. */
+    /**
+     * A channel's name made comparable: its key, the key with its country tags kept (full: "92 News UK"), without a
+     * generic word at its end, without a region; its words; its country; UHD; a timeshift.
+     */
     static final class Name {
-        final String key, alias, generic, region;
+        final String key, full, generic, region;
         final List<String> tokens;
         final String country;
         final boolean uhd, timeshift;
 
-        Name(String key, String alias, String generic, String region, List<String> tokens, String country, boolean uhd, boolean timeshift) {
+        Name(String key, String full, String generic, String region, List<String> tokens, String country, boolean uhd, boolean timeshift) {
             this.key = key;
-            this.alias = alias;
+            this.full = full;
             this.generic = generic;
             this.region = region;
             this.tokens = tokens;
@@ -244,6 +246,11 @@ public final class LogoMatch {
 
     private static final Set<String> VARIANT_WORDS = new HashSet<>(Arrays.asList("hd", "hz", "icon", "light", "white", "mono",
             "dark", "alt", "alt2", "alt3", "badge", "uhd", "4k", "hdr"));
+    /** Words a logo's name writes in capitals. */
+    private static final Set<String> ACRONYMS = new HashSet<>(Arrays.asList("bbc", "itv", "tnt", "bt", "mtv", "tv", "uk", "us", "cnn",
+            "rte", "tg", "nbc", "cbs", "abc", "hbo", "amc", "tlc", "s4c", "stv", "qvc", "gb", "tcm", "pbs", "cbbc", "bet", "fx", "espn",
+            "nfl", "nba", "f1", "dmax", "rtl", "zdf", "ard", "npo", "tf1", "dazn", "pga", "ufc", "wwe", "lfctv", "mutv", "gaa", "ndtv", "ary",
+            "b4u", "ben", "pop", "vh1", "hgtv", "jml", "tjc", "tbn", "uhd", "int", "nhk", "cgtn", "rt"));
 
     /** One file's logo: its key from its words, its kind from the words that say a version. */
     private static Logo logo(String folder, String country, String file, int flags, Map<String, String> pool) {
@@ -398,58 +405,68 @@ public final class LogoMatch {
             hard.remove(0);
         }
         boolean uhd = false;
+        // The words kept, each with whether a mark (not a space) came after it (a mark after a word left out goes to the one before).
         List<String> t = new ArrayList<>(raw.size());
+        List<Boolean> th = new ArrayList<>(raw.size());
         for (int i = 0; i < raw.size(); i++) {
             String w = raw.get(i);
             String next = i + 1 < raw.size() ? raw.get(i + 1) : "";
+            int skip = -1;
             if (QUALITY.contains(w)) {
                 uhd |= UHD_TAGS.contains(w);
-                continue;
-            }
-            if ((w.equals("h") || w.equals("x")) && (next.equals("264") || next.equals("265"))) {
-                i++;
-                continue;
-            }
-            if (digits(w) && next.equals("fps")) {
-                i++;
-                continue;
-            }
-            if ((w.equals("full") || w.equals("ultra")) && next.equals("hd")) {
+                skip = 0;
+            } else if ((w.equals("h") || w.equals("x")) && (next.equals("264") || next.equals("265")) || digits(w) && next.equals("fps")) {
+                skip = 1;
+            } else if ((w.equals("full") || w.equals("ultra")) && next.equals("hd")) {
                 uhd |= w.equals("ultra");
-                i++;
+                skip = 1;
+            }
+            if (skip < 0) {
+                t.add(w);
+                th.add(hard.get(i));
                 continue;
             }
-            t.add(w);
+            i += skip;
+            if (hard.get(i) && !th.isEmpty()) th.set(th.size() - 1, true);
         }
+        List<String> tagged = new ArrayList<>(t);
         String country = null;
-        // Country tags at either end: "UK: …", "|UK| …", "… (GB)"; "United Kingdom", "South Africa" as two words.
+        // Country tags at the start: "UK: …", "|UK| …", "[UK] …", "UK …"; "United Kingdom" and the like as two words.
         while (t.size() > 1) {
             String two = t.size() > 2 ? t.get(0) + "-" + t.get(1) : "";
             String c2 = two.equals("united-kingdom") ? UK : two.equals("united-states") ? "united-states"
                     : two.equals("south-africa") ? "south-africa" : two.equals("new-zealand") ? "new-zealand" : null;
-            if (c2 != null) {
+            if (c2 != null && hasLetters(t.subList(2, t.size()))) {
                 if (country == null) country = c2;
                 t.remove(0);
                 t.remove(0);
+                th.remove(0);
+                th.remove(0);
                 continue;
             }
             String c = COUNTRY.get(t.get(0));
-            if (c == null) break;
+            if (c == null || !hasLetters(t.subList(1, t.size()))) break;
             if (country == null) country = c;
             t.remove(0);
+            th.remove(0);
         }
+        // At the end only a sure one ("UK", "USA", "IE") or one set apart ("… (PL)", "… | DE"), never a name's own
+        // last word ("Sky Sports PL", "5 USA" keeps its USA: nothing but a number would be left).
         while (t.size() > 1) {
-            String last = t.get(t.size() - 1);
-            String c = COUNTRY.get(last);
-            if (c == null || last.equals("en") || last.equals("scotland") || last.equals("wales")) break;
+            int n = t.size();
+            String last = t.get(n - 1), c = COUNTRY.get(last);
+            boolean sure = STRONG.contains(last) || th.get(n - 2);
+            if (c == null || !sure || last.equals("en") || last.equals("scotland") || last.equals("wales")
+                    || !hasLetters(t.subList(0, n - 1))) break;
             if (country == null) country = c;
-            t.remove(t.size() - 1);
+            t.remove(n - 1);
+            th.remove(n - 1);
         }
         if (country == null && group != null) country = countryOfGroup(group);
         List<String> norm = words(t);
         boolean shift = timeshift(norm);
         String key = join(norm);
-        String alias = ALIASES.get(key);
+        String full = tagged.size() == t.size() ? null : join(words(tagged));
         // Without a generic word at its end ("Dave TV"), without a region ("ITV1 London", "BBC One North West").
         String generic = null, region = null;
         if (norm.size() > 1 && GENERIC.contains(norm.get(norm.size() - 1))) generic = join(norm.subList(0, norm.size() - 1));
@@ -458,7 +475,16 @@ public final class LogoMatch {
         if (keep < norm.size()) region = join(norm.subList(0, keep));
         List<String> toks = new ArrayList<>();
         for (String w : norm) splitDigits(w, toks);
-        return new Name(key, alias, generic, region, toks, country, uhd, shift);
+        return new Name(key, full, generic, region, toks, country, uhd, shift);
+    }
+
+    /** Country tags at a name's end that are surely tags, whatever comes before them. */
+    private static final Set<String> STRONG = new HashSet<>(Arrays.asList("uk", "gb", "usa", "us", "ie", "irl", "int"));
+
+    /** Whether some word in these has a letter in it (a name is left, not only a number). */
+    private static boolean hasLetters(List<String> words) {
+        for (String w : words) for (int i = 0; i < w.length(); i++) if (Character.isLetter(w.charAt(i))) return true;
+        return false;
     }
 
     /** Pure: the country a group's name says ("UK | Sport", "USA ENTERTAINMENT", "Ireland"), or null. */
@@ -617,24 +643,23 @@ public final class LogoMatch {
     private List<Found> find(Name n, int max, boolean loose) {
         Map<String, Found> out = new LinkedHashMap<>();
         if (n.key.isEmpty()) return new ArrayList<>();
-        // An alias first: it says which of two logos the family's channel is ("ITV" is ITV1).
-        if (n.alias != null) exact(n, n.alias, 1f, out);
-        exact(n, n.key, 1f, out);
-        if (n.generic != null) exact(n, n.generic, 0.9f, out);
-        if (n.region != null) {
-            exact(n, n.region, 0.9f, out);
-            String ra = ALIASES.get(n.region);
-            if (ra != null) exact(n, ra, 0.9f, out);
-        }
-        if (n.generic != null) {
-            String ga = ALIASES.get(n.generic);
-            if (ga != null) exact(n, ga, 0.9f, out);
-        }
+        named(n, n.key, 1f, out);
+        // With its country's word kept: a name that ends in one ("92 News UK").
+        if (n.full != null) named(n, n.full, 1f, out);
+        if (n.generic != null) named(n, n.generic, 0.9f, out);
+        if (n.region != null) named(n, n.region, 0.9f, out);
         // By most of its words: only offered (never sure enough to show by itself).
         if (loose) loose(n, out);
         List<Found> all = new ArrayList<>(out.values());
         all.sort((a, b) -> a.sure != b.sure ? Float.compare(b.sure, a.sure) : Integer.compare(b.score, a.score));
         return all.size() > max ? new ArrayList<>(all.subList(0, max)) : all;
+    }
+
+    /** A key's alias first (it says which of two logos the family's channel is: "ITV" is ITV1), then the key itself. */
+    private void named(Name n, String key, float factor, Map<String, Found> out) {
+        String alias = ALIASES.get(key);
+        if (alias != null) exact(n, alias, factor, out);
+        exact(n, key, factor, out);
     }
 
     /** Every logo with this key, as sure as its country makes it (times factor). */
