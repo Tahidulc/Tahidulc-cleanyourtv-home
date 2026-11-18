@@ -32,6 +32,8 @@ final class Glide {
     static final float KICK = 0.25f;
 
     private final float omega, near;
+    /** The spring's damping (1: critical, no overshoot) and its start's share of the quickest kick (springy). */
+    private float zeta = 1f, kickShare = 1f;
     private float value, target, velocity;
     /** The last frame's time (ms; 0: at rest, -1: sent off and not stepped yet). */
     private long last;
@@ -45,6 +47,17 @@ final class Glide {
     Glide(long ms, float unit) {
         omega = 5f / Math.max(0.016f, ms / 1000f);
         near = NEAR / Math.max(1e-6f, unit);
+    }
+
+    /**
+     * The 07 look's lift (cubic-bezier(.25,.9,.3,1.12), a 3 % overshoot): an underdamped spring, zeta its damping (under
+     * 1) and kick its start's share of the quickest one. new Glide(Look07.LIFT_MS, unit).springy(Look07.BOUNCE,
+     * Look07.BOUNCE_KICK) follows that ease to within a hundredth.
+     */
+    Glide springy(float zeta, float kick) {
+        this.zeta = Math.max(0.2f, Math.min(1f, zeta));
+        this.kickShare = Math.max(0f, kick);
+        return this;
     }
 
     float value() {
@@ -77,8 +90,8 @@ final class Glide {
         float e = to - value;
         // From rest (or a tap after a tap that has nearly finished): its quickest start, easing out from there. Moving
         // already (a held key): its speed kept, the spring turning it smoothly.
-        if (last == 0 || velocity * e <= 0f || Math.abs(velocity) < KICK * omega * Math.abs(e)) {
-            float kick = omega * e;
+        if (last == 0 || velocity * e <= 0f || Math.abs(velocity) < KICK * kickShare * omega * Math.abs(e)) {
+            float kick = kickShare * omega * e;
             velocity = e > 0 ? Math.max(velocity, kick) : Math.min(velocity, kick);
         }
         target = to;
@@ -106,11 +119,20 @@ final class Glide {
         // The first frame of a move shows one frame's worth of it (nothing is lost to the frame the key came in).
         float dt = last < 0 ? 0.016f : Math.max(0f, Math.min(0.048f, (now - last) / 1000f));
         last = Math.max(1L, now);
-        float e0 = value - target, v0 = velocity;
-        float ex = (float) Math.exp(-omega * dt);
-        float c = v0 + omega * e0;
-        float e1 = (e0 + c * dt) * ex;
-        float v1 = (v0 - omega * c * dt) * ex;
+        float e0 = value - target, v0 = velocity, e1, v1;
+        if (zeta >= 1f) {
+            float ex = (float) Math.exp(-omega * dt);
+            float c = v0 + omega * e0;
+            e1 = (e0 + c * dt) * ex;
+            v1 = (v0 - omega * c * dt) * ex;
+        } else {
+            // Underdamped (springy): followed exactly too.
+            float zw = zeta * omega, wd = omega * (float) Math.sqrt(1f - zeta * zeta);
+            float ex = (float) Math.exp(-zw * dt), cos = (float) Math.cos(wd * dt), sin = (float) Math.sin(wd * dt);
+            float b = (v0 + zw * e0) / wd;
+            e1 = ex * (e0 * cos + b * sin);
+            v1 = ex * ((b * wd - zw * e0) * cos - (e0 * wd + zw * b) * sin);
+        }
         value = target + e1;
         velocity = v1;
         // Done: under a quarter pixel from its place and slower than a pixel a frame or so.

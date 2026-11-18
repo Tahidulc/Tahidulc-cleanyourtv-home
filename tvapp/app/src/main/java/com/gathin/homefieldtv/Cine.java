@@ -35,10 +35,11 @@ final class Cine {
 
     private static Context app;
     private static final Typeface[] OUTFIT = new Typeface[10];
-    private static Typeface inter, interSemi, condensed;
+    private static Typeface condensed;
 
     static void init(Context c) {
         app = c.getApplicationContext();
+        Type.init(c);
     }
 
     /** Outfit at a weight (100 to 900, the variable font's axis); the system's bold or plain when it can't be read. */
@@ -57,15 +58,13 @@ final class Cine {
         return t;
     }
 
-    /** Inter for the words (its medium cut); semi for the stronger ones. */
+    /** Inter for the words (its medium cut: the app's own, Type); semi for the stronger ones. */
     static Typeface inter() {
-        if (inter == null) inter = asset("broadcast/fonts/Inter-500.ttf", Typeface.NORMAL);
-        return inter;
+        return Type.face(Type.MEDIUM);
     }
 
     static Typeface interSemi() {
-        if (interSemi == null) interSemi = asset("broadcast/fonts/Inter-600.ttf", Typeface.BOLD);
-        return interSemi;
+        return Type.face(Type.SEMIBOLD);
     }
 
     /** A title's own lettering when it has no logo: tall and bold (Barlow Condensed). */
