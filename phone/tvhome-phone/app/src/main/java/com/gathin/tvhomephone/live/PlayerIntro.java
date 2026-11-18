@@ -120,10 +120,56 @@ final class PlayerIntro {
         if (!"off".equals(key)) new Handler(Looper.getMainLooper()).postDelayed(() -> com.gathin.broadcast.Sfx.goal(c, key), 250);
     }
 
-    /** The pop-up's style: "classic" (crests, trophy and teams), "strap" (in the scoreboard's look) or "off". */
+    /**
+     * The pop-up's style: "strap" (in my scoreboard's look, whichever look the board is in: a new install's), "classic"
+     * (crests, trophy and teams) or "off". Once, the family's classic was switched to the strap, as they asked (followBoard).
+     */
     static String popupStyle(Context c) {
-        String s = prefs(c).getString("popup_style", null);
-        return s != null ? s : prefs(c).getBoolean("popup", true) ? "classic" : "off";
+        SharedPreferences p = prefs(c);
+        if (!p.getBoolean(FOLLOWS_BOARD, false)) {
+            p.edit().putString("popup_style", followBoard(p.getString("popup_style", null), p.getBoolean("popup", true)))
+                    .putBoolean(FOLLOWS_BOARD, true).apply();
+        }
+        String s = p.getString("popup_style", null);
+        return s != null ? s : "strap";
+    }
+
+    /** Set once the pop-up was switched to follow the board (Nov 2026). */
+    private static final String FOLLOWS_BOARD = "popup_follows_board";
+
+    /**
+     * Pure: the pop-up's style after the one switch to the board's look: the strap for classic (and for one never chosen,
+     * unless the old pop-up switch was off); off stays off; the strap stays.
+     */
+    static String followBoard(String style, boolean wasOn) {
+        if ("off".equals(style)) return "off";
+        if (style == null) return wasOn ? "strap" : "off";
+        return "strap";
+    }
+
+    /** The look the strap is drawn in for g: the board's, By competition's resolved as the board resolves it for g. */
+    private static String strapLook(Context c, Game g) {
+        String name = g.leagueName != null && !g.leagueName.isEmpty() ? g.leagueName : g.league;
+        return BroadcastData.strapLook(ScoreBoard.style(c).name(), g.slug, name);
+    }
+
+    /**
+     * What the strap shows of the board as it is drawn (io thread): the competition's logos the board draws (for dark
+     * grounds and for light ones), each side's colour on it and the name it gives the club; and its lettering for the 3D kits.
+     */
+    private static JSONObject strapCfg(Context c, Game g, BroadcastData.Match m, String kind, int[] score, String scorer, String minute,
+                                       float[] board) throws org.json.JSONException {
+        m.homeBoard = OverlayBug.colour(g.homeColor, g.homeAlt);
+        m.awayBoard = OverlayBug.colour(g.awayColor, g.awayAlt);
+        m.homeBoardName = g.homeName == null ? "" : g.homeName;
+        m.awayBoardName = g.awayName == null ? "" : g.awayName;
+        int px = Math.round(28 * c.getResources().getDisplayMetrics().density * 2);
+        String dark = com.gathin.tvhomephone.sports.Competitions.logo(g), light = com.gathin.tvhomephone.sports.Competitions.lightLogo(g.slug);
+        m.compLogo = dark == null ? null : com.gathin.tvhomephone.sports.LiveGames.picture(c, dark, px);
+        m.compLight = light == null ? null : com.gathin.tvhomephone.sports.LiveGames.picture(c, light, px);
+        JSONObject o = BroadcastData.strap(kind, m, score, scorer, minute, strapLook(c, g), board, "");
+        o.put("boardFont", "sans");
+        return o;
     }
 
     static void setPopupStyle(Context c, String style) {
@@ -599,13 +645,13 @@ final class PlayerIntro {
         shown.add(key);
         BroadcastData.Match m = match(g);
         boolean strap = "strap".equals(popupStyle(a));
-        String look = ScoreBoard.style(a).name();
         float[] board = boardAt.get();
         android.content.res.AssetManager assets = a.getAssets();
+        Context app = a.getApplicationContext();
         io.execute(() -> {
             JSONObject cfg;
             try {
-                cfg = strap ? BroadcastData.strap(kind, m, score, scorer, minute, look, board, "")
+                cfg = strap ? strapCfg(app, g, m, kind, score, scorer, minute, board)
                         : BroadcastData.withMark(assets, BroadcastData.kickoff(kind, m, score, scorer, minute));
             } catch (Exception e) {
                 return;
@@ -737,7 +783,6 @@ final class PlayerIntro {
         }
         fetching = true;
         boolean strap = "strap".equals(style);
-        String look = ScoreBoard.style(a).name();
         float[] board = boardAt.get();
         Context app = a.getApplicationContext();
         io.execute(() -> {
@@ -752,10 +797,10 @@ final class PlayerIntro {
             for (Game g : games) {
                 if ("restart".equals(kind) && g.goals.isEmpty() && g != watching) continue;
                 if (++looked > 3) break;
-                cfg = testPopupCfg(g, kind, strap, look, board);
+                cfg = testPopupCfg(app, g, kind, strap, board);
                 if (cfg != null) break;
             }
-            if (cfg == null) cfg = testPopupCfg(TestAlerts.sample(app, null), kind, strap, look, board);
+            if (cfg == null) cfg = testPopupCfg(app, TestAlerts.sample(app, null), kind, strap, board);
             JSONObject got = strap ? cfg : BroadcastData.withMark(app.getAssets(), cfg);
             h.post(() -> {
                 fetching = false;
@@ -773,7 +818,7 @@ final class PlayerIntro {
     }
 
     /** A test pop-up's settings for game g (its crests read in); null when it can't be made. Off the main thread. */
-    private static JSONObject testPopupCfg(Game g, String kind, boolean strap, String look, float[] board) {
+    private static JSONObject testPopupCfg(Context c, Game g, String kind, boolean strap, float[] board) {
         try {
             BroadcastData.Match m = match(g);
             boolean restart = "restart".equals(kind);
@@ -781,7 +826,7 @@ final class PlayerIntro {
             String[] last = g.goals.isEmpty() ? null : g.goals.get(g.goals.size() - 1);
             String scorer = !restart ? null : last == null ? "A. Player" : Moments.scorer(last);
             String minute = !restart ? null : last == null ? "23'" : BroadcastData.minute(last[2]);
-            return strap ? BroadcastData.strap(kind, m, score, scorer, minute, look, board, "")
+            return strap ? strapCfg(c, g, m, kind, score, scorer, minute, board)
                     : BroadcastData.kickoff(kind, m, score, scorer, minute);
         } catch (Exception e) {
             return null;

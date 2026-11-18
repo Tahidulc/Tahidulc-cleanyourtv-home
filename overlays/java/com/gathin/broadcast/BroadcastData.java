@@ -48,6 +48,15 @@ public final class BroadcastData {
         public long kickoff;
         /** ESPN's ids for the clubs ("" when not known), and the kit each wears ("home", "away", "third"...: Worn; "" not named). */
         public String homeId = "", awayId = "", homeKit = "", awayKit = "";
+        /** The competition's logo in its own colours, for light grounds (the board's): a picture the app has, else its address. */
+        public Bitmap compLight;
+        public String compLightUrl;
+        /**
+         * As the scoreboard has them, for the strap in its look (0 and "": the pop-up's own then): each side's colour on the
+         * board, and the name the board gives the club (its retro looks set it: "MAN UTD").
+         */
+        public int homeBoard, awayBoard;
+        public String homeBoardName = "", awayBoardName = "";
     }
 
     // ---- the competition ---------------------------------------------------------------------------------------------
@@ -416,20 +425,169 @@ public final class BroadcastData {
     // ---- the first design: the strap in the board's own look ------------------------------------------------------
 
     /**
+     * Every look the strap draws (strap.js's, by the boards' own names: BoardBug.Style's and OverlayBug.Style's): the first
+     * nine, the 3D kits, the Scoreboard Lab's five, the competitions' sixteen and the four retro boards. By competition is
+     * not one of them: the look it picks for the game is (strapLook).
+     */
+    public static final String[] STRAP_LOOKS = {"CLASSIC", "GLASS", "LIGHT", "CLUB", "MINIMAL", "CRESTS", "STACKED", "CARD", "FROSTED",
+            "KITS", "FLOODLIGHT", "SPLITKIT", "TICKER", "DUO", "LED", "PL_WORLD", "PL_US", "FA_CUP", "EFL", "UCL", "UEL", "UECL", "SPFL",
+            "LALIGA", "SERIE_A", "BUNDESLIGA", "LIGUE_1", "EREDIVISIE", "LIGA_PORTUGAL", "MLS", "LIGA_MX", "RETRO_2004", "RETRO_2008",
+            "RETRO_2012", "RETRO_2016"};
+
+    /** Pure: a competition's (or a retro or Lab) look's name in the boards' pickers (their Style's) for CompBug's kind. */
+    static String lookName(CompBug.Kind k) {
+        switch (k) {
+            case PL: return "PL_WORLD";
+            case FACUP: return "FA_CUP";
+            case SERIEA: return "SERIE_A";
+            case LIGUE1: return "LIGUE_1";
+            case LIGAPORTUGAL: return "LIGA_PORTUGAL";
+            case LIGAMX: return "LIGA_MX";
+            case R2004: return "RETRO_2004";
+            case R2008: return "RETRO_2008";
+            case R2012: return "RETRO_2012";
+            case R2016: return "RETRO_2016";
+            default: return k.name();
+        }
+    }
+
+    /** Pure: CompBug's kind for a look's name; null for the boards' own looks (the first nine, the 3D kits). */
+    static CompBug.Kind kindOf(String look) {
+        for (CompBug.Kind k : CompBug.Kind.values()) if (lookName(k).equals(look)) return k;
+        return null;
+    }
+
+    /**
+     * Pure: the look the strap is drawn in for a board's look (its Style's name) on a game of a competition (ESPN's slug, and
+     * its name, as the board is given them): By competition's is the look the board picks for that game (CompBug.forGame),
+     * Classic for one with no look of its own; any other look its own; Classic for one the strap does not know.
+     */
+    public static String strapLook(String look, String compId, String compName) {
+        String l = look == null ? "" : look.trim().toUpperCase(Locale.ROOT);
+        if ("COMPETITION".equals(l)) {
+            CompBug.Kind k = CompBug.forGame(compId, compName);
+            return k == null ? "CLASSIC" : lookName(k);
+        }
+        for (String s : STRAP_LOOKS) if (s.equals(l)) return s;
+        return "CLASSIC";
+    }
+
+    /**
+     * Pure: the strap's sound for a look (broadcast/sfx/NAME.ogg): the first nine their own, each of the others the one of
+     * them that moves as it does: Classic's for the looks that open out of their board's first block, Light's for those
+     * that rise, Club colours' for halves that meet, Glass's and Frosted glass's for panels that become the board's,
+     * Minimal's for the Ticker's line, Crests' pops for the 3D kits' shirts, Serie A's logo and Duo's pills, Stacked's
+     * clicks for the LED screen's rows.
+     */
+    public static String strapSound(String look) {
+        String l = strapLook(look, null, null);
+        switch (l) {
+            case "PL_US": case "FA_CUP": case "RETRO_2016": return "strap-light";
+            case "EFL": case "PL_WORLD": case "EREDIVISIE": case "SPLITKIT": return "strap-club";
+            case "LIGA_MX": return "strap-glass";
+            case "FLOODLIGHT": return "strap-frosted";
+            case "TICKER": return "strap-minimal";
+            case "KITS": case "SERIE_A": case "DUO": return "strap-crests";
+            case "LED": return "strap-stacked";
+            default: return kindOf(l) != null ? "strap-classic" : "strap-" + l.toLowerCase(Locale.ROOT);
+        }
+    }
+
+    /**
      * The kick-off strap in the scoreboard's look (page "strap"): the pop-up's settings, with the board's look (its
-     * BoardBug style's name), where the board sits on a 1920 x 1080 screen {x, y, w, h} (the strap folds into it) and
-     * the ground's weather ("9° · light rain", or "").
+     * BoardBug style's name; By competition's resolved for the game: strapLook), where the board sits on a 1920 x 1080
+     * screen {x, y, w, h} (the strap folds into it) and the ground's weather ("9° · light rain", or ""). For the looks
+     * whose boards are drawn as the competitions' are (CompBug) and the 3D kits, what their boards show as well (strapBoard).
      */
     public static JSONObject strap(String kind, Match m, int[] score, String scorer, String minute, String look, float[] board,
                                    String weather) throws JSONException {
         JSONObject o = kickoff(kind, m, score, scorer, minute);
-        o.put("look", look == null || look.isEmpty() ? "CLASSIC" : look);
+        String l = strapLook(look, m.compId, m.compName);
+        o.put("look", l);
+        o.put("sfx", strapSound(l));
         if (board != null && board.length == 4 && board[2] > 0 && board[3] > 0) {
             o.put("board", new JSONObject().put("x", Math.round(board[0])).put("y", Math.round(board[1]))
                     .put("w", Math.round(board[2])).put("h", Math.round(board[3])));
         }
         if (weather != null && !weather.isEmpty()) o.put("weather", weather);
+        CompBug.Kind k = kindOf(l);
+        if (k != null || "KITS".equals(l)) strapBoard(o, m, k);
         return o;
+    }
+
+    /**
+     * What a drawn board's strap needs besides the pop-up's (o is changed): the competition's short name and title as the
+     * boards set them, its logo for light grounds and as the look's board cuts it (compMark: CompBug's emblem, cut here
+     * from the board's own logos, as CompBug cuts it), each side's colour on the board and the name its retro looks set.
+     */
+    static void strapBoard(JSONObject o, Match m, CompBug.Kind k) throws JSONException {
+        String name = m.compName == null ? "" : m.compName;
+        o.put("compShort", CompBug.compShort(name));
+        o.put("compTitle", CompBug.title(name));
+        Bitmap light = bitmap(m.compLight, m.compLightUrl);
+        if (light != null) o.put("compLight", dataUrl(light, false));
+        if (k != null) {
+            Bitmap cut = strapMark(k, bitmap(m.compLogo, m.compLogoUrl), light);
+            if (cut != null) o.put("compMark", dataUrl(cut, false));
+        }
+        boardSide(o.optJSONObject("home"), m.homeBoard, m.homeBoardName, m.homeName);
+        boardSide(o.optJSONObject("away"), m.awayBoard, m.awayBoardName, m.awayName);
+    }
+
+    private static void boardSide(JSONObject s, int colour, String boardName, String name) throws JSONException {
+        if (s == null) return;
+        if (hex(colour) != null) s.put("board", hex(colour));
+        String n = boardName != null && !boardName.trim().isEmpty() ? boardName : name;
+        s.put("retro", CompBug.shortName(n, s.optString("short")));
+    }
+
+    /**
+     * The competition's logo as a look's board draws it, cut as CompBug cuts it (its emblem: the top part over a wordmark,
+     * its white or its colour alone, the left part beside a wordmark), from the board's logo for dark grounds or for light
+     * ones as that look takes it; null for a look that draws none, or when cutting leaves nothing (the page then draws the
+     * logo itself, as CompBug does).
+     */
+    static Bitmap strapMark(CompBug.Kind k, Bitmap dark, Bitmap light) {
+        Bitmap lightOr = light != null ? light : dark, from;
+        int how;
+        switch (k) {
+            case UCL: case UEL: case UECL: case LALIGA: case LIGUE1: from = dark; how = CompBug.E_MARK; break;
+            case FACUP: from = dark; how = CompBug.E_WHITE_MARK; break;
+            case BUNDESLIGA: from = dark; how = CompBug.E_MARK_WHITE; break;
+            case LIGAMX: from = dark; how = CompBug.E_MARK_LEFT; break;
+            case SERIEA: from = lightOr; how = CompBug.E_COLOUR_MARK; break;
+            case PL: case LIGAPORTUGAL: case R2008: case R2012: case R2016: from = lightOr; how = CompBug.E_MARK; break;
+            default: return null;
+        }
+        return from == null || from.isRecycled() ? null : CompBug.cut(from, how);
+    }
+
+    /** The few logos the straps cut, as fetched (by address), so a moment's second look at one is not a second download. */
+    private static final Map<String, Bitmap> LOGOS = new LinkedHashMap<String, Bitmap>(8, 0.75f, true) {
+        @Override protected boolean removeEldestEntry(Map.Entry<String, Bitmap> e) {
+            return size() > 6;
+        }
+    };
+
+    /** A picture the app has, else the one at url (null when it will not come). Off the main thread. */
+    static Bitmap bitmap(Bitmap given, String url) {
+        if (given != null && !given.isRecycled()) return given;
+        if (url == null || url.isEmpty()) return null;
+        synchronized (LOGOS) {
+            Bitmap b = LOGOS.get(url);
+            if (b != null && !b.isRecycled()) return b;
+        }
+        try {
+            byte[] b = Net.get(url, 15_000, 4 << 20);
+            Bitmap bm = BitmapFactory.decodeByteArray(b, 0, b.length);
+            if (bm == null) return null;
+            synchronized (LOGOS) {
+                LOGOS.put(url, bm);
+            }
+            return bm;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** Pure: whether a kick-off is under the floodlights: from five in winter's months, from seven in summer's. */

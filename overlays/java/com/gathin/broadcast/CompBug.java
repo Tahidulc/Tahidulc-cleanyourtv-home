@@ -1863,7 +1863,7 @@ public final class CompBug {
         return got.e[how] != null ? got.e[how] : b;
     }
 
-    private static Bitmap cut(Bitmap b, int how) {
+    static Bitmap cut(Bitmap b, int how) {
         try {
             Bitmap src = b;
             float k = Math.min(1f, 320f / Math.max(b.getWidth(), b.getHeight()));

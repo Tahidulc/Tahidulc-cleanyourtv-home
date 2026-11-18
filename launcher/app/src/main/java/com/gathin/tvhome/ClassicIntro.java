@@ -103,12 +103,36 @@ final class ClassicIntro {
     }
 
     /**
-     * The kick-off pop-up's style (and the restart's and the second half's): "classic" (from the family's clip: crests,
-     * trophy and teams), "strap" (the first design: a strap in the scoreboard's own look that folds into it) or "off".
+     * The kick-off pop-up's style (and the restart's and the second half's): "strap" (in my scoreboard's look, whichever
+     * look the board is in, folding into it: a new install's), "classic" (from the family's clip: crests, trophy and teams)
+     * or "off". Once, the family's classic was switched to the strap, as they asked (followBoard).
      */
     static String popupStyle(Context c) {
-        String s = prefs(c).getString("popup_style", null);
-        return s != null ? s : prefs(c).getBoolean("popup", true) ? "classic" : "off";
+        SharedPreferences p = prefs(c);
+        if (!p.getBoolean(FOLLOWS_BOARD, false)) {
+            p.edit().putString("popup_style", followBoard(p.getString("popup_style", null), p.getBoolean("popup", true)))
+                    .putBoolean(FOLLOWS_BOARD, true).apply();
+        }
+        String s = p.getString("popup_style", null);
+        return s != null ? s : "strap";
+    }
+
+    /** Set once the pop-up was switched to follow the board (Nov 2026). */
+    private static final String FOLLOWS_BOARD = "popup_follows_board";
+
+    /**
+     * Pure: the pop-up's style after the one switch to the board's look: the strap for classic (and for one never chosen,
+     * unless the old pop-up switch was off); off stays off; the strap stays.
+     */
+    static String followBoard(String style, boolean wasOn) {
+        if ("off".equals(style)) return "off";
+        if (style == null) return wasOn ? "strap" : "off";
+        return "strap";
+    }
+
+    /** Pure: the pop-up's style after the card's OK: in the scoreboard's look, then classic, then off. */
+    static String nextPopup(String style) {
+        return "strap".equals(style) ? "classic" : "classic".equals(style) ? "off" : "strap";
     }
 
     static void setPopupStyle(Context c, String style) {
@@ -126,11 +150,6 @@ final class ClassicIntro {
 
     static void setLineupsStyle(Context c, String style) {
         prefs(c).edit().putString("lineups_style", style).apply();
-    }
-
-    /** Pure: the next style on the card's OK: classic, then the first design, then off. */
-    static String nextStyle(String style, String first) {
-        return "classic".equals(style) ? first : first.equals(style) ? "off" : "classic";
     }
 
     /** Pure: the line-ups' next style on the card's OK: classic, the stadium board, the studio, then off. */
@@ -285,8 +304,17 @@ final class ClassicIntro {
     private static JSONObject popupCfg(Context c, String page, ScoresTicker.Game g, BroadcastData.Match m, String kind, int[] score,
                                        String scorer, String minute) throws org.json.JSONException {
         if (!"strap".equals(page)) return BroadcastData.withMark(c.getAssets(), BroadcastData.kickoff(kind, m, score, scorer, minute));
-        return BroadcastData.strap(kind, m, score, scorer, minute, BoardCover.style(c).name(), BoardCover.boardRect1920(),
-                "kickoff".equals(kind) ? MatchExtras.weatherNow(c, g) : "");
+        // the board as it is drawn: the competition's logos it draws (for dark grounds and its own colours), each side's
+        // colour on it and the name it gives the club; By competition's look as the board resolves it for the game
+        String league = g.leagueLogo != null ? g.leagueLogo : GoalWatchService.leagueLogoFor(g);
+        m.compLogo = BoardCover.compLogo(c, league);
+        m.compLight = BoardCover.compLogoLight(c, league);
+        m.homeBoard = BoardBug.colour(g.homeColor, g.homeAlt);
+        m.awayBoard = BoardBug.colour(g.awayColor, g.awayAlt);
+        m.homeBoardName = g.homeName == null ? "" : g.homeName;
+        m.awayBoardName = g.awayName == null ? "" : g.awayName;
+        return BroadcastData.strap(kind, m, score, scorer, minute, BroadcastData.strapLook(BoardCover.style(c).name(), g.slug, g.league),
+                BoardCover.boardRect1920(), "kickoff".equals(kind) ? MatchExtras.weatherNow(c, g) : "");
     }
 
     /** Whether one of them is on the screen now. */
