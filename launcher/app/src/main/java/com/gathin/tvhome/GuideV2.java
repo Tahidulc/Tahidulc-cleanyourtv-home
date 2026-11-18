@@ -619,19 +619,39 @@ final class GuideV2 {
             num.setText(ch[3].isEmpty() ? String.valueOf(i + 1) : ch[3]);
             nl.addView(num, new LinearLayout.LayoutParams(px(46), ViewGroup.LayoutParams.WRAP_CONTENT));
             ImageView logo = new ImageView(c);
-            if (ChannelTiles.on(c)) {
+            int behind = ChannelTiles.behind(c);
+            if (behind == ChannelTiles.TILE) {
                 // On its black tile, as the phone and Homefield TV show their channels.
                 logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
                 logo.setBackground(fill(8, ChannelTiles.GROUND));
                 logo.setPadding(px(9), px(8), px(9), px(8));
                 nl.addView(logo, new LinearLayout.LayoutParams(px(72), px(42)));
                 image(logo, ChannelTiles.url(logoUrl(ch[0])), px(120));
+            } else if (behind == ChannelTiles.COLOUR) {
+                // On a tile in its own colour (the default), the whole cell (its number and name) in that colour too, a
+                // touch lighter, the chosen row ringed: the neutral dark until the logo's colour is worked out.
+                String u = ChannelTiles.colourUrl(logoUrl(ch[0]));
+                logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                int[] known = ChannelTiles.colourOf(u);
+                int[] cols = known != null ? known : ChannelTiles.waiting();
+                logo.setBackground(ChannelTiles.tile(cols, px(8)));
+                name.setBackground(ChannelTiles.row(cols, px(12), selRow, 0xFFFFFFFF));
+                num.setTextColor(0xE6FFFFFF);
+                logo.setPadding(px(9), px(8), px(9), px(8));
+                nl.addView(logo, new LinearLayout.LayoutParams(px(72), px(42)));
+                image(logo, u, px(120), () -> {
+                    int[] got = ChannelTiles.colourOf(u);
+                    if (got == null) return;
+                    logo.setBackground(ChannelTiles.tile(got, px(8)));
+                    name.setBackground(ChannelTiles.row(got, px(12), selRow, 0xFFFFFFFF));
+                });
             } else {
+                // Behind logos None: the logo as it is on the row, a soft halo behind a dark one.
                 logo.setAdjustViewBounds(true);
                 logo.setMaxHeight(px(26));
                 logo.setMaxWidth(px(92));
                 nl.addView(logo, new LinearLayout.LayoutParams(px(96), px(26)));
-                image(logo, logoUrl(ch[0]), px(120));
+                image(logo, ChannelTiles.haloUrl(logoUrl(ch[0])), px(120));
             }
             TextView n = text(19, selRow ? semi : regular, Color.WHITE);
             n.setText(ch[1]);
@@ -742,8 +762,9 @@ final class GuideV2 {
             return;
         }
         v.setImageDrawable(null);
-        // A channel's logo for its black tile (ChannelTiles): fetched as ever, then made ready for black.
-        boolean tile = ChannelTiles.marked(url);
+        // A channel's logo (ChannelTiles): for its black tile, fetched as ever, then made ready for black; as it is, with a
+        // soft halo behind it when it is too dark for the guide (Behind logos None); or as it is, its colour worked out.
+        boolean halo = ChannelTiles.haloed(url), colour = ChannelTiles.colourMarked(url), tile = !halo && !colour && ChannelTiles.marked(url);
         String src = ChannelTiles.unmarked(url);
         pics.execute(() -> {
             Bitmap b = null;
@@ -757,6 +778,8 @@ final class GuideV2 {
                     if (src.contains("newchanlogos")) full = HomeV2.trim(full);
                     if (full != null && src.endsWith("#uhd")) full = ScoresTicker.uhdLogo(c, full);
                     if (tile) full = ChannelTiles.ready(full);
+                    else if (halo) full = ChannelTiles.halo(full);
+                    else if (colour) full = ChannelTiles.coloured(src, full);
                     if (full != null && full.getWidth() > width * 2) {
                         b = Bitmap.createScaledBitmap(full, width, Math.round(full.getHeight() * width / (float) full.getWidth()), true);
                         full.recycle();

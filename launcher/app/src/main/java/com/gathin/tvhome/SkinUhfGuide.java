@@ -489,25 +489,38 @@ final class SkinUhfGuide {
     /** A tile in the channel's colour with its logo (white on clear) or its name. */
     private FrameLayout channelTile(String[] ch, int colour, float radius, float logoW, float logoH) {
         FrameLayout t = new FrameLayout(s.c);
-        // On a black tile (ChannelTiles), else on the channel's colour.
-        boolean black = ChannelTiles.on(s.c);
+        // Behind logos (ChannelTiles): a tile in the logo's own colour (the default); a black tile; or the logo as it is
+        // on the guide, nothing behind it (a halo behind a dark one). A channel with no logo: its name on its colour.
+        int behind = ChannelTiles.behind(s.c);
+        boolean black = behind == ChannelTiles.TILE, own = behind == ChannelTiles.COLOUR;
+        String raw = host.channelLogo(ch[0]);
+        String url = black ? ChannelTiles.url(raw) : own ? ChannelTiles.colourUrl(raw) : ChannelTiles.haloUrl(raw);
         if (black) colour = ChannelTiles.GROUND;
-        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{colour, SkinUhf.mix(colour, 0xFF000000, 0.35f)});
-        g.setCornerRadius(s.px(radius));
-        t.setBackground(g);
+        if (own && url != null) {
+            int[] known = ChannelTiles.colourOf(url);
+            t.setBackground(ChannelTiles.tile(known != null ? known : ChannelTiles.waiting(), s.px(radius)));
+        } else if (black || url == null) {
+            GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{colour, SkinUhf.mix(colour, 0xFF000000, 0.35f)});
+            g.setCornerRadius(s.px(radius));
+            t.setBackground(g);
+        }
         TextView name = s.text(logoH > 50 ? 40 : 22, host.display(), SkinUhf.TEXT);
         name.setText(SkinUhf.shortName(ch[1]));
         name.setGravity(Gravity.CENTER);
         name.setSingleLine(false);
         name.setMaxLines(2);
         t.addView(name, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER));
-        String url = black ? ChannelTiles.url(host.channelLogo(ch[0])) : host.channelLogo(ch[0]);
         if (url != null) {
             ImageView logo = new ImageView(s.c);
             logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
             logo.setVisibility(View.INVISIBLE);
             t.addView(logo, new FrameLayout.LayoutParams(s.px(logoW), s.px(logoH), Gravity.CENTER));
-            host.image(logo, url, s.px(logoW * 1.5f), () -> { logo.setVisibility(View.VISIBLE); name.setVisibility(View.GONE); });
+            host.image(logo, url, s.px(logoW * 1.5f), () -> {
+                logo.setVisibility(View.VISIBLE);
+                name.setVisibility(View.GONE);
+                int[] got = own ? ChannelTiles.colourOf(url) : null;
+                if (got != null) t.setBackground(ChannelTiles.tile(got, s.px(radius)));
+            });
         }
         return t;
     }

@@ -658,10 +658,29 @@ final class WatchRows {
             if (tv.logo != null) {
                 ImageView logo = new ImageView(context);
                 logo.setScaleType(ImageView.ScaleType.FIT_END);
-                loadPoster(tv.logo, logo);
+                // Behind logos (ChannelTiles): on a chip in its own colour (the default); as it is on the card, a soft halo
+                // behind a dark one (None); or, on Black tile, a theme's dark backing.
+                int behind = ChannelTiles.behind(context);
+                boolean tiles = behind == ChannelTiles.TILE;
                 LinearLayout.LayoutParams olp = new LinearLayout.LayoutParams(dp(150), dp(20));
                 olp.leftMargin = dp(8);
-                if (logoBacking()) {
+                if (behind == ChannelTiles.COLOUR) {
+                    String u = ChannelTiles.colourUrl(tv.logo);
+                    int[] known = ChannelTiles.colourOf(u);
+                    logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                    logo.setAdjustViewBounds(true);
+                    logo.setBackground(ChannelTiles.tile(known != null ? known : ChannelTiles.waiting(), dp(8)));
+                    logo.setPadding(dp(7), dp(3), dp(7), dp(3));
+                    olp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(24));
+                    olp.leftMargin = dp(8);
+                    loadPoster(u, logo, b -> {
+                        int[] got = ChannelTiles.colourOf(u);
+                        if (got != null) logo.setBackground(ChannelTiles.tile(got, dp(8)));
+                    });
+                } else {
+                    loadPoster(tiles ? tv.logo : ChannelTiles.haloUrl(tv.logo), logo);
+                }
+                if (tiles && logoBacking()) {
                     // A dark backing, so a white logo reads on any picture.
                     logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
                     logo.setAdjustViewBounds(true);
@@ -744,7 +763,21 @@ final class WatchRows {
         card.addView(topShade, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(90), Gravity.TOP));
         ImageView logo = new ImageView(context);
         logo.setScaleType(ImageView.ScaleType.FIT_START);
-        loadPoster(n.logo, logo);
+        // Behind logos (ChannelTiles): on a chip in its own colour (the default), or as it is (a halo behind a dark one).
+        int behind = ChannelTiles.behind(context);
+        if (behind == ChannelTiles.COLOUR && n.logo != null) {
+            String u = ChannelTiles.colourUrl(n.logo);
+            int[] known = ChannelTiles.colourOf(u);
+            logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            logo.setBackground(ChannelTiles.tile(known != null ? known : ChannelTiles.waiting(), dp(8)));
+            logo.setPadding(dp(8), dp(5), dp(8), dp(5));
+            loadPoster(u, logo, b -> {
+                int[] got = ChannelTiles.colourOf(u);
+                if (got != null) logo.setBackground(ChannelTiles.tile(got, dp(8)));
+            });
+        } else {
+            loadPoster(behind == ChannelTiles.TILE ? n.logo : ChannelTiles.haloUrl(n.logo), logo);
+        }
         FrameLayout.LayoutParams llp = new FrameLayout.LayoutParams(dp(96), dp(34), Gravity.TOP | Gravity.START);
         llp.leftMargin = llp.topMargin = dp(10);
         card.addView(logo, llp);
@@ -757,7 +790,10 @@ final class WatchRows {
         return tile;
     }
 
-    /** A theme's "logo_backing": channel logos on a dark backing, so white lettering reads on a light picture. */
+    /**
+     * A theme's "logo_backing": channel logos on a dark backing, so white lettering reads on a light picture; only with
+     * Behind logos on Black tile (with None, the default, a logo has nothing behind it).
+     */
     private boolean logoBacking() {
         return Config.themeFlag(context, "logo_backing", false);
     }
@@ -1924,7 +1960,10 @@ final class WatchRows {
     @SuppressWarnings("unchecked")
     private void loadPoster(String raw, ImageView into, java.util.function.Consumer<Bitmap> then) {
         if (raw == null || raw.isEmpty()) return;
-        String uri = sharper(raw);
+        // A channel's logo asked for as it is with its halo where it needs one (ChannelTiles.HALO), or as it is with its
+        // colour worked out for the chip behind it (COLOUR_MARK): fetched as ever, then that.
+        boolean halo = ChannelTiles.haloed(raw), colour = ChannelTiles.colourMarked(raw);
+        String uri = sharper(ChannelTiles.unmarked(raw)) + (halo ? ChannelTiles.HALO : colour ? ChannelTiles.COLOUR_MARK : "");
         into.setTag(uri);
         Bitmap hit = posters.get(uri);
         if (hit != null) { into.setImageBitmap(hit); if (then != null) then.accept(hit); return; }
@@ -1939,8 +1978,8 @@ final class WatchRows {
             Bitmap bmp = null;
             java.util.regex.Matcher yt = java.util.regex.Pattern.compile("(https://i\\d?\\.ytimg\\.com/vi(?:_webp)?/[^/]+/)[a-z0-9_]+\\.(?:jpg|webp)").matcher(uri);
             if (yt.lookingAt()) bmp = fetch(yt.group(1) + "maxresdefault.jpg", target);
-            if (bmp == null) bmp = fetch(uri, target);
-            final Bitmap shown = unletterbox(bmp);
+            if (bmp == null) bmp = fetch(ChannelTiles.unmarked(uri), target);
+            final Bitmap shown = halo ? ChannelTiles.halo(bmp) : colour ? ChannelTiles.coloured(uri, bmp) : unletterbox(bmp);
             main.post(() -> {
                 List<Object[]> views = waiting.remove(uri);
                 if (shown == null || views == null) return;
