@@ -667,3 +667,14 @@ opens Live TV's). Sheets (a programme's details, a channel's menu, Cast, Also Sh
 the middle of the screen rather than across its foot. Live TV's picture beside the details on a tablet held upright is
 about half its width, the buttons in Live TV's top bar and over the full-screen player are a little larger to touch, and
 the player's panel keeps its words to the middle of a wide screen.
+
+**The guide's categories on the side.** The row of category pills over the guide has gone: a button at the guide's top
+left, with the categories' glyph and the one showing (its flag or star as before), slides a panel in from the left over
+a dimmed page, listing the categories in the app's own order: Favourites, All, Recent and Sport, then the playlist's own
+under "In your playlist", favourite ones first with a star, hidden ones left out, and All categories… at the foot. A tap
+shows that one in the guide and slides the panel away; a tap on the dimmed page, Back, ✕ or a swipe to the left put it
+away too, and holding one of the playlist's own still makes it a favourite or hides it. The button sits on its own bar
+over the guide, the list and Sport (it stays when the rest folds away upright), with how many channels the one showing
+has at its right. On a tablet on its side the panel stays docked beside the guide, the button tucking it away and back,
+and it opens as it was last left. The category chosen last still opens again, and the guide's swipes, full screen on
+turning the phone, and the guide to both screen edges are as they were.

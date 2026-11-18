@@ -53,8 +53,11 @@ import java.util.TimeZone;
  * Live TV as a TV guide: the family's own playlist as a grid of channels down and half hours across, with a red line at
  * now. Along the top: the title, Now (back to the current time), search (channels and programmes), the guide or list
  * view, and More (Manage favourites, Hidden channels, Refresh); then "Your channels" (the favourites' logos: tap one to
- * watch), then the groups as chips (Favourites first, chosen when there are any, then All, Recent and the playlist's own
- * groups, and Sport: SportGuide, today's games on the family's channels in place of the grid). Above the grid the chosen
+ * watch). The categories are down the side (CategoryPanel): a button at the guide's top left, with their glyph and the
+ * one showing, slides them in from the left over a scrim (Favourites first, chosen when there are any, then All, Recent,
+ * Sport: SportGuide, today's games on the family's channels in place of the grid, and the playlist's own, its favourite
+ * ones first); on a tablet on its side they can stay docked beside the guide, the button tucking them away and back as
+ * it was last left. Above the grid the chosen
  * programme's details. Held upright, all that sits between the top bar and the guide folds away (Fold): a swipe up
  * gives the guide the whole height and a swipe down at its top brings it back; the picture plays on out of sight, and
  * opens again when a channel is played. Folded, a later programme tapped shows its sheet in place of the details.
@@ -112,10 +115,23 @@ public class LiveTvFragment extends Fragment {
     private MaterialButton nowButton;
     private ImageButton viewButton;
     private TextView playlistPill;
-    private RecyclerView strip, chipsView, list, results;
+    private RecyclerView strip, list, results;
     private final Strip stripAdapter = new Strip();
-    private final Chips chipsAdapter = new Chips();
     private final Rows listAdapter = new Rows(), resultsAdapter = new Rows();
+    /**
+     * The categories down the side (CategoryPanel, the family's ask): the bar over the guide with its button at the top
+     * left (the categories' glyph and the one showing) and how many channels it has; the panel, sliding in over a scrim,
+     * or on a tablet on its side docked beside the guide (dock), tucked away and back with the button, as last left.
+     */
+    private LinearLayout guideBar;
+    private TextView catsButton, catsCount;
+    private CategoryPanel cats;
+    private List<String[]> catItems = new ArrayList<>();
+    private boolean dock, dockedOpen, docking;
+    /** Docked: the frame the guide's column (main) and the panel share, and that column, which slides beside it. */
+    private FrameLayout stage;
+    private View guideColumn;
+    private OnBackPressedCallback catsBack;
     private FrameLayout body;
     /** Upright: the picture, Your channels, the categories and the details over the guide, folding away (null on its side). */
     private Fold fold;
@@ -203,13 +219,14 @@ public class LiveTvFragment extends Fragment {
             head.addView(stripRow, new LinearLayout.LayoutParams(-1, Ui.dp(c, 60)));
         }
 
-        chipsView = new RecyclerView(c);
-        chipsView.setLayoutManager(new LinearLayoutManager(c, LinearLayoutManager.HORIZONTAL, false));
-        chipsView.setAdapter(chipsAdapter);
-        chipsView.setClipToPadding(false);
-        chipsView.setPadding(Ui.dp(c, 12), 0, Ui.dp(c, 12), 0);
-        chipsView.setItemAnimator(null);
-        (mode == SIDE ? root : head).addView(chipsView, new LinearLayout.LayoutParams(-1, Ui.dp(c, 52)));
+        // The categories on the side: the bar at the guide's top (always in sight, the guide, the list or Sport under it)
+        // with the button that slides the panel in; docked beside the guide on a tablet on its side with the room.
+        guideBar = buildGuideBar(c);
+        dock = CategoryPanel.docks(tablet, mode == SIDE, cfg.screenWidthDp, SIDE_TABLET_DP, GUIDE_MIN_DP);
+        dockedOpen = dock && ui(c).getBoolean(DOCKED, true);
+        cats = new CategoryPanel(c, dock);
+        cats.setListener(catsListener());
+        if (mode == SIDE) root.addView(guideBar, new LinearLayout.LayoutParams(-1, Ui.dp(c, 52)));
 
         body = new FrameLayout(c);
         Details.Actions actions = actions();
@@ -231,11 +248,24 @@ public class LiveTvFragment extends Fragment {
             LinearLayout main = new LinearLayout(c);
             main.setOrientation(LinearLayout.VERTICAL);
             main.addView(body, new LinearLayout.LayoutParams(-1, 0, 1f));
-            content.addView(main, new LinearLayout.LayoutParams(0, -1, 1f));
+            guideColumn = main;
+            if (dock) {
+                // The panel docked at the guide's left, the guide beside it (or across all of it, tucked away).
+                stage = new FrameLayout(c);
+                FrameLayout.LayoutParams mp = new FrameLayout.LayoutParams(-1, -1);
+                mp.leftMargin = dockedOpen ? Ui.dp(c, CategoryPanel.DOCKED_DP) : 0;
+                stage.addView(main, mp);
+                stage.addView(cats, new FrameLayout.LayoutParams(Ui.dp(c, CategoryPanel.DOCKED_DP), -1, Gravity.START));
+                cats.setVisibility(dockedOpen ? View.VISIBLE : View.GONE);
+                if (dockedOpen) cats.open(false);
+                content.addView(stage, new LinearLayout.LayoutParams(0, -1, 1f));
+            } else {
+                content.addView(main, new LinearLayout.LayoutParams(0, -1, 1f));
+            }
             side = new LinearLayout(c);
             side.setOrientation(LinearLayout.VERTICAL);
             side.setBackgroundColor(GuideLook.PANEL);
-            int sw = Ui.dp(c, tablet ? 380 : 300);
+            int sw = Ui.dp(c, tablet ? SIDE_TABLET_DP : 300);
             int pad = Ui.dp(c, 14);
             side.setPadding(pad, pad, pad, 0);
             side.addView(inline, new LinearLayout.LayoutParams(-1, (sw - 2 * pad) * 9 / 16));
@@ -250,7 +280,12 @@ public class LiveTvFragment extends Fragment {
         }
         details.setActions(actions);
         if (head != null) {
-            fold = new Fold(c, head, body);
+            // Upright: the categories' bar at the top of what stays when the rest folds away, the guide under it.
+            LinearLayout guideCol = new LinearLayout(c);
+            guideCol.setOrientation(LinearLayout.VERTICAL);
+            guideCol.addView(guideBar, new LinearLayout.LayoutParams(-1, Ui.dp(c, 52)));
+            guideCol.addView(body, new LinearLayout.LayoutParams(-1, 0, 1f));
+            fold = new Fold(c, head, guideCol);
             fold.setPicture(inline);
             fold.setListener(shown -> {
                 centre(favHint);
@@ -277,14 +312,180 @@ public class LiveTvFragment extends Fragment {
         sport.setNestedScrollingEnabled(fold != null);
         body.addView(sport, new FrameLayout.LayoutParams(-1, -1));
         sport.setVisibility(View.GONE);
+        // Over it all, the categories' panel and its scrim (docked, it is in the guide's frame instead).
+        FrameLayout frame = new FrameLayout(c);
+        frame.addView(root, new FrameLayout.LayoutParams(-1, -1));
+        if (!dock) frame.addView(cats, new FrameLayout.LayoutParams(-1, -1));
         // The whole screen (MainActivity leaves Live TV the window): the black up under the status bar, the top bar just
         // under it, clear of a navigation bar at a side; at the foot everything scrolls on under the tab bar.
-        Glass.fitSides(root, (left, top, right, bottom) -> {
+        Glass.fitSides(frame, (left, top, right, bottom) -> {
             root.setPadding(left, top, right, 0);
             foot = bottom;
             feet();
+            cats.fit(left, top, bottom);
         });
-        return root;
+        return frame;
+    }
+
+    /** A tablet's pane beside the guide on its side (the picture and the details), and the least the guide keeps. */
+    private static final int SIDE_TABLET_DP = 380, GUIDE_MIN_DP = 560;
+    /** Whether the categories stay docked beside the guide on a tablet on its side (as the button last left them). */
+    private static final String DOCKED = "cats_docked";
+
+    // ---- the categories on the side ---------------------------------------------------------------------------------
+
+    /** The bar over the guide: the categories' button at its left, how many channels the one showing has at its right. */
+    private LinearLayout buildGuideBar(Context c) {
+        LinearLayout bar = new LinearLayout(c);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.setPadding(Ui.dp(c, 12), 0, Ui.dp(c, 16), 0);
+        catsButton = Ui.text(c, "", 15, Ui.TEXT, true);
+        catsButton.setGravity(Gravity.CENTER_VERTICAL);
+        catsButton.setMinHeight(Ui.dp(c, 48));
+        catsButton.setMaxLines(1);
+        catsButton.setEllipsize(TextUtils.TruncateAt.END);
+        catsButton.setMaxWidth(Ui.dp(c, tablet ? 380 : 270));
+        android.graphics.drawable.Drawable glyph = androidx.core.content.ContextCompat.getDrawable(c, R.drawable.live_ic_categories);
+        if (glyph != null) {
+            glyph = glyph.mutate();
+            int s = Ui.dp(c, 20);
+            glyph.setBounds(0, 0, s, s);
+            glyph.setTint(Ui.TEXT);
+        }
+        catsButton.setCompoundDrawablesRelative(glyph, null, null, null);
+        catsButton.setCompoundDrawablePadding(Ui.dp(c, 10));
+        catsButton.setOnClickListener(v -> openCats());
+        paintCatsButton(c);
+        bar.addView(catsButton, new LinearLayout.LayoutParams(-2, -1));
+        catsCount = Ui.text(c, "", 13, Ui.DIM, false);
+        catsCount.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        catsCount.setMaxLines(1);
+        catsCount.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(0, -2, 1f);
+        cp.leftMargin = Ui.dp(c, 12);
+        bar.addView(catsCount, cp);
+        return bar;
+    }
+
+    /** The button as a dark pill, lit (as the chosen chip was) while the docked panel is out beside the guide. */
+    private void paintCatsButton(Context c) {
+        boolean lit = dock && dockedOpen;
+        styleDark(c, catsButton, lit);
+        catsButton.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        int inset = Ui.dp(c, 4);
+        catsButton.setPadding(Ui.dp(c, 14), inset, Ui.dp(c, 18), inset);
+    }
+
+    /** The button's words: the category showing (its flag or star as the panel has it), and what a tap does. */
+    private void showCatsButton() {
+        if (catsButton == null || !isAdded()) return;
+        String words = CategoryPanel.words(catItems, group);
+        catsButton.setText(words);
+        int say = !dock ? R.string.cats_button : dockedOpen ? R.string.cats_button_docked : R.string.cats_button_tucked;
+        catsButton.setContentDescription(getString(say, words));
+        paintCatsButton(requireContext());
+    }
+
+    /** The button: the panel slides in over the page (out again if it is in), or the docked one is tucked away or back. */
+    private void openCats() {
+        if (dock) {
+            dockedOpen = !dockedOpen;
+            ui(requireContext()).edit().putBoolean(DOCKED, dockedOpen).apply();
+            slideDock(dockedOpen);
+            showCatsButton();
+            return;
+        }
+        if (cats.isOpen()) {
+            cats.close(true);
+            return;
+        }
+        cats.choose(group);
+        cats.open(true);
+        if (catsBack != null) catsBack.setEnabled(true);
+    }
+
+    private CategoryPanel.Listener catsListener() {
+        return new CategoryPanel.Listener() {
+            @Override public void onPick(String key) {
+                pickGroup(key);
+                // Shown in the guide: the panel slides away (docked, it stays).
+                if (!cats.docked()) cats.close(true);
+            }
+
+            @Override public void onHold(View row, String key) {
+                groupMenu(row, key);
+            }
+
+            @Override public void onManage() {
+                if (!cats.docked()) cats.close(false);
+                Sheets.categories(requireContext(), lib);
+            }
+
+            @Override public void onShut() {
+                if (catsBack != null) catsBack.setEnabled(false);
+            }
+        };
+    }
+
+    /**
+     * The docked panel out or tucked away, sliding: the panel and the guide's column move together (the column only
+     * translated while it moves, laid out again once, at the end of the slide or the start of the tuck, where nothing
+     * shows the difference), so the guide is never laid out mid-slide.
+     */
+    private void slideDock(boolean open) {
+        if (stage == null || guideColumn == null) return;
+        Context c = requireContext();
+        View main = guideColumn, sheet = cats.sheet();
+        int w = Ui.dp(c, CategoryPanel.DOCKED_DP);
+        FrameLayout.LayoutParams mp = (FrameLayout.LayoutParams) main.getLayoutParams();
+        main.animate().cancel();
+        sheet.animate().cancel();
+        android.view.animation.Interpolator ease = new android.view.animation.DecelerateInterpolator(1.6f);
+        docking = true;
+        if (open) {
+            cats.setVisibility(View.VISIBLE);
+            cats.open(false);
+            sheet.setTranslationX(-w);
+            main.animate().translationX(w).setDuration(CategoryPanel.SLIDE_MS).setInterpolator(ease).withEndAction(() -> {
+                mp.leftMargin = w;
+                main.setLayoutParams(mp);
+                main.setTranslationX(0);
+                docking = false;
+            }).start();
+            sheet.animate().translationX(0).setDuration(CategoryPanel.SLIDE_MS).setInterpolator(ease).withLayer().start();
+        } else {
+            mp.leftMargin = 0;
+            main.setLayoutParams(mp);
+            main.setTranslationX(w);
+            cats.close(false);
+            main.animate().translationX(0).setDuration(CategoryPanel.SLIDE_MS).setInterpolator(ease).start();
+            sheet.animate().translationX(-w).setDuration(CategoryPanel.SLIDE_MS).setInterpolator(ease).withLayer().withEndAction(() -> {
+                docking = false;
+                if (!dockedOpen) {
+                    cats.setVisibility(View.GONE);
+                    sheet.setTranslationX(0);
+                }
+            }).start();
+        }
+    }
+
+    /**
+     * The docked panel as it should stand now, at once: out beside the guide when the button left it out and the guide
+     * shows (not over a search, nor while there is no playlist); otherwise the guide across all of its frame.
+     */
+    private void layDock(boolean guideShows) {
+        if (!dock || docking || stage == null || guideColumn == null) return;
+        boolean out = dockedOpen && guideShows;
+        FrameLayout.LayoutParams mp = (FrameLayout.LayoutParams) guideColumn.getLayoutParams();
+        int margin = out ? Ui.dp(requireContext(), CategoryPanel.DOCKED_DP) : 0;
+        if (mp.leftMargin != margin) {
+            mp.leftMargin = margin;
+            guideColumn.setLayoutParams(mp);
+        }
+        guideColumn.setTranslationX(0);
+        cats.sheet().setTranslationX(0);
+        cats.setVisibility(out ? View.VISIBLE : View.GONE);
+        if (out && !cats.isOpen()) cats.open(false);
     }
 
     /**
@@ -548,7 +749,8 @@ public class LiveTvFragment extends Fragment {
             TextView label = Ui.text(c, getString(R.string.live_your_channels_label), 11, Ui.G_SELECT, true);
             label.setLetterSpacing(0.08f);
             label.setMaxLines(2);
-            label.setWidth(Ui.dp(c, 62));
+            // A tablet's larger type: a little more room, so "CHANNELS" keeps its last letters.
+            label.setWidth(Ui.dp(c, tablet ? 76 : 62));
             stripRow.addView(label);
         }
         strip = new RecyclerView(c);
@@ -621,46 +823,7 @@ public class LiveTvFragment extends Fragment {
 
     // ---- the groups ---------------------------------------------------------------------------------------------
 
-    private final class Chips extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
-        final List<String[]> items = new ArrayList<>();
-
-        @Override public int getItemCount() { return items.size(); }
-
-        @NonNull @Override public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int type) {
-            Context c = parent.getContext();
-            TextView t = darkChip(c);
-            RecyclerView.LayoutParams lp = new RecyclerView.LayoutParams(-2, -1);
-            lp.rightMargin = Ui.dp(c, 8);
-            t.setLayoutParams(lp);
-            return new RecyclerView.ViewHolder(t) {};
-        }
-
-        @Override public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
-            String[] it = items.get(position);
-            TextView t = (TextView) holder.itemView;
-            // A playlist's own category with its country's flag where it names one.
-            t.setText(it.length > 2 ? GuideLook.chip(it[1], it[0]) : it[0]);
-            styleDark(t.getContext(), t, it[1].equals(group));
-            t.setOnClickListener(v -> pickGroup(it[1]));
-            // A playlist's own category: held for Favourite or Hide.
-            boolean own = it.length > 2;
-            t.setOnLongClickListener(own ? v -> {
-                groupMenu(v, it[1]);
-                return true;
-            } : null);
-        }
-    }
-
-    /** A category as a dark pill, as in the guide's look: 40dp tall to see, 48dp to touch. */
-    static TextView darkChip(Context c) {
-        TextView t = Ui.text(c, "", 15, Ui.TEXT, false);
-        t.setGravity(Gravity.CENTER);
-        t.setMinHeight(Ui.dp(c, 48));
-        // One line without setSingleLine: in a row that scrolls sideways that centres the words off the pill.
-        t.setMaxLines(1);
-        return t;
-    }
-
+    /** A dark pill, as in the guide's look (40dp to see, 48dp to touch), lit with a white rim when on. */
     static void styleDark(Context c, TextView t, boolean on) {
         int inset = Ui.dp(c, 4);
         android.graphics.drawable.GradientDrawable g = Ui.ring(c, on ? GuideLook.PILL_ON : GuideLook.PILL,
@@ -672,26 +835,21 @@ public class LiveTvFragment extends Fragment {
         t.setSelected(on);
     }
 
-    private void buildChips() {
-        chipsAdapter.items.clear();
-        chipsAdapter.items.add(new String[]{getString(R.string.live_favourites), Library.FAVOURITES});
-        chipsAdapter.items.add(new String[]{getString(R.string.live_all), Library.ALL});
-        chipsAdapter.items.add(new String[]{getString(R.string.live_recent), Library.RECENT});
-        chipsAdapter.items.add(new String[]{getString(R.string.f1_sport), SportGuide.GROUP});
+    /** The categories for the panel, in the app's order: Favourites, All, Recent, Sport, then the playlist's own. */
+    private void buildCats() {
         Context c = requireContext();
         java.util.Set<String> hiddenGroups = Groups.hidden(c);
-        List<String> favs = Groups.favourites(c);
         // Favourite categories first (a star), the hidden ones left out.
-        for (String g : Groups.order(lib.groups(), hiddenGroups, favs)) {
-            chipsAdapter.items.add(new String[]{favs.contains(g) ? "★ " + g : g, g, "own"});
-        }
+        catItems = CategoryPanel.items(getString(R.string.live_favourites), getString(R.string.live_all), getString(R.string.live_recent),
+                getString(R.string.f1_sport), lib.groups(), hiddenGroups, Groups.favourites(c));
         if (hiddenGroups.contains(group)) group = Library.ALL;
         shownGroups = lib.groups();
         shownGroupsVersion = Groups.version;
-        refreshChips();
+        cats.set(catItems, group);
+        showCatsButton();
     }
 
-    /** A category held: make it a favourite (first among the chips) or not, hide it, or all the categories. */
+    /** A category held: make it a favourite (first in the panel) or not, hide it, or all the categories. */
     private void groupMenu(View anchor, String g) {
         Context c = requireContext();
         PopupMenu m = new PopupMenu(c, anchor);
@@ -710,9 +868,10 @@ public class LiveTvFragment extends Fragment {
         m.show();
     }
 
-    @SuppressLint("NotifyDataSetChanged")
-    private void refreshChips() {
-        chipsAdapter.notifyDataSetChanged();
+    /** The panel's rows drawn again (the one showing lit) and the button's words. */
+    private void refreshCats() {
+        cats.choose(group);
+        showCatsButton();
     }
 
     /** The name's size beside the mark: at most NAME_SP, and not shown at all when even MIN_NAME_SP is too big. */
@@ -774,7 +933,7 @@ public class LiveTvFragment extends Fragment {
         if (g.equals(group)) return;
         group = g;
         ui(requireContext()).edit().putString(LAST_GROUP, g).apply();
-        refreshChips();
+        refreshCats();
         refreshRows();
         if (SportGuide.GROUP.equals(g)) sport.load();
         showBody();
@@ -792,6 +951,11 @@ public class LiveTvFragment extends Fragment {
             @Override public void handleOnBackPressed() { closeSearch(); }
         };
         requireActivity().getOnBackPressedDispatcher().addCallback(getViewLifecycleOwner(), back);
+        // The categories' panel over the page: Back slides it away first.
+        catsBack = new OnBackPressedCallback(false) {
+            @Override public void handleOnBackPressed() { cats.close(true); }
+        };
+        requireActivity().getOnBackPressedDispatcher().addCallback(getViewLifecycleOwner(), catsBack);
     }
 
     @Override public void onStart() {
@@ -868,7 +1032,9 @@ public class LiveTvFragment extends Fragment {
             favHint.setVisibility(View.GONE);
             sport.setVisibility(View.GONE);
             stripRow.setVisibility(mode == SIDE ? View.INVISIBLE : View.GONE);
-            chipsView.setVisibility(View.GONE);
+            guideBar.setVisibility(View.GONE);
+            if (cats.isOpen() && !dock) cats.close(false);
+            layDock(false);
             nowButton.setVisibility(View.GONE);
             details.setVisibility(View.GONE);
             if (band != null) band.setVisibility(View.GONE);
@@ -893,8 +1059,8 @@ public class LiveTvFragment extends Fragment {
         // The category kept from last time, while the playlist still has it.
         if (group != null && !LastWatch.known(group, lib.groups())) group = null;
         if (group == null) group = favs.isEmpty() ? Library.ALL : Library.FAVOURITES;
-        if (shownGroups != lib.groups() || shownGroupsVersion != Groups.version) buildChips();
-        else if (shownFavs != !favs.isEmpty() || shownRecent != hasRecent) refreshChips();
+        if (shownGroups != lib.groups() || shownGroupsVersion != Groups.version) buildCats();
+        else if (shownFavs != !favs.isEmpty() || shownRecent != hasRecent) refreshCats();
         shownFavs = !favs.isEmpty();
         shownRecent = hasRecent;
         setStrip(favs);
@@ -946,6 +1112,9 @@ public class LiveTvFragment extends Fragment {
         List<Object> items = new ArrayList<>(rows);
         if (rows.isEmpty() && !Library.FAVOURITES.equals(group)) items.add(R.string.live_nothing_found);
         listAdapter.set(items);
+        // How many channels the category has, at the bar's right (Sport's are its games, not counted here).
+        int n = rows.size();
+        catsCount.setText(n == 0 || SportGuide.GROUP.equals(group) ? "" : getResources().getQuantityString(R.plurals.groups_channels, n, n));
         favHint.setVisibility(rows.isEmpty() && Library.FAVOURITES.equals(group) && !searching ? View.VISIBLE : View.GONE);
     }
 
@@ -958,7 +1127,9 @@ public class LiveTvFragment extends Fragment {
         grid.setVisibility(!searching && !listView && !sp ? View.VISIBLE : View.GONE);
         list.setVisibility(!searching && listView && !sp ? View.VISIBLE : View.GONE);
         results.setVisibility(searching ? View.VISIBLE : View.GONE);
-        chipsView.setVisibility(searching ? View.GONE : View.VISIBLE);
+        // The categories' bar over the guide, the list and Sport (not over a search); docked, the panel beside them.
+        guideBar.setVisibility(searching ? View.GONE : View.VISIBLE);
+        layDock(!searching);
         nowButton.setVisibility(!searching && !listView && !sp ? View.VISIBLE : View.GONE);
         viewButton.setImageResource(listView ? R.drawable.live_ic_guide : R.drawable.live_ic_list);
         String label = getString(listView ? R.string.live_view_grid : R.string.live_view_list);
