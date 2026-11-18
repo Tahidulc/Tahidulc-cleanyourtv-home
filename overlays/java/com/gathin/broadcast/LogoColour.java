@@ -154,19 +154,22 @@ public final class LogoColour {
     /**
      * Pure: a tile colour the logo's marks read on: the one given when they do; else taken lighter (towards white, when
      * the faint marks are darker than it) or deeper (towards black), a tenth at a time, until they do, as far as
-     * eight-tenths of the way.
+     * eight-tenths of the way; and when that way never reads (a dark logo a shade lighter than its deep tile, which no
+     * deeper tile can show), the other way the same.
      */
     static int reads(int tile, int[] px, int w, int h) {
         float[] f = faint(px, w, h, tile);
         if (f[0] < FAINT_SHARE) return tile;
-        int towards = f[1] > 0 ? 0xFFFFFFFF : 0xFF000000;
+        int first = f[1] > 0 ? 0xFFFFFFFF : 0xFF000000;
         int best = tile;
         float least = f[0];
-        for (int i = 1; i <= 8; i++) {
-            int t = mix(tile, towards, i / 10f);
-            float s = faint(px, w, h, t)[0];
-            if (s < least) { least = s; best = t; }
-            if (s < FAINT_SHARE) return t;
+        for (int towards : new int[]{first, first == 0xFFFFFFFF ? 0xFF000000 : 0xFFFFFFFF}) {
+            for (int i = 1; i <= 8; i++) {
+                int t = mix(tile, towards, i / 10f);
+                float s = faint(px, w, h, t)[0];
+                if (s < least) { least = s; best = t; }
+                if (s < FAINT_SHARE) return t;
+            }
         }
         return best;
     }

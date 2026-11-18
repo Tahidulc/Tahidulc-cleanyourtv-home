@@ -81,6 +81,14 @@ final class Look07 {
             SH_GLASS = {14f, 40f, 0f, 64f}, SH_BUTTON = {12f, 30f, 0f, 77f}, SH_ROW = {18f, 40f, 0f, 89f}, SH_PILL = {10f, 26f, 0f, 77f},
             SH_HERO = {44f, 90f, -24f, 179f}, SH_TILE = {10f, 26f, 0f, 102f};
 
+    // ---- a channel's cell in its logo's colour (ChannelLook; the colour-rows mock-ups' .cr) ------------------------------
+    /** Its corners; its shadow (0 8 20 black 28 %); lifted: scale 1.035, a 3 px white ring outside, a deep shadow
+     *  (0 18 40 black 50 %) and a white glow (0 0 36 white 22 %: a Shadows.glow). */
+    static final float R_CHANNEL = 20f, CHANNEL_LIFT = 1.035f, CHANNEL_RING = 3f;
+    static final float[] SH_CHANNEL = {8f, 20f, 0f, 71f}, SH_CHANNEL_UP = {18f, 40f, 0f, 128f}, GLOW_CHANNEL = {0f, 36f, 0f, 56f};
+    /** Its edge: a line of light along its top (white 22 %) and a hairline round it (8 %); a slate one's 26 % and 12 %. */
+    static final int CHANNEL_TOP_LIGHT = 0x38FFFFFF, CHANNEL_EDGE = 0x14FFFFFF, SLATE_TOP_LIGHT = 0x42FFFFFF, SLATE_EDGE = 0x1FFFFFFF;
+
     // ---- spacing ------------------------------------------------------------------------------------------------------
     static final float MARGIN = 90f, TOP = 136f, GAP = 22f, ROW_GAP = 8f, PAGE_W = 1920f - 2 * MARGIN;
 
