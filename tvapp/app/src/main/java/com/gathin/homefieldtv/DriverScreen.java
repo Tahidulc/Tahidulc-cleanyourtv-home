@@ -1,9 +1,12 @@
 package com.gathin.homefieldtv;
 
 import android.graphics.Bitmap;
+import android.graphics.BitmapShader;
 import android.graphics.Canvas;
 import android.graphics.LinearGradient;
+import android.graphics.Matrix;
 import android.graphics.Paint;
+import android.graphics.RadialGradient;
 import android.graphics.RectF;
 import android.graphics.Shader;
 import android.os.Handler;
@@ -26,22 +29,26 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * An F1 driver's page, as the family's picture of one has it: the page and a big rounded card in his team's colour,
- * his car number huge, italic and faded behind him at the top left, and the driver standing in his kit over the card's
- * left half, rising above its top edge. On the right the next Grand Prix (its dates, its name and circuit) with a
- * countdown in days, hours and minutes, then his team's name very large with its logo, his number, his country's flag
- * and his full name, his nationality and age, and his team's car from the side breaking out past the card's right edge.
- * Down the left his season so far: Grands Prix, points and podiums, under its year. Left and Right go to the driver
- * before or after him in the championship, the page sliding across and its colour turning to the next team's.
+ * An F1 driver's page in 07 (the approved mock-ups 23 and 24), under the shell's "‹ back" line: the page dark with his
+ * team's colour glowing from its left, a big rounded card in that colour, his car number huge, italic and faded behind
+ * him, and the driver standing in his kit over the card's left half, rising above its top edge (formula1.com's picture).
+ * On the right the next Grand Prix (its name, dates and circuit) with a countdown in days, hours and minutes on glass
+ * tiles, then his team's name very large with its logo on a glass tile, his number, his country's flag and his full
+ * name, his nationality and age, and his team's car from the side breaking out past the card's edge. Down the left his
+ * season so far: Grands Prix, points and podiums, under its year. Left and Right go to the driver before or after him in
+ * the championship, the page sliding across and its colour turning to the next team's; Up goes to the tab bar.
  *
  * <p>Pictures: formula1.com's (the driver, the car, the logo: the family of addresses the app's team logos come from),
- * else ESPN's headshot, else a figure and a car drawn in the team's colour. His Grands Prix and podiums are one read of
- * his results this season (Jolpica), when the remote rests on him; the drivers either side are read after him.
+ * else ESPN's head and shoulders; with no picture of him at all, his team's logo large with his initials (never a drawn
+ * person); with no picture of the car, a car drawn in the team's colour. His Grands Prix and podiums are one read of his
+ * results this season (Jolpica), when the remote rests on him; the drivers either side are read after him.
  */
 final class DriverScreen extends Screen {
     static final long SLIDE_MS = 340, REST_MS = 250;
-    /** The card (design pixels); how far a driver's page slides; his figure's height as drawn. */
-    static final float CARD_L = 80f, CARD_T = 200f, CARD_R = 1840f, CARD_B = 1000f, SLIDE = 520f, FIGURE_H = 1720f;
+    /** The card (design px, the mock-ups' .dv-card); how far a driver's page slides. */
+    static final float CARD_L = 80f, CARD_T = 200f, CARD_R = 1840f, CARD_B = 1000f, SLIDE = 520f;
+    /** formula1.com's driver as drawn (the mock-ups' .dv-fig): 400 wide from x 410, its top at 10, cut at the card's foot. */
+    static final float FIGURE_X = 410f, FIGURE_W = 400f, FIGURE_TOP = 10f;
 
     final List<F1.Standing> drivers;
     int at;
@@ -97,6 +104,16 @@ final class DriverScreen extends Screen {
         page.invalidate();
     }
 
+    // ---- 07's shell -------------------------------------------------------------------------------------------------
+
+    @Override boolean shell() {
+        return true;
+    }
+
+    @Override String backLine() {
+        return "Sports · Formula 1";
+    }
+
     /** His season, once the remote rests on him; then the drivers either side. */
     private void load() {
         F1.Standing st = driver();
@@ -132,8 +149,12 @@ final class DriverScreen extends Screen {
     }
 
     @Override boolean key(int code, KeyEvent e) {
+        if (code == KeyEvent.KEYCODE_DPAD_UP) {
+            if (tv.tabs() != null) tv.tabs().enter();
+            return true;
+        }
         if (code != KeyEvent.KEYCODE_DPAD_LEFT && code != KeyEvent.KEYCODE_DPAD_RIGHT) {
-            return code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN;
+            return code == KeyEvent.KEYCODE_DPAD_DOWN;
         }
         int to = Math.max(0, Math.min(drivers.size() - 1, at + (code == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1)));
         if (to != at) {
@@ -156,6 +177,19 @@ final class DriverScreen extends Screen {
         if (a.equals(b)) return b.getDayOfMonth() + " " + bm;
         if (a.getMonth() == b.getMonth()) return a.getDayOfMonth() + " – " + b.getDayOfMonth() + " " + bm;
         return a.getDayOfMonth() + " " + a.getMonth().getDisplayName(TextStyle.SHORT, Locale.UK) + " – " + b.getDayOfMonth() + " " + bm;
+    }
+
+    /** Pure: the weekend's days as 07 writes them: "Fri 20 – Sun 22 Nov" (across two months, "Fri 30 Oct – Sun 1 Nov"). */
+    static String days(long start, long end, ZoneId zone) {
+        if (end <= 0) return "";
+        LocalDate b = Instant.ofEpochMilli(end).atZone(zone).toLocalDate();
+        LocalDate a = Instant.ofEpochMilli(start > 0 ? start : end).atZone(zone).toLocalDate();
+        String bd = b.getDayOfWeek().getDisplayName(TextStyle.SHORT, Locale.UK), bm = b.getMonth().getDisplayName(TextStyle.SHORT, Locale.UK);
+        if (a.equals(b)) return bd + " " + b.getDayOfMonth() + " " + bm;
+        String ad = a.getDayOfWeek().getDisplayName(TextStyle.SHORT, Locale.UK);
+        if (a.getMonth() == b.getMonth()) return ad + " " + a.getDayOfMonth() + " – " + bd + " " + b.getDayOfMonth() + " " + bm;
+        return ad + " " + a.getDayOfMonth() + " " + a.getMonth().getDisplayName(TextStyle.SHORT, Locale.UK) + " – " + bd + " "
+                + b.getDayOfMonth() + " " + bm;
     }
 
     /** Pure: the time to a start as {days, hours, minutes} ("04", "20", "35"), none below 0. */
@@ -181,43 +215,60 @@ final class DriverScreen extends Screen {
 
     /** One driver's words and addresses, worked out once (his season's figures once they are read). */
     private static final class Sheet {
-        String number = "", name = "", team = "", facts = "", head = "", photo, car, carBefore, logo, logoBefore, flag;
+        String number = "", name = "", team = "", facts = "", head = "", initials = "", photo, car, carBefore, logo, logoBefore, flag;
         String races, podiums;
-        int colour, ground, card;
+        int colour, glow, glowRing;
         float teamSize = 1f;
     }
 
     private static final String[] UNITS = {"Days", "Hrs", "Mins"};
+    /** The card's shadow (0 40 90 black 35 %) and the car's on the ground (0 30 30 black 45 %, as a soft band). */
+    static final float[] SH_CARD = {40f, 90f, 0f, 89f}, SH_CAR = {12f, 30f, 0f, 140f};
 
     final class Page extends View {
         private final Map<F1.Standing, Sheet> sheets = new HashMap<>();
-        private final Paint ground = new Paint(), grain = ClubLook.grain(), vignette = new Paint(Paint.DITHER_FLAG),
-                glow = new Paint(Paint.DITHER_FLAG), card = new Paint(Paint.ANTI_ALIAS_FLAG), sheen = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG),
-                bmp = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG), stand = new Paint(Paint.ANTI_ALIAS_FLAG),
-                carBody = new Paint(Paint.ANTI_ALIAS_FLAG), wheels = new Paint(Paint.ANTI_ALIAS_FLAG), arrow = new Paint(Paint.ANTI_ALIAS_FLAG),
-                chevron = Dark.line(0xFFFFFFFF, 4f);
-        private final TextPaint bigNumber = Cine.text(440f, Cine.outfit(900), 0x1FFFFFFF), teamP = Cine.text(92f, Cine.outfit(800), 0xFFFFFFFF),
-                numberP = Cine.text(40f, Cine.outfit(700), 0xD9FFFFFF), nameP = Cine.text(46f, Cine.outfit(600), 0xFFFFFFFF),
-                factsP = Cine.text(28f, Cine.outfit(500), 0xC7FFFFFF), headP = Cine.text(21f, Cine.outfit(600), 0xB3FFFFFF),
-                labelP = Cine.text(26f, Cine.outfit(500), 0xC7FFFFFF), valueP = Cine.text(62f, Cine.outfit(700), 0xFFFFFFFF),
-                gpP = Cine.text(36f, Cine.outfit(700), 0xFFFFFFFF), smallP = Cine.text(25f, Cine.outfit(500), 0xC7FFFFFF),
-                countP = Cine.text(60f, Cine.outfit(700), 0xFFFFFFFF), unitP = Cine.text(22f, Cine.outfit(500), 0xB3FFFFFF);
-        private final RectF r = new RectF();
+        private final Paint ground = new Paint(Paint.DITHER_FLAG), grain = ClubLook.grain(), card = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG),
+                cardLight = new Paint(Paint.ANTI_ALIAS_FLAG), cardRing = new Paint(Paint.ANTI_ALIAS_FLAG),
+                bmp = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG),
+                carBody = new Paint(Paint.ANTI_ALIAS_FLAG), wheels = new Paint(Paint.ANTI_ALIAS_FLAG), flagP = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint bigNumber = Cine.text(520f, Cine.condensed(), 0x24FFFFFF), teamP = Type.paint(116f, Type.EXTRABOLD, 0xFFFFFFFF),
+                numberP = Cine.text(48f, Cine.condensed(), 0xFFFFFFFF), nameP = Type.paint(40f, Type.BOLD, 0xFFFFFFFF),
+                factsP = Type.paint(24f, Type.MEDIUM, 0xD9FFFFFF), headP = Type.paint(16f, Type.BOLD, 0xCCFFFFFF),
+                labelP = Type.paint(19f, Type.SEMIBOLD, 0xCCFFFFFF), valueP = Type.paint(52f, Type.EXTRABOLD, 0xFFFFFFFF),
+                gpP = Type.paint(36f, Type.BOLD, 0xFFFFFFFF), smallP = Type.paint(21f, Type.REGULAR, 0xD9FFFFFF),
+                countP = Type.clock(50f, Type.EXTRABOLD, 0xFFFFFFFF), unitP = Type.paint(16f, Type.SEMIBOLD, 0xCCFFFFFF),
+                initialsP = Type.paint(120f, Type.EXTRABOLD, 0xFFFFFFFF);
+        private final RectF r = new RectF(), cardR = new RectF();
+        private final Matrix fm = new Matrix();
         private final Runnable redraw = this::invalidate;
-        private String gpName = "", gpShown = "", gpDates = "", gpCircuit = "";
+        private String gpName = "", gpShown = "", gpDays = "", gpCircuit = "";
         private final String[] count = {"", "", ""};
         private boolean started;
+        /** The ground's and the card's shaders for the two teams on screen (made when they change, not each frame). */
+        private int groundFor = 1, cardFor = 1;
+        private Bitmap flagFor;
+        private BitmapShader flagShader;
 
         Page() {
             super(tv);
             bigNumber.setTextSkewX(-0.22f);
-            headP.setLetterSpacing(0.2f);
+            bigNumber.setLetterSpacing(-0.02f);
+            numberP.setTextSkewX(-0.22f);
+            teamP.setLetterSpacing(-0.035f);
+            headP.setLetterSpacing(0.14f);
+            valueP.setLetterSpacing(-0.02f);
             wheels.setColor(0xFF15161A);
-            arrow.setColor(0x33000000);
+            cardLight.setStyle(Paint.Style.STROKE);
+            cardRing.setStyle(Paint.Style.STROKE);
+            cardRing.setColor(0x2EFFFFFF);
+            initialsP.setLetterSpacing(0.02f);
+            Shadows.prepare(SH_CARD, 52f);
+            Shadows.prepare(SH_CAR, 20f);
+            Shadows.prepare(Look07.SH_GLASS, 28f);
             if (next != null) {
                 gpName = next.name == null ? "" : next.name;
                 gpCircuit = next.circuit == null ? "" : next.circuit;
-                gpDates = dates(next.start, next.race, ZoneId.systemDefault());
+                gpDays = days(next.start, next.race, ZoneId.systemDefault());
             }
             countdown();
         }
@@ -235,11 +286,9 @@ final class DriverScreen extends Screen {
         }
 
         @Override protected void onSizeChanged(int w, int h, int ow, int oh) {
-            ClubLook.vignette(vignette, w, h);
-            ClubLook.glow(glow, x(640f), x(420f), x(900f));
-            sheen.setShader(new LinearGradient(x(CARD_L), x(CARD_T), x(CARD_R), x(CARD_B), new int[]{0x1AFFFFFF, 0x05FFFFFF, 0x00FFFFFF, 0x14000000},
-                    new float[]{0f, 0.35f, 0.6f, 1f}, Shader.TileMode.CLAMP));
             gpShown = Ui.fit(gpName, gpP, x(470f));
+            cardLight.setShader(new LinearGradient(0, x(CARD_T), 0, x(CARD_T + 48f), 0x66FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP));
+            groundFor = cardFor = 1;
             sheets.clear();
             ahead();
         }
@@ -251,10 +300,11 @@ final class DriverScreen extends Screen {
             s.number = st.number;
             s.name = st.name;
             s.team = st.team;
-            float tw = teamP.measureText(st.team), room = x(700f);
+            s.initials = F1.initials(st.name);
+            float tw = teamP.measureText(st.team), room = x(1780f - 930f - 24f - 104f - 8f);
             s.teamSize = tw > room ? room / tw : 1f;
             int age = age(st.born, LocalDate.now(ZoneId.systemDefault()));
-            s.facts = st.nationality.isEmpty() ? (age > 0 ? "Age " + age : "") : age > 0 ? st.nationality + "  ·  Age " + age : st.nationality;
+            s.facts = st.nationality.isEmpty() ? (age > 0 ? "Age " + age : "") : age > 0 ? st.nationality + " · Age " + age : st.nationality;
             s.head = st.season > 0 ? st.season + " SEASON" : "";
             s.photo = F1.photo(st, photoWidth());
             s.car = F1.car(st.teamId, st.season, carWidth());
@@ -273,18 +323,18 @@ final class DriverScreen extends Screen {
                 s.flag = drawn[3];
             }
             s.colour = F1.colour(st.teamId);
-            s.ground = ClubLook.at(s.colour, 0.028, 0.78f);
-            s.card = ClubLook.at(s.colour, 0.085, 0.74f);
+            s.glow = Palette.alpha(s.colour, 0x88);
+            s.glowRing = Palette.alpha(s.colour, 0x33);
             sheets.put(st, s);
             return s;
         }
 
         private int photoWidth() {
-            return Math.max(200, Math.min(800, Math.round(Ui.f(600f) / 40f) * 40));
+            return Math.max(200, Math.min(800, Math.round(Ui.f(FIGURE_W) / 40f) * 40));
         }
 
         private int carWidth() {
-            return Math.max(400, Math.min(1400, Math.round(Ui.f(1000f) / 40f) * 40));
+            return Math.max(400, Math.min(1400, Math.round(Ui.f(1120f) / 40f) * 40));
         }
 
         /** The pictures of the drivers either side, read ahead (when the remote moves). */
@@ -297,6 +347,35 @@ final class DriverScreen extends Screen {
             }
         }
 
+        /**
+         * The page's ground for a colour (07's: radial-gradient(1400px 900px at 30% 40%) from the colour at 53 % through
+         * 20 % at 45 % to near black) and the card's (linear-gradient(135deg) from the colour at 40 % through 13 % at 55 %
+         * to white at 6 %), remade only when the colour changes (a slide's frames mix two: made for the mix).
+         */
+        private void shaders(int colour) {
+            int w = getWidth(), h = getHeight();
+            if (colour != groundFor) {
+                groundFor = colour;
+                RadialGradient g = new RadialGradient(0, 0, x(1400f), new int[]{Palette.over(0xFF05070C, Palette.alpha(colour, 0x88)),
+                        Palette.over(0xFF05070C, Palette.alpha(colour, 0x33)), 0xFF05070C}, new float[]{0f, 0.45f, 1f}, Shader.TileMode.CLAMP);
+                Matrix m = new Matrix();
+                m.setScale(1f, 900f / 1400f);
+                m.postTranslate(w * 0.30f, h * 0.40f);
+                g.setLocalMatrix(m);
+                ground.setShader(g);
+            }
+            if (colour != cardFor) {
+                cardFor = colour;
+                float l = x(CARD_L), t = x(CARD_T), cw = x(CARD_R - CARD_L), ch = x(CARD_B - CARD_T);
+                // 135deg: from the top left corner's side to the bottom right's, along the diagonal's normal.
+                float len = (float) (Math.abs(cw * Math.sin(Math.toRadians(135))) + Math.abs(ch * Math.cos(Math.toRadians(135))));
+                float cx = l + cw / 2f, cy = t + ch / 2f, ux = (float) Math.sin(Math.toRadians(135)) * len / 2f,
+                        uy = (float) -Math.cos(Math.toRadians(135)) * len / 2f;
+                card.setShader(new LinearGradient(cx - ux, cy - uy, cx + ux, cy + uy, new int[]{Palette.alpha(colour, 0x66),
+                        Palette.alpha(colour, 0x22), 0x0FFFFFFF}, new float[]{0f, 0.55f, 1f}, Shader.TileMode.CLAMP));
+            }
+        }
+
         @Override protected void onDraw(Canvas c) {
             boolean moving = pos.step();
             int w = getWidth(), h = getHeight();
@@ -304,16 +383,24 @@ final class DriverScreen extends Screen {
             int a = Math.max(0, Math.min(drivers.size() - 1, (int) Math.floor(p))), b = Math.min(drivers.size() - 1, a + 1);
             float t = b == a ? 0f : Math.max(0f, Math.min(1f, p - a));
             Sheet sa = drivers.isEmpty() ? null : sheet(drivers.get(a)), sb = drivers.isEmpty() ? null : sheet(drivers.get(b));
-            int groundC = sa == null ? ClubLook.ground(0) : Cine.mix(sa.ground, sb.ground, t);
-            int cardC = sa == null ? ClubLook.card(0) : Cine.mix(sa.card, sb.card, t);
-            ground.setColor(groundC);
+            // The colour mixed in steps of a tenth, so a slide makes ten shaders at most, not one a frame.
+            int colour = sa == null ? 0xFFE10600 : t <= 0f ? sa.colour : Theme.mix(sa.colour, sb.colour, Math.round(t * 10f) / 10f);
+            shaders(colour);
+            c.drawColor(0xFF05070C);
             c.drawRect(0, 0, w, h, ground);
-            c.drawRect(0, 0, w, h, glow);
-            card.setColor(cardC);
-            r.set(x(CARD_L), x(CARD_T), x(CARD_R), x(CARD_B));
-            c.drawRoundRect(r, x(48f), x(48f), card);
-            c.drawRoundRect(r, x(48f), x(48f), sheen);
             c.drawRect(0, 0, w, h, grain);
+            // The card: the team's colour falling away across it, its edge lit, a deep shadow.
+            cardR.set(x(CARD_L), x(CARD_T), x(CARD_R), x(CARD_B));
+            float rad = x(52f);
+            Shadows.draw(c, cardR, rad, SH_CARD, 1f);
+            c.drawRoundRect(cardR, rad, rad, card);
+            float sw = Math.max(1f, x(1.5f));
+            cardLight.setStrokeWidth(sw);
+            cardRing.setStrokeWidth(Math.max(1f, x(1f)));
+            r.set(cardR);
+            r.inset(sw / 2f, sw / 2f);
+            c.drawRoundRect(r, rad, rad, cardLight);
+            c.drawRoundRect(r, rad, rad, cardRing);
             if (sa != null) {
                 // The one further from its place first, the nearer over it.
                 if (b != a && t > 0.5f) {
@@ -325,36 +412,42 @@ final class DriverScreen extends Screen {
                 }
             }
             drawNext(c);
-            c.drawRect(0, 0, w, h, vignette);
-            float ay = x((CARD_T + CARD_B) / 2f);
-            if (at > 0) drawArrow(c, x(CARD_L + 40f), ay, Ui.LEFT);
-            if (at < drivers.size() - 1) drawArrow(c, x(CARD_R - 40f), ay, Ui.RIGHT);
+            float ay = x(598f);
+            if (at > 0) arrow(c, x(54f), ay, Icons07.LEFT);
+            if (at < drivers.size() - 1) arrow(c, w - x(54f), ay, Icons07.RIGHT);
             if (moving) postInvalidateOnAnimation();
         }
 
-        private void drawArrow(Canvas c, float cx, float cy, int dir) {
-            r.set(cx - x(26f), cy - x(42f), cx + x(26f), cy + x(42f));
-            c.drawRoundRect(r, x(12f), x(12f), arrow);
-            Ui.chevron(c, cx, cy, x(18f), dir, chevron);
+        private void arrow(Canvas c, float cx, float cy, int icon) {
+            float rd = x(32f);
+            r.set(cx - rd, cy - rd, cx + rd, cy + rd);
+            Frost.glass(c, r, rd, 1f);
+            Icons07.draw(c, icon, cx, cy, x(30f), 0xFFFFFFFF);
         }
 
         /** The next Grand Prix and the countdown to it, at the card's top right (the same for every driver). */
         private void drawNext(Canvas c) {
             if (gpName.isEmpty()) return;
-            float lx = x(1010f);
-            headP.setAlpha(0xB3);
-            c.drawText("NEXT GRAND PRIX", lx, x(282f), headP);
-            c.drawText(gpShown, lx, x(330f), gpP);
-            c.drawText(gpDates.isEmpty() ? gpCircuit : gpDates, lx, x(368f), smallP);
-            if (!gpDates.isEmpty() && !gpCircuit.isEmpty()) c.drawText(gpCircuit, lx, x(402f), smallP);
+            float lx = x(930f);
+            c.drawText("NEXT GRAND PRIX", lx, Type.centred(headP, x(262f)), headP);
+            c.drawText(gpShown, lx, x(314f), gpP);
+            float y = x(351f);
+            if (!gpDays.isEmpty()) {
+                c.drawText(gpDays, lx, y, smallP);
+                y += x(30.5f);
+            }
+            if (!gpCircuit.isEmpty()) c.drawText(Ui.fit(gpCircuit, smallP, x(470f)), lx, y, smallP);
             if (started) {
-                c.drawText("Under way", x(1560f), x(330f), gpP);
+                c.drawText("Under way", x(1780f) - gpP.measureText("Under way"), x(314f), gpP);
                 return;
             }
             for (int i = 0; i < 3; i++) {
-                float cx = x(1560f + 110f * i);
-                c.drawText(UNITS[i], cx - unitP.measureText(UNITS[i]) / 2f, x(282f), unitP);
-                c.drawText(count[i], cx - countP.measureText(count[i]) / 2f, x(346f), countP);
+                float left = x(1416f + 126f * i);
+                r.set(left, x(252f), left + x(112f), x(364f));
+                Frost.glass(c, r, x(28f), 1f);
+                float cx = r.centerX();
+                c.drawText(UNITS[i], cx - unitP.measureText(UNITS[i]) / 2f, Type.centred(unitP, x(279f)), unitP);
+                c.drawText(count[i], cx - countP.measureText(count[i]) / 2f, x(340f), countP);
             }
         }
 
@@ -364,75 +457,89 @@ final class DriverScreen extends Screen {
             if (alpha <= 0.01f) return;
             // His number, huge, italic and faded behind him.
             if (!s.number.isEmpty()) {
-                bigNumber.setAlpha(Math.round(0x29 * alpha));
-                c.drawText(s.number, x(120f + d * 300f), x(600f), bigNumber);
+                bigNumber.setAlpha(Math.round(0x24 * alpha));
+                c.drawText(s.number, x(150f + d * 300f), x(636f), bigNumber);
             }
-            // The car from the side, behind him, breaking out past the card's right edge.
-            drawCar(c, s, x(888f + d * 640f), x(916f), x(1000f), alpha);
-            // The driver standing over the card's left half, rising above its top.
-            drawFigure(c, st, s, x(650f + d * 420f), alpha);
+            // The car from the side, breaking out past the card's right edge; the driver over the card's left half.
+            drawCar(c, s, x(900f + d * 640f), x(1040f), x(1120f), alpha);
+            drawFigure(c, st, s, x(d * 420f), alpha);
             // The words go in the first half of a slide and come in the second, so two drivers' never lie over each other.
             float words = Math.max(0f, 1f - 2f * Math.abs(d));
             if (words <= 0.01f) return;
             int wa = Math.round(255 * words);
             // His season down the left.
-            float sx = x(150f + d * 220f);
-            headP.setAlpha(Math.round(0xB3 * words));
-            labelP.setAlpha(Math.round(0xC7 * words));
+            float sx = x(140f + d * 220f);
+            headP.setAlpha(Math.round(0xCC * words));
+            labelP.setAlpha(Math.round(0xCC * words));
             valueP.setAlpha(wa);
-            if (!s.head.isEmpty()) c.drawText(s.head, sx, x(664f), headP);
             F1.Season season = seasons.get(st.driverId);
             if (season != null && s.races == null) {
                 s.races = season.races >= 0 ? String.valueOf(season.races) : "";
                 s.podiums = season.podiums >= 0 ? String.valueOf(season.podiums) : "";
             }
-            float y = 712f;
-            if (s.races != null && !s.races.isEmpty()) {
-                c.drawText("Grands Prix", sx, x(y), labelP);
-                c.drawText(s.races, sx, x(y + 58f), valueP);
-                y += 104f;
-            }
-            if (!st.points.isEmpty()) {
-                c.drawText("Points", sx, x(y), labelP);
-                c.drawText(st.points, sx, x(y + 58f), valueP);
-                y += 104f;
-            }
-            if (s.podiums != null && !s.podiums.isEmpty()) {
-                c.drawText("Podiums", sx, x(y), labelP);
-                c.drawText(s.podiums, sx, x(y + 58f), valueP);
-            }
+            boolean races = s.races != null && !s.races.isEmpty(), points = !st.points.isEmpty(), podiums = s.podiums != null && !s.podiums.isEmpty();
+            int n = (races ? 1 : 0) + (points ? 1 : 0) + (podiums ? 1 : 0);
+            // Laid out from the foot up, as the mock-ups' block sits 54 px over the card's foot.
+            float y = 946f - n * 77.6f - Math.max(0, n - 1) * 12f;
+            if (!s.head.isEmpty()) c.drawText(s.head, sx, Type.centred(headP, x(y - 33.4f + 9.7f)), headP);
+            if (races) y = figure(c, sx, y, "Grands Prix", s.races);
+            if (points) y = figure(c, sx, y, "Points", st.points);
+            if (podiums) figure(c, sx, y, "Podiums", s.podiums);
             // The right: the team's name very large with its logo, then his number, flag and name, then the facts.
-            float tx = x(1010f + d * 260f);
+            float tx = x(930f + d * 260f);
             teamP.setAlpha(wa);
             c.save();
-            c.translate(tx, x(530f));
+            c.translate(tx, x(555f));
             c.scale(s.teamSize, s.teamSize);
             c.drawText(s.team, 0, 0, teamP);
             c.restore();
-            Bitmap logo = picture(s.logo, s.logoBefore, Ui.px(84f), Ui.px(84f));
+            float tileL = tx + (teamP.measureText(s.team) - teamP.getLetterSpacing() * teamP.getTextSize()) * s.teamSize + x(24f);
+            r.set(tileL, x(460f), tileL + x(104f), x(564f));
+            Frost.glass(c, r, x(30f), words);
+            Bitmap logo = picture(s.logo, s.logoBefore, Ui.px(75f), Ui.px(66f));
             if (logo != null) {
-                float lx = Math.min(tx + teamP.measureText(s.team) * s.teamSize + x(26f), x(1736f + d * 260f));
                 bmp.setAlpha(wa);
-                c.drawBitmap(logo, lx, x(500f) - logo.getHeight() / 2f, bmp);
+                c.drawBitmap(logo, r.centerX() - logo.getWidth() / 2f, r.centerY() - logo.getHeight() / 2f, bmp);
             }
-            float nx = tx;
+            float nx = tx, cy = x(622f);
             if (!s.number.isEmpty()) {
-                numberP.setAlpha(Math.round(0xD9 * words));
-                c.drawText(s.number, nx, x(606f), numberP);
-                nx += numberP.measureText(s.number) + x(18f);
+                numberP.setAlpha(wa);
+                c.drawText(s.number, nx, Type.centred(numberP, cy) + x(2f), numberP);
+                nx += numberP.measureText(s.number) + x(16f);
             }
-            Bitmap flag = s.flag == null ? null : Pics.get(s.flag, Ui.px(56f), Ui.px(56f), Pics.FIT, redraw);
+            Bitmap flag = s.flag == null ? null : Pics.get(s.flag, Ui.px(54f), Ui.px(36f), Pics.CROP, redraw);
             if (flag != null) {
-                bmp.setAlpha(wa);
-                c.drawBitmap(flag, nx - x(3f), x(592f) - flag.getHeight() / 2f, bmp);
-                nx += x(58f) + x(10f);
+                flag(c, flag, nx, cy, wa);
+                nx += x(54f) + x(16f);
             }
             nameP.setAlpha(wa);
-            c.drawText(s.name, nx, x(606f), nameP);
+            c.drawText(s.name, nx, Type.centred(nameP, cy), nameP);
             if (!s.facts.isEmpty()) {
-                factsP.setAlpha(Math.round(0xC7 * words));
-                c.drawText(s.facts, tx, x(652f), factsP);
+                factsP.setAlpha(Math.round(0xD9 * words));
+                c.drawText(s.facts, tx, Type.centred(factsP, x(675f)), factsP);
             }
+        }
+
+        /** One of the season's figures from y (design px): its label and its value; the next one's y. */
+        private float figure(Canvas c, float sx, float y, String label, String value) {
+            c.drawText(label, sx, Type.centred(labelP, x(y + 11.5f)), labelP);
+            c.drawText(value, sx, x(y + 23f + 46f), valueP);
+            return y + 77.6f + 12f;
+        }
+
+        /** His country's flag, 54 by 36 with its corners rounded (5), centred on cy. */
+        private void flag(Canvas c, Bitmap flag, float left, float cy, int a) {
+            if (flag != flagFor) {
+                flagFor = flag;
+                flagShader = new BitmapShader(flag, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
+            }
+            r.set(left, cy - x(18f), left + x(54f), cy + x(18f));
+            fm.setScale(r.width() / flag.getWidth(), r.height() / flag.getHeight());
+            fm.postTranslate(r.left, r.top);
+            flagShader.setLocalMatrix(fm);
+            flagP.setShader(flagShader);
+            flagP.setAlpha(a);
+            c.drawRoundRect(r, x(5f), x(5f), flagP);
         }
 
         /** A picture, else the one before it (last season's) when it failed; null while loading or when neither is there. */
@@ -442,47 +549,61 @@ final class DriverScreen extends Screen {
             return before == null ? null : Pics.get(before, w, h, Pics.FIT, redraw);
         }
 
-        private void drawCar(Canvas c, Sheet s, float left, float groundY, float length, float alpha) {
+        private void drawCar(Canvas c, Sheet s, float left, float foot, float length, float alpha) {
             int cw = carWidth();
             Bitmap car = picture(s.car, s.carBefore, cw, cw / 3);
             if (car != null) {
                 float hgt = length * car.getHeight() / Math.max(1f, car.getWidth());
-                r.set(left, groundY - hgt, left + length, groundY);
+                r.set(left, foot - hgt, left + length, foot);
+                // Its shadow on the ground (the mock-ups' drop-shadow 0 30 30, 45 %): a soft dark band under its wheels.
+                r.set(left + length * 0.04f, foot - hgt * 0.22f, left + length * 0.96f, foot - hgt * 0.04f);
+                Shadows.draw(c, r, r.height() / 2f, SH_CAR, alpha);
+                r.set(left, foot - hgt, left + length, foot);
                 bmp.setAlpha(Math.round(255 * alpha));
                 c.drawBitmap(car, null, r, bmp);
             } else if (s.car == null || Pics.failed(s.car) && (s.carBefore == null || Pics.failed(s.carBefore))) {
+                // No picture of the car: one drawn in the team's colour (a car, never a person).
                 carBody.setColor(ClubLook.at(s.colour, 0.16, 0.6f));
                 carBody.setAlpha(Math.round(200 * alpha));
                 wheels.setAlpha(Math.round(255 * alpha));
-                ClubLook.car(c, left, groundY, length, carBody, wheels);
+                ClubLook.car(c, left, foot - x(40f), length * 0.9f, carBody, wheels);
             }
         }
 
-        private void drawFigure(Canvas c, F1.Standing st, Sheet s, float cx, float alpha) {
+        private void drawFigure(Canvas c, F1.Standing st, Sheet s, float dx, float alpha) {
             int pw = photoWidth();
             Bitmap ph = s.photo == null || Pics.failed(s.photo) ? null : Pics.get(s.photo, pw, pw * 3, Pics.FIT, redraw);
             c.save();
             c.clipRect(0, 0, getWidth(), x(CARD_B));
             if (ph != null) {
-                float fh = x(FIGURE_H), fw = fh * ph.getWidth() / Math.max(1f, ph.getHeight());
-                r.set(cx - fw / 2f, x(64f), cx + fw / 2f, x(64f) + fh);
+                float fw = x(FIGURE_W), fh = fw * ph.getHeight() / Math.max(1f, ph.getWidth());
+                r.set(x(FIGURE_X) + dx, x(FIGURE_TOP), x(FIGURE_X) + dx + fw, x(FIGURE_TOP) + fh);
                 bmp.setAlpha(Math.round(255 * alpha));
                 c.drawBitmap(ph, null, r, bmp);
             } else if (s.photo == null || Pics.failed(s.photo)) {
-                // ESPN's head and shoulders, standing on the card's foot; else his figure drawn in the team's colour.
-                Bitmap head = st.headshot == null || Pics.failed(st.headshot) ? null : Pics.get(st.headshot, Ui.px(700f), Ui.px(510f), Pics.FIT, redraw);
+                // ESPN's head and shoulders, standing on the card's foot; with no picture of him at all, his team's logo
+                // large and his initials: never a figure drawn in his place.
+                Bitmap head = st.headshot == null || Pics.failed(st.headshot) ? null : Pics.get(st.headshot, Ui.px(620f), Ui.px(452f), Pics.FIT, redraw);
+                float cx = x(FIGURE_X + FIGURE_W / 2f) + dx;
                 if (head != null) {
-                    float hw = x(760f), hh = hw * head.getHeight() / Math.max(1f, head.getWidth());
+                    float hw = x(620f), hh = hw * head.getHeight() / Math.max(1f, head.getWidth());
                     r.set(cx - hw / 2f, x(CARD_B) - hh, cx + hw / 2f, x(CARD_B));
                     bmp.setAlpha(Math.round(255 * alpha));
                     c.drawBitmap(head, null, r, bmp);
                 } else if (st.headshot == null || Pics.failed(st.headshot)) {
-                    stand.setColor(ClubLook.at(s.colour, 0.13, 0.45f));
-                    stand.setAlpha(Math.round(130 * alpha));
-                    ClubLook.standing(c, cx, x(70f), x(FIGURE_H), stand);
+                    Bitmap logo = picture(s.logo, s.logoBefore, Ui.px(260f), Ui.px(220f));
+                    if (logo != null) {
+                        bmp.setAlpha(Math.round(230 * alpha));
+                        c.drawBitmap(logo, cx - logo.getWidth() / 2f, x(520f) - logo.getHeight() / 2f, bmp);
+                    }
+                    if (!s.initials.isEmpty()) {
+                        initialsP.setAlpha(Math.round(220 * alpha));
+                        c.drawText(s.initials, cx - initialsP.measureText(s.initials) / 2f, x(800f), initialsP);
+                    }
                 }
             }
             c.restore();
         }
     }
+
 }
