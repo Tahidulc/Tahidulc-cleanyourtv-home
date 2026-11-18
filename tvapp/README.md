@@ -154,9 +154,15 @@ wordmark are Homefield; it carries no Sky logo or name.
   bring up a channel's card; OK held or MENU the player's bar. Back closes the overlay, then goes to the TV guide. It
   goes on into the next programme when one ends, and is live again at the live edge. The archive's address is made on the TV from the
   channel's own, and like it is never shown or written out. Channels with no archive don't offer any of it.
-- **Sports:** Sports in the menu lists today's live and coming games (football, NFL, NBA, tennis, UFC, F1) with their
-  crests and competitions; a game's page has the score and clock, events, live stats, line-ups, momentum and Watch on
-  buttons (English channels first), all held back to match the channel being watched. Over a match in the player, the
+- **Sports:** Sports in the menu has three sections, as pills beside its title (Up from the top of a list goes to them,
+  Left and Right or OK pick one, Down comes back). Today lists today's live and coming games (football, NFL, NBA, tennis,
+  UFC, F1) with their crests and competitions; Tables has the leagues down the left (Premier League, Champions League,
+  Championship, Scottish Premiership, LaLiga, Serie A, Bundesliga, Ligue 1, Europa League, Conference League) and the one
+  the remote is on as its table beside them (Right goes into it); Formula 1 has the drivers in championship order, the
+  one the remote is on beside them with the next Grand Prix. A game's page has the score and clock, events, live stats,
+  line-ups, momentum and Watch on buttons (English channels first), all held back to match the channel being watched.
+  OK on a club opens the club's page: Right from a football game in Today goes on to its two clubs, Up from the top of a
+  game's page to its two sides, and OK on a table's row; OK on a driver opens his page. Over a match in the player, the
   scoreboard: the game found from the channel and its guide, its clock set at kick-off with OK, alerts beside it, the
   kick-off and after-goal pop-ups and the line-ups, a cover for the channel's logo, its menu from the player's bar
   (Scoreboard), and a Scoreboard section in Settings. The scoreboard and the logo cover show only while the channel
@@ -164,6 +170,34 @@ wordmark are Homefield; it carries no Sky logo or name.
   or any screen or panel over the picture (the guide's preview, Home, Settings) takes them away at once, and
   they come back with plain playback; their pop-ups wait for it, or are let go when stale (a kick-off after two minutes,
   a goal's after ninety seconds), and after a longer time away the board catches up without popping up what it missed.
+- **A club's page:** after the family's picture of a squad page: the club's own colour behind (ESPN's, made deep enough
+  for white writing; for a white or black club FotMob's, else ESPN's second colour) with a fine grain and a soft
+  vignette; the crest small at the top left beside the Players and Management pills, the lines' pills (All, Goalkeepers,
+  Defenders, Midfielders, Forwards) at the top right, white when on and dark when off; then the squad as a row of
+  cards: the one the remote is on in the middle, a tall rounded panel a shade lighter than the ground, the player's
+  cut-out photo rising out of its top on a shirt drawn in the club's colour, his number in a coin of that colour at his
+  shoulder, his first name small over the card's foot and his surname huge under it, his line written down its side;
+  two smaller, dimmer cards each side with their photos, coins and names. Left and Right glide the row a player (held,
+  it glides on); Up goes to the pills, where Left and Right or OK pick one and Down comes back; OK on a card opens the
+  player's page; Back closes. Management shows the manager and any staff FotMob lists, as cards in the same row. The
+  squad is FotMob's (the club found once by its name in FotMob's search, its id then kept on this TV), else ESPN's
+  roster for the competition the club was met in (it names no manager: ESPN's list for a club is its managers of years
+  gone by); a player with no photo has a head and shoulders drawn in the club's colour.
+- **A player's page:** in the same look: his card with his photo and number, his first name small and surname huge,
+  his position, his country with its flag and his age, then this season's figures from FotMob for his main competition
+  (appearances, goals, assists, clean sheets for a goalkeeper, yellow and red cards, minutes, rating; a manager's
+  matches, won, drawn and lost at the club), each left out when the source has none. Left and Right go to the previous
+  and next of the squad as the club's page showed them (the same pills), sliding across; Back goes back, the club's row
+  on him. His figures are one read of FotMob once the remote rests on him; the players either side are read after him.
+- **An F1 driver's page:** after the family's picture: the page and a big rounded card in his team's colour, his car
+  number huge, italic and faded behind him, and the driver standing in his kit over the card's left half, rising above
+  its top (formula1.com's picture, from the same family of addresses as the team logos; else ESPN's headshot; else a
+  figure drawn in the team's colour). At the right the next Grand Prix, its dates, name and circuit with a countdown in
+  days, hours and minutes, then his team's name very large with its logo, his number, his country's flag and his full
+  name, his nationality and age (no source gives a place of birth), and his team's car from the side breaking out past
+  the card's edge (formula1.com's, else drawn). Down the left his season so far under its year: Grands Prix and podiums
+  (one read of his results this season, Jolpica's) and points (the championship's). Left and Right go to the driver
+  before or after him in the championship, the page sliding across and its colour turning to the next team's.
 - **Moving about:** on the dark screens the picture behind cross-fades as the remote moves to another title or
   channel, the words fade in and rise into place a moment after, pages cross-fade into each other, and the poster or
   tile the remote is on grows a little inside a soft white ring. Opacity, a small move and scale only, nothing
