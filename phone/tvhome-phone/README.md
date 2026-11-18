@@ -658,3 +658,27 @@ playlists' copies are in that order too. 5.17's 1080p-first order and its prefer
 **No spoilers from the live data (5.25).** Nothing the board shows from FotMob or ESPN comes before the picture has shown it. A great finish or a big save waits until the board's clock (in step with the picture) is past the shot's minute, and a great finish also waits for the goal on the board; without a reading of the channel's clock it waits three minutes. The stats pop-out (xG, shots, big chances, possession), the momentum wave, the bookings, the minutes added, the penalty card and VAR explained all use the read the picture has reached, and the half-time screen shows the score as seen. Every scoreboard look shows added time by the same rule (the ADDED TIME panel or the +N tab, never both). "Cover the channel's score pop-ups" is in the player's options and in Move and resize as well as in Settings; turned off, nothing covers them.
 
 **The pop-up in your scoreboard's look (5.26).** The kick-off pop-up (and the restart after a goal, and the second half) now comes in whichever scoreboard look is in use, all 35 of them: the nine first looks as before, and now the 3D kits, the Lab's five, the sixteen competition looks and the four retro boards, each in its own board's colours, blocks, lettering and logo place, folding onto the board where it sits. By competition uses the look the board picked for the game. "In my scoreboard's look" is the default and Classic was switched to it once; Classic and Off stay in the list.
+
+**Made for tablets too (5.27).** On a tablet (its shorter side 600dp or more) everything is laid out for the room it has; a
+phone is exactly as it was. The type is a tenth larger (at most 1.3 of the family's own text size, unless they chose
+more), and the floating tab bar sits in the middle of the foot, no wider than its five tabs need, as Home's and Watch's
+pills do. Watch's grid has four to ten posters across, each a little larger than a phone's; Home's rows are a little
+smaller on a small tablet held upright, so more go across, and Continue watching's cards a little larger, with room for
+their titles. Sports has two columns where there is room: the football down the left, the rest of the sport down the
+right. Settings is one column that reads well on a tablet held upright; on its side, the list of sections down the left
+on a card of its own and the chosen one's page beside it (the one chosen last opens again; a playlist's notification
+opens Live TV's). Sheets (a programme's details, a channel's menu, Cast, Also Showing On, the sources) come as cards in
+the middle of the screen rather than across its foot. Live TV's picture beside the details on a tablet held upright is
+about half its width, the buttons in Live TV's top bar and over the full-screen player are a little larger to touch, and
+the player's panel keeps its words to the middle of a wide screen.
+
+**The guide's categories on the side (5.27).** The row of category pills over the guide has gone: a button at the guide's top
+left, with the categories' glyph and the one showing (its flag or star as before), slides a panel in from the left over
+a dimmed page, listing the categories in the app's own order: Favourites, All, Recent and Sport, then the playlist's own
+under "In your playlist", favourite ones first with a star, hidden ones left out, and All categories… at the foot. A tap
+shows that one in the guide and slides the panel away; a tap on the dimmed page, Back, ✕ or a swipe to the left put it
+away too, and holding one of the playlist's own still makes it a favourite or hides it. The button sits on its own bar
+over the guide, the list and Sport (it stays when the rest folds away upright), with how many channels the one showing
+has at its right. On a tablet on its side the panel stays docked beside the guide, the button tucking it away and back,
+and it opens as it was last left. The category chosen last still opens again, and the guide's swipes, full screen on
+turning the phone, and the guide to both screen edges are as they were.

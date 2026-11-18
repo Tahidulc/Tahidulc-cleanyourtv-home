@@ -225,6 +225,8 @@ public final class SourceSheet {
         b.setSkipCollapsed(true);
         b.setState(BottomSheetBehavior.STATE_EXPANDED);
         d.show();
+        // A tablet: a card in the middle of the screen rather than a sheet across its foot.
+        com.gathin.tvhomephone.glass.Wide.card(d);
         return d;
     }
 

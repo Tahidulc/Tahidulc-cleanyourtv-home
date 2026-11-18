@@ -41,6 +41,11 @@ public class MainActivity extends AppCompatActivity {
     /** The tab whose page shows (0 before the first); the status bar's, the navigation bar's and the keyboard's heights. */
     private int shownId, insetTop, insetBottom, insetIme;
 
+    /** A tablet's type a little larger (Wide); a phone's as it is. */
+    @Override protected void attachBaseContext(android.content.Context base) {
+        super.attachBaseContext(com.gathin.tvhomephone.glass.Wide.wrap(base));
+    }
+
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         root = new FrameLayout(this);
@@ -57,7 +62,10 @@ public class MainActivity extends AppCompatActivity {
         tabs.setSources(content);
         tabs.setElevation(Glass.dp(this, 10));
         int side = Glass.dp(this, 14);
-        barPlace = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
+        // A tablet: the bar floats in the middle of the foot, no wider than its five tabs need (Wide).
+        boolean tablet = com.gathin.tvhomephone.glass.Wide.tablet(this);
+        barPlace = new FrameLayout.LayoutParams(com.gathin.tvhomephone.glass.Wide.barWidth(this), FrameLayout.LayoutParams.WRAP_CONTENT,
+                tablet ? Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL : Gravity.BOTTOM);
         barPlace.setMargins(side, 0, side, Glass.dp(this, Glass.BAR_GAP_DP));
         root.addView(tabs, barPlace);
         setContentView(root);
@@ -73,8 +81,9 @@ public class MainActivity extends AppCompatActivity {
             insetBottom = s.bottom;
             insetIme = ins.getInsets(WindowInsetsCompat.Type.ime()).bottom;
             barPlace.bottomMargin = s.bottom + Glass.dp(this, Glass.BAR_GAP_DP);
-            barPlace.leftMargin = side + s.left;
-            barPlace.rightMargin = side + s.right;
+            // In the middle of a tablet's screen, the same each side (clear of a navigation bar at either).
+            barPlace.leftMargin = side + (tablet ? Math.max(s.left, s.right) : s.left);
+            barPlace.rightMargin = side + (tablet ? Math.max(s.left, s.right) : s.right);
             tabs.setLayoutParams(barPlace);
             fitPage(false);
             return ins;

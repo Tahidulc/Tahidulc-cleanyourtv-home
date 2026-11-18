@@ -74,6 +74,10 @@ final class SportsScreen {
     private final TextView kicker, date, line;
     private final LinearLayout strip;
     private final HorizontalScrollView stripScroll;
+    /** A tablet with the room: the two columns side by side and each column (null on a phone: one column). */
+    private LinearLayout columns, leftColumn, rightColumn;
+    /** The sections down the left column (football); the rest go down the right. */
+    private static final java.util.Set<String> LEFT = new java.util.HashSet<>(java.util.Arrays.asList("live", "clubs", "today", "coming"));
     /** Each section by its key, in the page's order. */
     private final Map<String, Section> sections = new LinkedHashMap<>();
     private String under = "Manchester";
@@ -185,6 +189,17 @@ final class SportsScreen {
         col.addView(stripScroll, sp);
         stripScroll.setVisibility(View.GONE);
 
+        // A tablet with the room: two columns, football down the left and the rest of the sport down the right.
+        if (com.gathin.tvhomephone.glass.Wide.twoColumns(c)) {
+            columns = SportCards.row(c);
+            columns.setGravity(Gravity.TOP);
+            leftColumn = SportCards.column(c);
+            rightColumn = SportCards.column(c);
+            columns.addView(leftColumn, new LinearLayout.LayoutParams(0, -2, 1f));
+            columns.addView(rightColumn, new LinearLayout.LayoutParams(0, -2, 1f));
+            col.addView(columns, new LinearLayout.LayoutParams(-1, -2));
+        }
+
         section("live", null, null, null);
         section("clubs", "Your clubs", null, null);
         section("today", "Today", Competitions.logo("eng.1"), OnTv.FOOTBALL).chipName = "Football";
@@ -218,7 +233,7 @@ final class SportsScreen {
         lp.leftMargin = lp.rightMargin = Glass.dp(c, 16);
         box.addView(body, lp);
         box.setVisibility(View.GONE);
-        col.addView(box, new LinearLayout.LayoutParams(-1, -2));
+        (columns == null ? col : LEFT.contains(key) ? leftColumn : rightColumn).addView(box, new LinearLayout.LayoutParams(-1, -2));
         Section s = new Section(key, name, box, head, body);
         s.chipLogo = chipLogo;
         s.chipSport = chipSport;
@@ -240,7 +255,14 @@ final class SportsScreen {
     void scrollTo(String key) {
         Section s = sections.get(key);
         if (s == null || s.box.getVisibility() != View.VISIBLE) return;
-        scroll.smoothScrollTo(0, Math.max(0, s.box.getTop() - Glass.dp(c, 4)));
+        int top = s.box.getTop() + (columns != null ? columns.getTop() : 0);
+        scroll.smoothScrollTo(0, Math.max(0, top - Glass.dp(c, 4)));
+    }
+
+    /** The page's width a section has (the screen's, or a column's on a tablet with two). */
+    private int pageWidth() {
+        int w = c.getResources().getDisplayMetrics().widthPixels;
+        return columns == null ? w : w / 2;
     }
 
     /** Fills a section (nothing: hidden) and the strip of chips again. */
@@ -680,8 +702,8 @@ final class SportsScreen {
         android.util.DisplayMetrics dm = c.getResources().getDisplayMetrics();
         int[] cols = new int[NUMBER_SP.length];
         for (int i = 0; i < cols.length; i++) cols[i] = sp(dm, NUMBER_SP[i]);
-        // The section's margins and the card's padding either side.
-        int inner = dm.widthPixels - 2 * Glass.dp(c, 16) - 2 * Glass.dp(c, 14);
+        // The section's margins and the card's padding either side (of its column, on a tablet with two).
+        int inner = pageWidth() - 2 * Glass.dp(c, 16) - 2 * Glass.dp(c, 14);
         int[] fit = fit(inner, Glass.dp(c, 154), cols, Glass.dp(c, 6));
         int left = fit[0];
         int rowH = sp(dm, 34), groupH = sp(dm, 30), gapH = sp(dm, 18);

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Live TV's categories down the side (CategoryPanel). -->
+<resources>
+    <string name="cats_button">Categories: %1$s. Shows the categories down the side</string>
+    <string name="cats_button_docked">Categories: %1$s. Tucks the categories away</string>
+    <string name="cats_button_tucked">Categories: %1$s. Puts the categories down the side</string>
+    <string name="cats_close">Close the categories</string>
+    <string name="cats_playlist">IN YOUR PLAYLIST</string>
+    <string name="cats_chosen">%1$s, showing</string>
+</resources>

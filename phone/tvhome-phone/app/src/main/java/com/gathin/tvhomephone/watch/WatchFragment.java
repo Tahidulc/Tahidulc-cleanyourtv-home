@@ -148,11 +148,15 @@ public class WatchFragment extends Fragment {
             closeSearch(false);
             buildCards();
         });
-        LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(-1, -2);
+        // A tablet: the pill and the search no wider than they need, in the middle, as Home's.
+        boolean tablet = com.gathin.tvhomephone.glass.Wide.tablet(c);
+        LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(tablet ? Glass.dp(c, 520) : -1, -2);
+        if (tablet) pp.gravity = Gravity.CENTER_HORIZONTAL;
         pp.setMargins(Glass.dp(c, 16), Glass.dp(c, 16), Glass.dp(c, 16), Glass.dp(c, 12));
         topCol.addView(pill, pp);
         searchBox = searchBox(c);
-        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-1, Glass.dp(c, 46));
+        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(tablet ? Glass.dp(c, 520) : -1, Glass.dp(c, 46));
+        if (tablet) sp.gravity = Gravity.CENTER_HORIZONTAL;
         sp.setMargins(Glass.dp(c, 16), 0, Glass.dp(c, 16), Glass.dp(c, 12));
         topCol.addView(searchBox, sp);
         searchBox.setVisibility(View.GONE);
@@ -293,6 +297,10 @@ public class WatchFragment extends Fragment {
         float widthDp = c.getResources().getDisplayMetrics().widthPixels / c.getResources().getDisplayMetrics().density;
         // Landscape posters (Settings, "Posters"): two across a phone, more on a tablet.
         if (com.gathin.tvhomephone.glass.PosterCard.wide(c)) return Math.max(2, Math.min(5, (int) (widthDp / 190)));
+        // A tablet: more across, each a little larger than a phone's and never a giant (four to ten across).
+        if (com.gathin.tvhomephone.glass.Wide.tablet(c)) {
+            return com.gathin.tvhomephone.glass.Wide.across(Math.round(widthDp) - 20, 140, 0, 4, 10);
+        }
         return Math.max(3, Math.min(8, (int) (widthDp / 125)));
     }
 
