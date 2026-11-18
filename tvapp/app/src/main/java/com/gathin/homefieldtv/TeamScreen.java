@@ -346,7 +346,6 @@ final class TeamScreen extends Screen {
             float pillsRight = pills.from(x(Look07.MARGIN + 58f + 24f), x(14f), P_PLAYERS, P_STAFF);
             pills.to(Math.max(pillsRight + x(40f), w - x(Look07.MARGIN)), x(8f), P_ALL, PILLS - 1);
             art = new PlayerArt(x(W0), x(W0 * 0.62f), x(H0), x(30f));
-            pics.clear();
             prepare();
             invalidate();
         }

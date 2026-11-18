@@ -64,23 +64,28 @@ final class PlayerArt {
         /** The real pictures of him, best first (Squad.photos), worked out again when his league's one is known. */
         String[] urls;
         String initials;
+        /** His league picture's lookup as urls were worked out for (they follow it when it lands). */
+        private String leagueFor;
         private Bitmap made;
         private int madeKind = -1;
         final Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG);
 
         Pic(Squad.Person p) {
             person = p;
+            leagueFor = p.league;
             urls = Squad.photos(p);
             initials = Squad.initials(p.name);
         }
 
         /** His league's picture arrived (or none did): the pictures to try again. */
         void again() {
+            leagueFor = person.league;
             urls = Squad.photos(person);
         }
 
         /** The picture to draw now: the first not failed (null while waiting for the league's, or none at all). */
         String url() {
+            if (person.league != leagueFor) again();
             for (String u : urls) if (!Pics.failed(u)) return u;
             return null;
         }

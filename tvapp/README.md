@@ -154,13 +154,25 @@ wordmark are Homefield; it carries no Sky logo or name.
   bring up a channel's card; OK held or MENU the player's bar. Back closes the overlay, then goes to the TV guide. It
   goes on into the next programme when one ends, and is live again at the live edge. The archive's address is made on the TV from the
   channel's own, and like it is never shown or written out. Channels with no archive don't offer any of it.
-- **Sports:** Sports in the menu has three sections, as pills beside its title (Up from the top of a list goes to them,
-  Left and Right or OK pick one, Down comes back). Today lists today's live and coming games (football, NFL, NBA, tennis,
-  UFC, F1) with their crests and competitions; Tables has the leagues down the left (Premier League, Champions League,
-  Championship, Scottish Premiership, LaLiga, Serie A, Bundesliga, Ligue 1, Europa League, Conference League) and the one
-  the remote is on as its table beside them (Right goes into it); Formula 1 has the drivers in championship order, the
-  one the remote is on beside them with the next Grand Prix. A game's page has the score and clock, events, live stats,
-  line-ups, momentum and Watch on buttons (English channels first), all held back to match the channel being watched.
+- **Sports:** Sports is a page under the tab bar (its Sports tab), in 07's look over the blurred picture of what the
+  remote is on: its title with its three sections as pills beside it (Up from the top of a list goes to them, Left and
+  Right or OK pick one, Down comes back, Up again goes to the tab bar; Back at a section's root goes to the tab bar
+  too). Today lists today's live and coming games (football, NFL, NBA, tennis, UFC, F1) under LIVE NOW, LATER and
+  FINISHED with their counts, a row each washed at its ends in its two sides' colours (the away side's second colour
+  when the two are too close), the competition in small capitals, both crests and names, the score in boxes of each
+  side's colour (or the kick-off) and how far on; the remote's row white and lifted. Beside it the game the remote is
+  on, big: its top split on the slant between the two sides' colours, the competition and LIVE, both crests, the score
+  huge with the clock (a red card when one was shown), the scorers and red cards so far, the family's own channels that
+  show it (English first, with the programme on), whether the hub is in step with the channel being watched and its
+  delay, and what OK does. Tables has the leagues on glass down the left (Premier League, Champions League,
+  Championship, Scottish Premiership, LaLiga, Serie A, Bundesliga, Ligue 1, Europa League, Conference League) and the
+  one the remote is on as its table on glass beside them (each club's place with ESPN's zone mark, crest, name, played,
+  won, drawn, lost, goal difference and points; Right goes into it); Formula 1 has the drivers in championship order
+  (formula1.com's picture of each in a round frame, team and wins, points), the one the remote is on beside them on a
+  card in his team's colour, standing, with his place, points, wins and podiums and the next Grand Prix. A game's page
+  (a "‹ Sports · Today" line where Back goes) has the two sides on its header in their colours, the score and clock or
+  "Full time" with the crowd, what's happened, the stats, both line-ups, momentum and Watch on buttons (English
+  channels first), all held back to match the channel being watched.
   OK on a club opens the club's page: Right from a football game in Today goes on to its two clubs, Up from the top of a
   game's page to its two sides, and OK on a table's row; OK on a driver opens his page. Over a match in the player, the
   scoreboard: the game found from the channel and its guide, its clock set at kick-off with OK, alerts beside it, the
@@ -170,34 +182,44 @@ wordmark are Homefield; it carries no Sky logo or name.
   or any screen or panel over the picture (the guide's preview, Home, Settings) takes them away at once, and
   they come back with plain playback; their pop-ups wait for it, or are let go when stale (a kick-off after two minutes,
   a goal's after ninety seconds), and after a longer time away the board catches up without popping up what it missed.
-- **A club's page:** after the family's picture of a squad page: the club's own colour behind (ESPN's, made deep enough
-  for white writing; for a white or black club FotMob's, else ESPN's second colour) with a fine grain and a soft
-  vignette; the crest small at the top left beside the Players and Management pills, the lines' pills (All, Goalkeepers,
-  Defenders, Midfielders, Forwards) at the top right, white when on and dark when off; then the squad as a row of
-  cards: the one the remote is on in the middle, a tall rounded panel a shade lighter than the ground, the player's
-  cut-out photo rising out of its top on a shirt drawn in the club's colour, his number in a coin of that colour at his
-  shoulder, his first name small over the card's foot and his surname huge under it, his line written down its side;
-  two smaller, dimmer cards each side with their photos, coins and names. Left and Right glide the row a player (held,
-  it glides on); Up goes to the pills, where Left and Right or OK pick one and Down comes back; OK on a card opens the
-  player's page; Back closes. Management shows the manager and any staff FotMob lists, as cards in the same row. The
-  squad is FotMob's (the club found once by its name in FotMob's search, its id then kept on this TV), else ESPN's
-  roster for the competition the club was met in (it names no manager: ESPN's list for a club is its managers of years
-  gone by); a player with no photo has a head and shoulders drawn in the club's colour.
-- **A player's page:** in the same look: his card with his photo and number, his first name small and surname huge,
-  his position, his country with its flag and his age, then this season's figures from FotMob for his main competition
-  (appearances, goals, assists, clean sheets for a goalkeeper, yellow and red cards, minutes, rating; a manager's
-  matches, won, drawn and lost at the club), each left out when the source has none. Left and Right go to the previous
-  and next of the squad as the club's page showed them (the same pills), sliding across; Back goes back, the club's row
-  on him. His figures are one read of FotMob once the remote rests on him; the players either side are read after him.
-- **An F1 driver's page:** after the family's picture: the page and a big rounded card in his team's colour, his car
-  number huge, italic and faded behind him, and the driver standing in his kit over the card's left half, rising above
-  its top (formula1.com's picture, from the same family of addresses as the team logos; else ESPN's headshot; else a
-  figure drawn in the team's colour). At the right the next Grand Prix, its dates, name and circuit with a countdown in
-  days, hours and minutes, then his team's name very large with its logo, his number, his country's flag and his full
-  name, his nationality and age (no source gives a place of birth), and his team's car from the side breaking out past
-  the card's edge (formula1.com's, else drawn). Down the left his season so far under its year: Grands Prix and podiums
-  (one read of his results this season, Jolpica's) and points (the championship's). Left and Right go to the driver
-  before or after him in the championship, the page sliding across and its colour turning to the next team's.
+- **A club's page:** in 07, under the shell's "‹ back" line: the club's own colour behind (ESPN's, made deep enough for
+  white writing; for a white or black club FotMob's, else ESPN's second colour), brightest a little above the middle
+  and deepening to the edges, with a fine grain and a soft vignette; the crest and the Players and Management pills at
+  the left, the lines' pills (All, Goalkeepers, Defenders, Midfielders, Forwards) at the right, white when on and glass
+  in the club's colour when off; then the squad as a carousel of frosted-glass cards: the one the remote is on in the
+  middle, larger and brighter, two smaller and fainter each side, each with his number in the club's coin at its top
+  corner and his name at its foot; the middle one's line written down beside it and his surname huge under it, rising
+  in as the remote moves. Every picture is a real one, the best there is, in the phone's order: his league's own cut-out
+  (the Premier League's for a Premier League club, La Liga's for a La Liga club: head to waist in the club's kit, found
+  by the club's and his names as the phone finds them), else ESPN's head and shoulders, both rising out of the card's top;
+  else FotMob's face, as a portrait filling the card's top, cut to its shape; with no picture at all, the club's crest
+  large and his initials. No shirt, head or figure is ever drawn in a picture's place. Left and Right glide the row a
+  player on 07's ease (held, it glides on); Up goes to the pills, where Left and Right or OK pick one and Down comes
+  back; OK on a card opens the player's page; Back closes. Management shows the manager and any staff FotMob lists, as
+  cards in the same row. The squad is FotMob's (the club found once by its name in FotMob's search, its id then kept on
+  this TV), with ESPN's roster read beside it for its players' head and shoulders, else ESPN's roster alone for the
+  competition the club was met in (it names no manager: ESPN's list for a club is its managers of years gone by); the
+  league's pictures are looked up as the cards come near.
+- **A player's page:** in the same look, under a "‹ back" line with the club's name: his card of glass with his real
+  picture rising out of it (or his face as a portrait in it, or the crest and his initials) and his number in the
+  club's coin at its shoulder, his first name and surname huge, his position, his country with its flag and his age, a
+  rule, what the figures are for, then this season's figures from FotMob for his main competition on glass tiles four
+  across (appearances, goals, assists, clean sheets for a goalkeeper, yellow and red cards, minutes, rating; a
+  manager's matches, won, drawn and lost at the club), each left out when the source has none. Round arrows at the sides
+  when there is someone that way: Left and Right go to the previous and next of the squad as the club's page showed
+  them (the same pills), sliding across; Back goes back, the club's row on him. His figures are one read of FotMob once
+  the remote rests on him; the players either side are read after him.
+- **An F1 driver's page:** in 07, under a "‹ Sports · Formula 1" line: the page dark with his team's colour glowing
+  from its left, a big rounded card in that colour, his car number huge, italic and faded behind him, and the driver
+  standing in his kit over the card's left half, rising above its top (formula1.com's picture, from the same family of
+  addresses as the team logos; else ESPN's head and shoulders; with no picture of him at all, his team's logo large with
+  his initials, never a drawn figure). At the right the next Grand Prix, its days, name and circuit with a countdown in
+  days, hours and minutes on glass tiles, then his team's name very large with its logo on a glass tile, his number, his
+  country's flag and his full name, his nationality and age (no source gives a place of birth), and his team's car from
+  the side breaking out past the card's edge (formula1.com's, else a car drawn in the team's colour). Down the left his
+  season so far under its year: Grands Prix and podiums (one read of his results this season, Jolpica's) and points
+  (the championship's). Left and Right go to the driver before or after him in the championship, the page sliding across
+  and its colour turning to the next team's.
 - **Moving about:** on the dark screens the picture behind cross-fades as the remote moves to another title or
   channel, the words fade in and rise into place a moment after, pages cross-fade into each other, and the poster or
   tile the remote is on grows a little inside a soft white ring. Opacity, a small move and scale only, nothing

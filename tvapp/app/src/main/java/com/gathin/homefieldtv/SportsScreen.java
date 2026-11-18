@@ -665,6 +665,8 @@ final class SportsScreen extends Screen {
         private int hintZone = -1, hintSide = -1;
         private SportsData.Item hintFor;
         private float liveW;
+        /** The remote is up on the tab bar (this frame). */
+        private boolean onBar;
         private String cardGiven = "", cardFamily = "", cardTeam = "";
         private int f1For = 1;
         private String tableWords = "", f1Words = "", standing = "", gpDays = "", gpHead = "", gpName = "", winsWords = "";
@@ -846,7 +848,9 @@ final class SportsScreen extends Screen {
             boolean moving = ground.draw(c, getWidth(), getHeight());
             // The title, the sections' pills beside it, the line under them.
             c.drawText("Sports", x(Look07.MARGIN), x(176.6f), titleP);
-            for (int i = 0; i < SECTIONS.length; i++) pills.draw(c, i, x(160f), i == section, zone == PILLS && i == pill, 1f);
+            // While the remote is up on the tab bar, nothing on the page is lit (its section stays chosen).
+            onBar = tv.tabs() != null && tv.tabs().active();
+            for (int i = 0; i < SECTIONS.length; i++) pills.draw(c, i, x(160f), i == section, !onBar && zone == PILLS && i == pill, 1f);
             if (section == TABLES) moving |= drawTables(c);
             else if (section == FORMULA) moving |= drawDrivers(c);
             else moving |= drawToday(c);
@@ -866,7 +870,7 @@ final class SportsScreen extends Screen {
                 todayWords = "Live now and today · " + Ui.clock(System.currentTimeMillis());
             }
             subtitle(c, loading ? "Finding today's games…" : items.isEmpty() ? "Nothing on today" : todayWords);
-            SportsData.Item on = zone == LIST || zone == SIDES ? chosen() : null;
+            SportsData.Item on = !onBar && (zone == LIST || zone == SIDES) ? chosen() : null;
             boolean moving = rowLift.step(on);
             if (items.isEmpty() || rowY.length != items.size()) return moving;
             // Kept in sight round the remote.
@@ -926,7 +930,7 @@ final class SportsScreen extends Screen {
             r.set(0, 0, w, hh);
             float rad = x(22f);
             if (k > 0.01f) Shadows.draw(c, r, rad, Look07.SH_ROW, k);
-            fill.setColor(Theme.mix(0xFF1E1F26, 0xFFFFFFFF, k));
+            fill.setColor(0xFFFFFFFF);
             fill.setAlpha(Math.round(0x12 + (0xF2 - 0x12) * k));
             c.drawRoundRect(r, rad, rad, fill);
             if (l.coloured) {
@@ -1077,7 +1081,7 @@ final class SportsScreen extends Screen {
             // The two sides: crests and names; the one the remote is on ringed (Right from the list).
             for (int s = 0; s < 2; s++) {
                 float cx = s == 0 ? x(36f + 95f) : x(CARD_W - 36f - 95f);
-                if (zone == SIDES && side == s) {
+                if (!onBar && zone == SIDES && side == s) {
                     r.set(cx - x(97f), x(86f), cx + x(97f), x(254f));
                     Shadows.draw(c, r, x(26f), Look07.SH_ROW, 1f);
                     fill.setColor(0x24FFFFFF);
@@ -1210,7 +1214,7 @@ final class SportsScreen extends Screen {
                 tableWords = Espn.TABLES[league][1] + " · the table as it stands";
             }
             subtitle(c, t == null ? "Reading the table…" : t.isEmpty() ? "No table just now" : tableWords);
-            boolean moving = leagueLift.step(zone == LEAGUES ? Espn.TABLES[league] : null);
+            boolean moving = leagueLift.step(!onBar && zone == LEAGUES ? Espn.TABLES[league] : null);
             // The leagues down the left, on glass.
             box.set(x(LEAGUE_X), x(LIST_TOP), x(LEAGUE_X + LEAGUE_W), x(LIST_TOP + 32f + Espn.TABLES.length * LEAGUE_ROW));
             Frost.glass(c, box, x(Look07.R_PANEL), 1f);
@@ -1242,7 +1246,7 @@ final class SportsScreen extends Screen {
             c.drawText("#", x(inner), Type.centred(tHeadP, x(hy)), tHeadP);
             c.drawText("CLUB", x(inner + 112f), Type.centred(tHeadP, x(hy)), tHeadP);
             for (int i = 0; i < heads7.length; i++) c.drawText(heads7[i], x(cols[i]) - tHeadP.measureText(heads7[i]) / 2f, Type.centred(tHeadP, x(hy)), tHeadP);
-            String[] on = zone == TABLE && t != null && row >= 0 && row < n ? t.get(row) : null;
+            String[] on = !onBar && zone == TABLE && t != null && row >= 0 && row < n ? t.get(row) : null;
             moving |= tableLift.step(on);
             if (n == 0) return moving;
             float first = LIST_TOP + 14f + TABLE_HEAD, room = Math.min(1076f, panelB) - 14f - first;
@@ -1333,7 +1337,7 @@ final class SportsScreen extends Screen {
             }
             subtitle(c, drivers.isEmpty() ? (f1Asking || Exec.inline ? "Reading the championship…" : "The championship isn't available just now")
                     : f1Words);
-            F1.Standing on = zone == DRIVERS && driver >= 0 && driver < drivers.size() ? drivers.get(driver) : null;
+            F1.Standing on = !onBar && zone == DRIVERS && driver >= 0 && driver < drivers.size() ? drivers.get(driver) : null;
             boolean moving = driverLift.step(on);
             if (drivers.isEmpty()) return moving;
             float want = Math.max(0f, driver * (DRIVER_ROW + DRIVER_GAP) - 4f * (DRIVER_ROW + DRIVER_GAP));
@@ -1369,7 +1373,7 @@ final class SportsScreen extends Screen {
             r.set(0, 0, w, hh);
             float rad = x(24f);
             if (k > 0.01f) Shadows.draw(c, r, rad, Look07.SH_ROW, k);
-            fill.setColor(Theme.mix(0xFF1E1F26, 0xFFFFFFFF, k));
+            fill.setColor(0xFFFFFFFF);
             fill.setAlpha(Math.round(0x12 + (0xF2 - 0x12) * k));
             c.drawRoundRect(r, rad, rad, fill);
             if (k < 0.99f) {

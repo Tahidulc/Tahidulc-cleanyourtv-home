@@ -144,6 +144,16 @@ final class GameScreen extends Screen {
         return under instanceof SportsScreen ? ((SportsScreen) under).backWords() : "Sports";
     }
 
+    /** Down from the tab bar: the page lit again where it was. */
+    @Override void fromTabs() {
+        if (page != null) page.invalidate();
+    }
+
+    /** Whether the remote is up on the tab bar (nothing on the page is lit then). */
+    private boolean onBar() {
+        return tv.tabs() != null && tv.tabs().active();
+    }
+
     /** The "‹ back" words of a club's page opened from here: "Wales v Portugal". */
     String backWords() {
         return item.home + " v " + item.away;
@@ -497,7 +507,7 @@ final class GameScreen extends Screen {
             // The two sides on their panels: the remote's ringed and lifted a little.
             for (int s = 0; s < 2; s++) {
                 float left = s == 0 ? 56f : HEAD_W - 56f - 360f;
-                boolean on = side == s;
+                boolean on = side == s && !onBar();
                 r.set(x(left), x(34f), x(left + 360f), x(266f));
                 if (on) {
                     c.save();
@@ -791,7 +801,7 @@ final class GameScreen extends Screen {
             }
             for (int i = 0; i < buttons.size() && i < buttonWords.size(); i++) {
                 String[] b = buttons.get(i);
-                boolean on = i == focus && side < 0, logo = "watch".equals(b[0]);
+                boolean on = i == focus && side < 0 && !onBar(), logo = "watch".equals(b[0]);
                 String words = buttonWords.get(i);
                 float bw = btnP.measureText(words) + x(logo ? 14f + 56f + 14f + 26f : 52f);
                 if (bx + bw > x(1830f)) break;
