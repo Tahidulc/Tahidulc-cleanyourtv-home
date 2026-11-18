@@ -61,7 +61,9 @@ import java.util.Set;
  * half time once its moment has passed, gone a minute after full time; a goal sweeps across it with the family's sounds.
  *
  * <p>Out of it, in its look (BoardDrop): the cards, the substitutions, VAR explained, the minutes added, half and full
- * time, each once the picture reaches it; the kick-off pop-up, the pop-up after a goal and at the second half, and the
+ * time, each once the picture reaches it (AsSeen: the channel's delay since the scores had it, and the board's clock past
+ * its minute; with no delay set for the channel and its clock not set at kick-off, the longest a channel runs behind);
+ * the +N beside the clock by the shared rule for every look (AddedTime); the kick-off pop-up, the pop-up after a goal and at the second half, and the
  * classic line-ups seven minutes before kick-off (the shared broadcast pages, BroadcastView), the board away while a
  * moment's pop-up is on. Over the channel's own logo, a cover (top right, where most broadcasters put theirs).
  *
@@ -129,10 +131,17 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
     private long htSince = -1, ftSince = -1, lastChange, lineupsTried;
     private boolean up, swishBack, dimmed;
     private final Set<String> shown = new HashSet<>(), eventKeys = new HashSet<>(), varKeys = new HashSet<>();
-    /** Alerts waiting for the picture to reach them: when the scores saw each. */
-    private final List<Object[]> pending = new ArrayList<>();
+    /**
+     * The alerts the summary brings (cards, substitutions, VAR), each held until the picture reaches it (AsSeen); the
+     * minutes added as read, a few minutes of them, the same way; where the picture is now (each look at the board).
+     */
+    private final com.gathin.broadcast.AsSeen.Held pending = new com.gathin.broadcast.AsSeen.Held();
+    private final com.gathin.broadcast.AsSeen.Reads<int[]> addedReads = new com.gathin.broadcast.AsSeen.Reads<>();
+    private com.gathin.broadcast.AsSeen.Picture picture = new com.gathin.broadcast.AsSeen.Picture();
     private final ArrayDeque<BoardDrop.Drop> drops = new ArrayDeque<>();
-    private boolean dropping, addedOutFor1, addedOutFor2;
+    private boolean dropping;
+    /** The halves (1 to 4, as bits) whose minutes added have come out beside the board: once each. */
+    private int addedOutFor;
     /** A goal's pop-up still to come: until when (uptime), and its words. */
     private long restartUntil;
     private final Runnable nextDropRun = this::nextDrop, hideDropRun = this::hideDrop;
@@ -382,13 +391,14 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         eventKeys.clear();
         varKeys.clear();
         pending.clear();
+        addedReads.clear();
         drops.clear();
         queuedAt.clear();
         held = null;
         espnHome = new ArrayList<>();
         espnAway = new ArrayList<>();
         restartUntil = 0;
-        addedOutFor1 = addedOutFor2 = false;
+        addedOutFor = 0;
         lineupsTried = 0;
         h.removeCallbacks(nextDropRun);
         h.removeCallbacks(hideDropRun);
@@ -470,6 +480,9 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
     /** The game's summary read at seen: the minutes added, the elevens, and what happened, each waiting for the picture. */
     void summarised(Espn.Summary s, long seen) {
         for (int i = 0; i < 4; i++) if (s.added[i] > 0) announced[i] = s.added[i];
+        // The minutes added as this read had them: on the board once the picture reaches it (they give nothing else away).
+        Game g0 = game;
+        addedReads.add(new com.gathin.broadcast.AsSeen.Stamp(seen, phaseOf(g0), periodOf(g0), -1, -1, -1), announced.clone());
         if (!s.homeLineup.isEmpty()) espnHome = new ArrayList<>(s.homeLineup);
         if (!s.awayLineup.isEmpty()) espnAway = new ArrayList<>(s.awayLineup);
         homeShape = s.homeFormation == null ? "" : s.homeFormation;
@@ -486,21 +499,74 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             changeSeen = seen;
             String what = e[1] == null ? "" : e[1].toLowerCase(Locale.ROOT);
             if (what.contains("substitution")) subs.add(new String[]{"sub", e[0], e[3], e[2], "", e[5], ""});
-            else if (what.contains("red card")) pend(seen, cardDrop("RED CARD", RED, e));
-            else if (what.contains("yellow card")) pend(seen, cardDrop("YELLOW CARD", BoardPrefs.YELLOW, e));
+            else if (what.contains("red card")) pend(seen, cardDrop("RED CARD", RED, e), e[0]);
+            else if (what.contains("yellow card")) pend(seen, cardDrop("YELLOW CARD", BoardPrefs.YELLOW, e), e[0]);
         }
-        for (List<String[]> grp : SubsPage.group(subs)) pend(seen, subsDrop(grp));
+        for (List<String[]> grp : SubsPage.group(subs)) pend(seen, subsDrop(grp), grp.get(0)[1]);
         if (BoardPrefs.varExplainedOn(getContext())) {
             for (VarExplained.Seen v : VarExplained.scan(s.varLines)) {
                 if (v == null || !varKeys.add(v.key) || first) continue;
                 BoardDrop.Drop d = varDrop(v);
-                if (d != null) pend(seen, d);
+                if (d != null) pend(seen, d, v.call != null ? v.call.minute : null);
             }
         }
     }
 
-    private void pend(long seen, BoardDrop.Drop d) {
-        if (d != null) pending.add(new Object[]{seen, d});
+    /**
+     * An alert the summary read at seen brought, held until the picture reaches it (AsSeen): the channel's delay since then
+     * (the longest a channel runs behind while it has none of its own and its clock was not set at kick-off), and the
+     * board's clock past its minute when it has one; one gone stale meanwhile is let go.
+     */
+    private void pend(long seen, BoardDrop.Drop d, String minute) {
+        Game g = game;
+        if (d == null || g == null) return;
+        pending.add(g.id, stamp(g, seen, com.gathin.broadcast.AsSeen.minuteAt(minute)), () -> drop(d));
+    }
+
+    /** Pure: what a read of game g at seen could give away (AsSeen): the game as the scores had it, its moment (upTo). */
+    static com.gathin.broadcast.AsSeen.Stamp stamp(Game g, long seen, int upTo) {
+        return new com.gathin.broadcast.AsSeen.Stamp(seen, phaseOf(g), periodOf(g), upTo, -1, -1);
+    }
+
+    /** Pure: the game's state for AsSeen (BEFORE, PLAY, BREAK, OVER). */
+    static int phaseOf(Game g) {
+        if (g == null) return com.gathin.broadcast.AsSeen.PLAY;
+        return g.state == Game.POST ? com.gathin.broadcast.AsSeen.OVER : g.state == Game.PRE ? com.gathin.broadcast.AsSeen.BEFORE
+                : g.halftime ? com.gathin.broadcast.AsSeen.BREAK : com.gathin.broadcast.AsSeen.PLAY;
+    }
+
+    /** Pure: the game's half for AsSeen: ESPN's own, else its minute's (1 when neither says). */
+    static int periodOf(Game g) {
+        if (g == null) return 0;
+        if (g.period >= 1 && g.period <= 4) return g.period;
+        int p = BoardClock.periodOfDetail(g.detail);
+        return p > 0 ? p : 1;
+    }
+
+    /**
+     * Pure: where the picture is for AsSeen: the reading the screen has reached (before kick-off, in play, half time, full
+     * time), the board's clock in step with it (seconds; none at a break), whether that clock is the channel's own (set at
+     * kick-off, or the channel's delay set for it), the channel's delay, the board's score.
+     */
+    static com.gathin.broadcast.AsSeen.Picture picture(BoardClock.Reading r, String clock, long now, boolean known, long waitMs) {
+        com.gathin.broadcast.AsSeen.Picture p = new com.gathin.broadcast.AsSeen.Picture();
+        p.now = now;
+        p.known = known;
+        p.lagMs = waitMs;
+        if (r == null) return p;
+        p.state = r.state == Game.POST ? com.gathin.broadcast.AsSeen.OVER : r.state == Game.PRE ? com.gathin.broadcast.AsSeen.BEFORE
+                : r.halftime ? com.gathin.broadcast.AsSeen.BREAK : com.gathin.broadcast.AsSeen.PLAY;
+        p.period = BoardClock.periodOf(clock, r.detail);
+        p.secs = p.state == com.gathin.broadcast.AsSeen.PLAY ? com.gathin.broadcast.SubsTiming.clockSeconds(clock) : -1;
+        p.home = r.state == Game.PRE ? 0 : r.home;
+        p.away = r.state == Game.PRE ? 0 : r.away;
+        return p;
+    }
+
+    /** The minutes added as they stood when the picture was where it is now (none put up until a read is reached). */
+    private int[] addedNow() {
+        int[] a = addedReads.pick(picture);
+        return a == null ? new int[4] : a;
     }
 
     // ---- the alerts' words (as the launcher's) ------------------------------------------------------------------------
@@ -728,12 +794,24 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             double secs = BoardClock.anchoredSecs(anchor, now, r.detail);
             if (secs < 0) secs = BoardClock.clockSecs(r, screenNow);
             if (secs >= 0) l.clock = BoardClock.clockWords(steady.shown(g.id, r.detail, secs, now));
-            l.added = BoardClock.addedWords(l.clock, r.detail, announced);
+        }
+        // Where the picture is (its clock the channel's own once set at kick-off, or the channel's delay set for it): what
+        // waits for it (the minutes added, the summary's alerts) comes once it has reached it, never as the scores have it.
+        picture = picture(r, l.clock, now, anchor != null || InStep.own(c, chKey), waitMs());
+        BoardClock.Reading latest = readings.peekLast();
+        if (latest != null && latest.state != Game.PRE) {
+            picture.scoresHome = latest.home;
+            picture.scoresAway = latest.away;
+        }
+        if (l.live && r != null) {
+            // The minutes added as the scores had them when the picture was where it is now, in the board's tab (AddedTime:
+            // the same for every look; no panel stands out here, so the tab keeps them).
+            l.added = com.gathin.broadcast.AddedTime.boardAdded(BoardClock.addedWords(l.clock, r.detail, addedNow()), false);
             l.stoppage = BoardClock.inAddedTime(l.clock, r.detail);
             if (!l.added.isEmpty()) addedOut(BoardClock.periodOf(l.clock, r.detail), l.added);
         }
         moments(r, screenNow, now, l.score);
-        release(screenNow);
+        pending.release(g.id, picture);
         if (r != null && r.state != Game.PRE) {
             if (shownScore != null && !shownScore.equals(l.score)) {
                 int side = BoardClock.goalSide(shownScore, l.score);
@@ -756,12 +834,13 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         guard(now);
     }
 
-    /** The minutes added out beside the board once a half, as soon as they are known (their tab beside it after). */
+    /**
+     * The minutes added out beside the board once a half (extra time's too), as soon as the picture has them (their tab
+     * beside it after), as on the launcher and the phone.
+     */
     private void addedOut(int period, String added) {
-        if (period != 1 && period != 2) return;
-        if (period == 1 ? addedOutFor1 : addedOutFor2) return;
-        if (period == 1) addedOutFor1 = true;
-        else addedOutFor2 = true;
+        if (period < 1 || period > 4 || (addedOutFor & (1 << period)) != 0) return;
+        addedOutFor |= 1 << period;
         try {
             drop(addedDrop(Integer.parseInt(added.replace("+", "").trim())));
         } catch (NumberFormatException ignored) {
@@ -792,16 +871,6 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             else if ("ft".equals(ph)) drop(momentDrop("FULL TIME", score));
         }
         if ("pre".equals(ph) && g.kickoff > 0 && BoardPrefs.lineupsOn(c) && Moments.lineupsDue(g.kickoff - screenNow)) lineups(false);
-    }
-
-    /** Alerts the picture has reached now go out beside the board. */
-    private void release(long screenNow) {
-        for (Iterator<Object[]> it = pending.iterator(); it.hasNext(); ) {
-            Object[] p = it.next();
-            if ((Long) p[0] > screenNow) continue;
-            it.remove();
-            drop((BoardDrop.Drop) p[1]);
-        }
     }
 
     /** A goal on the screen: its moment on the board, its sound, and what it brings (the pop-up after it, or its scorer). */
@@ -1659,7 +1728,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         if (l.live && r != null) {
             double secs = BoardClock.clockSecs(r, screenNow);
             if (secs >= 0) l.clock = BoardClock.clockWords(secs);
-            l.added = BoardClock.addedWords(l.clock, r.detail, announced);
+            l.added = com.gathin.broadcast.AddedTime.boardAdded(BoardClock.addedWords(l.clock, r.detail, announced), false);
             l.stoppage = BoardClock.inAddedTime(l.clock, r.detail);
         }
         bug.set(l);
