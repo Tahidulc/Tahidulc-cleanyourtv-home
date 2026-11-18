@@ -36,10 +36,12 @@ import java.util.List;
  *   programme's card under it.</li>
  * </ul>
  *
- * A channel's row (125 a row): its logo (96 x 72), its name (28, white), what's on in the light accent and its bar (4);
- * the one playing has the accent's ▶. The remote's row is in the focus pill (568 x 117, 16 in) and stays the second row
- * while it can; programmes are 75 a row from y 115, the one on now in the light accent, five before it shown. Left opens
- * the groups (GroupsPanel: the playlist, Favourites, All channels, then its groups, the remote's group held at y 502):
+ * A channel's row (125 a row): its channel's cell, the logo alone (ChannelLook, 216 x 117: on its logo's deep colour,
+ * no number, no tile round the logo and no name, as the family asked), then what's on (its title, its times with
+ * what's left, its bar); the one playing has the accent's ▶. The remote's row has a soft light band behind it and its
+ * cell 07's white ring, lifted, and stays the second row while it can (its number is the list's content description,
+ * for accessibility); programmes are 75 a row from y 115, the one on now in the light accent, five before it shown.
+ * Left opens the groups (GroupsPanel: the playlist, Favourites, All channels, then its groups, the remote's group held at y 502):
  * the channels move right beside them, and moving onto a group shows its channels at once; Right or OK goes back to the
  * channels. OK on a channel plays it (the list stays); OK on the one playing goes full screen. Back closes the groups,
  * then the list.
@@ -52,6 +54,9 @@ final class ChannelList extends FrameLayout implements GroupsPanel.Host {
     static final int OVERLAY = 0, PREVIEW = 1;
     static final float COL_W = 600f, BAND_H = 73f, ROW = 125f, ROWS_TOP = 89f, PILL_H = 117f, SCHED_X = 600f;
     static final float SCHED_ROW = 75f, SCHED_TOP = 115f, GROUPS_W = 500f, ROLL_MS = 120f;
+    /** A row's channel cell (the logo alone); the channels' column's opacity over the moving picture. */
+    static final float CH_W = 216f;
+    static final int COLUMN_ALPHA = 0xF0;
     /** The preview's window for the picture (design pixels), and its card under it. */
     static final float VIDEO_X = 1144f, VIDEO_Y = 72f, VIDEO_W = 736f, VIDEO_H = 414f, CARD_Y = 526f;
     /** The groups' tags beside the playlist's own groups. */
@@ -118,6 +123,7 @@ final class ChannelList extends FrameLayout implements GroupsPanel.Host {
         groups.setVisibility(GONE);
         settle(true);
         columns.invalidate();
+        describe();
     }
 
     private void load() {
@@ -213,6 +219,13 @@ final class ChannelList extends FrameLayout implements GroupsPanel.Host {
         focus = n;
         settle(false);
         columns.invalidate();
+        describe();
+    }
+
+    /** The channel the remote is on, with its number (its cell no longer draws it), for accessibility. */
+    private void describe() {
+        Channel c = focused();
+        columns.setContentDescription(c == null ? null : GuideGrid.describe(Library.get(tv).number(c), ChannelEdits.name(c), ""));
     }
 
     void ok() {
@@ -260,7 +273,6 @@ final class ChannelList extends FrameLayout implements GroupsPanel.Host {
         private final TextPaint onP = Type.paint(Type.ROW, Type.REGULAR, Palette.ACCENT_LIGHT), timeP = Type.paint(Type.ROW, Type.REGULAR, Palette.TEXT2);
         private final TextPaint headP = Type.paint(Type.ROW, Type.REGULAR, Palette.TEXT1), dateP = Type.paint(Type.ROW, Type.MEDIUM, Palette.ACCENT_LIGHT);
         private final TextPaint cardTitleP = Type.paint(36f, Type.MEDIUM, Palette.TEXT1), descP = Type.paint(Type.ROW, Type.REGULAR, Palette.TEXT2);
-        private final TextPaint logoP = Type.paint(Type.SMALL, Type.MEDIUM, Palette.TEXT1);
         private final RectF r = new RectF();
         private final Path corners = new Path(), tri = new Path();
         private final Runnable redraw = this::invalidate;
@@ -270,9 +282,10 @@ final class ChannelList extends FrameLayout implements GroupsPanel.Host {
         private long cardStart = Long.MIN_VALUE;
         private float cardWidth = -1f, cornersFor = -1f;
         private TextFit names, titles, times, heads;
+        /** Each row's times and what's left ("19:00 – 20:10 · 40 min left"), kept (nothing made a frame). */
+        private final GuideGrid.Lines lines = new GuideGrid.Lines();
         private StaticLayout cardTitle, cardDesc;
         private final InfoCard where;
-        private TextFit logos;
         private String bandFor, bandFit = "", dateFor;
         private float dateW;
 
@@ -319,7 +332,8 @@ final class ChannelList extends FrameLayout implements GroupsPanel.Host {
             // The programmes of the channel the remote is on (not while the groups are open).
             if (!groupsOpen && f != null) drawSchedule(c, f, now, lib, preview);
             // The channels.
-            fill.setColor(preview ? Palette.PANEL : Palette.PLAYBACK);
+            // Over the moving picture a touch more solid than the playback panels (the rows' words sit on it, not on cells).
+            fill.setColor(preview ? Palette.PANEL : Palette.alpha(Palette.PLAYBACK, COLUMN_ALPHA));
             c.drawRect(Ui.f(x0), Ui.f(BAND_H), Ui.f(x0 + COL_W), getHeight(), fill);
             fill.setColor(preview ? Palette.HEADER : Palette.alpha(Palette.HEADER, Palette.PLAYBACK_ALPHA));
             c.drawRect(Ui.f(x0), 0, Ui.f(x0 + COL_W), Ui.f(BAND_H), fill);
@@ -364,23 +378,17 @@ final class ChannelList extends FrameLayout implements GroupsPanel.Host {
         }
 
         private void drawRow(Canvas c, Channel ch, float x0, float top, boolean lit, boolean playing, long now, Library lib) {
-            // The channel's cell in its logo's colour (ChannelLook; the plain 07 row as Behind logos may say), 07's
-            // focus where the remote is: a white ring on a coloured cell, the white pill on a plain one.
-            r.set(Ui.f(x0 + 16f), Ui.f(top), Ui.f(x0 + COL_W - 16f), Ui.f(top + PILL_H));
-            int words = ChannelLook.fillCell(c, r, ch, lit && !groupsOpen);
-            if (lit && groupsOpen && ChannelLook.colour(ch) == 0) Focus.selected(c, r);
-            boolean ink = words == Look07.INK;
-            // The logo on its tile (Logos: Behind logos), else the channel's name over the empty tile.
-            r.set(Ui.f(x0 + 32f), Ui.f(top + 26f), Ui.f(x0 + 128f), Ui.f(top + 90f));
-            if (!Logos.draw(c, ch, r, redraw)) {
-                logoP.setColor(ink ? Look07.INK2 : Palette.TEXT2);
-                if (logos == null) logos = new TextFit(logoP, 64);
-                logos.line(c, ChannelEdits.name(ch), Ui.f(x0 + 36f), Ui.f(top + 66f), Ui.f(88));
+            float rowL = x0 + 16f, rowR = x0 + COL_W - 16f;
+            if (lit) {
+                // The remote's row: a soft light band behind it (its channel's cell carries 07's focus).
+                r.set(Ui.f(rowL - 4f), Ui.f(top - 4f), Ui.f(rowR + 4f), Ui.f(top + PILL_H + 4f));
+                fill.setColor(groupsOpen ? 0x0FFFFFFF : 0x1AFFFFFF);
+                c.drawRoundRect(r, Ui.f(24f), Ui.f(24f), fill);
             }
-            float tx = Ui.f(x0 + 144f), room = Ui.f(COL_W - 144f - 32f - (playing ? 48f : 0f));
-            nameP.setColor(words);
-            names.line(c, ChannelEdits.name(ch), tx, Ui.f(top + 42f), room);
-            onP.setColor(ink ? Look07.INK2 : ChannelLook.colour(ch) != 0 ? Look07.L2 : Palette.ACCENT_LIGHT);
+            // The channel's cell: the logo alone (ChannelLook: no number, no tile, no name), lifting where the remote is.
+            r.set(Ui.f(rowL), Ui.f(top), Ui.f(rowL + CH_W), Ui.f(top + PILL_H));
+            ChannelLook.cell(c, r, Ui.f(Look07.R_CHANNEL), ch, lit && !groupsOpen ? 1f : 0f, 0, "", false, redraw);
+            float tx = Ui.f(rowL + CH_W + 20f), room = Ui.f(rowR - 12f) - tx - (playing ? Ui.f(40f) : 0f);
             if (playing) {
                 // The channel playing: the accent's ▶.
                 float px = Ui.f(x0 + 556f), py = Ui.f(top + 32f), s = Ui.f(16f);
@@ -392,12 +400,20 @@ final class ChannelList extends FrameLayout implements GroupsPanel.Host {
                 fill.setColor(Palette.ACCENT);
                 c.drawPath(tri, fill);
             }
+            // What's on: its title, its times and what's left, how far through it is.
             Guide.Schedule s = lib.schedule(ch.key);
             int i = s == null ? -1 : s.at(now);
-            if (i >= 0) {
-                titles.line(c, s.title[i], tx, Ui.f(top + 82f), Ui.f(COL_W - 144f - 32f));
-                Bars.thin(c, tx, Ui.f(top + 99f), Ui.f(424f), Ui.f(4f), LiveText.progress(now, s.start[i], s.stop[i]));
+            nameP.setColor(Palette.TEXT1);
+            if (i < 0) {
+                timeP.setColor(Palette.TEXT2);
+                times.line(c, s == null ? "No programme information" : "Nothing in the guide now", tx, Ui.f(top + 66f), room);
+                return;
             }
+            names.line(c, s.title[i], tx, Ui.f(top + 48f), room);
+            timeP.setColor(Palette.TEXT2);
+            times.line(c, lines.of(s.start[i], s.stop[i], (int) Math.max(1L, (s.stop[i] - now + 59_999L) / 60_000L)), tx, Ui.f(top + 82f),
+                    Ui.f(rowR - 12f) - tx);
+            Bars.thin(c, tx, Ui.f(top + 99f), Ui.f(rowR - 12f) - tx, Ui.f(4f), LiveText.progress(now, s.start[i], s.stop[i]));
         }
 
         private void drawSchedule(Canvas c, Channel ch, long now, Library lib, boolean preview) {

@@ -36,10 +36,17 @@ wordmark are Homefield; it carries no Sky logo or name.
   the panel's right-hand part, the programme's picture (Sky's public UK guide, else the channel's logo on a ground
   tinted by its own colour), faded into the panel from the left and the foot, cross-fading to the next programme's as
   the remote moves (Left, Right, Up, Down), the pictures either side read ahead. Under it the date and the clock in the light
-  accent, the times every half hour and a dot at the time now; then a row a channel, 88 high: its number, its logo on its
-  tile and its name, a ▶ on the channel in the preview and the archive's mark on one whose provider keeps an archive; its
-  programmes in neutral cells, the part already shown a little lighter, the remote's row lighter still and its cell in
-  the accent, their titles in two lines; a bell on a programme with a reminder. Up and Down move a row, the rows sliding
+  accent, the times every half hour and a dot at the time now; then a row a channel, 88 high: its cell the channel's
+  logo alone (no number, no tile round it and no name), as large as the cell allows with the same room all round and its
+  own shape kept, read sharp at that size, on the logo's own colour in a deep, opaque shade (Behind logos: None, the logo
+  on the plain row; Black tile, a black cell), its marks small and quiet in the cell's right-hand corner (▶ on the
+  channel in the preview, the favourite's star, the archive's mark on one whose provider keeps an archive, HD); its
+  programmes' cells each filled by the programme's own picture whatever their width, its faces whole (a cell too wide
+  for that has the picture blurred behind and sharp where the faces are; one the times cut shows the faces), with a soft
+  shade only under the title and times and a light fade under the line of how far through, the part already shown
+  dimmer, the remote's cell lifted with a white ring (a programme with no picture in a plain cell); a bell on a
+  programme with a reminder. The channel's number is still said by the guide for accessibility, and still typed to go
+  to a channel. Up and Down move a row, the rows sliding
   so the remote's stays third from the top; Left and Right go along the programmes, the times paging so the remote's
   starts at the left (both glide on the display's own clock, and on smoothly while a key is held, never starting over);
   the channel keys page the rows, rewind and fast forward the times (back into an archive too).
@@ -88,8 +95,11 @@ wordmark are Homefield; it carries no Sky logo or name.
   the playlist and the group, chips for the picture and the sound as the player has them (FHD, 50 FPS, STEREO; the
   frames a second as the stream says them, else counted from the frames it shows over a few seconds and taken to the
   usual rate: 24, 25, 30, 50 or 60, left out until they are known, and kept for each channel), two lines about it and
-  what's next, and behind its words, across its right-hand part, the programme's picture as the guide's panel has it,
-  cross-fading as Up, Down, CH+, CH− and INFO bring up another channel's card. CH+ and CH− bring up the next or previous channel's card without leaving the channel
+  what's next, and behind it all the programme's own picture filling the whole card (its faces whole, between the words
+  and what's next, a shade only under the words and what's next; the plain card for a programme with none), cross-fading
+  as Up, Down, CH+, CH− and INFO bring up another channel's card, the channels either side read ahead. Over it at the top
+  right the mini guide: five channels' rows, each the channel's logo alone on its colour beside its programme, the
+  picture filling the programme's part under its title, times and what's left. CH+ and CH− bring up the next or previous channel's card without leaving the channel
   (OK then changes to it); Up and Down change channel (Settings, Remote can make them bring up the live screen's rows of
   channels instead, as Homefield TV came); Right goes back to the channel watched last; the number keys go to a channel,
   the number in a box at the top right. OK brings up the overlay: the card at the top, a line across the foot for how
@@ -103,8 +113,8 @@ wordmark are Homefield; it carries no Sky logo or name.
   either way, with Reset and Apply to all channels; Closed captions the subtitles (below); Display mode the picture's
   shape for this channel or all of them (Normal, Full, Zoom, Zoom - 2.35:1, Reduced, 4:3, 16:9, 2.35:1); Sleep timer
   stops the picture after 15 minutes to 4 hours; Channel options has Watch from the start and Lock this channel. Left
-  brings up the channel list over the picture: the channels of the group playing down the left, the programmes of the
-  one the remote is on beside them, and its programme in a card at the top right; Left again opens the groups (the
+  brings up the channel list over the picture: the channels of the group playing down the left (each its logo alone on
+  its colour, then what's on with its times and bar), the programmes of the one the remote is on beside them, and its programme in a card at the top right; Left again opens the groups (the
   playlist, Favourites, All channels, then the family's groups), and OK plays a channel with the list staying. Left
   held, or Channels list, opens it on its own ground with the picture playing on in a window at the top right. Up held
   brings up History, Right held the programme's description, Down held Search. Back goes to the TV guide with the

@@ -580,12 +580,14 @@ final class CatchupScreen extends Screen implements LiveTv.Listener {
         @Override protected void onDraw(Canvas c) {
             long at = target >= 0 ? target : tv.live.shownAt();
             if (mode == BANNER) {
-                if (peek != null) card.draw(c, InfoCard.FOOT_Y, peek, System.currentTimeMillis(), false, null);
-                else card.draw(c, InfoCard.FOOT_Y, ch, at, true, null);
+                boolean fading = peek != null ? card.draw(c, InfoCard.FOOT_Y, peek, System.currentTimeMillis(), false, null)
+                        : card.draw(c, InfoCard.FOOT_Y, ch, at, true, null);
+                // The card's picture cross-fading to another programme's.
+                if (fading) postInvalidateOnAnimation();
                 return;
             }
             if (mode != OVERLAY && mode != TILES) return;
-            card.draw(c, InfoCard.TOP_Y, ch, at, true, null);
+            if (card.draw(c, InfoCard.TOP_Y, ch, at, true, null)) postInvalidateOnAnimation();
             if (mode == TILES) return;
             int w = getWidth(), hh = getHeight();
             if (scrimFor != hh) {
