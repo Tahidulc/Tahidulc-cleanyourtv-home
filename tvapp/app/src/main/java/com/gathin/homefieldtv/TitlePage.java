@@ -2,11 +2,11 @@ package com.gathin.homefieldtv;
 
 import android.content.Context;
 import android.graphics.Bitmap;
-import android.graphics.BitmapShader;
 import android.graphics.Canvas;
 import android.graphics.LinearGradient;
 import android.graphics.Matrix;
 import android.graphics.Paint;
+import android.graphics.RadialGradient;
 import android.graphics.RectF;
 import android.graphics.Shader;
 import android.text.StaticLayout;
@@ -22,23 +22,23 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * A film's or a series' page, as the family's "TV show card" has it, made for the remote (design pixels, 1920 x 1080):
- * the title's picture across the whole page, fading at the left and the foot into the page's colour, which is the
- * picture's own colour made deep (a series': its season's, changing as the remote goes from season to season). Over it,
- * its logo (or its name in big lettering), its rating, years, age and picture in a line, the red Play (or Resume) pill
- * and grey buttons. A series then has the phone's seasons: Season 1, Season 2… with the white pill behind the season
- * the remote is in, following it, and under them one row of every episode of every season (its trailer first), the
- * one the remote is on grown and named. Further down, as the remote goes there, the page rises: What it's about and its
- * genres side by side, its cast as round faces with the parts they play, and More like this, the poster the remote is
- * on grown. Every move glides (Glide): the page, each row, the season pill; the colour fades. Only what is on screen is
- * drawn.
+ * A film's or a series' page in the 07 look (homefield-07-real 10, 12, 13, 14 and clip 3), made for the remote (design
+ * px): the page in the title's own colour (its picture's, made deep; a series' its season's, cross-fading as the season
+ * changes), its picture across the right fading into that colour, a glow of it at the foot. On the left its logo (TMDB's)
+ * or name, its facts, story and credits, then its buttons: Resume (or Play) white with the minutes left after it, From
+ * the Start, then round ones for My List (a tick once on it), the trailer and Remove from Continue watching. A series
+ * then has the phone's season pills over one row of every episode of every season (Card07s that lift and tilt, the
+ * remote's kept third, its story under it; watched ones ticked, UP NEXT on the one to carry on with, a line between
+ * seasons); the white pill slides with the remote into the next season and the page turns that season's colour. Further
+ * down the page rises to About, its genres, the cast's faces and More like this; a film has its cast and More like this
+ * under its buttons. Every move glides; only what is in sight is drawn; nothing is made while drawing.
  */
 final class TitlePage extends View {
     interface Host {
         /** An episode chosen. */
         void play(Catalog.Episode ep);
 
-        /** The Trailer tile. */
+        /** The trailer (a series' has it among the buttons too). */
         void trailer();
 
         /** A poster in More like this. */
@@ -47,19 +47,21 @@ final class TitlePage extends View {
         /** Someone in the cast. */
         void person(String name);
 
-        /** Up from the buttons: on to the top bar. */
+        /** Up from the buttons: on to the tab bar. */
         void up();
 
         /** How far an episode has been watched, -1 when it hasn't been started. */
         float progress(Catalog.Episode ep);
     }
 
-    /** A button under the title: the red pill (main), or grey with an icon. */
+    /** A button under the title: the main white one (with quieter words after it), a grey one, or a round icon. */
     static final class Button {
         final String label;
         final int icon;
         final boolean main, lit;
         final Runnable run;
+        /** Quieter words after the main one's ("18 min left"). */
+        String after = "";
 
         Button(String label, int icon, boolean main, Runnable run) {
             this(label, icon, main, false, run);
@@ -72,6 +74,11 @@ final class TitlePage extends View {
             this.lit = lit;
             this.run = run;
         }
+
+        /** My List, the trailer and Remove are round icons; the rest pills with their words. */
+        boolean round() {
+            return !main && (icon == PLUS || icon == TICK || icon == TRAILER || icon == BIN);
+        }
     }
 
     /** The buttons' icons. */
@@ -79,9 +86,13 @@ final class TitlePage extends View {
     /** The parts the remote moves through, top to bottom. */
     static final int BUTTONS = 0, SEASONS = 1, EPISODES = 2, CAST = 3, MORE = 4;
 
-    static final float LEFT = TopBar.LEFT, LOGO_TOP = 190f, LOGO_W = 840f, LOGO_H = 280f, FACTS_Y = 532f, BUTTONS_TOP = 580f,
-            BUTTON_H = 78f, PILLS_Y = 724f, PILL_H = 54f, EP_TOP = 796f, EP_W = 372f, EP_H = 209f, EP_GAP = 40f, GROW = 1.22f,
-            FACE = 112f, CELL = 400f, MORE_W = 220f, MORE_H = 330f, MORE_GAP = 30f, HEAD = 64f;
+    /** Places (design px; the mock-ups' .tp-*). */
+    static final float LEFT = 90f, LOGO_TOP = 150f, LOGO_W = 620f, LOGO_H = 170f, FACTS_Y = 353.3f, STORY_TOP = 386f, STORY_W = 920f,
+            CREDITS_TOP = 492f, BUTTONS_Y = 575f, PILLS_Y = 678f, PILL_H = 56f, EP_TOP = 730f, EP_W = 384f, EP_H = 216f,
+            EP_GAP = 40f, SEASON_GAP = 44f, ART_X = 420f, ART_W = 1500f, ART_H = 844f, FACE = 140f, FACE_STEP = 200f,
+            MORE_W = 196f, MORE_H = 294f, MORE_STEP = 222f, LOWER = 1080f;
+    /** How long the page, a row and the season pill take to glide; the colour's cross-fade. */
+    static final long PAGE_MS = 520, ROW_MS = 450, PILL_MS = 450;
 
     private final Host host;
     private Catalog.Title title;
@@ -91,67 +102,80 @@ final class TitlePage extends View {
     private final List<Catalog.Episode> episodes = new ArrayList<>();
     private final List<Catalog.Title> more = new ArrayList<>();
     private final List<String[]> cast = new ArrayList<>();
-    /** Each season's number and its first episode's place in the row (the trailer counted). */
+    /** Each season's number and its first episode's place in the row. */
     private final List<int[]> seasons = new ArrayList<>();
-    private boolean trailerTile;
     private String resumeId = "", backdrop = "";
+    private int resumeAt = -1;
 
     private int part = BUTTONS, buttonAt, epAt, castAt, moreAt, seasonAt;
+    /** Whether the page has the remote (false while it is up on the tab bar: nothing lifted). */
+    private boolean active = true;
     private final Glide page = new Glide(PAGE_MS), epX = new Glide(ROW_MS), castX = new Glide(ROW_MS), moreX = new Glide(ROW_MS),
-            pillL = new Glide(PILL_MS), pillR = new Glide(PILL_MS), pillsX = new Glide(ROW_MS);
-    /** How long the page, a row and the season pill take to glide to where the remote sends them. */
-    static final long PAGE_MS = 340, ROW_MS = 280, PILL_MS = 240;
-    private final Lift lift = new Lift();
-    private final Cine.Wash wash = new Cine.Wash(), curtain = new Cine.Wash();
+            pillL = new Glide(PILL_MS), pillR = new Glide(PILL_MS);
+    private final Lift07 lift = new Lift07(), buttonLift = new Lift07();
+    private final Card07 epCards = new Card07(Look07.R_CARD), moreCards = new Card07(Look07.R_POSTER);
+    private final Card07.Marks marks = new Card07.Marks();
+    /** The page's colour: its ground, and the fades of it over the picture (made when the colour is given). */
+    private final Cine.Wash wash = new Cine.Wash();
+    private final Paint glowNow = new Paint(Paint.DITHER_FLAG), glowWas = new Paint(Paint.DITHER_FLAG);
+    private int glowColour, glowWasColour;
     private int showTint;
-    private TopBar bar;
+    private int[] seasonTint = new int[0];
 
     // ---- words, laid out in set(), never while drawing --------------------------------------------------------------
-    private final Lettering lettering = new Lettering();
-    private final TextPaint buttonP, buttonInk, pillP, pillInk, epNo, epName, headP, bodyP, genreP,
-            nameP, partP, moreName, badgeP, initialsP;
-    private final Paint ground = new Paint(), bmp = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG),
-            hero = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG),
-            red = Ui.fill(Cine.RED), grey = Ui.fill(Cine.BUTTON), white = Ui.fill(Cine.WHITE),
-            ring = Ui.stroke(Cine.WHITE, 3f), track = Ui.fill(0x59FFFFFF), place = Ui.fill(0xFF2A2C33), star = Ui.fill(0xFFFFC94D),
-            iconStroke = Ui.stroke(Cine.TEXT, 3.4f), iconFill = Ui.fill(Cine.TEXT), tileFoot = new Paint(), shade = new Paint();
-    private final FactsLine facts = new FactsLine(26f);
-    private final List<Float> buttonW = new ArrayList<>();
+    private final Hero07.Mark mark = new Hero07.Mark(64f);
+    private final Hero07.Facts facts = new Hero07.Facts();
+    private final TextPaint factsP, storyP, creditsP, pillP, pillInk, metaP, capP, capSub, aboutP, headP, sideHead, sideP,
+            faceName, faceRole, moreName, moreSub, upNextP, initialsP;
+    private StaticLayout story, credits, about;
+    private final Paint ground = new Paint(), art = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG),
+            darkLeft = new Paint(Paint.DITHER_FLAG), darkFoot = new Paint(Paint.DITHER_FLAG), white = Ui.fill(Look07.L1),
+            fill = new Paint(Paint.ANTI_ALIAS_FLAG), ring = new Paint(Paint.ANTI_ALIAS_FLAG), line = Ui.fill(0x33FFFFFF),
+            faceP = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+    private final Shaders shaders = new Shaders();
     private String[] seasonWords = new String[0];
     private float[] seasonX = new float[0], seasonW = new float[0];
-    private String[] epNos = new String[0], epNames = new String[0];
-    private StaticLayout overview;
-    private final List<String> genres = new ArrayList<>();
+    private String meta = "";
+    private String[] epTitles = new String[0], epSubs = new String[0];
+    private final StaticLayout[] epStories = new StaticLayout[3];
+    private final int[] epStoryFor = {-1, -1, -1};
+    private String genresWords = "", onWords = "";
     private String[] castNames = new String[0], castParts = new String[0], castInitials = new String[0];
     private int[] castColours = new int[0];
-    private Paint[] faces = new Paint[0];
-    private String[] moreNames = new String[0];
-    private int[] seasonTint = new int[0];
+    private String[] moreNames = new String[0], moreYears = new String[0];
     private final RectF r = new RectF();
-    private final Runnable redraw = this::invalidate, colours = this::colours, faceReady = this::makeFaces;
+    private final Matrix m = new Matrix();
+    private final Runnable redraw = this::invalidate, colours = this::colours;
 
     TitlePage(Context c, Host host) {
         super(c);
         this.host = host;
         Cine.init(c);
-        buttonP = Cine.text(28f, Cine.interSemi(), Cine.TEXT);
-        buttonInk = Cine.text(28f, Cine.interSemi(), Cine.INK);
-        pillP = Cine.text(27f, Cine.outfit(600), 0xB3FFFFFF);
-        pillInk = Cine.text(27f, Cine.outfit(600), Cine.INK);
-        epNo = Cine.text(28f, Cine.outfit(700), Cine.TEXT);
-        epName = Cine.text(28f, Cine.outfit(700), Cine.TEXT);
-        epNo.setShadowLayer(Ui.f(8f), 0, Ui.f(2f), 0xB3000000);
-        epName.setShadowLayer(Ui.f(8f), 0, Ui.f(2f), 0xB3000000);
-        headP = Cine.text(34f, Cine.outfit(700), Cine.TEXT);
-        bodyP = Cine.text(25f, Cine.inter(), Cine.MUTED);
-        genreP = Cine.text(25f, Cine.inter(), Cine.MUTED);
-        nameP = Cine.text(27f, Cine.outfit(600), Cine.TEXT);
-        partP = Cine.text(22f, Cine.inter(), Cine.FAINT);
-        moreName = Cine.text(26f, Cine.outfit(700), Cine.TEXT);
-        badgeP = Cine.text(17f, Cine.interSemi(), Cine.INK);
-        badgeP.setLetterSpacing(0.06f);
-        initialsP = Cine.text(40f, Cine.outfit(600), Cine.TEXT);
-        ground.setColor(Cine.GROUND);
+        factsP = Type.paint(22f, Type.MEDIUM, Look07.L2);
+        storyP = Type.paint(22f, Type.REGULAR, Look07.L2);
+        creditsP = Type.paint(19f, Type.REGULAR, Look07.L3);
+        pillP = Type.paint(22f, Type.SEMIBOLD, Look07.L2);
+        pillInk = Type.paint(22f, Type.SEMIBOLD, Look07.INK);
+        metaP = Type.paint(19f, Type.MEDIUM, Look07.L3);
+        capP = Type.paint(21f, Type.SEMIBOLD, Look07.L2);
+        capSub = Type.paint(17f, Type.MEDIUM, Look07.L3);
+        aboutP = Type.paint(23f, Type.REGULAR, Look07.L2);
+        headP = Type.paint(Type.H3, Type.BOLD, Look07.L1);
+        sideHead = Type.paint(26f, Type.BOLD, Look07.L1);
+        sideP = Type.paint(21f, Type.REGULAR, Look07.L2);
+        faceName = Type.paint(19f, Type.SEMIBOLD, Look07.L1);
+        faceRole = Type.paint(16f, Type.REGULAR, Look07.L3);
+        moreName = Type.paint(23f, Type.SEMIBOLD, Look07.L2);
+        moreSub = Type.paint(19f, Type.MEDIUM, Look07.L3);
+        upNextP = Type.paint(14f, Type.EXTRABOLD, Look07.INK);
+        upNextP.setLetterSpacing(0.06f);
+        initialsP = Type.paint(40f, Type.SEMIBOLD, Look07.L1);
+        ring.setStyle(Paint.Style.STROKE);
+        ground.setColor(Look07.GROUND);
+        Shadows.prepare(Look07.SH_BUTTON, 35f);
+        Shadows.prepare(Look07.SH_TILE, FACE / 2f);
+        Shadows.prepare(Look07.SH_ROW, FACE / 2f);
+        Pills.prepare();
     }
 
     // ---- what it shows ----------------------------------------------------------------------------------------------
@@ -170,53 +194,52 @@ final class TitlePage extends View {
         more.clear();
         more.addAll(like);
         moreNames = new String[more.size()];
-        for (int i = 0; i < more.size(); i++) moreNames[i] = Ui.fit(more.get(i).name, moreName, Ui.f(MORE_W - 28f));
+        moreYears = new String[more.size()];
+        for (int i = 0; i < more.size(); i++) {
+            moreNames[i] = Ui.fit(more.get(i).name, moreName, Ui.f(MORE_W - 8f));
+            moreYears[i] = more.get(i).year;
+        }
         moreAt = Math.min(moreAt, Math.max(0, more.size() - 1));
 
-        // The episodes, every season's in one row, the trailer first.
-        String trailer = d == null ? "" : TitleScreen.trailerId(d.trailer);
-        trailerTile = t.series && !trailer.isEmpty();
+        // The episodes, every season's in one row.
         episodes.clear();
         seasons.clear();
         if (t.series && d != null) {
-            int at = trailerTile ? 1 : 0;
             for (Catalog.Season s : d.seasons) {
                 if (s.episodes.isEmpty()) continue;
-                seasons.add(new int[]{s.number, at + episodes.size()});
+                seasons.add(new int[]{s.number, episodes.size()});
                 episodes.addAll(s.episodes);
             }
         }
-        int n = episodes.size() + (trailerTile ? 1 : 0);
-        epNos = new String[n];
-        epNames = new String[n];
+        int n = episodes.size();
+        resumeAt = -1;
+        epTitles = new String[n];
+        epSubs = new String[n];
         for (int i = 0; i < n; i++) {
-            Catalog.Episode e = episode(i);
-            epNos[i] = e == null ? "Trailer" : String.format(Locale.UK, "%02d", e.number);
+            Catalog.Episode e = episodes.get(i);
+            if (e.id.equals(resumeId)) resumeAt = i;
+            epTitles[i] = Ui.fit("S" + e.season + " E" + e.number + " · " + (e.title.isEmpty() ? "Episode " + e.number : e.title), capP,
+                    Ui.f(EP_W - 8f));
+            String when = episodeDay(e.aired);
+            epSubs[i] = (e.minutes > 0 ? e.minutes + " min" : "") + (e.minutes > 0 && !when.isEmpty() ? " · " : "") + when;
         }
+        for (int i = 0; i < epStoryFor.length; i++) epStoryFor[i] = -1;
         seasonWords = new String[seasons.size()];
         for (int i = 0; i < seasons.size(); i++) seasonWords[i] = "Season " + seasons.get(i)[0];
         seasonTint = new int[seasons.size()];
+        meta = n == 0 ? "" : n == 1 ? "1 episode" : n + " episodes";
         if (fresh) {
-            int start = 0;
-            if (!resumeId.isEmpty()) {
-                for (int i = 0; i < n; i++) {
-                    Catalog.Episode e = episode(i);
-                    if (e != null && e.id.equals(resumeId)) start = i;
-                }
-            } else if (trailerTile && n > 1) {
-                start = 1;
-            }
-            epAt = start;
+            epAt = Math.max(0, resumeAt);
             seasonAt = seasonOf(epAt);
             part = BUTTONS;
             page.jump(0f);
-            epX.jump(epTarget());
             castAt = 0;
             castX.jump(0f);
             moreX.jump(0f);
             moreAt = 0;
         }
         epAt = Math.min(epAt, Math.max(0, n - 1));
+        epX.jump(epTarget());
 
         // The cast: TMDB's, with their parts and faces, else the provider's names.
         cast.clear();
@@ -229,78 +252,93 @@ final class TitlePage extends View {
         castParts = new String[cast.size()];
         castInitials = new String[cast.size()];
         castColours = new int[cast.size()];
-        faces = new Paint[cast.size()];
         for (int i = 0; i < cast.size(); i++) {
-            castNames[i] = Ui.fit(cast.get(i)[0], nameP, Ui.f(CELL - FACE - 44f));
-            castParts[i] = Ui.fit(cast.get(i)[1], partP, Ui.f(CELL - FACE - 44f));
+            castNames[i] = Ui.fit(cast.get(i)[0], faceName, Ui.f(FACE_STEP - 24f));
+            castParts[i] = Ui.fit(cast.get(i)[1], faceRole, Ui.f(FACE_STEP - 24f));
             castInitials[i] = Dark.initials(cast.get(i)[0].replace(" (director)", ""));
             castColours[i] = Dark.face(cast.get(i)[0]);
         }
         castAt = Math.min(castAt, Math.max(0, cast.size() - 1));
-        // Their photos read after what is on screen, each made into a round face as it comes (never while drawing).
+        // Their photos read after what is on screen.
         int fd = Math.round(Ui.f(FACE));
-        for (String[] who : cast) if (!who[2].isEmpty()) Pics.prefetch(who[2], fd, fd, Pics.CROP);
-        makeFaces();
-
-        // About it, and its genres.
-        String plot = d != null && !d.plot.isEmpty() ? d.plot : t.plot;
-        overview = Ui.layout(plot.isEmpty() ? "No story given for this one yet." : plot, bodyP, Ui.px(1080f), 5);
-        genres.clear();
-        String g = d == null ? "" : d.genre;
-        for (String s : g.split("\\s*[,/]\\s*")) if (!s.trim().isEmpty() && genres.size() < 4) genres.add(s.trim());
-        if (genres.isEmpty() && !t.category.isEmpty()) genres.add(PosterArt.genreOf(t.category));
+        for (String[] who : cast) if (who.length > 2 && !who[2].isEmpty()) Pics.prefetch(who[2], fd, fd, Pics.CROP);
 
         layoutWords();
         colours();
-        if (fresh) {
-            wash.jump(target());
-            curtain.jump(target());
-            ground.setColor(wash.colour());
-        }
-        nameFocused();
+        if (fresh) jumpColour();
         invalidate();
-    }
-
-    /** The top bar, to fill with the page's colour as the page rises under it. */
-    void bar(TopBar b) {
-        bar = b;
     }
 
     /** TMDB's extras for the title (its logo, cast, seasons' posters, years and age), when they come. */
     void extras(Tmdb.Extras x) {
         extras = x;
         if (title != null) set(title, details, new ArrayList<>(buttons), new ArrayList<>(more), resumeId);
-        if (x != null && !x.logo.isEmpty()) {
-            // Shown once read, so the lettering gives way to it at once (never a blank between).
-            Runnable show = () -> {
-                lettering.logo(x.logo);
-                invalidate();
-            };
-            if (Pics.get(x.logo, Ui.px(LOGO_W), Ui.px(LOGO_H), Pics.FIT, show) != null) show.run();
-        }
     }
 
-    /** The facts line, the buttons' and seasons' widths: measured once for what is shown. */
+    /** The words laid out once for what is shown: the mark, facts, story, credits, the season pills, About. */
     private void layoutWords() {
         Catalog.Title t = title;
         Catalog.Details d = details;
-        lettering.set(t.name, Ui.f(LOGO_W), Ui.f(LOGO_H), Ui.f(150f));
-        facts.set(t, d, extras);
-        buttonW.clear();
-        for (Button b : buttons) buttonW.add(buttonP.measureText(b.label) + Ui.f(b.icon >= 0 ? 112f : 72f));
+        mark.set(t.name, extras == null ? "" : extras.logo, Ui.f(LOGO_W), Ui.f(t.series ? LOGO_H : 120f), Ui.f(1000f));
+        facts.set(t, d, extras, 3);
+        String plot = d != null && !d.plot.isEmpty() ? d.plot : t.plot;
+        story = plot.isEmpty() ? null : Hero07.lines(plot, storyP, Ui.px(STORY_W), 3, Ui.f(22f * 1.45f));
+        CharSequence who = credits();
+        credits = who.length() == 0 ? null : Hero07.lines(who, creditsP, Ui.px(1500f), 1, Hero07.normal(Ui.f(19f)));
+        about = Hero07.lines(plot.isEmpty() ? "No story given for this one yet." : plot, aboutP, Ui.px(1000f), 6, Ui.f(23f * 1.5f));
+        // Its genres, and where it is from.
+        String g = d == null ? "" : Hero07.Facts.genres(d.genre, 5).replace(", ", " · ");
+        if (g.isEmpty()) g = PosterArt.genreOf(t.category);
+        genresWords = g;
+        StringBuilder on = new StringBuilder(t.torbox() ? Catalog.TORBOX : "Your playlist");
+        if (t.series && !seasons.isEmpty()) {
+            on.append(" · ").append(seasons.size()).append(seasons.size() == 1 ? " season, " : " seasons, ").append(meta);
+        } else if (d != null && d.minutes > 0) {
+            on.append(" · ").append(Ui.duration(d.minutes));
+        }
+        onWords = on.toString();
+        // The season pills: each 26 px either side of its words, side by side.
         seasonX = new float[seasonWords.length];
         seasonW = new float[seasonWords.length];
         float x = 0;
         for (int i = 0; i < seasonWords.length; i++) {
             seasonX[i] = x;
-            seasonW[i] = pillP.measureText(seasonWords[i]);
-            x += seasonW[i] + Ui.f(58f);
+            seasonW[i] = pillP.measureText(seasonWords[i]) + Ui.f(52f);
+            x += seasonW[i];
         }
         if (seasonWords.length > 0) {
-            pillL.jump(pillLeft(seasonAt));
-            pillR.jump(pillRight(seasonAt));
-            pillsX.jump(pillsTarget());
+            pillL.jump(seasonX[Math.min(seasonAt, seasonX.length - 1)]);
+            pillR.jump(seasonX[Math.min(seasonAt, seasonX.length - 1)] + seasonW[Math.min(seasonAt, seasonW.length - 1)]);
         }
+    }
+
+    /** "With A, B, C, D · Created by X" or "Director X", their words in bold. */
+    private CharSequence credits() {
+        android.text.SpannableStringBuilder b = new android.text.SpannableStringBuilder();
+        List<String> names = new ArrayList<>();
+        if (extras != null && !extras.cast.isEmpty()) {
+            for (String[] c : extras.cast) if (names.size() < 4 && !c[0].endsWith("(director)")) names.add(c[0]);
+        } else if (details != null) {
+            for (String n : Billboard.names(details.cast, 4)) names.add(n);
+        }
+        if (!names.isEmpty()) {
+            bold(b, "With");
+            b.append(' ').append(String.join(", ", names));
+        }
+        String dir = details == null || details.director == null ? "" : details.director.trim();
+        if (!dir.isEmpty()) {
+            if (b.length() > 0) b.append(" · ");
+            bold(b, title.series ? "Created by" : "Director");
+            b.append(' ').append(dir);
+        }
+        return b;
+    }
+
+    private static void bold(android.text.SpannableStringBuilder b, String words) {
+        int at = b.length();
+        b.append(words);
+        b.setSpan(new android.text.style.ForegroundColorSpan(Look07.L2), at, b.length(), 0);
+        b.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD), at, b.length(), 0);
     }
 
     // ---- colours ----------------------------------------------------------------------------------------------------
@@ -315,29 +353,62 @@ final class TitlePage extends View {
             String poster = extras == null ? null : extras.seasons.get(seasons.get(i)[0]);
             seasonTint[i] = poster == null ? 0 : Tint.of(poster, colours);
         }
-        wash.set(target());
-        curtain.set(target());
+        toColour(target(), false);
         invalidate();
+    }
+
+    /** Pure: a picture's colour as a page's: its hue and saturation (a little less at most), at value 0.32. */
+    static int deep(int art) {
+        if (art == 0) return 0xFF1A1F2C;
+        float[] hsv = new float[3];
+        Cine.hsv(art, hsv);
+        return Cine.colour(hsv[0], Math.min(hsv[1], 0.86f), 0.32f);
     }
 
     /** The page's colour now: the season the remote is in (its poster's), else the title's picture's. */
     private int target() {
-        int art = seasonAt >= 0 && seasonAt < seasonTint.length && seasonTint[seasonAt] != 0 ? seasonTint[seasonAt] : showTint;
-        return Cine.shade(art, 0.62f, 0.15f);
+        int a = seasonAt >= 0 && seasonAt < seasonTint.length && seasonTint[seasonAt] != 0 ? seasonTint[seasonAt] : showTint;
+        return deep(a);
+    }
+
+    private void jumpColour() {
+        int c = target();
+        wash.jump(c);
+        glow(c, true);
+    }
+
+    /** To a colour: the fades' shaders and the glow's made now (never while drawing). */
+    private void toColour(int c, boolean now) {
+        wash.set(c);
+        glow(c, now);
+    }
+
+    /** The glow of the colour at the page's foot left (radial, 1000 x 520 at 12 % across, clear by 70 %). */
+    private void glow(int c, boolean now) {
+        c |= 0xFF000000;
+        if (c == glowColour && !now) return;
+        glowWasColour = now ? 0 : glowColour;
+        if (glowWasColour != 0) glowWas.setShader(glowNow.getShader());
+        glowColour = c;
+        RadialGradient g = new RadialGradient(Ui.f(1920f * 0.12f), Ui.f(1080f), Ui.f(1000f), new int[]{c, Palette.alpha(c, 0)},
+                new float[]{0f, 0.7f}, Shader.TileMode.CLAMP);
+        Matrix gm = new Matrix();
+        gm.setScale(1f, 0.52f, Ui.f(1920f * 0.12f), Ui.f(1080f));
+        g.setLocalMatrix(gm);
+        glowNow.setShader(g);
     }
 
     // ---- places ------------------------------------------------------------------------------------------------------
 
     private Catalog.Episode episode(int i) {
-        int k = trailerTile ? i - 1 : i;
-        return k >= 0 && k < episodes.size() ? episodes.get(k) : null;
+        return i >= 0 && i < episodes.size() ? episodes.get(i) : null;
     }
 
     private int rowSize() {
-        return episodes.size() + (trailerTile ? 1 : 0);
+        return episodes.size();
     }
 
-    /** The season (its place among them) an episode in the row is in (the trailer: the first). */
+    /** The season (its place among them) an episode in the row is in. */
     private int seasonOf(int i) {
         int s = 0;
         for (int k = 0; k < seasons.size(); k++) if (seasons.get(k)[1] <= i) s = k;
@@ -359,71 +430,47 @@ final class TitlePage extends View {
         }
     }
 
-    /** Where the parts start on the page (design pixels; the page's top is 0). */
-    private float overviewTop() {
-        return title != null && title.series && rowSize() > 0 ? EP_TOP + EP_H + 96f : BUTTONS_TOP + BUTTON_H + 112f;
-    }
-
-    private float castTop() {
-        return overviewTop() + 286f;
-    }
-
-    private float moreTop() {
-        return hasPart(CAST) ? castTop() + 256f : castTop();
+    /** Whether the page has a lower part (a series: About, the cast, More like this under the episodes). */
+    private boolean lowerPage() {
+        return title != null && title.series && rowSize() > 0;
     }
 
     /** How far the page has risen for the part the remote is on. */
     private float pageTarget() {
-        switch (part) {
-            case CAST:
-                return overviewTop() - 150f;
-            case MORE:
-                return hasPart(CAST) ? castTop() - 150f : overviewTop() - 150f;
-            default:
-                return 0f;
-        }
+        if (lowerPage()) return part >= CAST ? LOWER : 0f;
+        return part == MORE ? 450f : 0f;
     }
 
-    private float pitch() {
-        return EP_W + EP_GAP;
+    /** An episode's place in the row (design px from its start): a season's first a little further on (its line). */
+    private float epPlace(int i) {
+        return i * (EP_W + EP_GAP) + seasonOf(i) * SEASON_GAP;
     }
 
-    /** The episode row's offset: the remote's episode kept second from the left (the first ones from the start). */
+    /** The episode row's offset: the remote's episode kept third from the left (the first ones from the start). */
     private float epTarget() {
-        float max = Math.max(0f, rowSize() * pitch() - EP_GAP - (1920f - 2 * LEFT));
-        return Math.max(0f, Math.min(max, (epAt - 1) * pitch()));
+        return Math.max(0f, epPlace(epAt) - 2 * (EP_W + EP_GAP));
     }
 
     private float castTarget() {
-        float max = Math.max(0f, cast.size() * CELL - (1920f - 2 * LEFT));
-        return Math.max(0f, Math.min(max, (castAt - 1) * CELL));
+        float max = Math.max(0f, cast.size() * FACE_STEP - (1920f - 2 * LEFT));
+        return Math.max(0f, Math.min(max, (castAt - 3) * FACE_STEP));
     }
 
     private float moreTarget() {
-        float p = MORE_W + MORE_GAP, max = Math.max(0f, more.size() * p - MORE_GAP - (1920f - 2 * LEFT));
-        return Math.max(0f, Math.min(max, (moreAt - 2) * p));
-    }
-
-    private float pillLeft(int i) {
-        return i < seasonX.length ? seasonX[i] - Ui.f(26f) : 0f;
-    }
-
-    private float pillRight(int i) {
-        return i < seasonX.length ? seasonX[i] + seasonW[i] + Ui.f(26f) : 0f;
-    }
-
-    /** The pills' offset (screen pixels), so the season the remote is in shows. */
-    private float pillsTarget() {
-        if (seasonX.length == 0) return 0f;
-        float room = Ui.f(1920f - 2 * LEFT), end = seasonX[seasonX.length - 1] + seasonW[seasonX.length - 1] + Ui.f(30f);
-        if (end <= room) return 0f;
-        return Math.max(0f, Math.min(end - room, pillRight(seasonAt) - room * 0.6f));
+        float max = Math.max(0f, more.size() * MORE_STEP - (1920f - 2 * LEFT));
+        return Math.max(0f, Math.min(max, (moreAt - 3) * MORE_STEP));
     }
 
     // ---- the remote -------------------------------------------------------------------------------------------------
 
     int part() {
         return part;
+    }
+
+    /** The page has the remote (true), or the tab bar above it has (nothing on the page lifted). */
+    void setActive(boolean on) {
+        active = on;
+        invalidate();
     }
 
     boolean key(int code) {
@@ -492,15 +539,25 @@ final class TitlePage extends View {
         castX.to(castTarget());
         moreX.to(moreTarget());
         if (seasonWords.length > 0) {
-            pillL.to(pillLeft(seasonAt));
-            pillR.to(pillRight(seasonAt));
-            pillsX.to(pillsTarget());
+            int s = Math.min(seasonAt, seasonX.length - 1);
+            pillL.to(seasonX[s]);
+            pillR.to(seasonX[s] + seasonW[s]);
         }
-        nameFocused();
-        wash.set(target());
-        curtain.set(target());
+        storyOf(epAt);
+        toColour(target(), false);
         readAhead();
         invalidate();
+    }
+
+    /** The story the episode the remote is on shows under it, laid out once (the last three kept). */
+    private StaticLayout storyOf(int i) {
+        for (int k = 0; k < epStoryFor.length; k++) if (epStoryFor[k] == i) return epStories[k];
+        Catalog.Episode e = episode(i);
+        if (e == null) return null;
+        int slot = Math.floorMod(i, epStoryFor.length);
+        epStoryFor[slot] = i;
+        epStories[slot] = e.plot.isEmpty() ? null : Hero07.lines(e.plot, capSub, Ui.px(EP_W), 2, Ui.f(17f * 1.38f));
+        return epStories[slot];
     }
 
     /**
@@ -509,24 +566,17 @@ final class TitlePage extends View {
      */
     private void readAhead() {
         if (part == EPISODES || part == SEASONS) {
-            int w = Math.round(Ui.f(EP_W) * GROW), h = Math.round(Ui.f(EP_H) * GROW);
-            for (int i = Math.max(0, epAt - 2), end = Math.min(rowSize() - 1, epAt + 7); i <= end; i++) {
+            int w = epCards.picW(Ui.f(EP_W)), h = epCards.picH(Ui.f(EP_H));
+            for (int i = Math.max(0, epAt - 2), end = Math.min(rowSize() - 1, epAt + 5); i <= end; i++) {
                 Catalog.Episode e = episode(i);
                 if (e != null && !e.still.isEmpty()) Pics.prefetch(e.still, w, h, Pics.CROP);
             }
         } else if (part == MORE) {
-            int w = Math.round(Ui.f(MORE_W) * GROW), h = Math.round(Ui.f(MORE_H) * GROW);
-            for (int i = Math.max(0, moreAt - 2), end = Math.min(more.size() - 1, moreAt + 9); i <= end; i++) {
+            int w = moreCards.picW(Ui.f(MORE_W)), h = moreCards.picH(Ui.f(MORE_H));
+            for (int i = Math.max(0, moreAt - 2), end = Math.min(more.size() - 1, moreAt + 8); i <= end; i++) {
                 Pics.prefetch(more.get(i).poster, w, h, Pics.CROP);
             }
         }
-    }
-
-    /** The name the episode the remote is on shows, cut to its tile (made once for each episode it comes to). */
-    private void nameFocused() {
-        if (part != EPISODES || epAt >= epNames.length || epNames[epAt] != null) return;
-        Catalog.Episode e = episode(epAt);
-        epNames[epAt] = e == null ? "Trailer" : Ui.fit(e.title.isEmpty() ? "Episode " + e.number : e.title, epName, Ui.f(EP_W) - Ui.f(36f));
     }
 
     void ok() {
@@ -539,8 +589,7 @@ final class TitlePage extends View {
                 break;
             case EPISODES: {
                 Catalog.Episode e = episode(epAt);
-                if (e == null) host.trailer();
-                else host.play(e);
+                if (e != null) host.play(e);
                 break;
             }
             case CAST:
@@ -562,7 +611,7 @@ final class TitlePage extends View {
         return false;
     }
 
-    /** The remote back from the top bar. */
+    /** The remote back from the tab bar. */
     void enter() {
         part = hasPart(BUTTONS) ? BUTTONS : EPISODES;
         settle();
@@ -583,7 +632,7 @@ final class TitlePage extends View {
         settle();
     }
 
-    /** How far the page has risen (the top bar fills with its colour as it does). */
+    /** How far the page has risen. */
     float risen() {
         return page.value();
     }
@@ -596,20 +645,17 @@ final class TitlePage extends View {
 
     @Override protected void onSizeChanged(int w, int h, int ow, int oh) {
         wash.clear();
-        float W = w, H = Ui.f(1080f);
-        // The picture's left into the page's colour, and its foot.
-        wash.add(0, 0, Ui.f(1320f), H, 0, 0, Ui.f(1320f), 0, 0.9f, 0.5f, 0.42f, 0f);
-        wash.add(0, Ui.f(360f), W, H + 2, 0, Ui.f(360f), 0, H, 0f, 0.62f, 0.55f, 1f);
-        // The rows' tiles fading away into the page's colour as they slide out past its left edge.
-        curtain.clear();
-        curtain.add(0, 0, Ui.f(LEFT), h, 0, 0, Ui.f(LEFT), 0, 1f, 0.8f, 0.45f, 0f);
-        tileFoot.setShader(new LinearGradient(0, Ui.f(EP_H * 0.45f), 0, Ui.f(EP_H), 0x00000000, 0xC7000000, Shader.TileMode.CLAMP));
-        shade.setShader(new LinearGradient(0, Ui.f(MORE_H * 0.55f), 0, Ui.f(MORE_H), 0x00000000, 0xB3000000, Shader.TileMode.CLAMP));
+        float ax = Ui.f(ART_X), aw = Ui.f(ART_W), ah = Ui.f(ART_H);
+        // The picture's left into the page's colour (transparent, .6 at 24 %, whole at 50 %), and its foot (whole at 38 %).
+        wash.add(ax, 0, ax + aw * 0.5f, ah, ax, 0, ax + aw * 0.5f, 0, 1f, 0.4f, 0.48f, 0f);
+        wash.add(ax, ah * 0.62f, ax + aw, ah + 1f, 0, ah, 0, ah * 0.62f, 1f, 0.5f, 0.5f, 0f);
+        // The page's shade: darker at the left and the foot (.tp-dark), whatever its colour.
+        darkLeft.setShader(new LinearGradient(0, 0, w, 0, new int[]{0xB8000000, 0x80000000, 0x14000000, 0x00000000},
+                new float[]{0f, 0.38f, 0.62f, 0.75f}, Shader.TileMode.CLAMP));
+        darkFoot.setShader(new LinearGradient(0, h, 0, h * 0.55f, 0x8C000000, 0x00000000, Shader.TileMode.CLAMP));
         if (title != null) {
             layoutWords();
-            colours();
-            wash.jump(target());
-            curtain.jump(target());
+            jumpColour();
         }
     }
 
@@ -621,314 +667,286 @@ final class TitlePage extends View {
         moving |= moreX.step();
         moving |= pillL.step();
         moving |= pillR.step();
-        moving |= pillsX.step();
         moving |= wash.step();
-        moving |= curtain.step();
-        Object focus = part == EPISODES ? episodeKey(epAt) : part == MORE && moreAt < more.size() ? more.get(moreAt) : null;
+        Object focus = !active ? null : part == EPISODES ? episode(epAt) : part == MORE && moreAt < more.size() ? more.get(moreAt)
+                : part == CAST && castAt < cast.size() ? cast.get(castAt) : null;
         moving |= lift.step(focus);
+        moving |= buttonLift.step(active && part == BUTTONS && buttonAt < buttons.size() ? buttons.get(buttonAt) : null);
 
-        int w = getWidth();
+        int w = getWidth(), h = getHeight();
         float risen = Ui.f(page.value());
+        // The page's colour, its picture across the right fading into it, its shade and its glow.
         ground.setColor(wash.colour());
-        if (bar != null) bar.setBacking(wash.colour(), Math.min(1f, page.value() / 260f));
-        c.drawRect(0, 0, w, getHeight(), ground);
-
-        // The picture, rising at half the page's speed, its left and foot in the page's colour.
-        float heroY = -risen * 0.5f;
-        if (heroY > -Ui.f(1080f)) {
-            Bitmap b = Pics.get(backdrop, 1280, 720, Pics.CROP, redraw);
+        c.drawRect(0, 0, w, h, ground);
+        Bitmap b = backdrop.isEmpty() ? null : Pics.get(backdrop, 1280, 720, Pics.CROP, redraw);
+        if (b != null) {
+            float lower = lowerPage() ? Math.min(1f, page.value() / LOWER) : 0f;
+            art.setAlpha(Math.round(255 * (1f - 0.65f * lower)));
+            float ax = Ui.f(ART_X), aw = Ui.f(ART_W), ah = Ui.f(ART_H);
+            float s = Math.max(aw / b.getWidth(), ah / b.getHeight());
+            m.setScale(s, s);
+            m.postTranslate(ax + (aw - b.getWidth() * s) / 2f, (ah - b.getHeight() * s) * 0.3f);
             c.save();
-            c.translate(0, heroY);
-            if (b != null) {
-                // Going as the page rises, so what it's about and the cast sit on the page's colour.
-                hero.setAlpha(Math.round(255 * (0.16f + 0.84f * Math.max(0f, 1f - page.value() / 520f))));
-                r.set(0, 0, w, Ui.f(1080f));
-                c.drawBitmap(b, null, r, hero);
-            }
-            wash.draw(c);
+            c.clipRect(ax, 0, ax + aw, ah);
+            c.drawBitmap(b, m, art);
             c.restore();
+            wash.draw(c);
         }
+        c.drawRect(0, 0, w, h, darkLeft);
+        c.drawRect(0, 0, w, h, darkFoot);
+        float k = wash.fading();
+        if (glowWasColour != 0 && k < 1f) {
+            glowWas.setAlpha(Math.round(255 * (1f - k)));
+            c.drawRect(0, 0, w, h, glowWas);
+        }
+        glowNow.setAlpha(glowWasColour != 0 ? Math.round(255 * k) : 255);
+        c.drawRect(0, 0, w, h, glowNow);
+        if (k >= 1f) glowWasColour = 0;
 
         c.save();
         c.translate(0, -risen);
-        drawTop(c);
-        if (!seasons.isEmpty()) drawSeasons(c);
+        // The words and buttons at the top fade as the page rises past them (never under the back line).
+        int topAlpha = Math.round(255 * Math.max(0f, Math.min(1f, 1f - page.value() / 320f)));
+        if (topAlpha > 0) drawTop(c, topAlpha);
+        if (!seasons.isEmpty() && seasonWords.length > 1) drawSeasons(c);
         if (hasPart(EPISODES)) drawEpisodes(c);
-        drawAbout(c);
-        if (hasPart(CAST)) drawCast(c);
-        if (hasPart(MORE)) drawMore(c);
+        if (lowerPage()) {
+            c.save();
+            c.translate(0, Ui.f(LOWER));
+            drawAbout(c);
+            if (hasPart(CAST)) drawCast(c, Ui.f(380f));
+            if (hasPart(MORE)) drawMore(c, Ui.f(690f));
+            c.restore();
+        } else {
+            if (hasPart(CAST)) drawCast(c, Ui.f(660f));
+            if (hasPart(MORE)) drawMore(c, Ui.f(hasPart(CAST) ? 944f : 660f));
+        }
         c.restore();
-        curtain.draw(c);
         if (moving) postInvalidateOnAnimation();
     }
 
-    private Object episodeKey(int i) {
-        Catalog.Episode e = episode(i);
-        return e == null ? this : e;
-    }
-
-    private void drawTop(Canvas c) {
+    private void drawTop(Canvas c, int a) {
         float x = Ui.f(LEFT);
-        lettering.draw(c, x, Ui.f(LOGO_TOP), 255, redraw);
-        // The facts: rating, years, age, seasons or length, picture and sound.
-        facts.draw(c, x, Ui.f(FACTS_Y), 255);
-        // The buttons: the red pill, then grey ones; the remote's lit (the red brighter in a white ring, grey turned white).
-        float bx = Ui.f(LEFT), top = Ui.f(BUTTONS_TOP), h = Ui.f(BUTTON_H);
+        // Its logo (or name) on the foot of its box, its facts, story and credits.
+        float boxTop = Ui.f(title.series ? LOGO_TOP : 170f), boxH = Ui.f(title.series ? LOGO_H : 120f);
+        float mh = mark.height(redraw);
+        mark.draw(c, x, boxTop + Math.max(0f, boxH - mh), a, redraw);
+        facts.draw(c, x, Ui.f(FACTS_Y), a, factsP);
+        if (story != null) {
+            float lh = Ui.f(22f * 1.45f);
+            storyP.setAlpha((Look07.L2 >>> 24) * a / 255);
+            Ui.draw(c, story, x, Ui.f(STORY_TOP) + (lh - (storyP.descent() - storyP.ascent())) / 2f);
+        }
+        if (credits != null) {
+            creditsP.setAlpha((Look07.L3 >>> 24) * a / 255);
+            Ui.draw(c, credits, x, Ui.f(CREDITS_TOP + 2f));
+        }
+        // The buttons: the main one white (lifted 1.07 where the remote is), grey pills, round icons.
+        float bx = x, cy = Ui.f(BUTTONS_Y);
         for (int i = 0; i < buttons.size(); i++) {
             Button b = buttons.get(i);
-            float bw = buttonW.get(i);
-            boolean on = part == BUTTONS && i == buttonAt;
-            r.set(bx, top, bx + bw, top + h);
-            Paint fill = b.main ? red : on ? white : grey;
-            if (b.main) red.setColor(on ? Cine.RED_LIT : Cine.RED);
-            c.drawRoundRect(r, Ui.f(8f), Ui.f(8f), fill);
-            if (on && b.main) {
-                r.inset(-Ui.f(5f), -Ui.f(5f));
-                c.drawRoundRect(r, Ui.f(12f), Ui.f(12f), ring);
+            boolean here = active && part == BUTTONS && i == buttonAt;
+            float up = Math.max(0f, Math.min(1.1f, buttonLift.of(b)));
+            float g = 1f + 0.07f * up;
+            if (b.round()) {
+                float cx = bx + Ui.f(35f);
+                c.save();
+                c.scale(g, g, cx, cy);
+                int icon = b.icon == TICK ? Icons07.CHECK : b.icon == PLUS ? Icons07.PLUS : b.icon == TRAILER ? Icons07.FILM : Icons07.X;
+                Hero07.circle(c, cx, cy, icon, here, b.lit, a);
+                c.restore();
+                bx += Ui.f(70f) + Ui.f(18f);
+            } else {
+                int icon = b.icon == PLAY ? Icons07.PLAY : b.icon == RESTART ? Icons07.RESTART : -1;
+                float bw = Hero07.buttonWidth(b.label, b.main ? b.after : "", icon);
+                c.save();
+                c.scale(g, g, bx + bw / 2f, cy);
+                Hero07.button(c, bx, cy, b.label, b.main ? b.after : "", icon, b.main || here, a);
+                c.restore();
+                bx += bw + Ui.f(18f);
             }
-            int ink = on && !b.main ? Cine.INK : Cine.TEXT;
-            float tx = bx + Ui.f(36f), cy = top + h / 2f;
-            if (b.icon >= 0) {
-                icon(c, b.icon, tx + Ui.f(14f), cy, ink);
-                tx += Ui.f(46f);
-            }
-            c.drawText(b.label, tx, Cine.mid(buttonP, cy), on && !b.main ? buttonInk : buttonP);
-            bx += bw + Ui.f(22f);
         }
     }
 
-    private void icon(Canvas c, int kind, float cx, float cy, int colour) {
-        iconStroke.setColor(colour);
-        iconFill.setColor(colour);
-        float s = Ui.f(30f);
-        switch (kind) {
-            case PLAY:
-                Cine.play(c, cx, cy, s, iconFill);
-                break;
-            case PLUS:
-                Cine.plus(c, cx, cy, s * 0.9f, iconStroke);
-                break;
-            case TICK:
-                Cine.tick(c, cx, cy, s * 0.9f, iconStroke);
-                break;
-            case RESTART:
-                RoundButton.glyph(c, Dark.RESTART, cx, cy, s * 1.1f, colour);
-                break;
-            case TRAILER:
-                RoundButton.glyph(c, Dark.VIDEO, cx, cy, s * 1.1f, colour);
-                break;
-            default:
-                RoundButton.glyph(c, Dark.BIN, cx, cy, s * 1.1f, colour);
-                break;
-        }
-    }
-
-    /** The seasons, as the phone has them: the white pill behind the season the remote is in. */
+    /** The seasons, as the phone has them: the white pill sliding behind the season the remote is in. */
     private void drawSeasons(Canvas c) {
-        float x0 = Ui.f(LEFT) - pillsX.value(), cy = Ui.f(PILLS_Y), h = Ui.f(PILL_H);
+        float x0 = Ui.f(LEFT), cy = Ui.f(PILLS_Y), h = Ui.f(PILL_H);
         r.set(x0 + pillL.value(), cy - h / 2f, x0 + pillR.value(), cy + h / 2f);
+        Shadows.draw(c, r, h / 2f, Look07.SH_PILL, 1f);
         c.drawRoundRect(r, h / 2f, h / 2f, white);
         if (part == SEASONS) {
-            r.inset(-Ui.f(6f), -Ui.f(6f));
-            c.drawRoundRect(r, h / 2f + Ui.f(6f), h / 2f + Ui.f(6f), ring);
+            ring.setColor(Look07.L1);
+            ring.setStrokeWidth(Ui.f(3f));
+            r.inset(-Ui.f(5f), -Ui.f(5f));
+            c.drawRoundRect(r, h / 2f + Ui.f(5f), h / 2f + Ui.f(5f), ring);
         }
-        float base = Cine.mid(pillP, cy);
+        float end = x0;
         for (int i = 0; i < seasonWords.length; i++) {
             float x = x0 + seasonX[i];
-            if (x > getWidth() || x + seasonW[i] < 0) continue;
-            // Ink where the pill is under the word, white elsewhere.
-            boolean under = x0 + pillL.value() < x + seasonW[i] && x0 + pillR.value() > x;
-            c.drawText(seasonWords[i], x, base, under ? pillInk : pillP);
+            // Ink where the pill is under the word, light elsewhere.
+            float mid = x + seasonW[i] / 2f;
+            boolean under = x0 + pillL.value() < mid && x0 + pillR.value() > mid;
+            TextPaint p = under ? pillInk : pillP;
+            c.drawText(seasonWords[i], x + Ui.f(26f), Type.centred(p, cy), p);
+            end = x + seasonW[i];
         }
+        if (!meta.isEmpty()) c.drawText(meta, end + Ui.f(18f) + Ui.f(26f), Type.centred(metaP, cy), metaP);
     }
 
     private void drawEpisodes(Canvas c) {
         int n = rowSize();
-        float pitch = Ui.f(pitch()), w = Ui.f(EP_W), h = Ui.f(EP_H), top = Ui.f(EP_TOP), x0 = Ui.f(LEFT) - Ui.f(epX.value());
-        int first = Math.max(0, (int) Math.floor((Ui.f(epX.value()) - Ui.f(LEFT)) / pitch) - 1);
-        int last = Math.min(n - 1, first + (int) Math.ceil(getWidth() / pitch) + 2);
-        Object leaving = lift.leaving();
-        int away = -1;
-        for (int i = first; i <= last; i++) {
-            Object k = episodeKey(i);
-            if (part == EPISODES && i == epAt) continue;
-            if (k == leaving) {
-                away = i;
+        float w = Ui.f(EP_W), h = Ui.f(EP_H), top = Ui.f(EP_TOP), x0 = Ui.f(LEFT) - Ui.f(epX.value());
+        int lifted = -1;
+        for (int i = 0; i < n; i++) {
+            float x = x0 + Ui.f(epPlace(i));
+            if (x > getWidth()) break;
+            if (x + w < -Ui.f(60f)) continue;
+            // A line between seasons.
+            if (i > 0 && seasonOf(i) != seasonOf(i - 1)) c.drawRect(x - Ui.f(42f), top + Ui.f(18f), x - Ui.f(40f), top + Ui.f(198f), line);
+            if (part == EPISODES && i == epAt) {
+                lifted = i;
                 continue;
             }
-            tile(c, i, x0 + i * pitch, top, w, h, 0f);
+            episodeCard(c, i, x, top, w, h, lift.of(episode(i)));
         }
-        // The one settling back, then the remote's, over their neighbours.
-        if (away >= 0) tile(c, away, x0 + away * pitch, top, w, h, lift.of(leaving));
-        if (part == EPISODES && epAt >= first && epAt <= last) tile(c, epAt, x0 + epAt * pitch, top, w, h, lift.of(episodeKey(epAt)));
+        if (lifted >= 0) episodeCard(c, lifted, x0 + Ui.f(epPlace(lifted)), top, w, h, lift.of(episode(lifted)));
     }
 
-    private void tile(Canvas c, int i, float x, float y, float w, float h, float up) {
+    private void episodeCard(Canvas c, int i, float x, float y, float w, float h, float up) {
         Catalog.Episode e = episode(i);
-        float k = 1f + (GROW - 1f) * up;
-        c.save();
-        c.translate(x + w / 2f, y + h / 2f);
-        c.scale(k, k);
-        c.translate(-w / 2f, -h / 2f);
-        String pic = e == null || e.still.isEmpty() ? backdrop : e.still;
-        Bitmap b = Pics.get(pic, Math.round(w * GROW), Math.round(h * GROW), Pics.CROP, redraw);
-        r.set(0, 0, w, h);
-        if (b != null) c.drawBitmap(b, null, r, bmp);
-        else c.drawRect(r, place);
-        c.drawRect(r, tileFoot);
-        boolean named = up > 0.5f && part == EPISODES;
-        String label = named && i < epNames.length && epNames[i] != null ? epNames[i] : i < epNos.length ? epNos[i] : "";
-        if (e == null) {
-            iconFill.setColor(Cine.TEXT);
-            Cine.play(c, Ui.f(34f), h - Ui.f(30f), Ui.f(24f), iconFill);
-            c.drawText(label, Ui.f(58f), h - Ui.f(18f), epNo);
-        } else {
-            c.drawText(label, Ui.f(18f), h - Ui.f(18f), named ? epName : epNo);
+        if (e == null) return;
+        String pic = e.still.isEmpty() ? backdrop : e.still;
+        Bitmap b = pic.isEmpty() ? null : Pics.get(pic, epCards.picW(w), epCards.picH(h), Pics.CROP, redraw);
+        boolean seen = resumeAt >= 0 && i < resumeAt;
+        float p = seen ? 1f : host.progress(e);
+        marks.clear();
+        marks.progress = p;
+        marks.torbox = e.torbox;
+        epCards.begin(c, x, y, w, h, up, b);
+        epCards.marks(c, w, h, marks);
+        if (i == resumeAt) {
+            // UP NEXT on the one to carry on with.
+            float bw = upNextP.measureText("UP NEXT") + Ui.f(20f);
+            r.set(Ui.f(12f), Ui.f(12f), Ui.f(12f) + bw, Ui.f(40f));
+            fill.setColor(Look07.L1);
+            c.drawRoundRect(r, Ui.f(8f), Ui.f(8f), fill);
+            c.drawText("UP NEXT", r.left + Ui.f(10f), Type.centred(upNextP, r.centerY()), upNextP);
+        } else if (seen) {
+            // A tick on one watched.
+            float d = Ui.f(30f), cx = w - Ui.f(12f) - d / 2f, cy = Ui.f(12f) + d / 2f;
+            fill.setColor(0x80000000);
+            c.drawCircle(cx, cy, d / 2f, fill);
+            Icons07.draw(c, Icons07.CHECK, cx, cy, Ui.f(18f), Look07.L1);
         }
-        float p = e == null ? -1f : host.progress(e);
-        if (p >= 0f) {
-            float bh = Ui.f(5f);
-            c.drawRect(0, h - bh, w, h, track);
-            c.drawRect(0, h - bh, w * Math.max(0.02f, p), h, red);
+        epCards.end(c);
+        // Its words: its number and name, length and day, and for the remote's its story (dropping 24 px as it lifts).
+        float k = Math.max(0f, Math.min(1.2f, up)), top = y + h + Ui.f(16f) + Ui.f(24f) * k, tx = x + Ui.f(4f);
+        capP.setColor(Theme.mix(Look07.L2 | 0xFF000000, Look07.L1, Math.min(1f, k)));
+        capP.setAlpha(Math.round(0xBD + (0xFF - 0xBD) * Math.min(1f, k)));
+        float lh = Hero07.normal(Ui.f(21f));
+        c.drawText(epTitles[i], tx, Hero07.baseline(top, lh, Ui.f(21f)), capP);
+        float sh = Hero07.normal(Ui.f(17f));
+        c.drawText(epSubs[i], tx, Hero07.baseline(top + lh + Ui.f(4f), sh, Ui.f(17f)), capSub);
+        if (k > 0.05f && part == EPISODES && i == epAt) {
+            StaticLayout s = storyOf(i);
+            if (s != null) {
+                int was = capSub.getAlpha();
+                capSub.setAlpha(Math.round(was * Math.min(1f, k)));
+                Ui.draw(c, s, tx, top + lh + Ui.f(4f) + sh + Ui.f(6f));
+                capSub.setAlpha(was);
+            }
         }
-        float bx = Ui.f(14f);
-        if (e != null && e.torbox) {
-            SourcePicker.badge(c, bx + Ui.f(16f), Ui.f(26f), Ui.f(32f), 255);
-            bx += Ui.f(42f);
-        }
-        if (e != null && e.id.equals(resumeId)) {
-            String up1 = "UP NEXT";
-            float bw = badgeP.measureText(up1) + Ui.f(18f);
-            r.set(bx, Ui.f(12f), bx + bw, Ui.f(40f));
-            c.drawRoundRect(r, Ui.f(5f), Ui.f(5f), white);
-            c.drawText(up1, bx + Ui.f(9f), Cine.mid(badgeP, r.centerY()), badgeP);
-        }
-        if (up > 0.02f) {
-            ring.setAlpha(Math.round(255 * Math.min(1f, up)));
-            r.set(0, 0, w, h);
-            c.drawRect(r, ring);
-            ring.setAlpha(255);
-        }
-        c.restore();
     }
 
+    /** About (its story), its genres and where it is from (the lower page, its top at the page's 0). */
     private void drawAbout(Canvas c) {
-        float top = Ui.f(overviewTop()), x = Ui.f(LEFT);
-        if (top - Ui.f(page.value()) > getHeight()) return;
-        c.drawText("Overview", x, top + Ui.f(34f), headP);
-        if (overview != null) Ui.draw(c, overview, x, top + Ui.f(HEAD));
-        float gx = Ui.f(1340f);
-        if (!genres.isEmpty()) {
-            c.drawText("Genres", gx, top + Ui.f(34f), headP);
-            float gy = top + Ui.f(HEAD) - genreP.ascent();
-            for (String g : genres) {
-                c.drawText(g, gx, gy, genreP);
-                gy += Ui.f(38f);
-            }
+        float x = Ui.f(LEFT), top = Ui.f(150f);
+        c.drawText("About", x, Hero07.baseline(top, Hero07.normal(Ui.f(30f)), Ui.f(30f)), headP);
+        if (about != null) Ui.draw(c, about, x, top + Hero07.normal(Ui.f(30f)) + Ui.f(10f));
+        float gx = Ui.f(1220f), gy = top;
+        if (!genresWords.isEmpty()) {
+            c.drawText("Genres", gx, Hero07.baseline(gy, Ui.f(26f * 1.6f), Ui.f(26f)), sideHead);
+            gy += Ui.f(26f * 1.6f) + Ui.f(6f);
+            c.drawText(genresWords, gx, Hero07.baseline(gy, Ui.f(21f * 1.6f), Ui.f(21f)), sideP);
+            gy += Ui.f(21f * 1.6f) + Ui.f(18f);
         }
+        c.drawText("On", gx, Hero07.baseline(gy, Ui.f(26f * 1.6f), Ui.f(26f)), sideHead);
+        gy += Ui.f(26f * 1.6f) + Ui.f(6f);
+        c.drawText(onWords, gx, Hero07.baseline(gy, Ui.f(21f * 1.6f), Ui.f(21f)), sideP);
     }
 
-    private void drawCast(Canvas c) {
-        float top = Ui.f(castTop()), x0 = Ui.f(LEFT) - Ui.f(castX.value());
-        if (top - Ui.f(page.value()) > getHeight()) return;
-        c.drawText("Cast", Ui.f(LEFT), top + Ui.f(34f), headP);
-        float d = Ui.f(FACE), cy = top + Ui.f(HEAD) + d / 2f, cell = Ui.f(CELL);
+    /** The cast as round faces with the parts they play; the remote's grown with a white ring. */
+    private void drawCast(Canvas c, float top) {
+        float x0 = Ui.f(LEFT) - Ui.f(castX.value());
+        c.drawText("Cast", Ui.f(LEFT), Hero07.baseline(top, Hero07.normal(Ui.f(30f)), Ui.f(30f)), headP);
+        float d = Ui.f(FACE), cy = top + Ui.f(54f) + d / 2f, step = Ui.f(FACE_STEP);
+        int fd = Math.round(d);
         for (int i = 0; i < cast.size(); i++) {
-            float cx = x0 + i * cell + d / 2f;
-            if (cx + cell < 0 || cx - d > getWidth()) continue;
-            String[] who = cast.get(i);
-            Paint face = faces[i];
-            // On screen and not yet a face: asked for now (made into one when read, or at once when it is here).
-            if (face == null && !who[2].isEmpty() && Pics.get(who[2], Math.round(d), Math.round(d), Pics.CROP, faceReady) != null) {
-                post(faceReady);
-            }
-            if (face != null) {
+            float cx = x0 + i * step + Ui.f(85f);
+            if (cx - step > getWidth() || cx + step < 0) continue;
+            float up = part == CAST ? Math.max(0f, Math.min(1.2f, lift.of(cast.get(i)))) : 0f;
+            float g = 1f + 0.12f * up, rr = d / 2f * g;
+            r.set(cx - rr, cy - rr, cx + rr, cy + rr);
+            Shadows.draw(c, r, rr, Look07.SH_TILE, 1f - Math.min(1f, up));
+            if (up > 0.01f) Shadows.draw(c, r, rr, Look07.SH_ROW, Math.min(1f, up));
+            String url = cast.get(i).length > 2 ? cast.get(i)[2] : "";
+            Bitmap b = url.isEmpty() ? null : Pics.get(url, fd, fd, Pics.CROP, redraw);
+            if (b != null) {
+                Paint p = shaders.paint(b, 2 * rr, 2 * rr, 0f);
                 c.save();
-                c.translate(cx - d / 2f, cy - d / 2f);
-                c.drawCircle(d / 2f, d / 2f, d / 2f, face);
+                c.translate(cx - rr, cy - rr);
+                c.drawCircle(rr, rr, rr, p);
                 c.restore();
             } else {
-                place.setColor(castColours[i]);
-                c.drawCircle(cx, cy, d / 2f, place);
-                place.setColor(0xFF2A2C33);
+                fill.setColor(castColours[i]);
+                c.drawCircle(cx, cy, rr, fill);
                 float iw = initialsP.measureText(castInitials[i]);
-                c.drawText(castInitials[i], cx - iw / 2f, Cine.mid(initialsP, cy), initialsP);
+                c.drawText(castInitials[i], cx - iw / 2f, Type.centred(initialsP, cy), initialsP);
             }
-            boolean on = part == CAST && i == castAt;
-            if (on) c.drawCircle(cx, cy, d / 2f + Ui.f(6f), ring);
-            float tx = cx + d / 2f + Ui.f(22f);
-            nameP.setColor(on ? Cine.TEXT : Cine.SOFT);
-            c.drawText(castNames[i], tx, castParts[i].isEmpty() ? Cine.mid(nameP, cy) : cy - Ui.f(4f), nameP);
-            if (!castParts[i].isEmpty()) c.drawText(castParts[i], tx, cy + Ui.f(30f), partP);
+            ring.setStrokeWidth(up > 0.01f ? Ui.f(4f) : Math.max(1f, Ui.f(2f)));
+            ring.setColor(up > 0.01f ? Palette.alpha(Look07.L1, Math.round(255 * Math.min(1f, up))) : 0x24FFFFFF);
+            c.drawCircle(cx, cy, rr + ring.getStrokeWidth() / 2f, ring);
+            float ty = cy + d / 2f + Ui.f(12f) + Ui.f(12f) * Math.min(1f, up);
+            float nh = Hero07.normal(Ui.f(19f));
+            float nw = faceName.measureText(castNames[i]);
+            c.drawText(castNames[i], cx - nw / 2f, Hero07.baseline(ty, nh, Ui.f(19f)), faceName);
+            if (!castParts[i].isEmpty()) {
+                float pw = faceRole.measureText(castParts[i]);
+                c.drawText(castParts[i], cx - pw / 2f, Hero07.baseline(ty + nh + Ui.f(2f), Hero07.normal(Ui.f(16f)), Ui.f(16f)), faceRole);
+            }
         }
-        nameP.setColor(Cine.TEXT);
     }
 
-    /** The cast's photos that have been read, as round faces: each shader made once, outside the draw. */
-    private void makeFaces() {
-        int d = Math.round(Ui.f(FACE));
-        boolean made = false;
-        for (int i = 0; i < cast.size() && i < faces.length; i++) {
-            String url = cast.get(i)[2];
-            if (faces[i] != null || url.isEmpty()) continue;
-            Bitmap b = Pics.cached(url, d, d, Pics.CROP);
-            if (b == null) continue;
-            Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
-            BitmapShader sh = new BitmapShader(b, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
-            Matrix m = new Matrix();
-            m.setScale(d / (float) b.getWidth(), d / (float) b.getHeight());
-            sh.setLocalMatrix(m);
-            p.setShader(sh);
-            faces[i] = p;
-            made = true;
-        }
-        if (made) invalidate();
-    }
-
-    private void drawMore(Canvas c) {
-        float top = Ui.f(moreTop());
-        if (top - Ui.f(page.value()) > getHeight()) return;
-        c.drawText("More like this", Ui.f(LEFT), top + Ui.f(34f), headP);
-        float w = Ui.f(MORE_W), h = Ui.f(MORE_H), pitch = Ui.f(MORE_W + MORE_GAP), y = top + Ui.f(HEAD), x0 = Ui.f(LEFT) - Ui.f(moreX.value());
-        Object leaving = lift.leaving();
-        int away = -1;
+    /** More like this: posters that lift and tilt, their names and years under them. */
+    private void drawMore(Canvas c, float top) {
+        c.drawText("More like this", Ui.f(LEFT), Hero07.baseline(top, Hero07.normal(Ui.f(30f)), Ui.f(30f)), headP);
+        float w = Ui.f(MORE_W), h = Ui.f(MORE_H), step = Ui.f(MORE_STEP), y = top + Ui.f(52f), x0 = Ui.f(LEFT) - Ui.f(moreX.value());
+        int lifted = -1;
         for (int i = 0; i < more.size(); i++) {
-            float x = x0 + i * pitch;
+            float x = x0 + i * step;
             if (x + w < 0 || x > getWidth()) continue;
-            if (part == MORE && i == moreAt) continue;
-            if (more.get(i) == leaving) {
-                away = i;
+            if (part == MORE && i == moreAt) {
+                lifted = i;
                 continue;
             }
-            poster(c, i, x, y, w, h, 0f);
+            poster(c, i, x, y, w, h, lift.of(more.get(i)));
         }
-        if (away >= 0) poster(c, away, x0 + away * pitch, y, w, h, lift.of(leaving));
-        if (part == MORE && moreAt < more.size()) poster(c, moreAt, x0 + moreAt * pitch, y, w, h, lift.of(more.get(moreAt)));
+        if (lifted >= 0) poster(c, lifted, x0 + lifted * step, y, w, h, lift.of(more.get(lifted)));
     }
 
     private void poster(Canvas c, int i, float x, float y, float w, float h, float up) {
         Catalog.Title t = more.get(i);
-        float k = 1f + (GROW - 1f) * up;
-        c.save();
-        c.translate(x + w / 2f, y + h / 2f);
-        c.scale(k, k);
-        c.translate(-w / 2f, -h / 2f);
-        r.set(0, 0, w, h);
-        Bitmap b = Pics.get(t.poster, Math.round(w * GROW), Math.round(h * GROW), Pics.CROP, redraw);
-        if (b != null) {
-            c.drawBitmap(b, null, r, bmp);
-        } else {
-            c.drawRect(r, place);
-            c.drawRect(r, shade);
-            c.drawText(moreNames[i], Ui.f(14f), h - Ui.f(20f), moreName);
+        Bitmap b = t.poster.isEmpty() ? null : Pics.get(t.poster, moreCards.picW(w), moreCards.picH(h), Pics.CROP, redraw);
+        marks.clear();
+        marks.torbox = t.torbox();
+        moreCards.begin(c, x, y, w, h, up, b);
+        if (b == null) {
+            fill.setColor(PosterArt.blank(t.name));
+            c.drawRoundRect(0, 0, w, h, Ui.f(Look07.R_POSTER), Ui.f(Look07.R_POSTER), fill);
         }
-        if (t.torbox()) SourcePicker.badge(c, Ui.f(30f), Ui.f(30f), Ui.f(34f), 255);
-        if (up > 0.02f) {
-            ring.setAlpha(Math.round(255 * Math.min(1f, up)));
-            c.drawRect(r, ring);
-            ring.setAlpha(255);
-        }
-        c.restore();
+        moreCards.marks(c, w, h, marks);
+        moreCards.end(c);
+        moreCards.caption(c, x, y + h, w, up, moreNames[i], moreYears[i]);
     }
 
     // ---- pure, for the tests ----------------------------------------------------------------------------------------
@@ -936,16 +954,21 @@ final class TitlePage extends View {
     /** Pure: an episode's facts under its name: "1h 7m, 9 Oct 2022", "54m", "9 Oct 2022" or "". */
     static String episodeFacts(int minutes, String aired) {
         String len = Ui.duration(minutes);
-        String day = "";
+        String day = episodeDay(aired);
+        if (len.isEmpty()) return day;
+        return day.isEmpty() ? len : len + ", " + day;
+    }
+
+    /** Pure: the day an episode was first shown, "9 Oct 2022", or "". */
+    static String episodeDay(String aired) {
         if (aired != null && aired.matches("\\d{4}-\\d{2}-\\d{2}")) {
             try {
                 java.time.LocalDate d = java.time.LocalDate.parse(aired);
-                day = d.getDayOfMonth() + " " + d.getMonth().getDisplayName(java.time.format.TextStyle.SHORT, Locale.UK) + " " + d.getYear();
+                return d.getDayOfMonth() + " " + d.getMonth().getDisplayName(java.time.format.TextStyle.SHORT, Locale.UK) + " " + d.getYear();
             } catch (RuntimeException ignored) {
-                day = "";
+                return "";
             }
         }
-        if (len.isEmpty()) return day;
-        return day.isEmpty() ? len : len + ", " + day;
+        return "";
     }
 }

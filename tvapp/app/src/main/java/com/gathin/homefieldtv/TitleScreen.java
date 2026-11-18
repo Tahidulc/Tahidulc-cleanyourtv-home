@@ -19,19 +19,18 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * A film's or a series' page (TitlePage), under the top bar (TopBar). A film: Play, or Resume and From the start where
- * it was left part-way. A series: Resume S2 E8 (or Play S1 E1) and From the start. Then My list (a tick once on it),
- * the trailer (in the TV's YouTube app; a series has it as the first tile of its episodes instead) and, where something
- * was started, Remove from Continue watching. Play shows every source first, the best first (VodActivity's Choose a
+ * A film's or a series' page (TitlePage), in 07's shell with its "‹ Movies" (or "‹ TV Shows") line. A film: Play, or
+ * Resume (with the minutes left) and From the Start where it was left part-way. A series: Resume S2 E8 (or Play S1 E1)
+ * and From the Start. Then round buttons: My List (a tick once on it), the trailer (in the TV's YouTube app) and, where
+ * something was started, Remove from Continue watching. Play shows every source first, the best first (VodActivity's Choose a
  * source); Resume carries on straight away from the copy it was started on. TMDB's logo, cast and seasons' colours come
  * when it has answered (kept on the TV after, so the page has them at once next time).
  */
 final class TitleScreen extends Screen implements TitlePage.Host {
     private Catalog.Title title;
     private Catalog.Details details;
-    private boolean asked, asking, onBar;
+    private boolean asked, asking;
     private TitlePage page;
-    private TopBar bar;
 
     TitleScreen(TvActivity tv, Catalog.Title t) {
         super(tv);
@@ -41,12 +40,9 @@ final class TitleScreen extends Screen implements TitlePage.Host {
     @Override View build() {
         Cine.init(tv);
         FrameLayout f = new FrameLayout(tv);
-        f.setBackgroundColor(Cine.GROUND);
+        f.setBackgroundColor(Look07.GROUND);
         page = new TitlePage(tv, this);
-        bar = new TopBar(tv, title.series ? TopBar.SHOWS : TopBar.MOVIES);
-        page.bar(bar);
         f.addView(page, new FrameLayout.LayoutParams(-1, -1));
-        f.addView(bar, new FrameLayout.LayoutParams(-1, Ui.px(TopBar.H + 90f)));
         details = Catalog.get(tv).cachedDetails(title);
         fill();
         if (details == null) ask();
@@ -81,12 +77,25 @@ final class TitleScreen extends Screen implements TitlePage.Host {
     @Override void shown() {
         tv.live.stop();
         tv.live.place(null);
+        if (page != null) page.setActive(tv.tabs() == null || !tv.tabs().active());
         // Back from a film: its resume point has moved.
         if (built()) fill();
     }
 
-    @Override void tick() {
-        if (bar != null) bar.invalidate();
+    @Override boolean shell() {
+        return true;
+    }
+
+    /** Reached from Movies or TV Shows: "‹ Movies", "‹ TV Shows" where the tabs would be. */
+    @Override String backLine() {
+        return title.series ? "TV Shows" : "Movies";
+    }
+
+    /** Down from the tab bar: the buttons. */
+    @Override void fromTabs() {
+        if (page == null) return;
+        page.setActive(true);
+        page.enter();
     }
 
     @Override void catalogChanged() {
@@ -106,8 +115,10 @@ final class TitleScreen extends Screen implements TitlePage.Host {
         List<TitlePage.Button> buttons = new ArrayList<>();
         if (!title.series) {
             if (p != null && p.position > 0) {
-                buttons.add(new TitlePage.Button("Resume", TitlePage.PLAY, true, () -> tv.play(title, null, p.position, false)));
-                buttons.add(new TitlePage.Button("From the start", TitlePage.RESTART, false, () -> tv.play(title, null, 0, true)));
+                TitlePage.Button resume = new TitlePage.Button("Resume", TitlePage.PLAY, true, () -> tv.play(title, null, p.position, false));
+                resume.after = left(p);
+                buttons.add(resume);
+                buttons.add(new TitlePage.Button("From the Start", TitlePage.RESTART, false, () -> tv.play(title, null, 0, true)));
             } else {
                 buttons.add(new TitlePage.Button("Play", TitlePage.PLAY, true, () -> tv.play(title, null, 0, true)));
             }
@@ -120,10 +131,12 @@ final class TitleScreen extends Screen implements TitlePage.Host {
             if (resume != null) {
                 String label = (p.position > 0 ? "Resume" : "Play") + " S" + resume.season + " E" + resume.number;
                 // Resume: straight away from the copy it was started on; an episode from its start (the next one): every source first.
-                buttons.add(new TitlePage.Button(label, TitlePage.PLAY, true, () -> tv.play(title, resume, p.position, p.position <= 0)));
+                TitlePage.Button main = new TitlePage.Button(label, TitlePage.PLAY, true, () -> tv.play(title, resume, p.position, p.position <= 0));
+                if (p.position > 0) main.after = left(p);
+                buttons.add(main);
                 if (!all.isEmpty()) {
                     Catalog.Episode first = all.get(0);
-                    buttons.add(new TitlePage.Button("From the start", TitlePage.RESTART, false, () -> tv.play(title, first, 0, true)));
+                    buttons.add(new TitlePage.Button("From the Start", TitlePage.RESTART, false, () -> tv.play(title, first, 0, true)));
                 }
             } else if (!all.isEmpty()) {
                 Catalog.Episode first = all.get(0);
@@ -137,9 +150,7 @@ final class TitleScreen extends Screen implements TitlePage.Host {
         boolean on = MyList.has(tv, title.key);
         buttons.add(new TitlePage.Button("My List", on ? TitlePage.TICK : TitlePage.PLUS, false, on, this::toggleList));
         String trailer = trailerId(details == null ? "" : details.trailer);
-        if (!trailer.isEmpty() && !title.series) {
-            buttons.add(new TitlePage.Button("Trailer", TitlePage.TRAILER, false, () -> trailer(trailer)));
-        }
+        if (!trailer.isEmpty()) buttons.add(new TitlePage.Button("Trailer", TitlePage.TRAILER, false, () -> trailer(trailer)));
         if (p != null) buttons.add(new TitlePage.Button("Remove", TitlePage.BIN, false, this::forget));
 
         List<Catalog.Title> more = new ArrayList<>();
@@ -152,6 +163,11 @@ final class TitleScreen extends Screen implements TitlePage.Host {
             }
         }
         page.set(title, details, buttons, more, resumeEpisode(p));
+    }
+
+    /** "18 min left" after Resume: how much of it is still to watch ("" when that isn't known). */
+    private static String left(Resume.Point p) {
+        return p != null && p.duration > p.position && p.position > 0 ? LiveText.mins(p.duration - p.position) + " left" : "";
     }
 
     private String resumeEpisode(Resume.Point p) {
@@ -182,6 +198,11 @@ final class TitleScreen extends Screen implements TitlePage.Host {
 
     /** The trailer in the TV's YouTube app (nothing is played here). */
     private void trailer(String id) {
+        trailer(tv, id);
+    }
+
+    /** A trailer (its YouTube id) in the TV's YouTube app, from any screen (Home's MENU too). */
+    static void trailer(TvActivity tv, String id) {
         try {
             tv.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=" + id))
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
@@ -193,41 +214,22 @@ final class TitleScreen extends Screen implements TitlePage.Host {
     // ---- the remote ---------------------------------------------------------------------------------------------
 
     @Override boolean key(int code, KeyEvent e) {
-        if (onBar) {
-            if (code == KeyEvent.KEYCODE_DPAD_DOWN) {
-                leaveBar();
-                return true;
-            }
-            return bar.key(code) || code == KeyEvent.KEYCODE_DPAD_UP;
-        }
         return page.key(code);
     }
 
-    private void leaveBar() {
-        onBar = false;
-        bar.enter(false);
-        page.enter();
-    }
-
     @Override void ok() {
-        if (onBar) {
-            TopBar.go(tv, bar.focus, bar.current, title.series);
-            return;
-        }
         page.ok();
     }
 
     @Override boolean back() {
-        if (onBar) {
-            leaveBar();
-            return true;
-        }
         return page.back();
     }
 
+    /** Up from the buttons: the tab bar comes back over the page, the remote on it. */
     @Override public void up() {
-        onBar = true;
-        bar.enter(true);
+        if (tv.tabs() == null) return;
+        tv.tabs().enter();
+        page.setActive(false);
     }
 
     @Override public void play(Catalog.Episode ep) {

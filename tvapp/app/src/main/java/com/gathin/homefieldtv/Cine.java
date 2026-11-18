@@ -298,6 +298,11 @@ final class Cine {
             return wasColour == 0 ? nowColour : mix(wasColour, nowColour, mix.value());
         }
 
+        /** How far it has faded to the colour it was last given (1: there; a glow fading with it follows this). */
+        float fading() {
+            return wasColour == 0 ? 1f : Math.max(0f, Math.min(1f, mix.value()));
+        }
+
         /** One frame's step; true while it is still fading. */
         boolean step() {
             boolean moving = mix.step();
