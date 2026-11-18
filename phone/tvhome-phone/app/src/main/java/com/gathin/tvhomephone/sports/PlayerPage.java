@@ -29,6 +29,8 @@ import java.util.Locale;
  */
 final class PlayerPage extends FrameLayout {
     private static final int SOFT = 0xD9FFFFFF, DIM = 0x99FFFFFF;
+    /** The card's share of the width, on its side and on a tablet. */
+    private static final float CARD_SHARE = 0.46f;
 
     final boolean wide;
     private final float d;
@@ -55,6 +57,7 @@ final class PlayerPage extends FrameLayout {
 
         card = new SquadCard(c);
         card.setNames(false);
+        card.setPhotoScale(1.16f);
         card.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
         cardBox = new FrameLayout(c);
         cardBox.setClipChildren(false);
@@ -113,12 +116,12 @@ final class PlayerPage extends FrameLayout {
             LinearLayout row = new LinearLayout(c);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setClipChildren(false);
-            row.addView(cardBox, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 0.44f));
+            row.addView(cardBox, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, CARD_SHARE));
             FrameLayout holder = new FrameLayout(c);
             holder.addView(words, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
                     Gravity.CENTER_VERTICAL));
             scroll.addView(holder, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            row.addView(scroll, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 0.56f));
+            row.addView(scroll, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f - CARD_SHARE));
             addView(row, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         } else {
             LinearLayout col = new LinearLayout(c);
@@ -194,7 +197,9 @@ final class PlayerPage extends FrameLayout {
         facts.setVisibility(f.length() == 0 ? GONE : VISIBLE);
         flag.setImageDrawable(null);
         flag.setVisibility(p.flag.isEmpty() ? GONE : VISIBLE);
-        if (!p.flag.isEmpty()) Ui.load(flag, p.flag, null, () -> flag.setVisibility(GONE));
+        android.graphics.Bitmap given = Cutout.given(p.flag);
+        if (given != null) flag.setImageBitmap(given);
+        else if (!p.flag.isEmpty()) Ui.load(flag, p.flag, null, () -> flag.setVisibility(GONE));
         injury.setText(p.injury.isEmpty() ? "" : "Injured".equals(p.injury) ? "Injured" : "Injured  ·  back " + p.injury);
         injury.setVisibility(p.injury.isEmpty() ? GONE : VISIBLE);
 
@@ -269,8 +274,9 @@ final class PlayerPage extends FrameLayout {
         if (w > 0 && h > 0) {
             float p;
             if (wide) {
-                float boxW = w * 0.44f - sidePad;
-                p = Math.min(boxW / 1.55f, h * 0.86f / 1.78f);
+                // the card's half of the page (a little less when it is wide and short), its photo whole within it
+                float boxW = w * CARD_SHARE - sidePad;
+                p = Math.min(boxW / (h > w ? 1.6f : 1.8f), h * 0.86f / 1.78f);
                 int cardTop = Math.max(0, Math.round((h - 1.78f * p) / 2f - 0.02f * p));
                 FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) card.getLayoutParams();
                 if (lp.topMargin != cardTop) lp.topMargin = cardTop;

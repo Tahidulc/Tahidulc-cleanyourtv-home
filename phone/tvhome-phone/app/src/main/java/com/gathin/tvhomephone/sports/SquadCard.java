@@ -32,6 +32,8 @@ final class SquadCard extends ViewGroup {
     /** Each part's place, worked out from p and the photo's kind. */
     private float cardW, cardH, panelX, panelY, panelH, photoW, photoH, photoX, photoTop, photoSideDy, photoSideScale;
     private float coinD, coinX, coinY, coinSideDx, coinSideDy;
+    /** How much larger than the carousel's the photo is drawn (the player's page has the panel to itself). */
+    private float photoScale = 1f;
     private final int maxHead;
 
     SquadCard(Context c) {
@@ -83,6 +85,13 @@ final class SquadCard extends ViewGroup {
         coin.setTextColor(ClubLook.coinInk(c));
         photo.setStandIn(new PageArt.Bust(club));
         photo.setLook(Cutout.FIT, 0.30f);
+    }
+
+    /** The photo larger (or smaller) than the carousel draws it: 1 as it is. */
+    void setPhotoScale(float f) {
+        if (Math.abs(f - photoScale) < 0.001f) return;
+        photoScale = f;
+        place();
     }
 
     /** Whether the big names show under the middle card (the player's page sets its name apart). */
@@ -186,19 +195,19 @@ final class SquadCard extends ViewGroup {
         float crown, sideScale;
         switch (kind) {
             case SquadFilter.SHOULDERS:
-                photoW = 1.42f * p;
+                photoW = 1.5f * p * photoScale;
                 photoH = photoW * 436f / 600f;
                 crown = 0.11f;
                 sideScale = 0.78f;
                 break;
             case SquadFilter.HEAD:
-                photoW = Math.min(0.98f * p, maxHead);
+                photoW = Math.min(0.98f * p * photoScale, maxHead);
                 photoH = photoW;
                 crown = 0.04f;
                 sideScale = 0.84f;
                 break;
             default:
-                photoW = 0.92f * p;
+                photoW = 0.92f * p * photoScale;
                 photoH = photoW;
                 crown = PageArt.Bust.CROWN;
                 sideScale = 0.84f;
@@ -211,7 +220,7 @@ final class SquadCard extends ViewGroup {
         photoSideScale = sideScale;
         coinD = 0.30f * p;
         coinX = panelX + 0.90f * p;
-        coinY = panelY + 0.40f * panelH;
+        coinY = panelY + 0.3f * panelH;
         coinSideDx = panelX + 0.5f * p - coinX;
         coinSideDy = panelY + 0.80f * panelH - coinY;
         coin.setTextSize(TypedValue.COMPLEX_UNIT_PX, coinD * 0.44f);

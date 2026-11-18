@@ -45,6 +45,13 @@ final class Cutout extends View {
     /** Previews only: pictures by address, drawn at once in place of a download. Empty in the app. */
     static final Map<String, Bitmap> GIVEN = new HashMap<>();
 
+    /** Previews only: the picture given for an address, at whatever width formula1.com's is asked for ("w_0"). */
+    static Bitmap given(String url) {
+        if (url == null || GIVEN.isEmpty()) return null;
+        Bitmap b = GIVEN.get(url);
+        return b != null ? b : GIVEN.get(url.replaceFirst("c_lfill,w_[0-9]+", "c_lfill,w_0"));
+    }
+
     /** What became of a load: which address came (its place in the list), or none. */
     interface Loaded {
         void ready(int which);
@@ -95,7 +102,7 @@ final class Cutout extends View {
             return;
         }
         for (int i = 0; i < urls.length; i++) {
-            Bitmap given = urls[i] == null ? null : GIVEN.get(urls[i]);
+            Bitmap given = given(urls[i]);
             if (given != null) {
                 set(given);
                 if (told != null) told.ready(i);

@@ -5,10 +5,11 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffXfermode;
 import android.graphics.RectF;
 import android.graphics.Shader;
 import android.text.TextPaint;
-import android.text.TextUtils;
 
 import com.gathin.tvhomephone.home.Type;
 
@@ -59,7 +60,7 @@ final class DriverPage extends android.view.View {
     private float upFigLabelY, upFigValueY, upFigCol;
     private float gpX, gpKickerY, gpNameY, gpDatesY, gpRoom, countRight, countGap, countUnitY, countDigitY;
     private float teamX, teamY, teamRoom, logoSize, nameY, factsY, carLeft, carBottom, carLength, arrowY;
-    private float headW;
+    private float headW, gpBase = 1f;
 
     // ---- the words, worked out in prepare() ----
     private String number = "", teamShown = "", nameShown = "", facts = "", kicker = "", gpName = "", gpDates = "";
@@ -238,7 +239,7 @@ final class DriverPage extends android.view.View {
         float rx = wc - 700f, rr = wc - 150f;
         gpX = x(rx);
         gpKickerY = y(top + 80f);
-        gpP.setTextSize(size(36f, 15f));
+        gpBase = size(36f, 15f);
         smallP.setTextSize(size(22f, 12f));
         gpNameY = y(top + 124f);
         gpDatesY = y(top + 158f);
@@ -248,7 +249,6 @@ final class DriverPage extends android.view.View {
         countP.setTextSize(size(56f, 22f));
         countUnitY = y(top + 80f);
         countDigitY = y(top + 136f);
-        gpRoom = countRight - 2 * countGap - u(80f) - gpX;
         teamX = gpX;
         teamP.setTextSize(u(86f));
         teamY = y(top + 0.43f * ch);
@@ -271,7 +271,7 @@ final class DriverPage extends android.view.View {
         oy = 0;
         float hh = Math.max(UP_MIN_H, h / s);
         float bottom = hh - 12f;
-        float photoBottom = bottom - 366f;
+        float photoBottom = bottom - 380f;
         float top = Math.max(120f, photoBottom - 200f);
         cardR.set(x(14f), y(top), x(383f), y(bottom));
         radius = u(30f);
@@ -286,40 +286,40 @@ final class DriverPage extends android.view.View {
         headW = u(330f);
         teamX = x(28f);
         teamP.setTextSize(u(34f));
-        teamY = y(bottom - 326f);
+        teamY = y(bottom - 340f);
         teamRoom = x(370f) - teamX;
         logoSize = u(30f);
         numberP.setTextSize(u(20f));
         nameP.setTextSize(u(22f));
-        nameY = y(bottom - 290f);
+        nameY = y(bottom - 302f);
         factsP.setTextSize(u(15f));
-        factsY = y(bottom - 264f);
+        factsY = y(bottom - 276f);
         labelP.setTextSize(u(14f));
         valueP.setTextSize(u(32f));
-        upFigLabelY = y(bottom - 230f);
-        upFigValueY = y(bottom - 196f);
+        upFigLabelY = y(bottom - 238f);
+        upFigValueY = y(bottom - 204f);
         upFigCol = u(122f);
         figX = x(28f);
         kickerP.setTextSize(u(11f));
         gpX = x(28f);
-        gpKickerY = y(bottom - 178f);
-        gpP.setTextSize(u(19f));
-        gpNameY = y(bottom - 154f);
+        gpKickerY = y(bottom - 166f);
+        gpBase = u(19f);
+        gpNameY = y(bottom - 142f);
         smallP.setTextSize(u(13f));
-        gpDatesY = y(bottom - 134f);
+        gpDatesY = y(bottom - 122f);
         countRight = x(372f);
         countGap = u(42f);
         unitP.setTextSize(u(11f));
         countP.setTextSize(u(26f));
-        countUnitY = y(bottom - 178f);
-        countDigitY = y(bottom - 148f);
-        gpRoom = countRight - 2 * countGap - u(36f) - gpX;
+        countUnitY = y(bottom - 166f);
+        countDigitY = y(bottom - 136f);
         carLength = u(308f);
         carLeft = x(96f);
         carBottom = y(bottom - 20f);
         arrowY = (driverTop + clipBottom) / 2f;
-        fade.setShader(new LinearGradient(0, clipBottom - u(70f), 0, clipBottom, ClubLook.alpha(cardColour == 0 ? ClubLook.NAVY : cardColour, 0),
-                cardColour == 0 ? ClubLook.NAVY : cardColour, Shader.TileMode.CLAMP));
+        // the driver's foot fades out at the band's foot (into whatever is under him)
+        fade.setShader(new LinearGradient(0, clipBottom - u(80f), 0, clipBottom, 0x00000000, 0xFF000000, Shader.TileMode.CLAMP));
+        fade.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_OUT));
     }
 
     /** The words for the driver and the size: worked out once, not while drawing. */
@@ -331,23 +331,27 @@ final class DriverPage extends android.view.View {
         teamScale = tw > room && tw > 0 ? Math.max(0.45f, room / tw) : 1f;
         teamShown = st.team;
         float nameRoom = teamRoom - (number.isEmpty() ? 0 : numberP.measureText(number) + u(14f)) - u(wide ? 64f : 36f);
-        nameShown = TextUtils.ellipsize(st.name, nameP, Math.max(1f, nameRoom), TextUtils.TruncateAt.END).toString();
+        nameShown = clip(st.name, nameP, nameRoom);
         facts = DriverFacts.facts(st.nationality, DriverFacts.age(st.born, LocalDate.now(ZoneId.systemDefault())));
         kicker = st.season > 0 ? st.season + " SEASON" : "THIS SEASON";
         figures.clear();
         figures.addAll(DriverFacts.figures(st, season));
         if (next != null && next.name != null && !next.name.isEmpty()) {
-            gpName = TextUtils.ellipsize(next.name, gpP, Math.max(1f, gpRoom), TextUtils.TruncateAt.END).toString();
+            // the name up to the countdown's first figures; the dates under them may run a little further
+            gpRoom = countRight - 2 * countGap - countP.measureText("00") - u(wide ? 28f : 10f) - gpX;
+            // a little smaller before it is cut
+            gpP.setTextSize(gpBase);
+            float gw = gpP.measureText(next.name);
+            if (gw > gpRoom && gw > 0) gpP.setTextSize(Math.max(0.8f * gpBase, gpBase * gpRoom / gw));
+            gpName = clip(next.name, gpP, gpRoom);
             String d = DriverFacts.dates(next.start, next.race, ZoneId.systemDefault());
             String circuit = next.circuit == null ? "" : next.circuit;
             String line = d.isEmpty() ? circuit : circuit.isEmpty() ? d : d + "  ·  " + circuit;
-            gpDates = TextUtils.ellipsize(line, smallP, Math.max(1f, gpRoom), TextUtils.TruncateAt.END).toString();
+            gpDates = clip(line, smallP, gpRoom + u(wide ? 20f : 16f));
         } else {
             gpName = "";
             gpDates = "";
         }
-        if (!wide) fade.setShader(new LinearGradient(0, clipBottom - u(70f), 0, clipBottom, ClubLook.alpha(cardColour, 0), cardColour,
-                Shader.TileMode.CLAMP));
         // the stand-ins' places: a figure where the driver stands, a car where his would be
         float fw = figH / 2.6f;
         if (figure != null) figure.setBounds(Math.round(driverCx - fw / 2f), Math.round(driverTop), Math.round(driverCx + fw / 2f), Math.round(driverTop + figH));
@@ -411,7 +415,8 @@ final class DriverPage extends android.view.View {
 
     private void drawDriver(Canvas c) {
         Bitmap b = photo.bitmap();
-        c.save();
+        // upright, on a layer of its own so his foot can fade out; on the card, cut at its foot
+        int saved = wide ? c.save() : c.saveLayer(0, 0, getWidth(), clipBottom, null);
         c.clipRect(0, 0, getWidth(), clipBottom);
         if (b != null && b.getHeight() > b.getWidth() * 1.4f) {
             // formula1.com's: the driver standing, his head near the top, cut at the card's foot (or the band's)
@@ -426,8 +431,18 @@ final class DriverPage extends android.view.View {
         } else if (photo.failed() && figure != null) {
             figure.draw(c);
         }
-        c.restore();
-        if (!wide) c.drawRect(cardR.left, clipBottom - u(70f), cardR.right, clipBottom, fade);
+        if (!wide) c.drawRect(0, clipBottom - u(80f), getWidth(), clipBottom, fade);
+        c.restoreToCount(saved);
+    }
+
+    /** Pure but for the paint's measure: the words cut to the room with "…" when they are wider. */
+    static String clip(String s, Paint p, float room) {
+        if (s == null) return "";
+        if (room <= 0 || p.measureText(s) <= room) return s;
+        float dots = p.measureText("…");
+        int n = s.length();
+        while (n > 1 && p.measureText(s, 0, n) + dots > room) n--;
+        return s.substring(0, n).trim() + "…";
     }
 
     private void drawCar(Canvas c) {

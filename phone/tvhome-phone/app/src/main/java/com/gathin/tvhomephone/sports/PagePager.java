@@ -298,21 +298,7 @@ final class PagePager extends ViewGroup {
             velocity.computeCurrentVelocity(1000, maxFling);
             v = -velocity.getXVelocity() / Math.max(1f, getWidth());
         }
-        goTo(pageTarget(pos, v, dragStart, minFling * 2f / Math.max(1f, getWidth()), count));
-    }
-
-    /**
-     * Pure: where a let-go page swipe settles: a fling past minFling (pages a second) goes on to the next page that way,
-     * a slow one to the nearest; never more than a page from where the drag began, kept to the pages.
-     */
-    static int pageTarget(float pos, float velocity, int start, float minFling, int count) {
-        if (count <= 0) return 0;
-        int t;
-        if (velocity >= minFling) t = Math.max(start + 1, Math.round(pos));
-        else if (velocity <= -minFling) t = Math.min(start - 1, Math.round(pos));
-        else t = Math.round(pos);
-        t = Math.max(start - 1, Math.min(start + 1, t));
-        return Math.max(0, Math.min(count - 1, t));
+        goTo(CarouselMath.pageTarget(pos, v, dragStart, minFling * 2f / Math.max(1f, getWidth()), count));
     }
 
     @Override protected void onDetachedFromWindow() {

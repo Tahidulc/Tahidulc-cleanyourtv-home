@@ -46,7 +46,7 @@ final class PagePic {
         int my = ++token;
         if (urls == null) urls = new String[0];
         for (String u : urls) {
-            Bitmap given = u == null ? null : Cutout.GIVEN.get(u);
+            Bitmap given = Cutout.given(u);
             if (given != null) {
                 bitmap = given;
                 owner.invalidate();

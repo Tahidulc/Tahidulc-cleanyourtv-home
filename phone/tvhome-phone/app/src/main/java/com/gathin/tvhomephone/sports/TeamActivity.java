@@ -60,6 +60,7 @@ public class TeamActivity extends AppCompatActivity {
     private LinearLayout col;
     private HeaderRows head;
     private ImageView crest;
+    private View crestDisc;
     private TextView titleName, titleLine, playersPill, staffPill;
     private final TextView[] linePills = new TextView[SquadFilter.PILLS.length];
     private FrameLayout stage;
@@ -230,6 +231,7 @@ public class TeamActivity extends AppCompatActivity {
         back.setContentDescription("Back");
         r.addView(back, new LinearLayout.LayoutParams(dp(40), dp(48)));
         FrameLayout disc = new FrameLayout(this);
+        crestDisc = disc;
         disc.setBackground(Ui.fill(this, 0xFFFFFFFF, 18));
         crest = new ImageView(this);
         crest.setScaleType(ImageView.ScaleType.FIT_CENTER);
@@ -323,7 +325,8 @@ public class TeamActivity extends AppCompatActivity {
         if (c != colour) recolour(c);
         titleName.setText(data.name);
         titleLine.setText(standing());
-        Ui.load(crest, data.logo, null, null);
+        crestDisc.setVisibility(data.logo.isEmpty() ? View.GONE : View.VISIBLE);
+        if (!data.logo.isEmpty()) Ui.load(crest, data.logo, null, () -> crestDisc.setVisibility(View.GONE));
         boolean staff = SquadFilter.hasStaff(data.squad);
         if (!staff && management) management = false;
         staffPill.setVisibility(staff ? View.VISIBLE : View.GONE);
