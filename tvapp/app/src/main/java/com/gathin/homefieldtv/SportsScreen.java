@@ -660,7 +660,9 @@ final class SportsScreen extends Screen {
             for (int i = 0; rows != null && i < Math.min(4, rows.size()); i++) {
                 Matching.Row row = rows.get(i);
                 y += 16;
-                image(c, row.logo, CARD_X + 80, y + 34, 56);
+                // The channel's logo on its tile (Logos: Behind logos).
+                r.set(x(CARD_X + 40), x(y + 10), x(CARD_X + 120), x(y + 58));
+                Logos.draw(c, row.logo, r, redraw);
                 c.drawText(Ui.fit(row.name + (row.uhd ? "  4K" : ""), chName, x(CARD_W - 220)), x(CARD_X + 130), x(y + 30), chName);
                 String under = row.now ? "Playing now" : row.under;
                 c.drawText(Ui.fit(under, chUnder, x(CARD_W - 220)), x(CARD_X + 130), x(y + 60), chUnder);

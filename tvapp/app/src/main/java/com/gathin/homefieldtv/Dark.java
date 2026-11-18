@@ -12,23 +12,23 @@ import java.util.Locale;
 
 /**
  * The colours, words and icons the screens drawn before the colour themes' tokens (Palette, Type) still use: the
- * theme's ground, panels and accent (Theme.apply sets them to the theme's: Indigo • Blue until then), white writing
- * with the theme's greys under it, Roboto throughout (text() is Type's), the light accent for the rings round where the
- * remote is, line icons drawn as paths (the menu's among them), Homefield's mark, and a person's initials in a circle
- * where there is no photo. Sizes are design pixels of a 1920 x 1080 screen (Ui.f).
+ * theme's ground, panels and accent (Theme.apply sets them to the theme's: Homefield • Amber, 07's, until then), white
+ * writing with the theme's greys under it, Inter throughout (text() is Type's), the rings round where the remote is,
+ * line icons drawn as paths (the menu's among them), Homefield's mark, and a person's initials in a circle where there is
+ * no photo. Sizes are design pixels of a 1920 x 1080 screen (Ui.f).
  */
 final class Dark {
     private Dark() {}
 
-    // The theme's colours (Theme sets them as the app starts; Indigo • Blue's until then).
-    static int GROUND = 0xFF151B3F, RAIL = 0xFF1F295F, PANEL = 0xFF1F295F, CARD = 0xFF1F295F, CARD_HI = 0xFF2A377F;
+    // The theme's colours (Theme sets them as the app starts; Homefield • Amber's until then).
+    static int GROUND = 0xFF0B0B0F, RAIL = 0xFF1D1D22, PANEL = 0xFF1D1D22, CARD = 0xFF1D1D22, CARD_HI = 0xFF2A2A31;
     static final int TEXT = 0xFFFFFFFF, LINE = 0x1FFFFFFF;
-    /** The greys under white writing: white at 80, 60 and 37.5 % over the theme's ground. */
-    static int SOFT = 0xFFD0D1D9, MUTED = 0xFFA1A4B2, FAINT = 0xFF6D7187;
+    /** The greys under white writing: white at 80 %, then 07's second and third labels, over the theme's ground. */
+    static int SOFT = 0xFFCECECF, MUTED = 0xFFB1B1BA, FAINT = 0xFF808087;
     /** The accent: the page the rail is on, the button the remote is on, the stars; the writing on it. */
-    static int ACCENT = 0xFF2196F3, ACCENT_INK = 0xFFFFFFFF;
-    /** The light accent (the part of a programme already shown, the focus rings); the New badge. */
-    static int ACCENT_SOFT = 0xFF90CAF9, BADGE = 0xFF2196F3, RING = 0xFF90CAF9;
+    static int ACCENT = 0xFFFFB547, ACCENT_INK = 0xFF1E1606;
+    /** The light accent (the part of a programme already shown); the New badge; the rings round where the remote is. */
+    static int ACCENT_SOFT = 0xFFFFD08A, BADGE = 0xFFFFB547, RING = 0xFFFFFFFF;
     /** The guide's programme colours, picked by title. */
     static final int[] DEEP = Theme.DEEP.clone();
 
@@ -37,10 +37,11 @@ final class Dark {
         return (colour & 0x00FFFFFF) | (Math.max(0, Math.min(255, a)) << 24);
     }
 
-    /** Outfit: the scoreboards' own lettering (BoardPrefs). The screens write in Roboto (Type). */
+    /** Outfit: the scoreboards' own lettering (BoardPrefs). The screens write in Inter (Type). */
     static Typeface outfit = Typeface.DEFAULT;
 
     static void init(Context c) {
+        Type.init(c);
         try {
             outfit = c.getResources().getFont(R.font.outfit);
         } catch (RuntimeException e) {
@@ -48,7 +49,7 @@ final class Dark {
         }
     }
 
-    /** Writing in Roboto at a weight (up to 450 regular, up to 650 medium, then bold), size in design pixels. */
+    /** Writing in Inter at a weight (Type.paint), size in design pixels. */
     static TextPaint text(float size, int weight, int color) {
         return Type.paint(size, weight, color);
     }

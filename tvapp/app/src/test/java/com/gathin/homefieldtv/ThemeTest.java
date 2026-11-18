@@ -2,6 +2,7 @@ package com.gathin.homefieldtv;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -12,8 +13,9 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * The colour themes: Indigo • Blue first with the colours measured on the family's TV, the tokens drawn over the ground
- * and the panels making the colours seen there, every pair readable, and a choice reaching every screen's colours.
+ * The colour themes: Homefield • Amber (the 07 look) where every TV starts, its tokens drawn over the ground making the
+ * mock-ups' colours; Indigo • Blue still with the colours measured on the family's TV; every pair readable, and a
+ * choice reaching every screen's colours.
  */
 public class ThemeTest {
     @Test public void mixBlendsEachChannelAndKeepsTheFirstsAlpha() {
@@ -35,8 +37,35 @@ public class ThemeTest {
         assertEquals("Blue", a.name);
         assertEquals(0xFF2196F3, a.colour);
         assertEquals(0xFF90CAF9, a.light);
-        // Out of range: Indigo • Blue.
-        assertEquals("Indigo • Blue", Theme.name(99, -1));
+        // Out of range: the 07 look's own pair.
+        assertEquals("Homefield • Amber", Theme.name(99, -1));
+    }
+
+    @Test public void homefieldAmberIsTheSevenLooksOwn() {
+        Theme.Primary p = Theme.PRIMARIES[Theme.HOMEFIELD];
+        assertEquals("Homefield", p.name);
+        assertTrue(p.neutral);
+        assertEquals(Look07.GROUND, p.ground);
+        Theme.Accent a = Theme.ACCENTS[Theme.AMBER];
+        assertEquals("Amber", a.name);
+        assertEquals(Look07.AMBER, a.colour);
+        assertEquals(Look07.AMBER_INK, a.ink);
+        try {
+            Theme.apply(Theme.HOMEFIELD, Theme.AMBER);
+            assertEquals("Homefield • Amber", Theme.name());
+            assertTrue(Theme.neutral());
+            // White where the remote is (the old screens' white words stay readable on it), not the accent.
+            assertEquals(Palette.FOCUS_07, Palette.FOCUS);
+            assertEquals(Look07.AMBER, Palette.ACCENT);
+            // The mock-ups' second and third labels, rgba(235,235,245) at 74 % and 52 %, over the page's #0B0B0F.
+            close("the second label on the ground", 0xFFB1B1BA, Palette.over(Palette.GROUND, Palette.TEXT2));
+            close("the third label on the ground", 0xFF808087, Palette.over(Palette.GROUND, Palette.TEXT3));
+            close("the scrim over the ground", 0xFF050506, Palette.over(Palette.GROUND, Palette.SCRIM));
+            assertEquals(0xFFFFFFFF, Dark.RING);
+            assertTrue("white words where the remote is", contrast(0xFFFFFFFF, Palette.over(Palette.PANEL, Palette.FOCUS)) >= 4.5);
+        } finally {
+            Theme.apply(Theme.INDIGO, Theme.BLUE);
+        }
     }
 
     /** Within two of each channel: the device's values are medians of a few pixels. */
@@ -47,33 +76,20 @@ public class ThemeTest {
         }
     }
 
-    @Test public void theTokensMakeTheColoursMeasuredOnTheTv() {
+    @Test public void indigoBlueKeepsTheColoursMeasuredOnTheTv() {
         try {
             Theme.apply(Theme.INDIGO, Theme.BLUE);
             int ground = Palette.GROUND, panel = Palette.PANEL;
+            // The theme's own share: where the remote is, the panels over the video, the band, the accent.
             close("focus on a panel", 0xFF1F5296, Palette.over(panel, Palette.FOCUS));
             close("focus on the ground", 0xFF194982, Palette.over(ground, Palette.FOCUS));
-            close("selected on a panel", 0xFF323B6D, Palette.over(panel, Palette.SELECTED));
-            close("selected on the ground", 0xFF292F50, Palette.over(ground, Palette.SELECTED));
-            close("text on the ground", 0xFFEFF0F2, Palette.over(ground, Palette.TEXT1));
-            close("text on a panel", 0xFFF0F1F4, Palette.over(panel, Palette.TEXT1));
-            close("grey text on the ground", 0xFFA1A4B2, Palette.over(ground, Palette.TEXT2));
-            close("grey text on a panel", 0xFFA5A9BF, Palette.over(panel, Palette.TEXT2));
-            close("text switched off", 0xFF737A9B, Palette.over(panel, Palette.TEXT3));
-            close("the rail's other icons", 0xFF878CA9, Palette.over(panel, Palette.ICON_OFF));
-            close("a guide cell", 0xFF1D2346, Palette.over(ground, Palette.CELL));
-            close("the focused row's cells", 0xFF444965, Palette.over(ground, Palette.CELL_ROW));
-            close("a cell's aired part", 0xFF252B4C, Palette.over(ground, Palette.CELL_AIRED));
-            close("the guide's divider", 0xFF3A3F5D, Palette.over(ground, Palette.GUIDE_DIVIDER));
-            close("a progress bar's track", 0xFF3F4462, Palette.over(ground, Palette.TRACK));
-            close("the ground under the scrim", 0xFF080B19, Palette.over(ground, Palette.SCRIM));
-            close("a switch that is off", 0xFF656C91, Palette.over(panel, Palette.SWITCH_OFF));
             close("a switch off on the remote's row", 0xFF19427A,
                     Palette.over(Palette.over(panel, Palette.FOCUS), Palette.SWITCH_OFF_FOCUS));
             close("the playback panel over white", 0xFF434C76, Palette.over(0xFFFFFFFF, Palette.PLAYBACK));
             assertEquals(0xFF2A377F, Palette.HEADER);
             assertEquals(0xFF2196F3, Palette.ACCENT);
             assertEquals(0xFF90CAF9, Palette.ACCENT_LIGHT);
+            assertFalse(Theme.neutral());
         } finally {
             Theme.apply(Theme.INDIGO, Theme.BLUE);
         }
@@ -136,10 +152,10 @@ public class ThemeTest {
             assertEquals(a.light, Dark.RING);
             assertEquals(Palette.over(p.ground, Palette.TEXT2), Dark.MUTED);
             assertArrayEquals(Theme.DEEP, Dark.DEEP);
-            // Out of range: Indigo • Blue.
+            // Out of range: the 07 look's own pair.
             Theme.apply(99, 99);
-            assertEquals(Theme.INDIGO, Theme.primary());
-            assertEquals(Theme.BLUE, Theme.accent());
+            assertEquals(Theme.HOMEFIELD, Theme.primary());
+            assertEquals(Theme.AMBER, Theme.accent());
         } finally {
             Theme.apply(Theme.INDIGO, Theme.BLUE);
         }

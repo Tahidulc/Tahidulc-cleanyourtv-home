@@ -256,11 +256,9 @@ final class ProgrammeList extends View {
             c.drawText(e.state, x + Ui.f(LOGO_X - 24) - whens.width(e.state), y + Ui.f(90), whenP);
         }
         // The channel: its logo and name.
-        Bitmap b = e.logo.isEmpty() ? null : Pics.get(e.logo, Ui.px(LOGO_W), Ui.px(LOGO_H), Pics.logoMode(), redraw);
         float lx = x + Ui.f(LOGO_X), ly = y + (h - Ui.f(LOGO_H)) / 2f;
-        if (b != null) {
-            c.drawBitmap(b, lx + (Ui.f(LOGO_W) - b.getWidth()) / 2f, ly + (Ui.f(LOGO_H) - b.getHeight()) / 2f, bmp);
-        }
+        r.set(lx, ly, lx + Ui.f(LOGO_W), ly + Ui.f(LOGO_H));
+        Logos.draw(c, e.logo, r, redraw);
         float nameRoom = Ui.f(W - NAME_X - (e.deletable ? TRASH + 32 : 24));
         if (e.nameL == null || e.nameL.getWidth() != Math.round(nameRoom)) e.nameL = Ui.layout(e.channel, nameP, Math.round(nameRoom), 2);
         nameP.setColor(Palette.TEXT1);

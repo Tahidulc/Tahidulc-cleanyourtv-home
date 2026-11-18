@@ -457,15 +457,8 @@ final class ArchiveScreen extends Screen implements GuideMenu.Host, DialogCard.H
             fill.setColor(Palette.HEADER);
             c.drawRect(0, 0, Ui.f(DETAIL_X), Ui.f(HEAD_H), fill);
             float tx = Ui.f(32f), ty = Ui.f(20f), tw = Ui.f(108f), th = Ui.f(72f);
-            Bitmap logo = LogoPack.url(ch).isEmpty() ? null : Pics.get(LogoPack.url(ch), Ui.px(108f), Ui.px(72f), Pics.logoMode(), redraw);
-            if (logo != null) {
-                c.drawBitmap(logo, tx + (tw - logo.getWidth()) / 2f, ty + (th - logo.getHeight()) / 2f, bmp);
-            } else {
-                r.set(tx, ty, tx + tw, ty + th);
-                fill.setColor(Pics.tiles ? 0xFF000000 : Palette.SELECTED);
-                c.drawRoundRect(r, Ui.f(8f), Ui.f(8f), fill);
-                RoundButton.glyph(c, Dark.TV, r.centerX(), r.centerY(), Ui.f(36f), Palette.TEXT3);
-            }
+            r.set(tx, ty, tx + tw, ty + th);
+            if (!Logos.draw(c, ch, r, redraw)) RoundButton.glyph(c, Dark.TV, r.centerX(), r.centerY(), Ui.f(36f), Palette.TEXT3);
             Library lib = Library.get(getContext());
             String name = (Look.numbers ? lib.number(ch) + "  " : "") + ChannelEdits.name(ch);
             nameP.setColor(Palette.TEXT1);
@@ -582,9 +575,9 @@ final class ArchiveScreen extends Screen implements GuideMenu.Host, DialogCard.H
                 c.drawBitmap(pic, null, r, bmp);
                 c.restore();
             } else {
-                Bitmap logo = LogoPack.url(ch).isEmpty() ? null : Pics.get(LogoPack.url(ch), Ui.px(300f), Ui.px(180f), Pics.logoMode(), redraw);
-                if (logo != null) c.drawBitmap(logo, r.centerX() - logo.getWidth() / 2f, r.centerY() - logo.getHeight() / 2f, bmp);
-                else RoundButton.glyph(c, Dark.TV, r.centerX(), r.centerY(), Ui.f(96f), Palette.TEXT3);
+                float cx = r.centerX(), cy = r.centerY();
+                r.set(cx - Ui.f(150f), cy - Ui.f(90f), cx + Ui.f(150f), cy + Ui.f(90f));
+                if (!Logos.draw(c, ch, r, redraw)) RoundButton.glyph(c, Dark.TV, cx, cy, Ui.f(96f), Palette.TEXT3);
             }
 
             // The card.

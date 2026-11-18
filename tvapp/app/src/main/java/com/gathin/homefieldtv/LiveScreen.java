@@ -1036,6 +1036,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
         private String descKey = "";
         private StaticLayout descL;
         private final Runnable redraw = this::invalidate;
+        private final RectF r = new RectF();
 
         BrowseInfo(Context c) {
             super(c);
@@ -1070,9 +1071,8 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
                 c.drawRect(x, y - Ui.f(18), x + Math.max(1f, Ui.f(2f)), y + Ui.f(4), sep);
                 x += Ui.f(22);
             }
-            Bitmap logo = Pics.get(LogoPack.url(ch), Ui.px(200), Ui.px(72), Pics.tiles ? Pics.READY : Pics.FIT, redraw);
-            if (logo != null) c.drawBitmap(logo, x0, Ui.f(100) + (Ui.f(72) - logo.getHeight()) / 2f, bmp);
-            else c.drawText(Ui.fit(ChannelEdits.name(ch), logoName, Ui.f(600)), x0, Ui.f(150), logoName);
+            r.set(x0, Ui.f(100), x0 + Ui.f(124), Ui.f(172));
+            if (!Logos.draw(c, ch, r, redraw)) c.drawText(Ui.fit(ChannelEdits.name(ch), logoName, Ui.f(600)), x0 + Ui.f(140), Ui.f(150), logoName);
             String title = i >= 0 ? s.title[i] : ChannelEdits.name(ch);
             c.drawText(Ui.fit(title, titleP, Ui.f(1400)), x0, Ui.f(250), titleP);
             String chan = lib.number(ch) + "  " + ChannelEdits.name(ch) + (ch.group.isEmpty() ? "" : "  ·  " + ch.group);
@@ -1206,27 +1206,26 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
             // Settings → Appearance → Channel tiles: Channel logos leaves the programme's picture out.
             Bitmap pic = url == null || url.isEmpty() || com.gathin.homefieldtv.prefs.Look.logos ? null
                     : Pics.get(url, Ui.px(TILE_W), Ui.px(TILE_H), Pics.CARD, redraw);
-            int logoMode = Pics.tiles ? Pics.READY : Pics.FIT;
             c.save();
             if (l > 0f) {
                 float k = 1f + (LIFT - 1f) * l;
                 c.scale(k, k, x + w / 2f, y + hgt / 2f);
             }
-            r.set(x, y, x + w, y + hgt);
             if (pic != null) {
                 c.drawBitmap(pic, x, y, bmp);
-                Bitmap logo = Pics.get(LogoPack.url(ch), Ui.px(120), Ui.px(46), logoMode, redraw);
-                if (logo != null) c.drawBitmap(logo, x + Ui.f(16), y + Ui.f(14), bmp);
+                r.set(x + Ui.f(16), y + Ui.f(14), x + Ui.f(94), y + Ui.f(60));
+                Logos.draw(c, ch, r, redraw);
             } else {
+                r.set(x, y, x + w, y + hgt);
                 tileBack.setColor(Palette.PANEL);
                 c.drawRoundRect(r, Ui.f(12), Ui.f(12), tileBack);
-                Bitmap logo = Pics.get(LogoPack.url(ch), Ui.px(170), Ui.px(62), logoMode, redraw);
-                if (logo != null) c.drawBitmap(logo, x + (w - logo.getWidth()) / 2f, y + Ui.f(58) - logo.getHeight() / 2f, bmp);
-                else {
+                r.set(x + w / 2f - Ui.f(60), y + Ui.f(23), x + w / 2f + Ui.f(60), y + Ui.f(93));
+                if (!Logos.draw(c, ch, r, redraw)) {
                     String nm = Ui.fit(ChannelEdits.name(ch), logoName, w - Ui.f(32));
                     c.drawText(nm, x + (w - logoName.measureText(nm)) / 2f, y + Ui.f(66), logoName);
                 }
             }
+            r.set(x, y, x + w, y + hgt);
             float room = w - Ui.f(32);
             String title = i >= 0 ? s.title[i] : ChannelEdits.name(ch);
             c.drawText(Ui.fit(title, tTitle, room), x + Ui.f(16), y + hgt - Ui.f(46), tTitle);

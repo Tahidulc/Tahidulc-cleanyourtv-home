@@ -81,7 +81,7 @@ final class GuideActions {
             } else {
                 kept = false;
             }
-            if (kept) out.add(GuideMenu.Item.item(RECORD, "Record"));
+            if (kept) out.add(GuideMenu.Item.item(RECORD, "Record").value("From catch-up"));
             out.add(myListItem(c, s.title[i]));
             out.add(GuideMenu.Item.item(ABOUT, "Programme description"));
         }

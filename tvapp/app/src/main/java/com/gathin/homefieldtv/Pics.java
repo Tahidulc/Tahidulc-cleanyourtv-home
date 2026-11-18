@@ -83,10 +83,67 @@ final class Pics {
     static final int ART = 11;
     /**
      * LOGO_ART stands in for a programme's picture where there is none (ART's size, shape and fades): the channel's logo
-     * (made ready for a dark ground, as READY) on a deep ground tinted by the logo's own colour, a soft round glow of that
-     * colour behind it, the logo itself low on the right, clear of most of the words. Asked for with the logo's address.
+     * (as LOGO makes it: its own colours, the shared halo behind a dark one) on a deep ground tinted by the logo's own
+     * colour, a soft round glow of that colour behind it, the logo itself low on the right, clear of most of the words.
+     * Asked for with the logo's address.
      */
     static final int LOGO_ART = 12;
+    /**
+     * BLUR is the 07 page's picture behind everything (Ground, Frost): read at an eighth of the size asked (w x h, the
+     * size it is drawn), stack-blurred once and its colour pushed as the mock-ups' blur(50px) saturate(1.75)
+     * brightness(.86); drawn scaled up, it costs a few hundred KB of the budget, never a blur while drawing.
+     */
+    static final int BLUR = 13;
+    /**
+     * LOGO is a channel's logo with no tile (Logos): a plain box round it taken away and its empty margins trimmed, its
+     * colours as they are, at its size in a w x h box (as on a tile); one mostly too dark for a dark ground has tv-logos'
+     * white version instead where there is one (LogoPack.lighter), else the shared soft halo behind its shape (LogoHalo:
+     * never a box), the picture a little larger than the logo for it.
+     */
+    static final int LOGO = 14;
+    /**
+     * TINT is a channel's logo on a tile of its own colour, w x h (Logos: Behind logos: Logo's colour, as it comes): the
+     * shared rule's colours (LogoColour, from the logo as it comes: a deep shade of its main colour with a soft fall,
+     * lighter or deeper until the logo reads on it; a neutral slate for a logo with no real colour), the logo as it is.
+     * Worked out once as it is read; its colours kept for its address (Logos.tint) for its channel's cell.
+     */
+    static final int TINT = 15;
+    /**
+     * FACE is a programme's picture cropped to w x h round its faces (found once a picture as it is read: Faces; the
+     * upper middle when none), whole, toward the right (FACE_BIAS) so words on the left stay clear of them; FACE_MID
+     * centres them (a card whose words are under it). ART does the same for a panel's picture, its left fade ending
+     * before the faces. Pics.faces(url) gives the box found.
+     */
+    static final int FACE = 16, FACE_MID = 17;
+    /** Where across a FACE crop the faces' middle goes (words on the left). */
+    static final float FACE_BIAS = 0.62f;
+
+    /** Each picture's faces as found when it was read: {left, top, right, bottom (shares), its width / height}. */
+    private static final java.util.Map<String, float[]> FACES = java.util.Collections.synchronizedMap(new java.util.LinkedHashMap<String, float[]>(64, 0.75f, true) {
+        @Override protected boolean removeEldestEntry(java.util.Map.Entry<String, float[]> e) {
+            return size() > 800;
+        }
+    });
+
+    /** A read picture's faces: {left, top, right, bottom} as shares of it, then its width / height; null before. */
+    static float[] faces(String url) {
+        return url == null ? null : FACES.get(url);
+    }
+
+    /** Previews: a drawn picture's faces given straight in (no detector there). */
+    static void knownFaces(String url, float l, float t, float r, float b, float aspect) {
+        FACES.put(url, new float[]{l, t, r, b, aspect});
+    }
+
+    /** Found once for a picture (its reader's thread), then kept by its address. */
+    private static float[] facesOf(String url, Bitmap src) {
+        float[] had = FACES.get(url);
+        if (had != null) return had;
+        float[] f = Faces.find(src);
+        float[] kept = {f[0], f[1], f[2], f[3], src.getWidth() / (float) Math.max(1, src.getHeight())};
+        FACES.put(url, kept);
+        return kept;
+    }
 
     /** Each poster's fade colour as worked out when it loaded, by its address (0 until then). */
     private static final java.util.Map<String, Integer> FADES = java.util.Collections.synchronizedMap(new java.util.LinkedHashMap<String, Integer>(64, 0.75f, true) {
@@ -101,17 +158,15 @@ final class Pics {
         return c == null ? 0 : c;
     }
 
-    /** Channel logos on black tiles (Settings, Channel logos): on unless switched off. */
-    static volatile boolean tiles = true;
+    /**
+     * Whether Settings › Appearance › Logos › Behind logos is Black tile (the old look's), kept by Logos (which holds the
+     * choice: Logo's colour as it comes, None, Black tile).
+     */
+    static volatile boolean tiles = false;
 
-    /** A channel logo's mode: on its tile, else as it comes. */
+    /** A channel logo's mode for the setting in use (Logos.mode: TINT, LOGO or TILE). */
     static int logoMode() {
-        return tiles ? TILE : FIT;
-    }
-
-    static void setTiles(Context c, boolean on) {
-        tiles = on;
-        c.getApplicationContext().getSharedPreferences("look", Context.MODE_PRIVATE).edit().putBoolean("logo_tiles", on).apply();
+        return Logos.mode();
     }
 
     private static final int THREADS = 3, QUEUE = 48, PREFETCH = 24;
@@ -179,7 +234,7 @@ final class Pics {
 
     static synchronized void init(Context c) {
         if (disk != null) return;
-        tiles = c.getApplicationContext().getSharedPreferences("look", Context.MODE_PRIVATE).getBoolean("logo_tiles", true);
+        Logos.load(c);
         disk = new File(c.getCacheDir(), "pics");
         //noinspection ResultOfMethodCallIgnored
         disk.mkdirs();
@@ -364,8 +419,9 @@ final class Pics {
             BitmapFactory.decodeStream(s, null, o);
         }
         if (o.outWidth <= 0 || o.outHeight <= 0) return null;
+        if (mode == BLUR) return blurred(in, o, w, h);
         int sample = 1;
-        boolean fit = mode == FIT || mode == TILE || mode == READY || mode == LOGO_ART;
+        boolean fit = mode == FIT || mode == TILE || mode == READY || mode == LOGO_ART || mode == LOGO || mode == TINT;
         if (!fit) {
             while (o.outWidth / (sample * 2) >= w && o.outHeight / (sample * 2) >= h) sample *= 2;
         } else {
@@ -379,7 +435,28 @@ final class Pics {
             src = BitmapFactory.decodeStream(s, null, d);
         }
         if (src == null) return null;
-        if (mode == TILE || mode == READY || mode == LOGO_ART) {
+        if (mode == LOGO || mode == TINT || mode == LOGO_ART) {
+            // Its colours from the logo as it comes (the shared rule, LogoColour: the same on the phone and the
+            // launcher), kept for its address; then its box taken away and trimmed.
+            Logos.Tint tint = mode == LOGO ? null : Logos.colours(url, src);
+            Bitmap clear = com.gathin.broadcast.LogoTile.clear(src);
+            src.recycle();
+            if (clear == null) return mode == TINT ? Logos.onColour(tint, null, w, h) : null;
+            // On its own colour's tile, as it is (the tile is the one made to read under it).
+            if (mode == TINT) return Logos.onColour(tint, clear, w, h);
+            // Bare: too dark for a dark ground, tv-logos' white version where there is one; else LogoHalo's halo.
+            if (darkLogo(clear)) {
+                Bitmap white = lighter(url, w, h);
+                if (white != null) {
+                    clear.recycle();
+                    clear = white;
+                }
+            }
+            if (mode == LOGO) return Logos.bare(clear, w, h);
+            // The stand-in for a programme's picture: the logo bare at its size there, on its own colour.
+            return logoArt(Logos.bare(clear, Math.max(2, Math.round(w * 0.40f)), Math.max(2, Math.round(h * 0.48f))), tint, w, h);
+        }
+        if (mode == TILE || mode == READY) {
             // Made ready for black and trimmed (LogoTile); nothing of it to draw: no logo (the name instead).
             Bitmap ready = com.gathin.broadcast.LogoTile.ready(src);
             src.recycle();
@@ -389,10 +466,25 @@ final class Pics {
                 ready.recycle();
                 return t;
             }
-            if (mode == LOGO_ART) return logoArt(ready, w, h);
             src = ready;
         }
         Paint p = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
+        if (!fit && (mode == FACE || mode == FACE_MID || mode == ART)) {
+            // A programme's picture: its faces found once (kept by its address), the crop round them, whole.
+            float[] box = facesOf(url, src);
+            float sw = src.getWidth(), sh = src.getHeight(), bias = mode == FACE_MID ? 0.5f : FACE_BIAS;
+            android.graphics.RectF win = new android.graphics.RectF();
+            Faces.crop(sw, sh, w / (float) h, box, bias, win);
+            Bitmap out = Bitmap.createBitmap(w, h, src.hasAlpha() ? Bitmap.Config.ARGB_8888 : Bitmap.Config.RGB_565);
+            new Canvas(out).drawBitmap(src, new android.graphics.Rect(Math.round(win.left), Math.round(win.top), Math.round(win.right),
+                    Math.round(win.bottom)), new android.graphics.RectF(0, 0, w, h), p);
+            src.recycle();
+            if (mode != ART) return out;
+            // The panel's picture: its left fade ends before the faces.
+            android.graphics.RectF f = new android.graphics.RectF();
+            Faces.place(sw, sh, w / (float) h, box, bias, w, h, f);
+            return art(out, true, f.left);
+        }
         if (!fit) {
             float sc = Math.max(w / (float) src.getWidth(), h / (float) src.getHeight());
             Bitmap out = Bitmap.createBitmap(w, h, src.hasAlpha() ? Bitmap.Config.ARGB_8888 : Bitmap.Config.RGB_565);
@@ -493,7 +585,13 @@ final class Pics {
      * faded to nothing over its left part and at its foot, its right-hand corners rounded.
      */
     private static Bitmap art(Bitmap src, boolean darker) {
+        return art(src, darker, Float.MAX_VALUE);
+    }
+
+    /** ART with its left fade ending before faceLeft (px across it: the faces stay clear), a fifth of it at least. */
+    private static Bitmap art(Bitmap src, boolean darker, float faceLeft) {
         int w = src.getWidth(), h = src.getHeight();
+        float fadeTo = Math.max(w * 0.2f, Math.min(w * ART_FADE_LEFT, faceLeft - w * 0.03f));
         Bitmap out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(out);
         Paint shape = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
@@ -510,7 +608,7 @@ final class Pics {
         }
         Paint m = new Paint();
         m.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_IN));
-        float left = w * ART_FADE_LEFT;
+        float left = Math.min(w * ART_FADE_LEFT, fadeTo);
         m.setShader(new LinearGradient(0, 0, left, 0, new int[]{0x00000000, 0x40000000, 0xB3000000, 0xFF000000},
                 new float[]{0f, 0.3f, 0.7f, 1f}, Shader.TileMode.CLAMP));
         c.drawRect(0, 0, left, h, m);
@@ -525,8 +623,15 @@ final class Pics {
      * The stand-in for a programme's picture (LOGO_ART): a deep ground tinted by the logo's own colour, a soft round glow
      * of it with no edge anywhere, the logo itself low on the right and a little faded, then ART's shape and fades.
      */
-    private static Bitmap logoArt(Bitmap ready, int w, int h) {
+    private static Bitmap logoArt(Bitmap ready, Logos.Tint colours, int w, int h) {
+        // The logo's own colour (its channel cell's hue, LogoColour's rule, brought up bright), else its average.
         int tint = tintOf(ready);
+        if (colours != null && !colours.neutral) {
+            float[] hsv = new float[3];
+            android.graphics.Color.colorToHSV(colours.cellTop, hsv);
+            hsv[2] = 0.9f;
+            tint = android.graphics.Color.HSVToColor(hsv);
+        }
         Bitmap ground = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(ground);
         Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
@@ -540,12 +645,96 @@ final class Pics {
                 Palette.alpha(tint, 0), Shader.TileMode.CLAMP));
         c.drawRect(0, 0, w, h, p);
         p.setShader(null);
-        float lh = h * 0.30f, lw = Math.min(w * 0.30f, lh * ready.getWidth() / (float) Math.max(1, ready.getHeight()));
-        lh = Math.min(lh, lw * ready.getHeight() / (float) Math.max(1, ready.getWidth()));
+        // The logo as Logos.bare placed it (its halo round it where it is dark), at its own size.
         p.setAlpha(0xA6);
-        c.drawBitmap(ready, null, new android.graphics.RectF(cx - lw / 2f, cy - lh / 2f, cx + lw / 2f, cy + lh / 2f), p);
+        c.drawBitmap(ready, cx - ready.getWidth() / 2f, cy - ready.getHeight() / 2f, p);
         ready.recycle();
         return art(ground, true);
+    }
+
+    /** Pure enough: whether a made-clear logo is mostly too dark for a dark ground. */
+    private static boolean darkLogo(Bitmap b) {
+        int w = b.getWidth(), h = b.getHeight();
+        int[] px = new int[w * h];
+        b.getPixels(px, 0, w, 0, 0, w, h);
+        return Logos.dark(px);
+    }
+
+    /**
+     * A dark logo's white version from tv-logos (LogoPack.lighter), read and made clear as the logo itself is, when there
+     * is one and it reads on a dark ground; else null.
+     */
+    private static Bitmap lighter(String url, int w, int h) {
+        String alt;
+        try {
+            alt = com.gathin.homefieldtv.engine.LogoPack.lighter(url);
+        } catch (RuntimeException e) {
+            alt = null;
+        }
+        if (alt == null || alt.equals(url) || failed.contains(alt)) return null;
+        Source s = source(alt);
+        if (s == null) return null;
+        try {
+            BitmapFactory.Options o = new BitmapFactory.Options();
+            o.inJustDecodeBounds = true;
+            try (InputStream in = s.open()) {
+                BitmapFactory.decodeStream(in, null, o);
+            }
+            if (o.outWidth <= 0 || o.outHeight <= 0) return null;
+            int sample = 1;
+            while (o.outWidth / (sample * 2) >= w || o.outHeight / (sample * 2) >= h) sample *= 2;
+            BitmapFactory.Options d = new BitmapFactory.Options();
+            d.inSampleSize = sample;
+            d.inPreferredConfig = Bitmap.Config.ARGB_8888;
+            Bitmap src;
+            try (InputStream in = s.open()) {
+                src = BitmapFactory.decodeStream(in, null, d);
+            }
+            if (src == null) return null;
+            Bitmap clear = com.gathin.broadcast.LogoTile.clear(src);
+            src.recycle();
+            if (clear == null) return null;
+            if (darkLogo(clear)) {
+                clear.recycle();
+                return null;
+            }
+            return clear;
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
+    }
+
+    /**
+     * BLUR: the picture read at an eighth of w x h, filling it (its middle kept), stack-blurred once and its colour pushed
+     * (Look07: blur 50, saturate 1.75, brightness 0.86); drawn at w x h it is the 07 page's blurred picture.
+     */
+    private static Bitmap blurred(Source in, BitmapFactory.Options o, int w, int h) throws IOException {
+        int bw = Math.max(2, Math.round(w / (float) Look07.BLUR_DOWNSCALE)), bh = Math.max(2, Math.round(h / (float) Look07.BLUR_DOWNSCALE));
+        int sample = 1;
+        while (o.outWidth / (sample * 2) >= bw && o.outHeight / (sample * 2) >= bh) sample *= 2;
+        BitmapFactory.Options d = new BitmapFactory.Options();
+        d.inSampleSize = sample;
+        d.inPreferredConfig = Bitmap.Config.RGB_565;
+        Bitmap src;
+        try (InputStream s = in.open()) {
+            src = BitmapFactory.decodeStream(s, null, d);
+        }
+        if (src == null) return null;
+        Bitmap out = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888);
+        float sc = Math.max(bw / (float) src.getWidth(), bh / (float) src.getHeight());
+        Matrix m = new Matrix();
+        m.setScale(sc, sc);
+        m.postTranslate((bw - src.getWidth() * sc) / 2f, (bh - src.getHeight() * sc) / 2f);
+        new Canvas(out).drawBitmap(src, m, new Paint(Paint.FILTER_BITMAP_FLAG));
+        src.recycle();
+        int[] px = new int[bw * bh];
+        out.getPixels(px, 0, bw, 0, 0, bw, bh);
+        // The blur's deviation at this size (the mock-ups' 50 px of a 1920 page), as a stack blur's radius.
+        float sigma = Look07.BLUR_RADIUS * (w / 1920f) / Look07.BLUR_DOWNSCALE;
+        StackBlur.blur(px, bw, bh, Math.max(1, Math.round(sigma * 2.45f)));
+        StackBlur.colour(px, Look07.BLUR_SATURATE, Look07.BLUR_BRIGHTNESS);
+        out.setPixels(px, 0, bw, 0, 0, bw, bh);
+        return out;
     }
 
     /** Pure: a logo's own colour, the average of its solid, coloured pixels (a grey for a white or black logo). */

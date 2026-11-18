@@ -131,13 +131,8 @@ final class HomeScreen extends Screen implements HomeCard.Host {
             else home.empty("Homefield", lib.busy() || lib.status().isEmpty() ? "Loading your channels…" : lib.status());
         }
         home.set(list);
-        if (list.isEmpty() && !inMenu) {
-            inMenu = true;
-            rail.setActive(true);
-        } else if (!list.isEmpty() && inMenu && !touched) {
-            inMenu = false;
-            rail.setActive(false);
-        }
+        // Nothing to show yet: the remote waits on the tab bar (Settings' cog for a first playlist).
+        if (list.isEmpty() && tv.tabs() != null) tv.tabs().enter();
         HomeCard.Card c = home.card();
         if (c != null) focused(c);
     }
@@ -374,9 +369,22 @@ final class HomeScreen extends Screen implements HomeCard.Host {
         // The new section's card is shown at once (focused() follows).
     }
 
+    /** Up from the sections, or Back at the top: the remote up to 07's tab bar (the old menu's place). */
     @Override public void menu() {
-        inMenu = true;
-        rail.setActive(true);
+        if (tv.tabs() != null) tv.tabs().enter();
+    }
+
+    @Override boolean shell() {
+        return true;
+    }
+
+    @Override int tab() {
+        return TabBar.HOME;
+    }
+
+    /** Down from the tab bar: the sections along the top of the page. */
+    @Override void fromTabs() {
+        home.fromAbove();
     }
 
     @Override public void chosen(HomeCard.Card card) {

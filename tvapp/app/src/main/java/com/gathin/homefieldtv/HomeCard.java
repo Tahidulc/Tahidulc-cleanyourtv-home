@@ -107,11 +107,12 @@ final class HomeCard extends View {
         }
     }
 
-    /** Where the remote is: the mark and sections along the top, the card, its strip. */
+    /** Where the remote is: the sections along the top (under 07's tab bar), the card, its strip. */
     static final int TABS = 0, CARD = 1, STRIP = 2;
-    static final float L = 108f, T = 180f, W = 1704f, H = 712f, R = 26f, NAME_X = 196f, NAME_Y = 0.56f,
-            TILE_W = 240f, TILE_H = 135f, TILE_GAP = 30f, GROW = 1.6f, MARK_X = 100f, MARK_Y = 78f, TABS_X = 168f,
-            LOGO_W = 480f, LOGO_H = 210f;
+    /** The card in 07's place under the tab bar (left 90, top 214, 1740 x 760, rounded 46); the sections' row above it. */
+    static final float L = 90f, T = 214f, W = 1740f, H = 760f, R = 46f, NAME_X = 196f, NAME_Y = 0.56f,
+            TILE_W = 240f, TILE_H = 135f, TILE_GAP = 30f, GROW = 1.6f, MARK_X = 100f, MARK_Y = 163f, TABS_X = 112f,
+            LOGO_W = 360f, LOGO_H = 210f;
 
     private final Host host;
     private final List<Section> sections = new ArrayList<>();
@@ -129,7 +130,7 @@ final class HomeCard extends View {
             ring = Ui.stroke(Cine.WHITE, 3f), disc = Ui.fill(0x33FFFFFF), red = Ui.fill(Cine.RED), track = Ui.fill(0x59FFFFFF),
             tileFoot = new Paint(), glass = Ui.fill(0xFF2E3038), star = Ui.fill(Cine.TEXT), starOff = Ui.fill(0x59FFFFFF),
             amber = Ui.fill(Cine.AMBER), amberInk = Ui.fill(Cine.AMBER_INK);
-    private final RectF r = new RectF();
+    private final RectF r = new RectF(), logoBox = new RectF();
     private final Path starPath = new Path();
     private float[] tabX = new float[0], tabW = new float[0];
     private final Runnable redraw = this::invalidate, again = this::prepareNear;
@@ -265,7 +266,7 @@ final class HomeCard extends View {
         Card c = s.cards.get(i);
         String pic = c.picture.isEmpty() ? c.logo : c.picture;
         if (pic.isEmpty()) return;
-        if (c.picture.isEmpty()) Pics.prefetch(pic, Ui.px(LOGO_W), Ui.px(LOGO_H), Pics.FIT);
+        if (c.picture.isEmpty()) Logos.prefetch(pic, Ui.px(LOGO_W), Ui.px(LOGO_H));
         else Pics.prefetch(pic, 1280, 720, Pics.CROP);
         if (Tint.known(pic) == 0) Pics.prefetch(pic, Tint.W, Tint.H, Pics.CROP);
     }
@@ -306,7 +307,7 @@ final class HomeCard extends View {
             Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG);
             p.setShader(new LinearGradient(0, 0, w, h, Cine.shade(tint, 0.7f, 0.46f), Cine.shade(tint, 0.7f, 0.16f), Shader.TileMode.CLAMP));
             c.art = p;
-            if (!c.logo.isEmpty()) Pics.get(c.logo, Ui.px(LOGO_W), Ui.px(LOGO_H), Pics.FIT, again);
+            if (!c.logo.isEmpty()) Logos.prefetch(c.logo, Ui.px(LOGO_W), Ui.px(LOGO_H));
         }
         invalidate();
     }
@@ -317,9 +318,14 @@ final class HomeCard extends View {
         Section s = current();
         switch (area) {
             case TABS:
-                if (code == KeyEvent.KEYCODE_DPAD_LEFT) {
-                    tab = Math.max(-1, tab - 1);
-                    if (tab >= 0) toSection(tab);
+                if (code == KeyEvent.KEYCODE_DPAD_UP) {
+                    // Up past the sections: 07's tab bar (the old mark's menu).
+                    if (host != null) host.menu();
+                } else if (code == KeyEvent.KEYCODE_DPAD_LEFT) {
+                    if (!sections.isEmpty()) {
+                        tab = Math.max(0, tab - 1);
+                        toSection(tab);
+                    }
                     invalidate();
                 } else if (code == KeyEvent.KEYCODE_DPAD_RIGHT) {
                     tab = Math.min(sections.size() - 1, tab + 1);
@@ -407,6 +413,13 @@ final class HomeCard extends View {
         if (c == null || host == null) return;
         if (area == STRIP && c.stripAt < c.strip.size()) host.chosen(c, c.strip.get(c.stripAt));
         else host.chosen(c);
+    }
+
+    /** The remote down from 07's tab bar: on the sections, at the one shown. */
+    void fromAbove() {
+        area = TABS;
+        tab = sections.isEmpty() ? -1 : Math.max(0, section);
+        invalidate();
     }
 
     /** Back: from the strip to the card, from the card to the sections (true); from the sections, the menu (false). */
@@ -554,12 +567,7 @@ final class HomeCard extends View {
 
     private void drawTabs(Canvas c) {
         float cy = Ui.f(MARK_Y);
-        // Homefield's mark in its round button: the menu.
-        boolean onMark = area == TABS && tab < 0;
-        c.drawCircle(Ui.f(MARK_X), cy, Ui.f(34f), onMark ? white : disc);
-        float ms = Ui.f(36f);
-        Dark.mark(c, Ui.f(MARK_X) - ms / 2f, cy - ms / 2f, ms, amber, amberInk);
-        if (onMark) c.drawCircle(Ui.f(MARK_X), cy, Ui.f(40f), ring);
+        // Homefield's mark is 07's shell's now (TabBar, over the page); the sections sit under it.
         float base = Cine.mid(tabP, cy);
         for (int i = 0; i < sections.size() && i < tabX.length; i++) {
             boolean here = area == TABS && i == tab;
@@ -594,13 +602,10 @@ final class HomeCard extends View {
         art.setAlpha(a);
         c.drawRoundRect(r, radius, radius, art);
         if (card.picture.isEmpty() && !card.logo.isEmpty()) {
-            // A channel's logo, large, on the right of its colour.
-            Bitmap logo = Pics.cached(card.logo, Ui.px(LOGO_W), Ui.px(LOGO_H), Pics.FIT);
-            if (logo != null) {
-                bmp.setAlpha(a);
-                float lx = cw * 0.76f - logo.getWidth() / 2f, ly = ch * 0.27f - logo.getHeight() / 2f;
-                c.drawBitmap(logo, lx, ly, bmp);
-            }
+            // A channel's logo, large, on the right of its colour (on its tile: Logos).
+            float lw = Ui.f(LOGO_W), lh = Ui.f(LOGO_H);
+            logoBox.set(cw * 0.76f - lw / 2f, ch * 0.27f - lh / 2f, cw * 0.76f + lw / 2f, ch * 0.27f + lh / 2f);
+            Logos.draw(c, card.logo, logoBox, again, a);
         }
         shadeLeft.setAlpha(a);
         shadeFoot.setAlpha(a);

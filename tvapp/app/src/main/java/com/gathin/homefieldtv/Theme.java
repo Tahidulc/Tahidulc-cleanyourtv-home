@@ -5,33 +5,44 @@ import android.content.SharedPreferences;
 
 /**
  * The colour themes: a primary colour (the screens' ground, the panels, a panel's title band and the panels over the
- * video) with an accent (the focus, what plays or is chosen, switches, section names), named as a pair: "Indigo •
- * Blue". Indigo with Blue is first and is what every TV starts in: the family's choice in their other app, its colours
- * measured on their TV. The other primaries keep their own Material hue at Indigo's three brightness steps (so every
- * one is as dark, and white reads as well on it); Black is the near-black of that app's pictures. The accents are the
- * Material 500 colours, with their 200 shade as the light accent and white or dark writing on them, whichever reads.
+ * video) with an accent (what plays or is chosen, section names, the small marks), named as a pair: "Homefield •
+ * Amber". Homefield with Amber is what every TV starts in: the 07 look the family approved, its neutral near-black
+ * ground and materials (the blurred picture of what the remote is on does the colouring) with Homefield's own amber.
+ * The other primaries tint the ground and panels with their own Material hue at three brightness steps (Indigo's
+ * values were measured on the family's TV in the TiviMate look); the accents are the Material 500 colours with their
+ * 200 shade as the light accent and white or dark writing on them, Amber being Homefield's own #FFB547.
  *
- * Settings → Colour theme keeps a choice on the TV (the "look" preferences: primary, accent) and the screens are made
- * again in it (TvActivity.restartLook). apply() sets Palette's colours, and Dark's for the screens still drawn in it.
- * The five themes before these are gone: a TV that had one of them comes up in Indigo • Blue.
+ * <p>Where the remote is: on the Homefield primary, 07's (white: Palette.FOCUS_07, and the white pill with dark ink in
+ * the redrawn screens); on a tinted one, the accent at 37.5 % as before.
+ *
+ * <p>Settings → Colour theme keeps a choice on the TV (the "look" preferences: primary7, accent7) and the screens are
+ * made again in it (TvActivity.restartLook). apply() sets Palette's colours, and Dark's for the screens still drawn in
+ * it. A choice made before the 07 look (the old keys) is let go: every TV comes up in Homefield • Amber.
  */
 final class Theme {
     private Theme() {}
 
-    /** A primary: the ground, the panels, a panel's title band and (at 82.7 %) the panels over the video. */
+    /** A primary: the ground, the panels, a panel's title band and (at 82 %) the panels over the video. */
     static final class Primary {
         final String name;
-        /** Its Material 500 colour: the disc it is shown by in Settings. */
+        /** Its colour: the disc it is shown by in Settings. */
         final int swatch;
         final int ground, panel, header, playback;
+        /** 07's own neutral: white where the remote is, rather than the accent. */
+        final boolean neutral;
 
         Primary(String name, int swatch, int ground, int panel, int header, int playback) {
+            this(name, swatch, ground, panel, header, playback, false);
+        }
+
+        Primary(String name, int swatch, int ground, int panel, int header, int playback, boolean neutral) {
             this.name = name;
             this.swatch = swatch;
             this.ground = ground;
             this.panel = panel;
             this.header = header;
             this.playback = playback;
+            this.neutral = neutral;
         }
     }
 
@@ -62,6 +73,8 @@ final class Theme {
             new Primary("Blue grey", 0xFF607D8B, 0xFF182023, 0xFF243035, 0xFF314047, 0xFF222C31),
             new Primary("Grey", 0xFF9E9E9E, 0xFF1F1F1F, 0xFF2D2D2D, 0xFF3D3D3D, 0xFF2C2C2C),
             new Primary("Black", 0xFF000000, 0xFF0A0F13, 0xFF1B2026, 0xFF272D34, 0xFF181D22),
+            // 07: the page's near-black, mat-dark over it as a solid, a lighter material, mat-dark's foot over the video.
+            new Primary("Homefield", 0xFF2C2C33, 0xFF0B0B0F, 0xFF1D1D22, 0xFF2A2A31, 0xFF141418, true),
     };
 
     static final Accent[] ACCENTS = {
@@ -75,18 +88,24 @@ final class Theme {
             new Accent("Green", 0xFF4CAF50, 0xFFA5D6A7, DARK),
             new Accent("Lime", 0xFFCDDC39, 0xFFE6EE9C, DARK),
             new Accent("Yellow", 0xFFFFEB3B, 0xFFFFF59D, DARK),
-            new Accent("Amber", 0xFFFFC107, 0xFFFFE082, DARK),
+            // Homefield's own amber (its mark's), with the mark's dark ink.
+            new Accent("Amber", 0xFFFFB547, 0xFFFFD08A, 0xFF1E1606),
             new Accent("Orange", 0xFFFF9800, 0xFFFFCC80, DARK),
             new Accent("Deep orange", 0xFFFF5722, 0xFFFFAB91, WHITE),
     };
 
-    /** Indigo • Blue: where every TV starts. */
+    /** Indigo • Blue: the TiviMate look's pair, measured on the family's TV. */
     static final int INDIGO = 0, BLUE = 4;
+    /** Homefield • Amber: the 07 look, where every TV starts. */
+    static final int HOMEFIELD = 11, AMBER = 10;
 
     /** The guide's programme colours as the phone's guide has them (the guide's own look, until it is redrawn). */
     static final int[] DEEP = {0xFF213B32, 0xFF4A2323, 0xFF3B2550, 0xFF45421F, 0xFF233552, 0xFF4E3220, 0xFF1E3F4A, 0xFF4A2340};
 
-    private static int primary = INDIGO, accent = BLUE;
+    /** The preferences' keys: the 07 look's own (a choice from before it is let go). */
+    static final String PRIMARY_KEY = "primary7", ACCENT_KEY = "accent7";
+
+    private static int primary = HOMEFIELD, accent = AMBER;
 
     static int primary() {
         return primary;
@@ -96,7 +115,7 @@ final class Theme {
         return accent;
     }
 
-    /** "Indigo • Blue". */
+    /** "Homefield • Amber". */
     static String name(int p, int a) {
         return PRIMARIES[clampP(p)].name + " • " + ACCENTS[clampA(a)].name;
     }
@@ -106,30 +125,36 @@ final class Theme {
         return name(primary, accent);
     }
 
+    /** Whether the theme in use is 07's own neutral one (white where the remote is). */
+    static boolean neutral() {
+        return PRIMARIES[primary].neutral;
+    }
+
     private static int clampP(int p) {
-        return p >= 0 && p < PRIMARIES.length ? p : INDIGO;
+        return p >= 0 && p < PRIMARIES.length ? p : HOMEFIELD;
     }
 
     private static int clampA(int a) {
-        return a >= 0 && a < ACCENTS.length ? a : BLUE;
+        return a >= 0 && a < ACCENTS.length ? a : AMBER;
     }
 
     private static SharedPreferences prefs(Context c) {
         return c.getApplicationContext().getSharedPreferences("look", Context.MODE_PRIVATE);
     }
 
-    /** The primary kept on this TV (Indigo when none was chosen, or the TV had one of the old themes). */
+    /** The primary kept on this TV (Homefield when none was chosen in the 07 look). */
     static int savedPrimary(Context c) {
-        return clampP(prefs(c).getInt("primary", INDIGO));
+        return clampP(prefs(c).getInt(PRIMARY_KEY, HOMEFIELD));
     }
 
     static int savedAccent(Context c) {
-        return clampA(prefs(c).getInt("accent", BLUE));
+        return clampA(prefs(c).getInt(ACCENT_KEY, AMBER));
     }
 
-    /** Kept on this TV (the old theme's number let go); the screens take it when they are made again. */
+    /** Kept on this TV (the older keys let go); the screens take it when they are made again. */
     static void save(Context c, int p, int a) {
-        prefs(c).edit().putInt("primary", clampP(p)).putInt("accent", clampA(a)).remove("theme").apply();
+        prefs(c).edit().putInt(PRIMARY_KEY, clampP(p)).putInt(ACCENT_KEY, clampA(a))
+                .remove("theme").remove("primary").remove("accent").apply();
     }
 
     /** The kept theme into the colours every screen draws with (before any is built). */
@@ -149,7 +174,7 @@ final class Theme {
         Palette.ACCENT = ac.colour;
         Palette.ACCENT_LIGHT = ac.light;
         Palette.ACCENT_INK = ac.ink;
-        Palette.FOCUS = Palette.alpha(ac.colour, Palette.FOCUS_ALPHA);
+        Palette.FOCUS = pr.neutral ? Palette.FOCUS_07 : Palette.alpha(ac.colour, Palette.FOCUS_ALPHA);
         // The screens still drawn in Dark's colours take the theme's too.
         Dark.GROUND = pr.ground;
         Dark.RAIL = pr.panel;
@@ -160,7 +185,7 @@ final class Theme {
         Dark.ACCENT_INK = ac.ink;
         Dark.ACCENT_SOFT = ac.light;
         Dark.BADGE = ac.colour;
-        Dark.RING = ac.light;
+        Dark.RING = pr.neutral ? 0xFFFFFFFF : ac.light;
         Dark.SOFT = Palette.over(pr.ground, 0xCCFFFFFF);
         Dark.MUTED = Palette.over(pr.ground, Palette.TEXT2);
         Dark.FAINT = Palette.over(pr.ground, Palette.TEXT3);

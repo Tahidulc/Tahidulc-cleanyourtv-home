@@ -64,34 +64,44 @@ public final class LogoMatch {
 
         /** Its name as the family reads it, from its file's name: "BBC One" from bbc-one-uk (its kind is about()'s). */
         public String label() {
-            String file = path.substring(path.lastIndexOf('/') + 1);
-            if (file.endsWith(".png")) file = file.substring(0, file.length() - 4);
-            String[] t = file.split("-");
-            StringBuilder b = new StringBuilder();
-            int end = t.length > 1 && t[t.length - 1].length() <= 3 ? t.length - 1 : t.length;
-            for (int i = 0; i < end; i++) {
-                String w = t[i];
-                if (w.isEmpty() || VARIANT_WORDS.contains(w)) continue;
-                if (b.length() > 0) b.append(' ');
-                b.append(ACRONYMS.contains(w) || w.length() == 1 ? w.toUpperCase(Locale.ROOT) : Character.toUpperCase(w.charAt(0)) + w.substring(1));
-            }
-            return b.toString();
+            return labelOf(path);
         }
 
         /** Its country and kind for a menu: "United Kingdom  ·  HD  ·  Wide". */
         public String about() {
-            StringBuilder b = new StringBuilder(countryName(country));
-            if ((variant & UHD) != 0) b.append("  ·  UHD");
-            if ((variant & HD) != 0) b.append("  ·  HD");
-            if ((variant & HZ) != 0) b.append("  ·  Wide");
-            if ((variant & WHITE) != 0) b.append("  ·  White");
-            if ((variant & ALT) != 0) b.append("  ·  Another version");
-            if ((variant & ICON) != 0) b.append("  ·  Icon");
-            if ((variant & MONO) != 0) b.append("  ·  One colour");
-            if ((variant & LIGHT) != 0) b.append("  ·  For light grounds");
-            if ((variant & OLD) != 0) b.append("  ·  Old");
-            return b.toString();
+            return aboutOf(this);
         }
+    }
+
+    /** Pure: a logo's name as the family reads it, from its path: "BBC One" from .../bbc-one-uk.png. */
+    public static String labelOf(String path) {
+        String file = path.substring(path.lastIndexOf('/') + 1);
+        if (file.endsWith(".png")) file = file.substring(0, file.length() - 4);
+        String[] t = file.split("-");
+        StringBuilder b = new StringBuilder();
+        int end = t.length > 1 && t[t.length - 1].length() <= 3 ? t.length - 1 : t.length;
+        for (int i = 0; i < end; i++) {
+            String w = t[i];
+            if (w.isEmpty() || VARIANT_WORDS.contains(w)) continue;
+            if (b.length() > 0) b.append(' ');
+            b.append(ACRONYMS.contains(w) || w.length() == 1 ? w.toUpperCase(Locale.ROOT) : Character.toUpperCase(w.charAt(0)) + w.substring(1));
+        }
+        return b.toString();
+    }
+
+    /** A logo's country and kind for a menu: "United Kingdom  ·  HD  ·  Wide". */
+    static String aboutOf(Logo l) {
+        StringBuilder b = new StringBuilder(countryName(l.country));
+        if ((l.variant & UHD) != 0) b.append("  ·  UHD");
+        if ((l.variant & HD) != 0) b.append("  ·  HD");
+        if ((l.variant & HZ) != 0) b.append("  ·  Wide");
+        if ((l.variant & WHITE) != 0) b.append("  ·  White");
+        if ((l.variant & ALT) != 0) b.append("  ·  Another version");
+        if ((l.variant & ICON) != 0) b.append("  ·  Icon");
+        if ((l.variant & MONO) != 0) b.append("  ·  One colour");
+        if ((l.variant & LIGHT) != 0) b.append("  ·  For light grounds");
+        if ((l.variant & OLD) != 0) b.append("  ·  Old");
+        return b.toString();
     }
 
     /** A logo found for a channel and how sure the match is (0–1). */
@@ -156,6 +166,36 @@ public final class LogoMatch {
     /** How many logos it holds. */
     public int size() {
         return logos.size();
+    }
+
+    /**
+     * Pure: the white version of a logo (its path), for a logo too dark to see on a dark ground: the same channel's logo
+     * in the same country marked white, the one most like it (HD, wide, icon as it is) first; null when there is none or
+     * it is white already.
+     */
+    public String whiteOf(String path) {
+        if (path == null) return null;
+        Logo me = null;
+        for (Logo l : logos) {
+            if (l.path.equals(path)) {
+                me = l;
+                break;
+            }
+        }
+        if (me == null || (me.variant & WHITE) != 0 || me.key.isEmpty()) return null;
+        List<Logo> same = byKey.get(me.key);
+        if (same == null) return null;
+        Logo best = null;
+        int bestDiff = Integer.MAX_VALUE;
+        for (Logo l : same) {
+            if (l == me || (l.variant & WHITE) == 0 || (l.variant & LIGHT) != 0 || !l.country.equals(me.country)) continue;
+            int diff = Integer.bitCount((l.variant & ~WHITE) ^ (me.variant & ~WHITE));
+            if (diff < bestDiff) {
+                bestDiff = diff;
+                best = l;
+            }
+        }
+        return best == null ? null : best.path;
     }
 
     // ---- the index ------------------------------------------------------------------------------------------------

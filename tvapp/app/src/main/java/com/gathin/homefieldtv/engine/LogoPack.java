@@ -135,6 +135,22 @@ public final class LogoPack {
         return u;
     }
 
+    /**
+     * The white version of a new logo by its address (a logo too dark to see on the dark ground: tv-logos' own light
+     * version, where it has one), or null: not one of the project's logos, none white, or the list not read yet. It goes
+     * through the list's logos, so it is asked off the main thread (the pictures' readers ask it).
+     */
+    public static String lighter(String url) {
+        LogoMatch m = match;
+        String b = base;
+        if (m == null || url == null || !url.startsWith(b)) return null;
+        String path = url.substring(b.length());
+        int q = path.indexOf('?');
+        if (q >= 0) path = path.substring(0, q);
+        String white = m.whiteOf(path);
+        return white == null ? null : urlOf(white);
+    }
+
     /** The channel's automatic logo's path (sure enough), or null; worked out once (a few lookups). */
     public static String auto(Channel ch) {
         LogoMatch m = match;

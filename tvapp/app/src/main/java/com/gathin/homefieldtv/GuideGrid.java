@@ -647,20 +647,13 @@ final class GuideGrid extends View {
             numP.setColor(here && active ? Palette.ACCENT : Palette.TEXT2);
             c.drawText(n, Ui.f(96f) - numbers.width(n), Type.centred(numP, cy), numP);
         }
-        // The logo on its tile (Settings → Channel logos; the new logo or the channel's own choice: LogoPack), or the tile
-        // with a TV on it while there is none.
+        // The logo on its tile (Settings › Appearance › Logos › Behind logos: Logos; the new logo or the channel's own
+        // choice: LogoPack), or the empty tile with a TV on it while there is none.
         float lx = Ui.f(tileX), ly = cy - Ui.f(tileH) / 2f;
         String logoUrl = LogoPack.url(ch);
-        Bitmap logo = logoUrl.isEmpty() ? null : Pics.get(logoUrl, Ui.px(tileW), Ui.px(tileH), Pics.logoMode(), redraw);
-        if (logo != null) {
-            c.drawBitmap(logo, lx + (Ui.f(tileW) - logo.getWidth()) / 2f, cy - logo.getHeight() / 2f, bmp);
-        } else {
-            r.set(lx, ly, lx + Ui.f(tileW), ly + Ui.f(tileH));
-            fill.setColor(Pics.tiles ? 0xFF000000 : Palette.SELECTED);
-            c.drawRoundRect(r, Ui.f(7f), Ui.f(7f), fill);
-            if (logoUrl.isEmpty() || Pics.failed(logoUrl)) {
-                RoundButton.glyph(c, Dark.TV, r.centerX(), r.centerY(), Ui.f(tileH * 0.5f), Palette.TEXT3);
-            }
+        r.set(lx, ly, lx + Ui.f(tileW), ly + Ui.f(tileH));
+        if (!Logos.draw(c, logoUrl, r, redraw) && (logoUrl.isEmpty() || Pics.failed(logoUrl))) {
+            RoundButton.glyph(c, Dark.TV, r.centerX(), r.centerY(), Ui.f(tileH * 0.5f), Palette.TEXT3);
         }
         // ▶ on the channel playing, the catch-up mark on one whose provider keeps an archive (left of the ▶ when both).
         float markX = 508f, nameRight = 528f;

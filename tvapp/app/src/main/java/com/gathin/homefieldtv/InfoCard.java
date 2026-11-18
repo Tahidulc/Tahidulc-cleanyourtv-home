@@ -129,11 +129,9 @@ final class InfoCard {
         if (art.draw(c, Ui.f(X + W - ART_W), Ui.f(top))) owner.postInvalidateOnAnimation();
 
         // The channel: its logo, its name under it.
-        Bitmap logo = Pics.get(LogoPack.url(ch), Ui.px(LOGO_W), Ui.px(LOGO_H), Pics.tiles ? Pics.READY : Pics.FIT, redraw);
         float lx = Ui.f(LOGO_X), ly = Ui.f(top + 39f);
-        if (logo != null) {
-            c.drawBitmap(logo, lx + (Ui.f(LOGO_W) - logo.getWidth()) / 2f, ly + (Ui.f(LOGO_H) - logo.getHeight()) / 2f, bmp);
-        } else {
+        r.set(lx, ly, lx + Ui.f(LOGO_W), ly + Ui.f(LOGO_H));
+        if (!Logos.draw(c, ch, r, redraw)) {
             logoP.setColor(Palette.TEXT1);
             c.drawText(Ui.fit(initials(ChannelEdits.name(ch)), logoP, Ui.f(LOGO_W)), lx, ly + Ui.f(LOGO_H / 2f + 12f), logoP);
         }

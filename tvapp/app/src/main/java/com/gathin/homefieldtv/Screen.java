@@ -96,4 +96,31 @@ abstract class Screen {
 
     /** Homefield TV's own update: found, gone, or under way (Updates). */
     void updatesChanged() {}
+
+    // ---- 07's shell (TabBar) ------------------------------------------------------------------------------------------
+
+    /**
+     * Whether the shell is drawn over this screen: Homefield's mark at the top left, the clock at the top right, and the
+     * tab bar (a tab's page: tab()) or the "‹ back" line (a screen reached from another: backLine()) between them.
+     * Leave the top 136 px of the page for it. Off as it comes (the screens drawn before 07 keep their own tops).
+     */
+    boolean shell() {
+        return false;
+    }
+
+    /** The tab this screen is the page of (TabBar.HOME, GUIDE, MOVIES, SHOWS, SPORTS, MY_LIST, SEARCH), or TabBar.NONE. */
+    int tab() {
+        return TabBar.NONE;
+    }
+
+    /**
+     * A screen reached from another (a title, a match, catch-up, a club, a driver): the words of its "‹ back" line, where
+     * Back goes ("Movies", "Sports · Today", "Guide"); null for a tab's page.
+     */
+    String backLine() {
+        return null;
+    }
+
+    /** The remote came back down from the tab bar to this page (Down, or OK on its own tab): take it where it was. */
+    void fromTabs() {}
 }

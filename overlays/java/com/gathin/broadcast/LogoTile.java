@@ -49,15 +49,29 @@ public final class LogoTile {
      * is nothing to work on).
      */
     public static int[] clean(int[] px, int w, int h) {
+        return clean(px, w, h, true);
+    }
+
+    /**
+     * Pure: a logo's pixels with a plain box round it taken away and, flip true, a mostly dark one turned light; as a new
+     * array (the same array back when there is nothing to work on). flip false keeps its colours as they are (Homefield
+     * TV's logos with no tile: a dark one gets a soft light halo there instead).
+     */
+    public static int[] clean(int[] px, int w, int h, boolean flip) {
         int n = w * h;
         if (px == null || w <= 0 || h <= 0 || px.length < n) return px;
         int[] out = java.util.Arrays.copyOf(px, n);
         int plate = plate(out, w, h);
         if (plate != 0) unplate(out, w, h, plate);
-        if (darkShare(out) >= DARK_SHARE) {
+        if (flip && darkShare(out) >= DARK_SHARE) {
             for (int i = 0; i < n; i++) if ((out[i] >>> 24) != 0) out[i] = flip(out[i]);
         }
         return out;
+    }
+
+    /** Pure: whether a logo is mostly dark: at least half its solid pixels all but vanish on black. */
+    public static boolean dark(int[] px) {
+        return darkShare(px) >= DARK_SHARE;
     }
 
     /** A pixel this dark all but vanishes on black (contrast under about 2:1). */
@@ -222,6 +236,18 @@ public final class LogoTile {
      * of it to draw. The logo itself is left as it was.
      */
     public static Bitmap ready(Bitmap logo) {
+        return prepared(logo, true);
+    }
+
+    /**
+     * A logo with a plain box round it taken away and its empty margins trimmed, its colours as they are (for a ground
+     * of any colour, with no tile), at most WORK across (or tall); null when there is nothing of it to draw.
+     */
+    public static Bitmap clear(Bitmap logo) {
+        return prepared(logo, false);
+    }
+
+    private static Bitmap prepared(Bitmap logo, boolean flip) {
         if (logo == null || logo.isRecycled() || logo.getWidth() < 2 || logo.getHeight() < 2) return null;
         Bitmap small = logo;
         float k = Math.min(1f, WORK / (float) Math.max(logo.getWidth(), logo.getHeight()));
@@ -238,7 +264,7 @@ public final class LogoTile {
         int[] px = new int[w * h];
         small.getPixels(px, 0, w, 0, 0, w, h);
         if (small != logo) small.recycle();
-        int[] clean = clean(px, w, h);
+        int[] clean = clean(px, w, h, flip);
         int[] bb = bounds(clean, w, h);
         if (bb == null) return null;
         int bw = bb[2] - bb[0], bh = bb[3] - bb[1];
