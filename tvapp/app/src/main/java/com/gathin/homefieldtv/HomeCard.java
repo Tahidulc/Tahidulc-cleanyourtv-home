@@ -107,10 +107,11 @@ final class HomeCard extends View {
         }
     }
 
-    /** Where the remote is: the mark and sections along the top, the card, its strip. */
+    /** Where the remote is: the sections along the top (under 07's tab bar), the card, its strip. */
     static final int TABS = 0, CARD = 1, STRIP = 2;
-    static final float L = 108f, T = 180f, W = 1704f, H = 712f, R = 26f, NAME_X = 196f, NAME_Y = 0.56f,
-            TILE_W = 240f, TILE_H = 135f, TILE_GAP = 30f, GROW = 1.6f, MARK_X = 100f, MARK_Y = 78f, TABS_X = 168f,
+    /** The card in 07's place under the tab bar (left 90, top 214, 1740 x 760, rounded 46); the sections' row above it. */
+    static final float L = 90f, T = 214f, W = 1740f, H = 760f, R = 46f, NAME_X = 196f, NAME_Y = 0.56f,
+            TILE_W = 240f, TILE_H = 135f, TILE_GAP = 30f, GROW = 1.6f, MARK_X = 100f, MARK_Y = 163f, TABS_X = 112f,
             LOGO_W = 360f, LOGO_H = 210f;
 
     private final Host host;
@@ -317,9 +318,14 @@ final class HomeCard extends View {
         Section s = current();
         switch (area) {
             case TABS:
-                if (code == KeyEvent.KEYCODE_DPAD_LEFT) {
-                    tab = Math.max(-1, tab - 1);
-                    if (tab >= 0) toSection(tab);
+                if (code == KeyEvent.KEYCODE_DPAD_UP) {
+                    // Up past the sections: 07's tab bar (the old mark's menu).
+                    if (host != null) host.menu();
+                } else if (code == KeyEvent.KEYCODE_DPAD_LEFT) {
+                    if (!sections.isEmpty()) {
+                        tab = Math.max(0, tab - 1);
+                        toSection(tab);
+                    }
                     invalidate();
                 } else if (code == KeyEvent.KEYCODE_DPAD_RIGHT) {
                     tab = Math.min(sections.size() - 1, tab + 1);
@@ -407,6 +413,13 @@ final class HomeCard extends View {
         if (c == null || host == null) return;
         if (area == STRIP && c.stripAt < c.strip.size()) host.chosen(c, c.strip.get(c.stripAt));
         else host.chosen(c);
+    }
+
+    /** The remote down from 07's tab bar: on the sections, at the one shown. */
+    void fromAbove() {
+        area = TABS;
+        tab = sections.isEmpty() ? -1 : Math.max(0, section);
+        invalidate();
     }
 
     /** Back: from the strip to the card, from the card to the sections (true); from the sections, the menu (false). */
@@ -554,12 +567,7 @@ final class HomeCard extends View {
 
     private void drawTabs(Canvas c) {
         float cy = Ui.f(MARK_Y);
-        // Homefield's mark in its round button: the menu.
-        boolean onMark = area == TABS && tab < 0;
-        c.drawCircle(Ui.f(MARK_X), cy, Ui.f(34f), onMark ? white : disc);
-        float ms = Ui.f(36f);
-        Dark.mark(c, Ui.f(MARK_X) - ms / 2f, cy - ms / 2f, ms, amber, amberInk);
-        if (onMark) c.drawCircle(Ui.f(MARK_X), cy, Ui.f(40f), ring);
+        // Homefield's mark is 07's shell's now (TabBar, over the page); the sections sit under it.
         float base = Cine.mid(tabP, cy);
         for (int i = 0; i < sections.size() && i < tabX.length; i++) {
             boolean here = area == TABS && i == tab;

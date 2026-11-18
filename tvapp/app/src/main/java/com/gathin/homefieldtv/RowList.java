@@ -14,48 +14,49 @@ import com.gathin.homefieldtv.engine.Exec;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
- * A list of rows, as every panel draws one: Settings and its pages, side menus, pickers and dialogs' buttons.
+ * A list of rows, as every panel draws one: Settings and its pages, side menus, pickers and dialogs' buttons; in the 07
+ * look (the mock-ups' .lrow): where the remote is, the row turns white with dark words and lifts a little (2.5 %, 07's
+ * springy lift) over a soft shadow; elsewhere, words on the panel.
  *
  * <pre>
- *   Row.item(tag, title, value)        a title (ROW, TEXT1) with its value or description under it in grey (SMALL,
- *                                      TEXT2): 90 high with one line, 118 with two (longer words take a second line)
- *   Row.toggle(tag, title, value, on)  the same with a switch at the right (80 x 46, 48 px in from the right edge):
- *                                      on, the accent track and a white thumb; off, a grey track and thumb
- *   Row.header(title)                  a section's name in the accent (SMALL, medium), 72 high: "Update options"
- *   Row.note(text)                     a grey note (SMALL), as many lines as it needs
- *   Row.radio(tag, title, checked)     a picker's choice: its circle (36, 70 px in), the accent ring and dot when chosen,
- *                                      its name 128 px in; Row.swatch(...) has a colour's disc in place of the circle,
- *                                      a tick in it when chosen
- *   Row.icon(tag, icon, title)         a menu line, 80 high: an icon (40, Dark's kinds) 40 px in, its name 104 px in
- *   Row.divider()                      a 2 px rule between groups of lines (32 high)
- *   Row.stepper(tag, value)            a value with a button each side (the player's audio offset): ‹ and › in boxes
- *                                      128 x 96, 48 px in from either side, the value between them (PICKER); Left and
- *                                      Right move between the two buttons (side 0 and 1), OK presses the one lit
+ *   Row.item(tag, title, value)        a title (24 px, semibold) with its value or description under it (18 px, the
+ *                                      third label): 84 high with one line, 96 with two (longer words take another line)
+ *   Row.toggle(tag, title, value, on)  the same with 07's switch at the right (64 x 38, green when on)
+ *   Row.header(title)                  a section's name in Homefield's amber, in capitals, letter-spaced (15 px): 58 high
+ *   Row.note(text)                     a quiet note (19 px), as many lines as it needs
+ *   Row.radio(tag, title, checked)     a choice: its name, and the one in use ticked in green at the right;
+ *                                      Row.swatch(...) has a colour's disc before its name, a tick in it when chosen
+ *   Row.icon(tag, icon, title)         a menu line, 72 high: an icon (Dark's kinds) and its name
+ *   Row.divider()                      a hairline rule between groups of lines (21 high)
+ *   Row.stepper(tag, value)            a value with a round button each side (the player's audio offset): ‹ and ›,
+ *                                      Left and Right move between them (side 0 and 1), OK presses the one lit
  * </pre>
  *
- * Rows can be greyed (enabled = false: TEXT3, OK does nothing) and carry the accent dot after their title (dot).
- * The remote's row is in the focus pill, 16 px in from the list's sides and as tall as the row (Focus.pill); when the
- * list is not where the remote is (setActive(false)) that row keeps the selected pill. Up and Down jump to the next row
- * that can be chosen (headers, notes and dividers are passed over; no wrap-around), the list scrolling in SCROLL_MS to
- * keep it whole in sight (with the section name just over it), gliding there on the display's frame clock (Glide: a held
- * key glides on smoothly, never starting over); Page keys move six rows. OK lights the row for FLASH_MS and tells the
- * host. Words start 48 px in (TEXT_X). A frame makes nothing new: every row's words are laid out or cut to fit once.
+ * Rows can be greyed (enabled = false: the fourth label, OK does nothing) and carry the amber dot after their title
+ * (dot). When the list is not where the remote is (setActive(false)) its row keeps a quiet white at 16 %. Up and Down
+ * jump to the next row that can be chosen (headers, notes and dividers are passed over; no wrap-around), the list
+ * scrolling to keep it whole in sight (with the section name just over it), gliding on the display's frame clock
+ * (Glide: a held key glides on smoothly); Page keys move six rows. OK lights the row for FLASH_MS and tells the host.
+ * A frame makes nothing new: every row's words are laid out or cut to fit once.
  *
  * The list's place is x, top, w, bottom in design pixels (the panel sets them); heading, when set, is a title drawn
- * at headingY (the panel's band) that slides with the list. Hosts change a row (its value, its switch) and call
- * refresh(), or give new rows with setRows() (the remote stays on the same line number when it can).
+ * at headingY (34 px, bold) that slides with the list. Hosts change a row (its value, its switch) and call refresh(),
+ * or give new rows with setRows() (the remote stays on the same line number when it can).
  */
 final class RowList extends View {
     static final int ITEM = 0, HEADER = 1, NOTE = 2, RADIO = 3, ICON = 4, DIVIDER = 5, STEPPER = 6;
     /** Heights and places (design pixels). */
-    static final float ROW_1 = 90f, ROW_2 = 118f, TITLE_LINE = 34f, VALUE_LINE = 30f, HEADER_H = 72f, ICON_H = 80f,
-            DIVIDER_H = 32f, INSET = Focus.INSET_PANEL, TEXT_X = 48f, ICON_TEXT_X = 104f;
-    static final float SWITCH_W = 80f, SWITCH_H = 46f, SWITCH_RIGHT = 48f, RADIO_X = 70f, RADIO_D = 36f, RADIO_TEXT_X = 128f;
+    static final float ROW_1 = 84f, ROW_2 = 96f, TITLE_LINE = 30f, VALUE_LINE = 24f, HEADER_H = 58f, ICON_H = 72f,
+            DIVIDER_H = 21f, INSET = 12f, TEXT_X = 34f, ICON_TEXT_X = 84f;
+    static final float SWITCH_W = 64f, SWITCH_H = 38f, SWITCH_RIGHT = 34f, RADIO_X = 56f, RADIO_D = 34f, RADIO_TEXT_X = 92f;
     static final long SCROLL_MS = 150, FLASH_MS = 180;
     /** A stepper's row (its buttons at its top, the gap under them) and its buttons. */
-    static final float STEPPER_H = 145f, STEP_W = 128f, STEP_H = 96f;
+    static final float STEPPER_H = 110f, STEP_W = 70f, STEP_H = 70f;
+    /** The row where the remote is grows this much (the mock-ups' scale(1.025)). */
+    static final float LIFT = 1.025f;
 
     /** One line of the list. */
     static final class Row {
@@ -68,7 +69,7 @@ final class RowList extends View {
         boolean checked;
         /** False: greyed, and OK does nothing. */
         boolean enabled = true;
-        /** The accent dot after the title: something waits there (an update). */
+        /** The amber dot after the title: something waits there (an update). */
         boolean dot;
         /** An icon before the title (ICON rows; Dark's kinds), else -1. */
         int icon = -1;
@@ -86,7 +87,7 @@ final class RowList extends View {
         /** The title cut to fit width with p (kept until the title or the width changes). */
         String fitted(TextPaint p, float width) {
             if (fit == null || width != fitW || !title.equals(fitFor)) {
-                fit = Ui.fit(title, p, width);
+                fit = Ui.fit(kind == HEADER ? title.toUpperCase(Locale.UK) : title, p, width);
                 fitFor = title;
                 fitW = width;
             }
@@ -162,7 +163,7 @@ final class RowList extends View {
 
     /** Where it goes (design pixels). */
     float x = 1200f, top = 160f, w = 720f, bottom = 1080f;
-    /** A title over the rows, in the panel's band (null: none), its baseline at headingY. */
+    /** A title over the rows (null: none), its baseline at headingY. */
     String heading;
     float headingY = 87f;
 
@@ -172,17 +173,19 @@ final class RowList extends View {
     private Host host;
     /** The list's scroll (design pixels), gliding to where the remote's row is whole in sight. */
     private final Glide scroll = new Glide(SCROLL_MS);
+    /** The remote's row lifting as it comes to it (07's springy lift). */
+    private final Lift07 lift = new Lift07();
     private long flashAt;
     private int flash = -1;
     /** The heading cut to fit (kept while it and the width stay the same). */
     private String headingFit, headingFor;
     private float headingW = -1f;
 
-    private final TextPaint titleP = Type.paint(Type.ROW, Type.REGULAR, Palette.TEXT1);
-    private final TextPaint valueP = Type.paint(Type.SMALL, Type.REGULAR, Palette.TEXT2);
-    private final TextPaint headerP = Type.paint(Type.SMALL, Type.MEDIUM, Palette.ACCENT);
-    private final TextPaint noteP = Type.paint(Type.SMALL, Type.REGULAR, Palette.TEXT2);
-    private final TextPaint headingP = Type.paint(Type.TITLE, Type.MEDIUM, Palette.TEXT1);
+    private final TextPaint titleP = Type.paint(24f, Type.SEMIBOLD, Look07.L1);
+    private final TextPaint valueP = Type.paint(18f, Type.MEDIUM, Look07.L3);
+    private final TextPaint headerP = Type.label(Type.LABEL, Look07.AMBER);
+    private final TextPaint noteP = Type.paint(19f, Type.REGULAR, Look07.L3);
+    private final TextPaint headingP = Type.paint(Type.TITLE, Type.BOLD, Look07.L1);
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), ring = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint iconLine = new Paint(Paint.ANTI_ALIAS_FLAG), iconFill = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF r = new RectF();
@@ -193,6 +196,8 @@ final class RowList extends View {
         iconLine.setStyle(Paint.Style.STROKE);
         iconLine.setStrokeCap(Paint.Cap.ROUND);
         iconLine.setStrokeJoin(Paint.Join.ROUND);
+        Shadows.prepare(Look07.SH_ROW, Look07.R_ROW);
+        Pills.prepare();
     }
 
     void setHost(Host h) {
@@ -287,16 +292,17 @@ final class RowList extends View {
                     break;
                 case NOTE: {
                     row.titleL = Ui.layout(row.title, noteP, Ui.px(w - TEXT_X * 2), 8);
-                    row.height = row.titleL.getHeight() / Ui.s + 24f;
+                    row.height = row.titleL.getHeight() / Ui.s + 20f;
                     break;
                 }
                 case RADIO: {
-                    row.titleL = Ui.layout(row.title, titleP, Ui.px(w - RADIO_TEXT_X - TEXT_X), 2);
+                    float left = row.swatch != 0 ? RADIO_TEXT_X : TEXT_X;
+                    row.titleL = Ui.layout(row.title, titleP, Ui.px(w - left - TEXT_X - 40f), 2);
                     row.height = ROW_1 + (row.titleL.getLineCount() - 1) * TITLE_LINE;
                     break;
                 }
                 default: {
-                    float room = w - TEXT_X * 2 - (row.toggle != null ? SWITCH_W + 24f : 0f) - (row.dot ? 30f : 0f);
+                    float room = w - TEXT_X * 2 - (row.toggle != null ? SWITCH_W + 20f : 0f) - (row.dot ? 30f : 0f);
                     row.titleL = Ui.layout(row.title, titleP, Ui.px(room), 2);
                     row.valueL = row.value.isEmpty() ? null : Ui.layout(row.value, valueP, Ui.px(room), 2);
                     int tl = row.titleL.getLineCount(), vl = row.valueL == null ? 0 : row.valueL.getLineCount();
@@ -304,6 +310,8 @@ final class RowList extends View {
                     break;
                 }
             }
+            // A little room between rows, as the mock-ups' 4 px.
+            if (row.focusable()) row.height += 4f;
         }
     }
 
@@ -412,18 +420,21 @@ final class RowList extends View {
     @Override protected void onDraw(Canvas c) {
         long t = SystemClock.uptimeMillis();
         boolean moving = scroll.step();
+        Row lit = active ? focused() : null;
+        moving |= lift.step(lit);
         if (heading != null && !heading.isEmpty()) {
-            headingP.setColor(Palette.TEXT1);
+            headingP.setColor(Look07.L1);
             float hw = Ui.f(w - TEXT_X * 2);
             if (headingFit == null || hw != headingW || !heading.equals(headingFor)) {
                 headingFit = Ui.fit(heading, headingP, hw);
                 headingFor = heading;
                 headingW = hw;
             }
-            c.drawText(headingFit, Ui.f(x + TEXT_X), Ui.f(headingY), headingP);
+            c.drawText(headingFit, Ui.f(x + TEXT_X - 12f), Ui.f(headingY), headingP);
         }
         c.save();
-        c.clipRect(Ui.f(x), Ui.f(top), Ui.f(x + w), Ui.f(bottom));
+        // Room for the remote's row to lift past the list's sides.
+        c.clipRect(Ui.f(x - 8f), Ui.f(top), Ui.f(x + w + 8f), Ui.f(bottom));
         float y = top - scroll.value();
         for (int i = 0; i < rows.size(); i++) {
             Row row = rows.get(i);
@@ -440,128 +451,118 @@ final class RowList extends View {
     }
 
     private void drawRow(Canvas c, Row row, int i, float y, long t) {
-        float left = Ui.f(x), right = Ui.f(x + w), top0 = Ui.f(y), h = Ui.f(row.height);
+        float left = Ui.f(x), right = Ui.f(x + w), top0 = Ui.f(y), h = Ui.f(row.height - (row.focusable() ? 4f : 0f));
         switch (row.kind) {
             case HEADER:
-                headerP.setColor(Palette.ACCENT);
-                c.drawText(row.fitted(headerP, right - left - Ui.f(TEXT_X * 2)), left + Ui.f(TEXT_X), top0 + Ui.f(48), headerP);
+                headerP.setColor(Look07.AMBER);
+                c.drawText(row.fitted(headerP, right - left - Ui.f(TEXT_X * 2)), left + Ui.f(TEXT_X - 10f), top0 + Ui.f(40f), headerP);
                 return;
             case NOTE:
-                noteP.setColor(Palette.TEXT2);
-                if (row.titleL != null) Ui.draw(c, row.titleL, left + Ui.f(TEXT_X), top0 + Ui.f(12));
+                noteP.setColor(Look07.L3);
+                if (row.titleL != null) Ui.draw(c, row.titleL, left + Ui.f(TEXT_X - 10f), top0 + Ui.f(8f));
                 return;
             case DIVIDER:
-                fill.setColor(Palette.DIVIDER);
-                c.drawRect(left + Ui.f(40), top0 + h / 2f - Ui.f(1), right - Ui.f(40), top0 + h / 2f + Ui.f(1), fill);
+                fill.setColor(Look07.RULE);
+                c.drawRect(left + Ui.f(22f), top0 + h / 2f, right - Ui.f(22f), top0 + h / 2f + Math.max(1f, Ui.f(1f)), fill);
                 return;
             default:
                 break;
         }
-        boolean on = i == focus;
+        boolean on = i == focus, lit = on && active;
         if (row.kind == STEPPER) {
-            stepper(c, row, left, right, top0, on && active);
+            stepper(c, row, left, right, top0, lit);
             return;
         }
         r.set(left + Ui.f(INSET), top0, right - Ui.f(INSET), top0 + h);
-        if (on && active) Focus.pill(c, r);
-        else if (on) Focus.selected(c, r);
+        float rad = Ui.f(Look07.R_ROW);
+        float k = lit ? Math.max(0f, lift.of(row)) : 0f;
+        c.save();
+        if (k > 0f) {
+            float s = 1f + (LIFT - 1f) * k;
+            c.scale(s, s, r.centerX(), r.centerY());
+            Shadows.draw(c, r, rad, Look07.SH_ROW, Math.min(1f, k));
+            fill.setColor(Look07.FOCUS_FILL);
+            c.drawRoundRect(r, rad, rad, fill);
+        } else if (on) {
+            fill.setColor(lit ? Look07.FOCUS_FILL : Look07.SELECTED);
+            c.drawRoundRect(r, rad, rad, fill);
+        }
         if (i == flash && t - flashAt < FLASH_MS) {
             // OK's moment: the row lit a little more, fading.
-            float k = 1f - (t - flashAt) / (float) FLASH_MS;
-            fill.setColor(Palette.alpha(0xFFFFFFFF, Math.round(0x1F * k)));
-            c.drawRoundRect(r, Ui.f(Focus.RADIUS), Ui.f(Focus.RADIUS), fill);
+            float f = 1f - (t - flashAt) / (float) FLASH_MS;
+            fill.setColor(Palette.alpha(lit ? 0xFF000000 : 0xFFFFFFFF, Math.round(0x1F * f)));
+            c.drawRoundRect(r, rad, rad, fill);
         }
-        int ink = row.enabled ? Palette.TEXT1 : Palette.TEXT3;
+        int ink = lit ? Look07.INK : row.enabled ? Look07.L1 : Look07.L4;
+        int quiet = lit ? Look07.INK2 : row.enabled ? Look07.L3 : Look07.L4;
         float cy = top0 + h / 2f;
         if (row.kind == ICON) {
-            iconLine.setColor(ink);
-            iconLine.setStrokeWidth(Math.max(1f, Ui.f(3f)));
-            iconFill.setColor(ink);
-            Dark.icon(c, row.icon, left + Ui.f(60), cy, Ui.f(36), iconLine, iconFill);
+            iconLine.setColor(lit ? Look07.INK : Look07.L2);
+            iconLine.setStrokeWidth(Math.max(1f, Ui.f(2.6f)));
+            iconFill.setColor(lit ? Look07.INK : Look07.L2);
+            Dark.icon(c, row.icon, left + Ui.f(INSET + 30f), cy, Ui.f(30), iconLine, iconFill);
             titleP.setColor(ink);
             c.drawText(row.fitted(titleP, right - left - Ui.f(ICON_TEXT_X + TEXT_X)), left + Ui.f(ICON_TEXT_X),
                     Type.centred(titleP, cy), titleP);
+            c.restore();
             return;
         }
         if (row.kind == RADIO) {
-            radio(c, row, left + Ui.f(RADIO_X), cy, ink);
+            float tx = left + Ui.f(row.swatch != 0 ? RADIO_TEXT_X : TEXT_X);
+            if (row.swatch != 0) swatch(c, row, left + Ui.f(RADIO_X), cy);
             titleP.setColor(ink);
-            if (row.titleL != null) Ui.draw(c, row.titleL, left + Ui.f(RADIO_TEXT_X), cy - row.titleL.getHeight() / 2f);
+            if (row.titleL != null) Ui.draw(c, row.titleL, tx, cy - row.titleL.getHeight() / 2f);
+            // The one in use: a tick at the right (dark on the white row, green elsewhere).
+            if (row.checked && row.swatch == 0) Icons07.draw(c, Icons07.CHECK, right - Ui.f(INSET + 34f), cy, Ui.f(28f), lit ? Look07.INK : Look07.GREEN);
+            c.restore();
             return;
         }
         // An item: its title, its value under it, its switch at the right.
         titleP.setColor(ink);
-        valueP.setColor(row.enabled ? Palette.TEXT2 : Palette.TEXT3);
-        float block = row.titleL.getHeight() + (row.valueL == null ? 0 : Ui.f(6) + row.valueL.getHeight());
+        valueP.setColor(quiet);
+        float block = row.titleL.getHeight() + (row.valueL == null ? 0 : Ui.f(3) + row.valueL.getHeight());
         float ty = cy - block / 2f, tx = left + Ui.f(TEXT_X);
         Ui.draw(c, row.titleL, tx, ty);
         if (row.dot) {
-            float dx = tx + row.titleL.getLineWidth(0) + Ui.f(18);
-            fill.setColor(Palette.ACCENT);
-            c.drawCircle(dx, ty + row.titleL.getLineBaseline(0) - Ui.f(10), Ui.f(7), fill);
+            float dx = tx + row.titleL.getLineWidth(0) + Ui.f(16);
+            fill.setColor(Look07.AMBER);
+            c.drawCircle(dx, ty + row.titleL.getLineBaseline(0) - Ui.f(8), Ui.f(5), fill);
         }
-        if (row.valueL != null) Ui.draw(c, row.valueL, tx, ty + row.titleL.getHeight() + Ui.f(6));
-        if (row.toggle != null) toggle(c, right - Ui.f(SWITCH_RIGHT + SWITCH_W), cy, row.toggle, on && active, row.enabled);
+        if (row.valueL != null) Ui.draw(c, row.valueL, tx, ty + row.titleL.getHeight() + Ui.f(3));
+        if (row.toggle != null) {
+            Pills.toggle(c, right - Ui.f(SWITCH_RIGHT + SWITCH_W), cy, row.toggle, lit);
+            if (!row.enabled) {
+                fill.setColor(0x66000000);
+                c.drawRoundRect(right - Ui.f(SWITCH_RIGHT + SWITCH_W), cy - Ui.f(19f), right - Ui.f(SWITCH_RIGHT), cy + Ui.f(19f),
+                        Ui.f(19f), Ui.f(19f), fill);
+            }
+        }
+        c.restore();
     }
 
-    /** A stepper: its two buttons at the row's top (the lit one in the focus pill), the value between them. */
+    /** A stepper: its two round buttons at the row's top (the lit one white), the value between them. */
     private void stepper(Canvas c, Row row, float left, float right, float top0, boolean lit) {
-        float bw = Ui.f(STEP_W), bh = Ui.f(STEP_H), in = Ui.f(TEXT_X), cy = top0 + bh / 2f;
-        iconLine.setColor(Palette.TEXT1);
-        iconLine.setStrokeWidth(Math.max(1f, Ui.f(3f)));
+        float bw = Ui.f(STEP_W), in = Ui.f(TEXT_X), cy = top0 + Ui.f(STEP_H) / 2f;
         for (int s = 0; s < 2; s++) {
-            float x0 = s == 0 ? left + in : right - in - bw;
-            r.set(x0, top0, x0 + bw, top0 + bh);
-            if (lit && row.side == s) Focus.pill(c, r);
-            Ui.chevron(c, r.centerX(), cy, Ui.f(10), s == 0 ? Ui.LEFT : Ui.RIGHT, iconLine);
+            float cx = s == 0 ? left + in + bw / 2f : right - in - bw / 2f;
+            Pills.circle(c, cx, cy, s == 0 ? Icons07.LEFT : Icons07.RIGHT, lit && row.side == s, false);
         }
-        if (stepP == null) stepP = Type.paint(Type.PICKER, Type.REGULAR, Palette.TEXT1);
-        stepP.setColor(Palette.TEXT1);
+        if (stepP == null) stepP = Type.paint(Type.H3, Type.SEMIBOLD, Look07.L1);
         String v = Ui.fit(row.value, stepP, right - left - in * 2 - bw * 2 - Ui.f(32));
         c.drawText(v, (left + right) / 2f - stepP.measureText(v) / 2f, Type.centred(stepP, cy), stepP);
     }
 
     private TextPaint stepP;
 
-    /** A radio's circle (or a colour's disc) centred on (cx, cy): the accent ring and dot when chosen. */
-    private void radio(Canvas c, Row row, float cx, float cy, int ink) {
+    /** A colour's disc centred on (cx, cy): a tick in it when chosen, dark on a light colour. */
+    private void swatch(Canvas c, Row row, float cx, float cy) {
         float rad = Ui.f(RADIO_D) / 2f;
-        if (row.swatch != 0) {
-            fill.setColor(row.swatch);
-            c.drawCircle(cx, cy, rad, fill);
-            ring.setColor(0x33FFFFFF);
-            ring.setStrokeWidth(Math.max(1f, Ui.f(1.5f)));
-            c.drawCircle(cx, cy, rad, ring);
-            if (row.checked) {
-                // A tick in the disc, dark on a light colour.
-                int tick = luminance(row.swatch) > 0.5f ? 0xFF1A1A1A : 0xFFFFFFFF;
-                iconLine.setColor(tick);
-                iconLine.setStrokeWidth(Math.max(1f, Ui.f(3.5f)));
-                Dark.icon(c, Dark.CHECK, cx, cy, rad * 1.25f, iconLine, iconLine);
-            }
-            return;
-        }
-        ring.setStrokeWidth(Math.max(1f, Ui.f(3f)));
-        ring.setColor(row.checked ? Palette.ACCENT : row.enabled ? Palette.TEXT2 : Palette.TEXT3);
-        c.drawCircle(cx, cy, rad - Ui.f(1.5f), ring);
-        if (row.checked) {
-            fill.setColor(Palette.ACCENT);
-            c.drawCircle(cx, cy, rad * 0.5f, fill);
-        }
-    }
-
-    /** A switch in its 80 x 46 box from x, centred on cy: on, the accent track and a white thumb at the right. */
-    private void toggle(Canvas c, float x0, float cy, boolean on, boolean focused, boolean enabled) {
-        float bw = Ui.f(SWITCH_W), th = Ui.f(28), tr = th / 2f;
-        r.set(x0 + Ui.f(4), cy - tr, x0 + bw - Ui.f(4), cy + tr);
-        int track = on ? Palette.ACCENT : focused ? Palette.SWITCH_OFF_FOCUS : Palette.SWITCH_OFF;
-        fill.setColor(enabled ? track : Palette.alpha(track, 0x40));
-        c.drawRoundRect(r, tr, tr, fill);
-        float d = Ui.f(on ? 32f : 22f);
-        float tx = on ? r.right - Ui.f(16) : r.left + Ui.f(16);
-        fill.setColor(on || focused ? 0xFFFFFFFF : Palette.THUMB_OFF);
-        if (!enabled) fill.setColor(Palette.alpha(fill.getColor(), 0x80));
-        c.drawCircle(tx, cy, d / 2f, fill);
+        fill.setColor(row.swatch);
+        c.drawCircle(cx, cy, rad, fill);
+        ring.setColor(0x33FFFFFF);
+        ring.setStrokeWidth(Math.max(1f, Ui.f(1.5f)));
+        c.drawCircle(cx, cy, rad, ring);
+        if (row.checked) Icons07.draw(c, Icons07.CHECK, cx, cy, rad * 1.3f, luminance(row.swatch) > 0.5f ? 0xFF1A1A1A : 0xFFFFFFFF);
     }
 
     /** Pure: a colour's relative brightness (0 to 1). */

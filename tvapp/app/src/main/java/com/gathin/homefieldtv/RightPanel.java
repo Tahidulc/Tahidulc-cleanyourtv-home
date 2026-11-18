@@ -14,9 +14,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The panel down the right of the screen that Settings and every side menu open in, over the screen dimmed by the scrim
- * (black at 60 %): 720 px of the panel's colour from x 1200, its title in a 144 px band of the header colour (TITLE size,
- * 48 px in, baseline 87), and under the band its rows (a RowList: the focus pill 16 px in, rows from y 160).
+ * The panel at the right of the screen that Settings and every side menu open in, in the 07 look: over the screen dimmed
+ * by the scrim (black at 58 %), a frosted panel floating 36 px in from the top, the right and the foot, rounded 48 (Frost,
+ * mat-dark: the page's own blurred picture under a deep tint), from x (1200 as it comes, 720 wide); its title at the top
+ * (34 px, bold) and under it its rows (a RowList: the remote's row white and lifted).
  *
  * <pre>
  *   open(title, tag, rows, focus, animate)  the panel fades and slides in from 22 px to the right (OPEN_MS, 130),
@@ -34,7 +35,9 @@ import java.util.List;
  * Focus jumps between rows; only the panel and its pages move. x and w can be changed for a narrower menu.
  */
 final class RightPanel extends FrameLayout implements RowList.Host {
-    static final float X = 1200f, W = 720f, HEAD = 144f, SLIDE = 22f, PAGE_SLIDE = 96f;
+    static final float X = 1200f, W = 720f, HEAD = 150f, SLIDE = 22f, PAGE_SLIDE = 96f;
+    /** The floating panel: its margin from the screen's top, right and foot, its corners; its title's baseline. */
+    static final float MARGIN = 36f, RADIUS = 48f, TITLE_Y = 112f;
     static final long OPEN_MS = 130, CLOSE_MS = 100, PAGE_MS = 140, BACK_MS = 135;
 
     interface Host {
@@ -71,7 +74,9 @@ final class RightPanel extends FrameLayout implements RowList.Host {
     private int slideDir = 1;
     private ValueAnimator openAnim, pageAnim;
     private boolean closing;
-    private final Paint scrim = new Paint(), back = new Paint(), band = new Paint();
+    private final Paint scrim = new Paint();
+    private final Frost frost = new Frost(Look07.MAT_DARK);
+    private final android.graphics.RectF box = new android.graphics.RectF();
 
     RightPanel(Context c) {
         super(c);
@@ -110,11 +115,12 @@ final class RightPanel extends FrameLayout implements RowList.Host {
 
     private void place() {
         for (RowList l : lists) {
-            l.x = x;
-            l.w = w;
-            l.top = HEAD + Focus.INSET_PANEL;
-            l.bottom = 1080f;
-            l.headingY = 87f;
+            // Inside the floating panel: 14 px in from its sides, under its title, above its foot.
+            l.x = x + 14f;
+            l.w = Math.max(100f, w - MARGIN - 28f);
+            l.top = HEAD + 8f;
+            l.bottom = 1080f - MARGIN - 16f;
+            l.headingY = TITLE_Y;
         }
     }
 
@@ -274,19 +280,18 @@ final class RightPanel extends FrameLayout implements RowList.Host {
     }
 
     @Override protected void onDraw(Canvas c) {
-        scrim.setColor(Palette.alpha(Palette.SCRIM, Math.round(0x99 * open)));
+        scrim.setColor(Palette.alpha(Look07.SCRIM, Math.round(((Look07.SCRIM >>> 24) & 0xFF) * open)));
         c.drawRect(0, 0, getWidth(), getHeight(), scrim);
-        float off = Ui.f(SLIDE) * (1f - open), l = Ui.f(x) + off, rr = Ui.f(x + w) + off;
-        back.setColor(Palette.alpha(Palette.PANEL, Math.round(255 * open)));
-        band.setColor(Palette.alpha(Palette.HEADER, Math.round(255 * open)));
-        c.drawRect(l, 0, rr, getHeight(), back);
-        c.drawRect(l, 0, rr, Ui.f(HEAD), band);
+        float off = Ui.f(SLIDE) * (1f - open);
+        box.set(Ui.f(x) + off, Ui.f(MARGIN), Ui.f(x + w - MARGIN) + off, getHeight() - Ui.f(MARGIN));
+        frost.draw(c, box, Ui.f(RADIUS), open);
     }
 
     /** The pages are kept inside the panel as they slide. */
     @Override protected boolean drawChild(Canvas c, View child, long time) {
         c.save();
-        c.clipRect(Ui.f(x) + Ui.f(SLIDE) * (1f - open), 0, getWidth(), getHeight());
+        c.clipRect(Ui.f(x) + Ui.f(SLIDE) * (1f - open), Ui.f(MARGIN), Ui.f(x + w - MARGIN) + Ui.f(SLIDE) * (1f - open),
+                getHeight() - Ui.f(MARGIN));
         boolean more = super.drawChild(c, child, time);
         c.restore();
         return more;

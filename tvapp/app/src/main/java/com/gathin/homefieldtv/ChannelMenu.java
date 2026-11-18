@@ -37,15 +37,26 @@ final class ChannelMenu {
     /** The channel's lines; movable: the list on screen can take Move channel (not Recently watched, nor the archive). */
     static void items(Context c, Channel ch, boolean archiveLink, boolean movable, List<GuideMenu.Item> out) {
         out.add(GuideMenu.Item.item(GuideActions.FAVOURITE, Library.get(c).isFavourite(ch) ? "Remove from Favourites" : "Add to Favourites"));
-        out.add(GuideMenu.Item.item(GuideActions.BLOCK, Parental.lockedChannels(c).contains(ch.key) ? "Unblock channel" : "Block channel"));
+        boolean blocked = Parental.lockedChannels(c).contains(ch.key);
+        GuideMenu.Item block = GuideMenu.Item.item(GuideActions.BLOCK, blocked ? "Unblock channel" : "Block channel");
+        out.add(blocked ? block : block.warn());
         out.add(GuideMenu.Item.item(HIDE, "Hide channel"));
         if (ChannelEdits.editor(c)) {
             out.add(GuideMenu.Item.item(RENAME, "Rename channel"));
             if (ChannelEdits.renamed(ch)) out.add(GuideMenu.Item.item(UNNAME, "Restore channel name"));
         }
-        out.add(GuideMenu.Item.item(LOGO, "Change logo"));
+        out.add(GuideMenu.Item.item(LOGO, "Change logo").value(logoWords(ch)));
         if (movable) out.add(GuideMenu.Item.item(MOVE, "Move channel"));
         if (archiveLink && Catchup.source(ch) != null) out.add(GuideMenu.Item.item(GuideActions.ARCHIVE, "Catch-up"));
+    }
+
+    /** The logo the channel shows now, for Change logo's line: "BBC Two · tv-logos", or "Playlist's". */
+    static String logoWords(Channel ch) {
+        String choice = ChannelEdits.logo(ch.key);
+        String path = ChannelEdits.LOGO_PLAYLIST.equals(choice) ? null : !choice.isEmpty() ? choice
+                : com.gathin.homefieldtv.engine.LogoPack.on() ? com.gathin.homefieldtv.engine.LogoPack.auto(ch) : null;
+        if (path == null || path.isEmpty()) return "Playlist's";
+        return com.gathin.homefieldtv.engine.LogoMatch.labelOf(path) + " · tv-logos";
     }
 
     /** Whether a line is one of these (Move channel is the guide's own). */

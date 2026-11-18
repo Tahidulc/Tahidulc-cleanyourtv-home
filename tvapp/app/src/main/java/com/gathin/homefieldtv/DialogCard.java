@@ -14,10 +14,10 @@ import com.gathin.homefieldtv.engine.Exec;
 import java.util.List;
 
 /**
- * A question in the middle of the screen (remove everything, leave the app, a PIN's choices): the screen dimmed by the
- * scrim, a card 840 wide of the panel's colour with rounded corners (16), its title (PICKER, medium) and its words
- * (ROW, TEXT2, up to six lines) 48 px in, and its answers under them as rows (a RowList, the focus pill 16 px in:
- * "Yes, remove everything", "Cancel"). It fades in like the panels (130 ms) and out (100 ms).
+ * A question in the middle of the screen (remove everything, leave the app, a PIN's choices), in the 07 look: the screen
+ * dimmed by the scrim, a frosted card 840 wide rounded 40 (Frost, mat-dark), its title (30 px, bold) and its words (21 px,
+ * the second label, up to six lines) 48 px in, and its answers under them as 07's rows (a RowList: "Yes, remove
+ * everything", "Cancel", the remote's white). It fades in like the panels (130 ms) and out (100 ms).
  *
  * <pre>
  *   show(title, words, answers, focus)   in, the remote on the answer focus
@@ -28,7 +28,7 @@ import java.util.List;
  * The answers' metrics are the panels' (no source for this app's own dialogs was seen on the family's TV).
  */
 final class DialogCard extends FrameLayout implements RowList.Host {
-    static final float W = 840f, PAD = 48f, RADIUS = 16f;
+    static final float W = 840f, PAD = 48f, RADIUS = 40f;
 
     interface Host {
         void answered(DialogCard dialog, RowList.Row answer);
@@ -40,9 +40,10 @@ final class DialogCard extends FrameLayout implements RowList.Host {
     private StaticLayout wordsL;
     private float cardTop, cardH, shown;
     private ValueAnimator anim;
-    private final Paint scrim = new Paint(), card = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final TextPaint titleP = Type.paint(Type.PICKER, Type.MEDIUM, Palette.TEXT1);
-    private final TextPaint wordsP = Type.paint(Type.ROW, Type.REGULAR, Palette.TEXT2);
+    private final Paint scrim = new Paint();
+    private final Frost card = new Frost(Look07.MAT_DARK);
+    private final TextPaint titleP = Type.paint(Type.H3, Type.BOLD, Look07.L1);
+    private final TextPaint wordsP = Type.paint(Type.BODY, Type.REGULAR, Look07.L2);
     private final RectF r = new RectF();
 
     DialogCard(Context c) {
@@ -70,13 +71,13 @@ final class DialogCard extends FrameLayout implements RowList.Host {
         title = t == null ? "" : t;
         words = w == null ? "" : w;
         wordsL = words.isEmpty() ? null : Ui.layout(words, wordsP, Ui.px(W - PAD * 2), 6);
-        list.x = (1920f - W) / 2f;
-        list.w = W;
+        list.x = (1920f - W) / 2f + 14f;
+        list.w = W - 28f;
         list.setRows(answers);
         float rowsH = 0f;
         for (RowList.Row row : list.rows()) rowsH += row.height;
         float wordsH = wordsL == null ? 0f : wordsL.getHeight() / Ui.s + 20f;
-        cardH = PAD + 44f + 20f + wordsH + rowsH + Focus.INSET_PANEL;
+        cardH = PAD + 44f + 20f + wordsH + rowsH + 24f;
         cardTop = (1080f - cardH) / 2f;
         list.top = cardTop + PAD + 44f + 20f + wordsH;
         list.bottom = list.top + rowsH;
@@ -132,18 +133,13 @@ final class DialogCard extends FrameLayout implements RowList.Host {
     }
 
     @Override protected void onDraw(Canvas c) {
-        scrim.setColor(Palette.SCRIM);
+        scrim.setColor(Look07.SCRIM);
         c.drawRect(0, 0, getWidth(), getHeight(), scrim);
         float x0 = (1920f - W) / 2f;
         r.set(Ui.f(x0), Ui.f(cardTop), Ui.f(x0 + W), Ui.f(cardTop + cardH));
-        card.setColor(Palette.PANEL);
-        c.drawRoundRect(r, Ui.f(RADIUS), Ui.f(RADIUS), card);
-        titleP.setColor(Palette.TEXT1);
+        card.draw(c, r, Ui.f(RADIUS), 1f);
         c.drawText(Ui.fit(title, titleP, Ui.f(W - PAD * 2)), Ui.f(x0 + PAD), Ui.f(cardTop + PAD + 32f), titleP);
-        if (wordsL != null) {
-            wordsP.setColor(Palette.TEXT2);
-            Ui.draw(c, wordsL, Ui.f(x0 + PAD), Ui.f(cardTop + PAD + 44f + 20f));
-        }
+        if (wordsL != null) Ui.draw(c, wordsL, Ui.f(x0 + PAD), Ui.f(cardTop + PAD + 44f + 20f));
     }
 
     @Override public void chosen(RowList l, RowList.Row row) {

@@ -27,6 +27,8 @@ import java.util.List;
 public final class TvActivity extends Activity {
     FrameLayout screens, video, over;
     LiveTv live;
+    /** 07's shell: Homefield's mark, the tab bar or a screen's back line, the clock (over the pages, under overlays). */
+    private TabBar tabs;
     private final List<Screen> stack = new ArrayList<>();
     private final Handler h = new Handler(Looper.getMainLooper());
     private boolean resumed, okDown, okLong;
@@ -110,7 +112,11 @@ public final class TvActivity extends Activity {
         Catalog cat = Catalog.get(this);
         cat.addListener(catalog);
         cat.ensure();
+        // The shell first, so every page is put under it (push raises it); the app starts with the remote on its Home.
+        tabs = new TabBar(this);
+        screens.addView(tabs, full());
         push(new HomeScreen(this));
+        tabs.enter();
         // Homefield TV's own updates: the folder made (for one to be put in), a quiet look, What's new once after one.
         Updates.folder(this);
         Updates.addListener(updates);
@@ -325,6 +331,7 @@ public final class TvActivity extends Activity {
         stack.add(s);
         View v = s.view();
         (s.overVideo() ? over : screens).addView(v, full());
+        if (tabs != null) tabs.pushed(s);
         if (s.overlay()) {
             v.animate().cancel();
             v.setAlpha(1f);
@@ -348,6 +355,7 @@ public final class TvActivity extends Activity {
         Screen s = stack.remove(stack.size() - 1);
         if (resumed) s.hidden();
         Screen t = top();
+        if (tabs != null) tabs.follow(t);
         View under = t.view();
         under.animate().cancel();
         under.setAlpha(1f);
@@ -383,8 +391,14 @@ public final class TvActivity extends Activity {
         if (!homeShowing) stack.get(0).view().setVisibility(View.GONE);
         stack.add(s);
         (s.overVideo() ? over : screens).addView(s.view(), full());
+        if (tabs != null) tabs.pushed(s);
         crossFade(s.view(), showing, !homeShowing);
         if (resumed) s.shown();
+    }
+
+    /** 07's shell (TabBar): a page sends the remote up to it with tabs().enter(). */
+    TabBar tabs() {
+        return tabs;
     }
 
     private static final long PAGE_MS = 220;
@@ -577,13 +591,30 @@ public final class TvActivity extends Activity {
                     okLong = false;
                 } else if (okDown && !okLong && e.getEventTime() - e.getDownTime() > 600) {
                     okLong = true;
-                    s.okLong();
+                    if (tabs.active()) tabs.ok();
+                    else s.okLong();
                 }
             } else if (e.getAction() == KeyEvent.ACTION_UP) {
-                if (okDown && !okLong) s.ok();
+                if (okDown && !okLong) {
+                    if (tabs.active()) tabs.ok();
+                    else s.ok();
+                }
                 okDown = false;
             }
             return true;
+        }
+        // The remote on 07's tab bar: its keys (Left, Right, Down, Up, MENU) and Back are the bar's; the guide and search
+        // keys open the guide and Search (below); the others (the channel keys, the numbers) go on as from the page.
+        if (tabs.active()) {
+            if (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_ESCAPE || code == KeyEvent.KEYCODE_BUTTON_B) {
+                if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0 && !tabs.back()) pop();
+                return true;
+            }
+            if (e.getAction() == KeyEvent.ACTION_DOWN && tabs.key(code, e)) return true;
+            if (e.getAction() == KeyEvent.ACTION_UP && (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT
+                    || code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN)) {
+                return true;
+            }
         }
         // A key the screen tells apart pressed and held (the player's, as TiviMate's remote has them): a press when it is
         // let go, held once LONG_MS have gone by with it down.
@@ -612,7 +643,9 @@ public final class TvActivity extends Activity {
             return true;
         }
         if (e.getAction() == KeyEvent.ACTION_DOWN) {
-            if (s.key(code, e)) return true;
+            // On 07's tab bar the guide and search keys are the shortcuts below (the page under it hasn't the remote).
+            boolean onBar = tabs.active() && (code == KeyEvent.KEYCODE_GUIDE || code == KeyEvent.KEYCODE_SEARCH);
+            if (!onBar && s.key(code, e)) return true;
             // The remote's own shortcuts, from any screen.
             if (code == KeyEvent.KEYCODE_GUIDE) {
                 if (!(s instanceof GuideScreen)) fromHome(new GuideScreen(this, null));

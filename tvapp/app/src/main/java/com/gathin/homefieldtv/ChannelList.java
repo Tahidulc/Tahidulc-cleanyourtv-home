@@ -364,21 +364,23 @@ final class ChannelList extends FrameLayout implements GroupsPanel.Host {
         }
 
         private void drawRow(Canvas c, Channel ch, float x0, float top, boolean lit, boolean playing, long now, Library lib) {
-            if (lit) {
-                r.set(Ui.f(x0 + 16f), Ui.f(top), Ui.f(x0 + COL_W - 16f), Ui.f(top + PILL_H));
-                if (groupsOpen) Focus.selected(c, r);
-                else Focus.pill(c, r);
-            }
+            // The channel's cell in its logo's colour (ChannelLook; the plain 07 row as Behind logos may say), 07's
+            // focus where the remote is: a white ring on a coloured cell, the white pill on a plain one.
+            r.set(Ui.f(x0 + 16f), Ui.f(top), Ui.f(x0 + COL_W - 16f), Ui.f(top + PILL_H));
+            int words = ChannelLook.fillCell(c, r, ch, lit && !groupsOpen);
+            if (lit && groupsOpen && ChannelLook.colour(ch) == 0) Focus.selected(c, r);
+            boolean ink = words == Look07.INK;
             // The logo on its tile (Logos: Behind logos), else the channel's name over the empty tile.
             r.set(Ui.f(x0 + 32f), Ui.f(top + 26f), Ui.f(x0 + 128f), Ui.f(top + 90f));
             if (!Logos.draw(c, ch, r, redraw)) {
-                logoP.setColor(Palette.TEXT2);
+                logoP.setColor(ink ? Look07.INK2 : Palette.TEXT2);
                 if (logos == null) logos = new TextFit(logoP, 64);
                 logos.line(c, ChannelEdits.name(ch), Ui.f(x0 + 36f), Ui.f(top + 66f), Ui.f(88));
             }
             float tx = Ui.f(x0 + 144f), room = Ui.f(COL_W - 144f - 32f - (playing ? 48f : 0f));
-            nameP.setColor(Palette.TEXT1);
+            nameP.setColor(words);
             names.line(c, ChannelEdits.name(ch), tx, Ui.f(top + 42f), room);
+            onP.setColor(ink ? Look07.INK2 : ChannelLook.colour(ch) != 0 ? Look07.L2 : Palette.ACCENT_LIGHT);
             if (playing) {
                 // The channel playing: the accent's ▶.
                 float px = Ui.f(x0 + 556f), py = Ui.f(top + 32f), s = Ui.f(16f);
@@ -393,7 +395,6 @@ final class ChannelList extends FrameLayout implements GroupsPanel.Host {
             Guide.Schedule s = lib.schedule(ch.key);
             int i = s == null ? -1 : s.at(now);
             if (i >= 0) {
-                onP.setColor(Palette.ACCENT_LIGHT);
                 titles.line(c, s.title[i], tx, Ui.f(top + 82f), Ui.f(COL_W - 144f - 32f));
                 Bars.thin(c, tx, Ui.f(top + 99f), Ui.f(424f), Ui.f(4f), LiveText.progress(now, s.start[i], s.stop[i]));
             }

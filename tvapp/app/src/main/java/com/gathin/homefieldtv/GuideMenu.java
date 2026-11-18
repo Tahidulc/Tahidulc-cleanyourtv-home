@@ -17,24 +17,30 @@ import com.gathin.homefieldtv.engine.Exec;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
- * The TV guide's menus, as the family's TiviMate draws them (DEVICE.md §2.8), and its programme description:
+ * The TV guide's menus and its programme description, in the 07 look (still 08 of the approved mock-ups):
  *
  * <pre>
- *   openCard(items, focus, row)   OK held: a floating card [1392,32][1888,1048] of the panel's colour (radius 20, a soft
- *                                 shadow) over the screen dimmed by the scrim, the row it is for left undimmed with a
- *                                 2 px edge in the focus colour; rows 80 high: an icon row (40 px icon 40 px in, its name
- *                                 104 px in), a line (40 px in), and a section (16 px, a 2 px rule, then its name in the
- *                                 accent, 24 px, on an 80 px row); the focus pill 16 px in. It scrolls when longer
- *   openPopup(items, cell)        OK on a programme to come: a card 376 wide right under the remote's cell (over it when
- *                                 there is no room below), no scrim, rows 80 high, the pill 8 px in, the words 32 px in
- *   openAbout(...)                Programme description: a card [1152,48] 720 wide, as the player's: the title (two
- *                                 lines), the times with the bar and the minutes left, and all it says, over the scrim
+ *   openCard(items, focus, row)   OK held: a frosted card 520 wide at (1330, 128), rounded 40 (Frost, mat-dark), over
+ *                                 the screen dimmed by the scrim, the row it is for left undimmed with a white edge;
+ *                                 Search and Settings as two buttons along its top, then the lines: a section's name in
+ *                                 capitals (14 px, letter-spaced, the third label) after a hairline rule, and each line
+ *                                 56 high with its icon (22 px) and words (21 px), its value at the right (17 px) and,
+ *                                 for a lock, the warning red; the remote's line white with dark words, lifted 3 %.
+ *                                 It scrolls when longer than the screen
+ *   openPopup(items, cell)        OK on a programme to come: a frosted card 376 wide right under the remote's cell (over
+ *                                 it when there is no room below), no scrim, lines 56 high
+ *   openAbout(...)                Programme description: a frosted card at (1152, 48), 720 wide: its title (36 px,
+ *                                 bold, two lines), its times with the bar and the minutes left, and all it says, over
+ *                                 the scrim
  * </pre>
  *
- * Up and Down move (no wrap-around, the focus jumping), OK tells the host (Host.chosen with the line's tag), Back is
- * the screen's (close). It fades and slides in from 22 px to the right (130 ms) and out (100 ms), as the panels do.
+ * Up and Down move through every line in order (Search, then Settings, then the lines; no wrap-around), Left and Right
+ * between the two buttons; OK tells the host (Host.chosen with the line's tag); Back is the screen's (close). It fades
+ * and slides in from 22 px to the right (130 ms) and out (100 ms), as the panels do. Each line's icon is the mock-ups'
+ * for what it does (its tag); a line can carry a value at its right (Item.value: "From catch-up", "By number").
  */
 final class GuideMenu extends View {
     static final int ICON = 0, ITEM = 1, SECTION = 2;
@@ -45,6 +51,12 @@ final class GuideMenu extends View {
         final String tag, title;
         /** A choice's line with a tick at its right, the one in use (Sort channels). */
         boolean checked;
+        /** Words at its right, quieter ("From catch-up", "By number"); "" for none. */
+        String value = "";
+        /** A line that locks or takes away (Block channel): the warning red. */
+        boolean warn;
+        /** The title in capitals, for a section (made once). */
+        private String caps;
 
         private Item(int kind, String tag, int icon, String title) {
             this.kind = kind;
@@ -68,17 +80,35 @@ final class GuideMenu extends View {
             return it;
         }
 
-        /** A section's name in the accent over its lines (the programme's, the channel's), after a rule. */
+        /** A section's name over its lines (the programme's, the channel's), after a rule. */
         static Item section(String title) {
             return new Item(SECTION, null, -1, title);
+        }
+
+        /** Words at its right (this line, for chaining). */
+        Item value(String v) {
+            value = v == null ? "" : v;
+            return this;
+        }
+
+        /** The warning red (this line). */
+        Item warn() {
+            warn = true;
+            return this;
         }
 
         boolean focusable() {
             return kind != SECTION;
         }
 
+        /** Its height as a line (the two buttons along the top take one row between them: BUTTON_H). */
         float height() {
             return kind == SECTION ? SECTION_H : ROW;
+        }
+
+        String caps() {
+            if (caps == null) caps = title.toUpperCase(Locale.UK);
+            return caps;
         }
     }
 
@@ -87,9 +117,9 @@ final class GuideMenu extends View {
     }
 
     private static final int NONE = 0, CARD = 1, POPUP = 2, ABOUT = 3;
-    // Design pixels.
-    static final float CARD_X = 1392f, CARD_Y = 32f, CARD_W = 496f, CARD_H = 1016f, RADIUS = 20f, ROW = 80f, SECTION_H = 98f,
-            POPUP_W = 376f, ABOUT_X = 1152f, ABOUT_Y = 48f, ABOUT_W = 720f, SLIDE = 22f;
+    // Design pixels (the mock-ups' .ep-menu).
+    static final float CARD_X = 1330f, CARD_Y = 128f, CARD_W = 520f, CARD_H = 916f, RADIUS = 40f, ROW = 56f, SECTION_H = 44f,
+            BUTTON_H = 56f, PAD = 16f, POPUP_W = 376f, ABOUT_X = 1152f, ABOUT_Y = 48f, ABOUT_W = 720f, SLIDE = 22f;
     static final long OPEN_MS = 130, CLOSE_MS = 100, SCROLL_MS = 150;
 
     private Host host;
@@ -97,8 +127,10 @@ final class GuideMenu extends View {
     private boolean closing;
     private final List<Item> items = new ArrayList<>();
     private int focus;
-    /** The card's box, how far in its pill and words are (design pixels). */
-    private float x, y, w, h, inset, textX;
+    /** How many of the first lines are the buttons along the top (Search, Settings): drawn side by side. */
+    private int buttons;
+    /** The card's box (design pixels). */
+    private float x, y, w, h;
     /** The row it is for (screen pixels), left undimmed; empty for none. */
     private final RectF hole = new RectF();
     private float shown, scroll, scrollFrom, scrollTo;
@@ -109,16 +141,21 @@ final class GuideMenu extends View {
     private float aboutDone = -1f;
     private StaticLayout aboutTitle, aboutDesc;
 
+    private final Frost frost = new Frost(Look07.MAT_DARK);
+    private final Lift07 lift = new Lift07();
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), edge = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final TextPaint lineP = Type.paint(Type.ROW, Type.REGULAR, Palette.TEXT1), sectionP = Type.paint(Type.SMALL, Type.MEDIUM, Palette.ACCENT);
-    private final TextPaint aboutTitleP = Type.paint(32f, Type.MEDIUM, Palette.TEXT1), aboutP = Type.paint(Type.ROW, Type.REGULAR, Palette.TEXT2);
-    private final TextPaint aboutDescP = Type.paint(26f, Type.REGULAR, Palette.TEXT2);
+    private final TextPaint lineP = Type.paint(Type.MENU, Type.MEDIUM, Look07.L1), valueP = Type.paint(Type.MENU_VALUE, Type.MEDIUM, Look07.L3),
+            sectionP = Type.label(14f, Look07.L3), buttonP = Type.paint(19f, Type.SEMIBOLD, Look07.L1);
+    private final TextPaint aboutTitleP = Type.paint(36f, Type.BOLD, Look07.L1), aboutP = Type.clock(Type.CAP, Type.MEDIUM, Look07.L2);
+    private final TextPaint aboutDescP = Type.paint(Type.BODY, Type.REGULAR, Look07.L2);
+    private final TextFit lines = new TextFit(lineP, 128), values = new TextFit(valueP, 64), sections = new TextFit(sectionP, 32);
     private final RectF r = new RectF();
 
     GuideMenu(Context c) {
         super(c);
         edge.setStyle(Paint.Style.STROKE);
         setVisibility(GONE);
+        Shadows.prepare(Look07.SH_ROW, Look07.R_MENU_ITEM);
     }
 
     void setHost(Host h) {
@@ -142,9 +179,7 @@ final class GuideMenu extends View {
         x = CARD_X;
         y = CARD_Y;
         w = CARD_W;
-        h = CARD_H;
-        inset = 16f;
-        textX = 40f;
+        h = Math.min(CARD_H, PAD * 2 + contentHeight());
         start(CARD, focusAt, row);
     }
 
@@ -153,13 +188,10 @@ final class GuideMenu extends View {
         items.clear();
         items.addAll(list);
         w = POPUP_W;
-        h = 16f;
-        for (Item it : items) h += it.height();
+        h = PAD * 2 + contentHeight();
         x = Math.max(gridLeft, Math.min(cell.left / Ui.s - 3f, 1920f - 16f - w));
-        float below = cell.bottom / Ui.s + 3f, above = cell.top / Ui.s - 3f - h;
+        float below = cell.bottom / Ui.s + 8f, above = cell.top / Ui.s - 8f - h;
         y = below + h <= 1080f - 8f || above < 8f ? Math.min(below, 1080f - 8f - h) : above;
-        inset = 8f;
-        textX = 32f;
         start(POPUP, 0, null);
     }
 
@@ -169,14 +201,14 @@ final class GuideMenu extends View {
         aboutTimes = times == null ? "" : times;
         aboutLeft = left == null ? "" : left;
         aboutDone = done;
-        int tw = Ui.px(ABOUT_W - 64f);
+        int tw = Ui.px(ABOUT_W - 68f);
         aboutTitle = layout(title, aboutTitleP, tw, 2, 1.05f);
         String d = desc == null || desc.isEmpty() ? "No description" : desc;
-        aboutDesc = layout(d, aboutDescP, tw, 18, 1.12f);
+        aboutDesc = layout(d, aboutDescP, tw, 18, Type.BODY_LINES);
         x = ABOUT_X;
         y = ABOUT_Y;
         w = ABOUT_W;
-        h = 32f + aboutTitle.getHeight() / Ui.s + 16f + 40f + 18f + aboutDesc.getHeight() / Ui.s + 36f;
+        h = 34f + aboutTitle.getHeight() / Ui.s + 16f + 40f + 18f + aboutDesc.getHeight() / Ui.s + 40f;
         start(ABOUT, -1, row);
     }
 
@@ -184,6 +216,15 @@ final class GuideMenu extends View {
         String t = text == null ? "" : text;
         return StaticLayout.Builder.obtain(t, 0, t.length(), p, Math.max(1, width)).setAlignment(Layout.Alignment.ALIGN_NORMAL)
                 .setLineSpacing(0f, spacing).setIncludePad(false).setMaxLines(lines).setEllipsize(TextUtils.TruncateAt.END).build();
+    }
+
+    /** The lines' height (design px), the buttons along the top taking one row between them. */
+    private float contentHeight() {
+        buttons = 0;
+        while (buttons < items.size() && buttons < 2 && items.get(buttons).kind == ICON) buttons++;
+        float total = buttons > 0 ? BUTTON_H + 10f : 0f;
+        for (int i = buttons; i < items.size(); i++) total += items.get(i).height();
+        return total;
     }
 
     private void start(int m, int focusAt, RectF row) {
@@ -251,7 +292,7 @@ final class GuideMenu extends View {
         return -1;
     }
 
-    /** The remote while it is open: Up and Down move; every other key stays here. */
+    /** The remote while it is open: Up and Down move (Left and Right between the two buttons); every other key stays here. */
     boolean key(int code) {
         if (mode == ABOUT || closing) return true;
         if (code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN) {
@@ -268,6 +309,9 @@ final class GuideMenu extends View {
                 if (Exec.inline) scroll = 0f;
                 invalidate();
             }
+        } else if ((code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT) && buttons == 2 && focus < 2) {
+            focus = code == KeyEvent.KEYCODE_DPAD_LEFT ? 0 : 1;
+            invalidate();
         }
         return true;
     }
@@ -283,15 +327,21 @@ final class GuideMenu extends View {
         if (host != null && tag != null) host.chosen(this, tag);
     }
 
+    /** Where line i starts (design px from the first line). */
+    private float yOf(int i) {
+        float y0 = buttons > 0 ? BUTTON_H + 10f : 0f;
+        if (i < buttons) return 0f;
+        for (int k = buttons; k < i; k++) y0 += items.get(k).height();
+        return y0;
+    }
+
     /** The lines scroll so the remote's line (and its section's name over it) stays whole in sight. */
     private void settle(boolean now) {
         if (focus < 0) return;
-        float y0 = 0f;
-        for (int i = 0; i < focus; i++) y0 += items.get(i).height();
-        float y1 = y0 + items.get(focus).height(), total = 0f;
-        for (Item it : items) total += it.height();
-        if (focus > 0 && items.get(focus - 1).kind == SECTION) y0 -= ROW;
-        float room = h - inset * 2f;
+        float y0 = yOf(focus), y1 = y0 + (focus < buttons ? BUTTON_H : items.get(focus).height());
+        float total = PAD * 2 + contentHeight() - PAD * 2;
+        if (focus > 0 && items.get(focus - 1).kind == SECTION) y0 -= SECTION_H;
+        float room = h - PAD * 2;
         float target = RowList.scrollFor(scrollTo, y0, y1, room, total);
         if (now || Exec.inline) {
             scroll = scrollFrom = scrollTo = target;
@@ -315,15 +365,15 @@ final class GuideMenu extends View {
             if (k >= 1f) scrollAt = 0;
             else moving = true;
         }
+        Item lit = focus >= 0 && focus < items.size() && mode != ABOUT ? items.get(focus) : null;
+        moving |= lift.step(lit);
         if (mode != POPUP) drawScrim(c);
         float off = mode == POPUP ? 0f : Ui.f(SLIDE) * (1f - shown);
         int alpha = Math.round(255 * shown);
         r.set(Ui.f(x) + off, Ui.f(y), Ui.f(x + w) + off, Ui.f(y + h));
-        drawShadow(c, r, alpha);
-        fill.setColor(Palette.alpha(Palette.PANEL, alpha));
-        c.drawRoundRect(r, Ui.f(RADIUS), Ui.f(RADIUS), fill);
+        frost.draw(c, r, Ui.f(mode == POPUP ? 28f : RADIUS), shown);
         c.save();
-        c.clipRect(r);
+        c.clipRect(r.left, r.top + Ui.f(2f), r.right, r.bottom - Ui.f(2f));
         if (alpha < 255) c.saveLayerAlpha(r, alpha);
         if (mode == ABOUT) drawAbout(c, off);
         else drawLines(c, off);
@@ -332,9 +382,9 @@ final class GuideMenu extends View {
         if (moving) postInvalidateOnAnimation();
     }
 
-    /** The screen dimmed (black at 60 %), the row the menu is for left as it is, with its edge in the focus colour. */
+    /** The screen dimmed, the row the menu is for left as it is, with a white edge. */
     private void drawScrim(Canvas c) {
-        fill.setColor(Palette.alpha(Palette.SCRIM, Math.round(((Palette.SCRIM >>> 24) & 0xFF) * shown)));
+        fill.setColor(Palette.alpha(Look07.SCRIM, Math.round(((Look07.SCRIM >>> 24) & 0xFF) * shown)));
         if (hole.isEmpty()) {
             c.drawRect(0, 0, getWidth(), getHeight(), fill);
             return;
@@ -345,75 +395,142 @@ final class GuideMenu extends View {
         c.restore();
         float sw = Math.max(1f, Ui.f(2f));
         edge.setStrokeWidth(sw);
-        edge.setColor(Palette.alpha(Palette.FOCUS, Math.round(((Palette.FOCUS >>> 24) & 0xFF) * shown)));
-        c.drawRoundRect(hole.left + sw / 2f, hole.top + sw / 2f, hole.right - sw / 2f, hole.bottom - sw / 2f, Ui.f(6f), Ui.f(6f), edge);
-    }
-
-    /** A soft shadow round the card. */
-    private void drawShadow(Canvas c, RectF box, int alpha) {
-        for (int i = 4; i >= 1; i--) {
-            float g = Ui.f(i * 3f);
-            fill.setColor(Palette.alpha(0xFF000000, Math.round(alpha * 0.07f)));
-            c.drawRoundRect(box.left - g, box.top - g + Ui.f(2f), box.right + g, box.bottom + g + Ui.f(2f), Ui.f(RADIUS) + g, Ui.f(RADIUS) + g, fill);
-        }
+        edge.setColor(Palette.alpha(Look07.L1, Math.round(0xB3 * shown)));
+        c.drawRoundRect(hole.left + sw / 2f, hole.top + sw / 2f, hole.right - sw / 2f, hole.bottom - sw / 2f, Ui.f(Look07.R_ROW),
+                Ui.f(Look07.R_ROW), edge);
     }
 
     private void drawLines(Canvas c, float off) {
-        float left = Ui.f(x) + off, right = Ui.f(x + w) + off;
-        float rowY = y + inset - scroll;
-        for (int i = 0; i < items.size(); i++) {
+        float left = Ui.f(x + PAD) + off, right = Ui.f(x + w - PAD) + off;
+        float top = y + PAD - scroll;
+        // Search and Settings: two buttons side by side along the top.
+        if (buttons > 0) {
+            float gap = Ui.f(10f), bw = (right - left - gap * (buttons - 1)) / buttons;
+            for (int i = 0; i < buttons; i++) {
+                float bx = left + i * (bw + gap);
+                r.set(bx, Ui.f(top), bx + bw, Ui.f(top + BUTTON_H));
+                boolean on = i == focus;
+                float k = on ? Math.max(0f, lift.of(items.get(i))) : 0f;
+                c.save();
+                if (k > 0f) c.scale(1f + 0.03f * k, 1f + 0.03f * k, r.centerX(), r.centerY());
+                if (on) Shadows.draw(c, r, Ui.f(20f), Look07.SH_ROW, Math.min(1f, k));
+                fill.setColor(on ? Look07.FOCUS_FILL : 0x1FFFFFFF);
+                c.drawRoundRect(r, Ui.f(20f), Ui.f(20f), fill);
+                Item it = items.get(i);
+                int ink = on ? Look07.INK : Look07.L1;
+                buttonP.setColor(ink);
+                float tw = buttonP.measureText(it.title), is = Ui.f(22f), all = is + Ui.f(10f) + tw;
+                float sx = r.centerX() - all / 2f;
+                Icons07.draw(c, iconOf(it), sx + is / 2f, r.centerY(), is, ink);
+                c.drawText(it.title, sx + is + Ui.f(10f), Type.centred(buttonP, r.centerY()), buttonP);
+                c.restore();
+            }
+        }
+        float rowY = top + (buttons > 0 ? BUTTON_H + 10f : 0f);
+        for (int i = buttons; i < items.size(); i++) {
             Item it = items.get(i);
             float ih = it.height();
             if (rowY > y + h) break;
             if (rowY + ih >= y) {
                 if (it.kind == SECTION) {
-                    fill.setColor(Palette.DIVIDER);
-                    float ry = Ui.f(rowY + 16f);
-                    c.drawRect(left + Ui.f(textX), ry, right - Ui.f(textX), ry + Ui.f(2f), fill);
-                    sectionP.setColor(Palette.ACCENT);
-                    float cy = Ui.f(rowY + 18f + ROW / 2f);
-                    c.drawText(Ui.fit(it.title, sectionP, right - left - Ui.f(textX * 2f)), left + Ui.f(textX), Type.centred(sectionP, cy), sectionP);
+                    if (i > buttons) {
+                        fill.setColor(Look07.RULE);
+                        c.drawRect(left + Ui.f(10f), Ui.f(rowY + 6f), right - Ui.f(10f), Ui.f(rowY + 6f) + Math.max(1f, Ui.f(1f)), fill);
+                    }
+                    sections.paint().setColor(Look07.L3);
+                    sections.line(c, it.caps(), left + Ui.f(16f), Ui.f(rowY + 34f), right - left - Ui.f(32f));
                 } else {
-                    float top0 = Ui.f(rowY), cy = Ui.f(rowY + ROW / 2f);
-                    if (i == focus) {
-                        r.set(left + Ui.f(inset), top0, right - Ui.f(inset), top0 + Ui.f(ROW));
-                        Focus.pill(c, r);
-                    }
-                    lineP.setColor(Palette.TEXT1);
-                    float tx = left + Ui.f(textX);
-                    if (it.kind == ICON) {
-                        RoundButton.glyph(c, it.icon, left + Ui.f(textX + 20f), cy, Ui.f(36f), Palette.TEXT1);
-                        tx = left + Ui.f(104f);
-                    }
-                    float room = right - tx - Ui.f(textX);
-                    if (it.checked) {
-                        RoundButton.glyph(c, Dark.CHECK, right - Ui.f(textX + 16f), cy, Ui.f(32f), Palette.ACCENT_LIGHT);
-                        room -= Ui.f(48f);
-                    }
-                    c.drawText(Ui.fit(it.title, lineP, room), tx, Type.centred(lineP, cy), lineP);
+                    drawLine(c, it, i == focus, left, right, rowY);
                 }
             }
             rowY += ih;
         }
     }
 
+    /** A line: its icon and words, its value at the right; the remote's white with dark words, lifted a little. */
+    private void drawLine(Canvas c, Item it, boolean on, float left, float right, float rowY) {
+        float top0 = Ui.f(rowY), cy = Ui.f(rowY + ROW / 2f);
+        r.set(left, top0, right, top0 + Ui.f(ROW));
+        float k = on ? Math.max(0f, lift.of(it)) : 0f;
+        c.save();
+        if (on) {
+            c.scale(1f + 0.03f * k, 1f + 0.03f * k, r.centerX(), r.centerY());
+            Shadows.draw(c, r, Ui.f(Look07.R_MENU_ITEM), Look07.SH_ROW, Math.min(1f, k));
+            fill.setColor(Look07.FOCUS_FILL);
+            c.drawRoundRect(r, Ui.f(Look07.R_MENU_ITEM), Ui.f(Look07.R_MENU_ITEM), fill);
+        }
+        int ink = on ? Look07.INK : it.warn ? Look07.WARN : Look07.L1;
+        int iconInk = on ? Look07.INK : it.warn ? Look07.WARN : Look07.L2;
+        float tx = left + Ui.f(18f);
+        int icon = iconOf(it);
+        if (icon >= 0) {
+            Icons07.draw(c, icon, tx + Ui.f(11f), cy, Ui.f(22f), iconInk);
+            tx += Ui.f(22f + 16f);
+        }
+        float room = right - tx - Ui.f(18f);
+        if (it.checked) {
+            Icons07.draw(c, Icons07.CHECK, right - Ui.f(18f + 13f), cy, Ui.f(26f), on ? Look07.INK : Look07.GREEN);
+            room -= Ui.f(40f);
+        } else if (!it.value.isEmpty()) {
+            valueP.setColor(on ? Look07.INK2 : Look07.L3);
+            float vw = Math.min(values.width(it.value), room * 0.5f);
+            values.line(c, it.value, right - Ui.f(18f) - vw, Type.centred(valueP, cy), vw);
+            room -= vw + Ui.f(16f);
+        }
+        lineP.setColor(ink);
+        lines.line(c, it.title, tx, Type.centred(lineP, cy), room);
+        c.restore();
+    }
+
+    /** Each line's icon, by what it does (its tag): the mock-ups' own. -1: none. */
+    static int iconOf(Item it) {
+        String t = it.tag;
+        if (t == null) return -1;
+        switch (t) {
+            case GuideActions.SEARCH: return Icons07.SEARCH;
+            case GuideActions.SETTINGS: return Icons07.COG;
+            case GuideActions.WATCH: return Icons07.PLAY;
+            case GuideActions.START: return Icons07.RESTART;
+            case GuideActions.REMIND:
+            case GuideActions.UNREMIND: return Icons07.BELL;
+            case GuideActions.RECORD: return Icons07.REC;
+            case GuideActions.MY_LIST: return it.title.startsWith("Remove") ? Icons07.CHECK : Icons07.PLUS;
+            case GuideActions.ABOUT: return Icons07.INFO;
+            case GuideActions.FAVOURITE: return Icons07.STAR;
+            case GuideActions.ARCHIVE: return Icons07.CATCHUP;
+            case GuideActions.BLOCK: return Icons07.LOCK;
+            case ChannelMenu.HIDE: return Icons07.EYE;
+            case ChannelMenu.RENAME:
+            case ChannelMenu.UNNAME: return Icons07.PENCIL;
+            case ChannelMenu.LOGO: return Icons07.IMAGE;
+            case ChannelMenu.MOVE: return Icons07.MOVE;
+            case GroupMenu.RENAME:
+            case GroupMenu.UNNAME: return Icons07.PENCIL;
+            case GroupMenu.HIDE:
+            case GroupMenu.HIDE_ALL: return Icons07.EYE;
+            case GroupMenu.MOVE: return Icons07.MOVE;
+            case GroupMenu.SORT: return Icons07.SORT;
+            case GroupMenu.SHOW_ALL: return Icons07.GRID;
+            case GroupMenu.MANAGE: return Icons07.LIST;
+            default:
+                return -1;
+        }
+    }
+
     private void drawAbout(Canvas c, float off) {
-        float left = Ui.f(x + 32f) + off, ty = Ui.f(y + 32f);
-        aboutTitleP.setColor(Palette.TEXT1);
+        float left = Ui.f(x + 34f) + off, ty = Ui.f(y + 34f);
         Ui.draw(c, aboutTitle, left, ty);
         float base = ty + aboutTitle.getHeight() + Ui.f(16f + 30f);
-        aboutP.setColor(Palette.TEXT2);
         float lx = left;
         if (!aboutTimes.isEmpty()) {
             c.drawText(aboutTimes, lx, base, aboutP);
-            lx += aboutP.measureText(aboutTimes) + Ui.f(24f);
+            lx += aboutP.measureText(aboutTimes) + Ui.f(20f);
         }
         if (aboutDone >= 0f) {
-            Bars.thin(c, lx, base - Ui.f(9f), Ui.f(80f), Ui.f(6f), aboutDone);
-            lx += Ui.f(80f + 24f);
+            Pills.progress(c, lx, base - Ui.f(7f), Ui.f(150f), aboutDone);
+            lx += Ui.f(150f + 20f);
         }
         if (!aboutLeft.isEmpty()) c.drawText(aboutLeft, lx, base, aboutP);
-        aboutDescP.setColor(Palette.TEXT2);
-        Ui.draw(c, aboutDesc, left, base + Ui.f(28f));
+        Ui.draw(c, aboutDesc, left, base + Ui.f(24f));
     }
 }
