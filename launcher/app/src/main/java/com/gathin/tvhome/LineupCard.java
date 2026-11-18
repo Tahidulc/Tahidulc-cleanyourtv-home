@@ -654,8 +654,8 @@ final class LineupCard {
         col.setGravity(Gravity.CENTER_HORIZONTAL);
         FrameLayout frame = new FrameLayout(c);
         frame.setClipChildren(true);
-        Bitmap shown = p.photo == null ? avatar(t.photoKit != 0 ? t.photoKit : t.kit, t.photoKit != 0 ? t.photoSleeves : t.sleeves, p.number)
-                : p.framed ? framed(p.photo, t.kit) : p.photo;
+        // His picture (a cut-out, or his face alone as a portrait); with none, his club's crest and his initials.
+        Bitmap shown = p.photo == null ? mark(t.crest, initials(p.first, p.last), NAVY) : p.framed ? framed(p.photo, t.kit) : p.photo;
         ImageView photo = new ImageView(c);
         photo.setImageBitmap(sharp(shown));
         boolean upright = shown != null && shown.getHeight() > shown.getWidth() * 1.05f;
@@ -2296,8 +2296,8 @@ final class LineupCard {
         FrameLayout frame = new FrameLayout(c);
         frame.setClipChildren(true);
         ImageView photo = new ImageView(c);
-        Bitmap shown = p.photo == null ? avatar(t.photoKit != 0 ? t.photoKit : t.kit, t.photoKit != 0 ? t.photoSleeves : t.sleeves, p.number)
-                : p.framed ? framed(p.photo, t.kit) : p.photo;
+        // His picture (a cut-out, or his face alone as a portrait); with none, his club's crest and his initials.
+        Bitmap shown = p.photo == null ? mark(t.crest, initials(p.first, p.last), NAVY) : p.framed ? framed(p.photo, t.kit) : p.photo;
         photo.setImageBitmap(sharp(shown));
         // A square cut-out (TheSportsDB's) 150 wide; the Premier League's own, upright and framed closer, 128 wide at
         // its own height, so the faces come out the same size.
@@ -2636,8 +2636,9 @@ final class LineupCard {
 
         private void draw(Canvas cv, Team t, Player pl, float cx, float cy, float tw, float size) {
             float r = px(13);
-            // The face in its ring: a cut-out zoomed to the head, a framed photo whole, else the kit's avatar.
-            Bitmap face = pl.photo != null ? pl.photo : avatar(t.photoKit != 0 ? t.photoKit : t.kit, t.photoKit != 0 ? t.photoSleeves : t.sleeves, "");
+            // The face in its ring: a cut-out zoomed to the head, a framed photo whole, else his initials on the kit.
+            Bitmap face = pl.photo != null ? pl.photo
+                    : mark(null, initials(pl.first, pl.last), lum(t.kit != 0 ? t.kit : NAVY) > 0.62 ? NAVY : 0xFFFFFFFF);
             boolean cut = pl.photo != null && !pl.framed;
             float zoom = cut ? 1.9f : 1f;
             Matrix m = new Matrix();
@@ -2921,123 +2922,78 @@ final class LineupCard {
     }
 
     /**
-     * No photo anywhere: a blank figure, head and shoulders, in the team's kit as it is today (the shirt's body and
-     * sleeve colours), lit from the top left so it has some depth, his number on the chest.
+     * No picture of him anywhere: his club's crest large and his initials under it, in ink (navy on the card's pale
+     * ground, white on a dark one), 300 square as the photos are drawn; the initials alone, larger, without a crest.
+     * Never a drawn figure.
      */
-    static Bitmap avatar(int kit, int sleeves, String number) {
-        int body = kit != 0 ? kit : NAVY, arms = sleeves != 0 ? sleeves : body;
+    static Bitmap mark(Bitmap crest, String initials, int ink) {
         int s = 300;
         Bitmap b = Bitmap.createBitmap(s, s, Bitmap.Config.ARGB_8888);
         Canvas cv = new Canvas(b);
-        // Drawn higher in the frame (the head near the top, as in the players' photos); the shirt runs to the foot.
-        cv.translate(0, -26);
-        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-        // The neck, shadowed under the chin.
-        p.setShader(new LinearGradient(0, 140, 0, 182, 0xFF9AA0B2, 0xFFC4C9D6, Shader.TileMode.CLAMP));
-        cv.drawRoundRect(new RectF(127, 136, 173, 186), 14, 14, p);
-        // The head, a lit sphere.
-        p.setShader(new android.graphics.RadialGradient(128, 72, 92, new int[]{0xFFF7F8FB, 0xFFDDE0E8, 0xFFB4BAC9},
-                new float[]{0f, 0.55f, 1f}, Shader.TileMode.CLAMP));
-        cv.drawOval(new RectF(98, 38, 202, 160), p);
-        p.setShader(null);
-        // The shirt: the body, the sleeves over the shoulders, shaded at the sides and lit along the top.
-        Path shirt = shoulders();
-        cv.save();
-        cv.clipPath(shirt);
-        p.setShader(new LinearGradient(0, 166, 0, 300, lighter(body), darker(body), Shader.TileMode.CLAMP));
-        cv.drawRect(0, 150, s, s + 40, p);
-        if (arms != body) {
-            p.setShader(new LinearGradient(0, 166, 0, 300, lighter(arms), darker(arms), Shader.TileMode.CLAMP));
-            Path left = new Path();
-            left.moveTo(0, 340);
-            left.lineTo(0, 196);
-            left.quadTo(58, 180, 84, 206);
-            left.lineTo(70, 340);
-            left.close();
-            cv.drawPath(left, p);
-            Matrix mirror = new Matrix();
-            mirror.setScale(-1, 1, 150, 0);
-            Path right = new Path(left);
-            right.transform(mirror);
-            cv.drawPath(right, p);
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        String ini = initials == null ? "" : initials;
+        float textSize = crest != null ? 70 : 128, textY;
+        if (crest != null && crest.getWidth() > 0 && crest.getHeight() > 0) {
+            float side = 176, k = Math.min(side / crest.getWidth(), side / crest.getHeight());
+            float cw = crest.getWidth() * k, ch = crest.getHeight() * k;
+            cv.drawBitmap(crest, null, new RectF(150 - cw / 2f, 14 + (side - ch) / 2f, 150 + cw / 2f, 14 + (side + ch) / 2f), p);
+            textY = 14 + side + 76;
+        } else {
+            textY = 150 + textSize * 0.36f;
         }
-        p.setShader(new LinearGradient(0, 0, s, 0, new int[]{0x55000000, 0x00000000, 0x00000000, 0x55000000},
-                new float[]{0.05f, 0.36f, 0.64f, 0.95f}, Shader.TileMode.CLAMP));
-        cv.drawRect(0, 150, s, s + 40, p);
-        p.setShader(new LinearGradient(0, 166, 0, 236, 0x55FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP));
-        cv.drawRect(0, 150, s, s + 40, p);
-        cv.restore();
-        p.setShader(null);
-        // The collar, in the sleeves' colour where they differ, else white or navy against the shirt.
-        int trim = arms != body ? arms : (lum(body) > 0.62 ? NAVY : 0xFFFFFFFF);
-        p.setColor(trim);
-        Path collar = new Path();
-        collar.moveTo(116, 170);
-        collar.quadTo(150, 210, 184, 170);
-        collar.lineTo(175, 165);
-        collar.quadTo(150, 196, 125, 165);
-        collar.close();
-        cv.drawPath(collar, p);
-        // The number, with a soft shadow.
-        if (number != null && !number.isEmpty()) {
-            p.setColor(lum(body) > 0.62 ? NAVY : 0xFFFFFFFF);
+        if (!ini.isEmpty()) {
+            p.setColor(ink);
             p.setTypeface(Typeface.create("sans-serif-black", Typeface.NORMAL));
             p.setTextAlign(Paint.Align.CENTER);
-            p.setTextSize(62);
-            p.setShadowLayer(5, 0, 3, 0x66000000);
-            cv.drawText(number, 150, 268, p);
-            p.clearShadowLayer();
+            p.setTextSize(textSize);
+            cv.drawText(ini, 150, textY, p);
         }
         return b;
     }
 
-    private static int lighter(int c) {
-        int r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, bl = c & 0xFF;
-        return 0xFF000000 | ((r + (255 - r) / 5) << 16) | ((g + (255 - g) / 5) << 8) | (bl + (255 - bl) / 5);
+    /** Pure: a player's initials for when there is no picture of him: his first name's and surname's first letters. */
+    static String initials(String first, String last) {
+        StringBuilder b = new StringBuilder();
+        for (String w : new String[]{first, last}) {
+            String t = w == null ? "" : w.trim();
+            if (!t.isEmpty()) b.appendCodePoint(Character.toUpperCase(t.codePointAt(0)));
+        }
+        return b.toString();
     }
 
-    /** A photo of his face, framed in a white ring on shoulders in the team's kit (an old club's shirt never shows). */
+    /** Pure: the initials of a whole name ("Ashby Varley": "AV", "Kettering": "K"). */
+    static String initials(String name) {
+        String n = name == null ? "" : name.trim();
+        int sp = n.lastIndexOf(' ');
+        return sp > 0 ? initials(n.substring(0, sp), n.substring(sp + 1)) : initials("", n);
+    }
+
+    /**
+     * A photo of his face alone (Wikipedia's, cut to the face) as a proper portrait: round, in a white ring, as large as
+     * the frame allows, nothing drawn under it.
+     */
     static Bitmap framed(Bitmap face, int kit) {
-        int colour = kit != 0 ? kit : NAVY;
         int s = 300;
+        float cx = 150, cy = 134, r = 120;
         Bitmap b = Bitmap.createBitmap(s, s, Bitmap.Config.ARGB_8888);
         Canvas cv = new Canvas(b);
-        cv.drawPath(shoulders(), shirtPaint(colour));
-        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        p.setColor(kit != 0 ? kit : NAVY);
+        cv.drawCircle(cx, cy, r, p);
         Matrix m = new Matrix();
-        float sc = 160f / Math.min(face.getWidth(), face.getHeight());
+        float sc = 2 * r / Math.min(face.getWidth(), face.getHeight());
         m.setScale(sc, sc);
-        m.postTranslate(150 - face.getWidth() * sc / 2f, 104 - face.getHeight() * sc / 2f);
+        m.postTranslate(cx - face.getWidth() * sc / 2f, cy - face.getHeight() * sc / 2f);
         BitmapShader shader = new BitmapShader(face, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
         shader.setLocalMatrix(m);
         p.setShader(shader);
-        cv.drawCircle(150, 104, 80, p);
+        cv.drawCircle(cx, cy, r, p);
         p.setShader(null);
         p.setStyle(Paint.Style.STROKE);
-        p.setStrokeWidth(6);
+        p.setStrokeWidth(7);
         p.setColor(0xFFFFFFFF);
-        cv.drawCircle(150, 104, 80, p);
+        cv.drawCircle(cx, cy, r, p);
         return b;
-    }
-
-    private static Path shoulders() {
-        Path body = new Path();
-        body.moveTo(18, 340);
-        body.lineTo(34, 222);
-        body.quadTo(44, 186, 96, 172);
-        body.lineTo(122, 164);
-        body.quadTo(150, 186, 178, 164);
-        body.lineTo(204, 172);
-        body.quadTo(256, 186, 266, 222);
-        body.lineTo(282, 340);
-        body.close();
-        return body;
-    }
-
-    private static Paint shirtPaint(int colour) {
-        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-        p.setShader(new LinearGradient(0, 164, 0, 300, colour, darker(colour), Shader.TileMode.CLAMP));
-        return p;
     }
 
     private static int darker(int c) {

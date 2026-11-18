@@ -1254,8 +1254,9 @@
   }
 
   // ---------------------------------------------------------------------------------------------------- the figures
-  // Each player is drawn once: the FotMob head on a kit body drawn here (the pictures stop at the neck), plus a blue
-  // hologram copy and its glow for the beam-in. Units of P (the head picture's size); the neck's foot is the origin.
+  // Each player is drawn once: the league's own cut-out, else a round portrait of FotMob's face (no body drawn under
+  // it), else the club's crest and the player's initials, plus a blue hologram copy and its glow for the beam-in. Units
+  // of P (the head picture's size); the neck's foot is the origin.
   const P0 = 228;
   const FIG = {};
   function trimOf(side, gk) {
@@ -1316,114 +1317,52 @@
     bg2.globalCompositeOperation = 'source-over';
     return (FIG[key] = { kind: 'photo', c, holo: h, glow: gl, bust, P: S0 });
   }
+  // A player without the league's own cut-out, with nothing drawn under or in place of a face: FotMob's face as a round
+  // portrait, the picture itself cut into a disc on the club's colours (head.js's photoCircle, as the stadium line-ups
+  // have it); with no picture at all, the club's crest large over the player's initials on that disc. A ring of light
+  // round it, its glow and its hologram as the cut-outs have. Units of P, the origin where a cut-out's neck would be: the
+  // disc from 1.0 P above it to 0.44 P below.
   function buildFigure(side, person) {
     const key = side + ':' + person.id;
     if (FIG[key]) return FIG[key];
     if (PLPHOTO[person.id]) return buildPhotoFigure(side, person);
-    const P = P0, ox = Math.round(1.0 * P), oy = Math.round(1.06 * P);
-    const Wc = Math.round(2.0 * P), Hc = Math.round(3.5 * P);
-    const S = (v) => v * P;
-    const gk = !!person.gk;
-    const im = PHOTO[person.id];
-    // the silhouette: neck, sloping shoulders, arms by the sides down past the bar
-    const body = new Path2D();
-    body.moveTo(S(-0.165), S(-0.2));
-    body.lineTo(S(-0.18), S(-0.07));
-    body.quadraticCurveTo(S(-0.4), S(-0.035), S(-0.64), S(0.14));
-    body.bezierCurveTo(S(-0.76), S(0.2), S(-0.83), S(0.34), S(-0.825), S(0.54));
-    body.bezierCurveTo(S(-0.82), S(0.95), S(-0.8), S(1.45), S(-0.76), S(2.62));
-    body.lineTo(S(0.76), S(2.62));
-    body.bezierCurveTo(S(0.8), S(1.45), S(0.82), S(0.95), S(0.825), S(0.54));
-    body.bezierCurveTo(S(0.83), S(0.34), S(0.76), S(0.2), S(0.64), S(0.14));
-    body.quadraticCurveTo(S(0.4), S(-0.035), S(0.18), S(-0.07));
-    body.lineTo(S(0.165), S(-0.2));
-    const outline = new Path2D(); // the same edge without the line across the neck, which the face covers
-    outline.moveTo(S(-0.165), S(-0.2));
-    outline.lineTo(S(-0.18), S(-0.07));
-    outline.quadraticCurveTo(S(-0.4), S(-0.035), S(-0.64), S(0.14));
-    outline.bezierCurveTo(S(-0.76), S(0.2), S(-0.83), S(0.34), S(-0.825), S(0.54));
-    outline.bezierCurveTo(S(-0.82), S(0.95), S(-0.8), S(1.45), S(-0.76), S(2.62));
-    outline.moveTo(S(0.76), S(2.62));
-    outline.bezierCurveTo(S(0.8), S(1.45), S(0.82), S(0.95), S(0.825), S(0.54));
-    outline.bezierCurveTo(S(0.83), S(0.34), S(0.76), S(0.2), S(0.64), S(0.14));
-    outline.quadraticCurveTo(S(0.4), S(-0.035), S(0.18), S(-0.07));
-    outline.lineTo(S(0.165), S(-0.2));
-    body.closePath();
-    const lines = new Path2D(); // arms, sleeves and collar, drawn in light
-    for (const sg of [-1, 1]) {
-      lines.moveTo(S(-0.5 * sg), S(0.18)); lines.quadraticCurveTo(S(-0.6 * sg), S(0.33), S(-0.605 * sg), S(0.6));
-      lines.quadraticCurveTo(S(-0.615 * sg), S(1.3), S(-0.62 * sg), S(2.62));
-      if (!gk) { lines.moveTo(S(-0.607 * sg), S(1.02)); lines.lineTo(S(-0.818 * sg), S(0.98)); }
-    }
-    const collar = new Path2D();
-    collar.moveTo(S(-0.195), S(-0.06)); collar.quadraticCurveTo(S(0), S(0.13), S(0.195), S(-0.06));
-    const top = new Path2D(); // the lit tops of the shoulders
-    for (const sg of [-1, 1]) {
-      top.moveTo(S(0.19 * sg), S(-0.07)); top.quadraticCurveTo(S(0.4 * sg), S(-0.035), S(0.64 * sg), S(0.14));
-      top.bezierCurveTo(S(0.76 * sg), S(0.2), S(0.83 * sg), S(0.34), S(0.825 * sg), S(0.54));
-    }
-    const fadeFoot = (g) => {
-      g.setTransform(1, 0, 0, 1, 0, 0);
-      g.globalCompositeOperation = 'destination-in';
-      const ff = g.createLinearGradient(0, oy + S(1.75), 0, oy + S(2.45));
-      ff.addColorStop(0, 'rgba(0,0,0,1)'); ff.addColorStop(1, 'rgba(0,0,0,0)');
-      g.fillStyle = ff; g.fillRect(0, 0, Wc, Hc);
-      g.globalCompositeOperation = 'source-over';
-    };
+    const P = P0, ox = Math.round(1.0 * P), oy = Math.round(1.12 * P);
+    const Wc = Math.round(2.0 * P), Hc = Math.round(1.86 * P);
+    const R = Math.round(0.72 * P), cx = ox, cy = oy - Math.round(0.28 * P);
+    const K = TEAMS[side];
 
-    // the normal layer: a translucent blue body, scan lines, the crest, a halo round the head, then the face
+    // the normal layer: the portrait in its disc (else the crest and the initials on the club's colours), a fine edge
     const c = mk(Wc, Hc), g = c.getContext('2d');
-    g.translate(ox, oy);
-    g.save(); g.clip(body);
-    const bg = g.createLinearGradient(0, S(-0.36), 0, S(2.5));
-    bg.addColorStop(0, 'rgba(55,115,230,0.6)'); bg.addColorStop(0.15, 'rgba(35,90,215,0.52)'); bg.addColorStop(0.45, 'rgba(18,60,175,0.34)'); bg.addColorStop(0.75, 'rgba(12,45,150,0.16)'); bg.addColorStop(1, 'rgba(8,32,120,0.05)');
-    g.fillStyle = bg; g.fillRect(S(-1), S(-0.4), S(2), S(3.1));
-    const eg = g.createLinearGradient(S(-0.83), 0, S(0.83), 0);
-    eg.addColorStop(0, 'rgba(150,210,255,0.3)'); eg.addColorStop(0.16, 'rgba(150,210,255,0.06)'); eg.addColorStop(0.5, 'rgba(150,210,255,0)');
-    eg.addColorStop(0.84, 'rgba(150,210,255,0.06)'); eg.addColorStop(1, 'rgba(150,210,255,0.3)');
-    g.fillStyle = eg; g.fillRect(S(-1), S(-0.4), S(2), S(3.1));
-    g.fillStyle = 'rgba(175,225,255,0.14)';
-    for (let y = -0.4 * P; y < 2.7 * P; y += 4) g.fillRect(S(-1), y, S(2), 1.4);
-    g.restore();
-    const cim = IMG[side];
-    if (cim) { const cs = S(0.22); g.globalAlpha = 0.9; g.drawImage(cim, S(0.3) - cs / 2, S(0.47) - cs / 2, cs, cs); g.globalAlpha = 1; }
-    let face = null;
-    if (im) {
-      face = mk(P, P);
-      const pg = face.getContext('2d');
-      pg.imageSmoothingQuality = 'high';
-      pg.drawImage(im, 0, 0, P, P);
-      pg.globalCompositeOperation = 'destination-in';
-      const fg = pg.createLinearGradient(0, P * 0.8, 0, P * 0.975);
-      fg.addColorStop(0, 'rgba(0,0,0,1)'); fg.addColorStop(1, 'rgba(0,0,0,0)');
-      pg.fillStyle = fg; pg.fillRect(0, 0, P, P);
-      const halo = mk(P + 60, P + 60), hl = halo.getContext('2d');
-      hl.filter = 'blur(12px)'; hl.drawImage(face, 30, 30); hl.filter = 'none';
-      hl.globalCompositeOperation = 'source-in'; hl.fillStyle = 'rgb(55,110,225)'; hl.fillRect(0, 0, P + 60, P + 60);
-      g.globalAlpha = 0.75; g.drawImage(halo, -P / 2 - 30, -P - 30); g.globalAlpha = 1;
-      g.drawImage(face, -P / 2, -P, P, P);
+    g.imageSmoothingQuality = 'high';
+    const pc = photoCircle(side, person.id, 2 * R);
+    if (pc) g.drawImage(pc, cx - R, cy - R, 2 * R, 2 * R);
+    else {
+      const gr = g.createLinearGradient(0, cy - R, 0, cy + R); gr.addColorStop(0, K.c1); gr.addColorStop(1, K.c2);
+      g.beginPath(); g.arc(cx, cy, R, 0, TAU); g.fillStyle = gr; g.fill();
+      const rg = g.createRadialGradient(cx, cy - R * 0.6, 0, cx, cy - R * 0.6, R * 1.5);
+      rg.addColorStop(0, 'rgba(255,255,255,0.22)'); rg.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = rg; g.fill();
+      const cim = IMG[side], label = initials(person.name || person.last || '');
+      if (cim) {
+        const k = (R * 0.92) / Math.max(cim.width, cim.height), w = cim.width * k, h = cim.height * k;
+        shadowOn(g, R * 0.06, 0.4, R * 0.02);
+        g.drawImage(cim, cx - w / 2, cy - R * 0.18 - h / 2, w, h);
+        shadowOff(g);
+      }
+      if (label) ctxt(g, label, cx, cim ? cy + R * 0.62 : cy, { w: 700, s: Math.round(R * (cim ? 0.36 : 0.8)), al: 'center', bl: 'middle', c: K.ink });
     }
-    fadeFoot(g);
+    g.beginPath(); g.arc(cx, cy, R - 1, 0, TAU); g.lineWidth = Math.max(1.5, R * 0.02); g.strokeStyle = 'rgba(255,255,255,0.5)'; g.stroke();
 
-    // the light layer (added on screen): the outline and its glow, the arm and sleeve lines, the collar, lit shoulders
+    // the light layer (added on screen): a ring of light round the disc, and its glow
     const add = mk(Wc, Hc), ag = add.getContext('2d');
-    ag.translate(ox, oy);
-    ag.lineJoin = 'round'; ag.lineCap = 'round';
-    ag.filter = 'blur(7px)'; ag.lineWidth = S(0.05); ag.strokeStyle = 'rgba(40,95,220,0.75)'; ag.stroke(outline); ag.filter = 'none';
-    ag.lineWidth = S(0.011); ag.strokeStyle = 'rgba(170,200,250,0.95)'; ag.stroke(outline);
-    ag.filter = 'blur(3px)'; ag.lineWidth = S(0.03); ag.strokeStyle = 'rgba(90,170,255,0.55)'; ag.stroke(lines); ag.filter = 'none';
-    ag.lineWidth = S(0.008); ag.strokeStyle = 'rgba(170,225,255,0.7)'; ag.stroke(lines);
-    ag.filter = 'blur(4px)'; ag.lineWidth = S(0.045); ag.strokeStyle = 'rgba(120,195,255,0.6)'; ag.stroke(collar); ag.filter = 'none';
-    ag.lineWidth = S(0.016); ag.strokeStyle = 'rgba(225,246,255,0.95)'; ag.stroke(collar);
-    ag.filter = 'blur(6px)'; ag.lineWidth = S(0.06); ag.strokeStyle = 'rgba(170,220,255,0.5)'; ag.stroke(top); ag.filter = 'none';
-    if (cim) { const cs = S(0.3); ag.filter = 'blur(6px)'; ag.globalAlpha = 0.5; ag.drawImage(cim, S(0.3) - cs / 2, S(0.47) - cs / 2, cs, cs); ag.globalAlpha = 1; ag.filter = 'none'; }
-    if (face) { ag.setTransform(1, 0, 0, 1, 0, 0); ag.globalCompositeOperation = 'destination-out'; ag.drawImage(face, ox - P / 2, oy - P, P, P); ag.globalCompositeOperation = 'source-over'; }
-    fadeFoot(ag);
+    const ring = new Path2D();
+    ring.arc(cx, cy, R + P * 0.02, 0, TAU);
+    ag.filter = 'blur(7px)'; ag.lineWidth = P * 0.05; ag.strokeStyle = 'rgba(40,95,220,0.75)'; ag.stroke(ring); ag.filter = 'none';
+    ag.lineWidth = P * 0.011; ag.strokeStyle = 'rgba(170,200,250,0.95)'; ag.stroke(ring);
 
-    // the hologram copy for the beam-in: the whole figure, face and all, in blue light with scan lines
+    // the hologram copy for the beam-in: the disc and its ring in blue light with scan lines
     const h = mk(Wc, Hc), hg = h.getContext('2d');
     hg.drawImage(c, 0, 0); hg.drawImage(add, 0, 0);
-    if (face) { hg.globalAlpha = 1; hg.drawImage(face, ox - P / 2, oy - P, P, P); }
     hg.globalCompositeOperation = 'source-atop';
     const hgr = hg.createLinearGradient(0, 0, 0, Hc);
     hgr.addColorStop(0, 'rgb(140,185,250)'); hgr.addColorStop(0.4, 'rgb(55,110,225)'); hgr.addColorStop(1, 'rgb(20,55,190)');
@@ -1695,12 +1634,13 @@
   const T_BEAM = 1.15, T_GAP = 2.05;
   const SLOT_SPACING = { 1: 0, 2: 400, 3: 360, 4: 330, 5: 330 };
   const SUB_SP = 270;
-  // pictures: their top and size (the waist goes behind the bar); fallbacks: the face's size and neck
+  // pictures: their top and size (the waist goes behind the bar); portraits (buildFigure): their size and where a neck
+  // would be, each disc's foot just over its name
   const LAYOUT = {
-    front: { top: 262, hd: 670, fbP: 290, fbNy: 562 },
-    back: { top: 254, hd: 670, fbP: 284, fbNy: 550 },
-    subBack: { top: 150, hd: 470, fbP: 205, fbNy: 359 },
-    subFront: { top: 370, hd: 560, fbP: 245, fbNy: 619 },
+    front: { top: 262, hd: 670, fbP: 260, fbNy: 666 },
+    back: { top: 254, hd: 670, fbP: 255, fbNy: 584 },
+    subBack: { top: 150, hd: 470, fbP: 125, fbNy: 690 },
+    subFront: { top: 370, hd: 560, fbP: 110, fbNy: 780 },
   };
   function placeSlot(s, row) {
     const L = LAYOUT[row];
@@ -1817,7 +1757,7 @@
   const at = (s, M, a, blend, top) => { if (s) LK.put(s.c, Lmul(M, LT(s.x, s.y)), a, blend, top); };
   const fillAll = (col, a, blend) => LK.put(LK.fill(col), LK.rect(0, 0, W, H, 4, 4), a, blend);
 
-  // ---- the figures: the picture (and the fallback's lines of light), its glow, and its hologram as it forms
+  // ---- the figures: the picture (and the portrait's ring of light), its glow, and its hologram as it forms
   function figureLayers(F, s, a, fl = 1) {
     if (a <= 0.003) return;
     const [X, Y, w, hh] = figRect(F, s);
@@ -2140,7 +2080,7 @@
     }));
     if (u < 0.6) sparkleLayer('subs', 960, 600, Math.sin(clamp(u / 0.6) * PI) * 0.5, 420, 0);
   }
-  // the board's busts, each at the size it lands at, with its shadow (the fallback's lines of light on their own)
+  // the board's busts, each at the size it lands at, with its shadow (the portrait's ring of light on its own)
   function bustBake(b) {
     if (b.sprite) return b.sprite;
     const F = buildFigure(b.side, b.p);

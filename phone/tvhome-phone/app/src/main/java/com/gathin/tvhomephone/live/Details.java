@@ -40,6 +40,8 @@ final class Details extends LinearLayout {
     private final Library lib;
     private final TextView channel, title, when, desc;
     private final ImageView logo;
+    /** The logo's box: on a tile in its own colour, black, or nothing behind it (LogoTiles). */
+    private final FrameLayout logoBox;
     private final ProgressBar progress;
     private final MaterialButton watch, remind, star;
     private Actions actions;
@@ -58,10 +60,11 @@ final class Details extends LinearLayout {
         LinearLayout head = new LinearLayout(c);
         head.setGravity(Gravity.CENTER_VERTICAL);
         FrameLayout box = new FrameLayout(c);
+        logoBox = box;
         logo = new ImageView(c);
         logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
         box.addView(logo, new FrameLayout.LayoutParams(-1, -1));
-        if (!compact) head.addView(box, new LinearLayout.LayoutParams(Ui.dp(c, 44), Ui.dp(c, 30)));
+        if (!compact) head.addView(box, new LinearLayout.LayoutParams(Ui.dp(c, LogoTiles.boxed(c) ? 52 : 44), Ui.dp(c, 30)));
         channel = Ui.text(c, "", 13, Ui.SOFT, true);
         channel.setSingleLine(true);
         channel.setEllipsize(TextUtils.TruncateAt.END);
@@ -191,8 +194,14 @@ final class Details extends LinearLayout {
         int n = lib.number(ch);
         String chan = n > 0 ? n + "  " + ch.name : ch.name;
         channel.setText(chan);
-        if (ch.logo.isEmpty()) Glide.with(logo).clear(logo);
-        else Glide.with(logo).load(ch.logo).into(logo);
+        int lp = LogoTiles.boxed(c) ? LogoTiles.pad(c, 3) : 0;
+        logo.setPadding(lp, lp, lp, lp);
+        if (ch.logo.isEmpty()) {
+            logoBox.setBackground(null);
+            Glide.with(logo).clear(logo);
+        } else {
+            LogoTiles.show(logoBox, 6, false, logo, ch.logo, LogoTiles.ON_NAVY, null);
+        }
         long now = System.currentTimeMillis();
         boolean fav = Picks.isFavourite(c, ch.key);
         star.setText(fav ? R.string.live_fav_remove_short : R.string.live_fav_add_short);

@@ -481,14 +481,23 @@ final class SkinUhf extends Skin {
             }
             return f;
         }
-        // A live channel's tile black (ChannelTiles), else in the channel's colour.
-        boolean black = Item.LIVE.equals(it.kind) && ChannelTiles.on(c);
-        int colour = black ? ChannelTiles.GROUND : Item.LIVE.equals(it.kind) ? channelColour(it.channel) : Item.APP.equals(it.kind) ? appColour(it.name) : 0xFF2A2A2E;
+        // A live channel's tile (ChannelTiles): in its logo's own colour (the default), black, or nothing behind its logo
+        // (Behind logos None); a channel with no logo (or anything else without a picture) in its colour.
+        boolean live = Item.LIVE.equals(it.kind);
+        int behind = live && it.mark != null ? ChannelTiles.behind(c) : -1;
+        boolean black = behind == ChannelTiles.TILE, bare = behind == ChannelTiles.NONE, own = behind == ChannelTiles.COLOUR;
+        int colour = black ? ChannelTiles.GROUND : live ? channelColour(it.channel) : Item.APP.equals(it.kind) ? appColour(it.name) : 0xFF2A2A2E;
         GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{colour, mix(colour, 0xFF050505, 0.7f)});
         g.setCornerRadius(px(radius));
-        f.setBackground(g);
-        String word = Item.LIVE.equals(it.kind) ? shortName(it.channel) : Item.NEWS.equals(it.kind) ? (it.sub != null ? it.sub : "NEWS") : it.name;
-        if (Item.LIVE.equals(it.kind) && it.mark != null) {
+        String ownUrl = own ? ChannelTiles.colourUrl(it.mark) : null;
+        if (own) {
+            int[] known = ChannelTiles.colourOf(ownUrl);
+            f.setBackground(ChannelTiles.tile(known != null ? known : ChannelTiles.waiting(), px(radius)));
+        } else if (!bare) {
+            f.setBackground(g);
+        }
+        String word = live ? shortName(it.channel) : Item.NEWS.equals(it.kind) ? (it.sub != null ? it.sub : "NEWS") : it.name;
+        if (live && it.mark != null) {
             ImageView logo = new ImageView(c);
             logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
             logo.setAlpha(big ? 0.3f : 1f);
@@ -496,7 +505,14 @@ final class SkinUhf extends Skin {
                     : new FrameLayout.LayoutParams(px(200), px(70), Gravity.CENTER);
             if (big) { lp.rightMargin = px(160); lp.topMargin = -px(90); }
             f.addView(logo, lp);
-            host.image(logo, black && !big ? ChannelTiles.url(it.mark) : it.mark, big ? 640 : 240);
+            if (own) {
+                host.image(logo, ownUrl, big ? 640 : 240, () -> {
+                    int[] got = ChannelTiles.colourOf(ownUrl);
+                    if (got != null) f.setBackground(ChannelTiles.tile(got, px(radius)));
+                });
+            } else {
+                host.image(logo, big ? it.mark : black ? ChannelTiles.url(it.mark) : ChannelTiles.haloUrl(it.mark), big ? 640 : 240);
+            }
         } else if (word != null) {
             TextView t = text(big ? 170 : 64, host.display(), big ? 0x1FFFFFFF : 0x2EFFFFFF);
             t.setText(word);
@@ -1406,16 +1422,29 @@ final class SkinUhf extends Skin {
         if (it.progress > 0) progress(box, it.progress, 14, 12, KW[POSTER] - 28);
     }
 
+    /** A channel tile's top in its logo's own colours (ChannelTiles, LogoColour): a soft gradient, top to foot. */
+    private RoundShade ownTop(int[] colours) {
+        return new RoundShade(px(16), true, new Shade(0, 0, 0, 1, new int[]{colours[0], colours[1]}, new float[]{0, 1}));
+    }
+
     /** UHF's channel tile: the channel's colour with its logo, the live badge, how far through, and what is on under it. */
     private void chanTile(FrameLayout box, Item it) {
         View base = new View(c);
         base.setBackground(fill(16, TILE));
         box.addView(base, full());
         FrameLayout top = new FrameLayout(c);
-        // Black (ChannelTiles), else the channel's colour.
-        boolean black = ChannelTiles.on(c);
-        int col = black ? ChannelTiles.GROUND : channelColour(it.channel);
-        top.setBackground(new RoundShade(px(16), true, new Shade(0, 0, 1, 1, new int[]{col, mix(col, 0xFF000000, 0.38f)}, new float[]{0, 1})));
+        // Behind logos (ChannelTiles): the logo's own colour (the default), black, or nothing behind the logo on the card
+        // (None); a channel with no logo its name on its colour.
+        int behind = ChannelTiles.behind(c);
+        boolean black = behind == ChannelTiles.TILE, own = behind == ChannelTiles.COLOUR && it.mark != null;
+        String ownUrl = own ? ChannelTiles.colourUrl(it.mark) : null;
+        if (own) {
+            int[] known = ChannelTiles.colourOf(ownUrl);
+            top.setBackground(ownTop(known != null ? known : ChannelTiles.waiting()));
+        } else if (black || it.mark == null) {
+            int col = black ? ChannelTiles.GROUND : channelColour(it.channel);
+            top.setBackground(new RoundShade(px(16), true, new Shade(0, 0, 1, 1, new int[]{col, mix(col, 0xFF000000, 0.38f)}, new float[]{0, 1})));
+        }
         box.addView(top, new FrameLayout.LayoutParams(px(KW[CHAN]), px(112)));
         TextView name = text(32, host.display(), TEXT);
         name.setText(shortName(it.channel));
@@ -1427,8 +1456,13 @@ final class SkinUhf extends Skin {
             logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
             logo.setVisibility(View.INVISIBLE);
             top.addView(logo, new FrameLayout.LayoutParams(px(190), px(62), Gravity.CENTER));
-            String mark = black ? ChannelTiles.url(it.mark) : it.mark;
-            later(() -> host.image(logo, mark, 240, () -> { logo.setVisibility(View.VISIBLE); name.setVisibility(View.GONE); }));
+            String mark = black ? ChannelTiles.url(it.mark) : own ? ownUrl : ChannelTiles.haloUrl(it.mark);
+            later(() -> host.image(logo, mark, 240, () -> {
+                logo.setVisibility(View.VISIBLE);
+                name.setVisibility(View.GONE);
+                int[] got = own ? ChannelTiles.colourOf(ownUrl) : null;
+                if (got != null) top.setBackground(ownTop(got));
+            }));
         }
         FrameLayout badge = new FrameLayout(c);
         badge.setBackground(fill(8, RED));

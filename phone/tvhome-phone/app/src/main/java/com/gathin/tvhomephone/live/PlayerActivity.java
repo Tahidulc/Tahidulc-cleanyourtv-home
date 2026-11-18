@@ -113,6 +113,8 @@ public class PlayerActivity extends AppCompatActivity {
     private FrameLayout root;
     private TextView number, initials, name, group, nowTitle, nowTime, nextLine, sleepLine, message, zoom;
     private ImageView logo;
+    /** The banner's box round the channel's logo (nothing behind a logo, or its black tile: LogoTiles). */
+    private FrameLayout logoBox;
     private ProgressBar spinner, progress;
     private ImageButton star;
     private RecyclerView strip;
@@ -1071,8 +1073,16 @@ public class PlayerActivity extends AppCompatActivity {
         group.setText(cur.group);
         group.setVisibility(cur.group.isEmpty() ? View.GONE : View.VISIBLE);
         initials.setText(cur.logo.isEmpty() ? Ui.initials(cur.name) : "");
-        if (cur.logo.isEmpty()) Glide.with(logo).clear(logo);
-        else Glide.with(logo).load(cur.logo).into(logo);
+        // The logo on a tile in its own colour, with nothing behind it, or on black (LogoTiles); no logo, its initials in
+        // the soft box.
+        int lp = LogoTiles.pad(this, 5);
+        logo.setPadding(lp, lp, lp, lp);
+        if (cur.logo.isEmpty()) {
+            logoBox.setBackground(Ui.round(this, 0x26FFFFFF, 10));
+            Glide.with(logo).clear(logo);
+        } else {
+            LogoTiles.show(logoBox, 10, false, logo, cur.logo, LogoTiles.ON_NAVY, null);
+        }
         markStar();
         Guide.Schedule s = lib.schedule(cur.key);
         long now = System.currentTimeMillis();
@@ -1198,13 +1208,15 @@ public class PlayerActivity extends AppCompatActivity {
             num.setPadding(0, 0, Ui.dp(c, 8), 0);
             head.addView(num);
             FrameLayout box = new FrameLayout(c);
+            // The logo on a small tile in its own colour or black, a little wider for its room (LogoTiles); or as it is.
+            boolean boxed = LogoTiles.boxed(c);
             TextView ini = Ui.text(c, "", 10, Ui.SOFT, true);
             ini.setGravity(Gravity.CENTER);
             box.addView(ini, new FrameLayout.LayoutParams(-1, -1));
             ImageView img = new ImageView(c);
             img.setScaleType(ImageView.ScaleType.FIT_CENTER);
             box.addView(img, new FrameLayout.LayoutParams(-1, -1));
-            head.addView(box, new LinearLayout.LayoutParams(Ui.dp(c, 34), Ui.dp(c, 22)));
+            head.addView(box, new LinearLayout.LayoutParams(Ui.dp(c, boxed ? 44 : 34), Ui.dp(c, boxed ? 26 : 22)));
             TextView nm = Ui.text(c, "", 12, Ui.SOFT, true);
             nm.setSingleLine(true);
             nm.setEllipsize(TextUtils.TruncateAt.END);
@@ -1243,8 +1255,25 @@ public class PlayerActivity extends AppCompatActivity {
             ((TextView) v[0]).setText(n > 0 ? String.valueOf(n) : "");
             ((TextView) v[1]).setText(ch.logo.isEmpty() ? Ui.initials(ch.name) : "");
             ImageView img = (ImageView) v[2];
-            if (ch.logo.isEmpty()) Glide.with(img).clear(img);
-            else Glide.with(img).load(ch.logo).into(img);
+            View box = (View) img.getParent();
+            int p = LogoTiles.boxed(c) ? LogoTiles.pad(c, 3) : 0;
+            img.setPadding(p, p, p, p);
+            ((TextView) v[0]).setTextColor(Ui.G_SELECT);
+            if (ch.logo.isEmpty()) {
+                box.setBackground(null);
+                Glide.with(img).clear(img);
+            } else {
+                // Logo's colour: the whole card (its number, logo and name) in it, a touch lighter than the tile; the one
+                // playing still ringed.
+                View card = holder.itemView;
+                LogoTiles.show(box, 5, false, img, ch.logo, 0xFF132D6B, cols -> {
+                    android.graphics.drawable.Drawable row = LogoTiles.row(c, cols, me, Ui.G_SELECT, 12);
+                    if (row != null) {
+                        card.setBackground(row);
+                        ((TextView) v[0]).setTextColor(Ui.TEXT);
+                    }
+                }, null);
+            }
             ((TextView) v[3]).setText(ch.name);
             Guide.Schedule s = lib.schedule(ch.key);
             long now = System.currentTimeMillis();
@@ -1571,9 +1600,13 @@ public class PlayerActivity extends AppCompatActivity {
                 lb.addView(ini, new FrameLayout.LayoutParams(-1, -1));
                 ImageView img = new ImageView(c);
                 img.setScaleType(ImageView.ScaleType.FIT_CENTER);
-                if (logo != null) Glide.with(img).load(logo).into(img);
+                // The logo on a small tile in its own colour or black (LogoTiles), or as it is.
+                boolean boxed = LogoTiles.boxed(c);
+                int p = boxed ? LogoTiles.pad(c, 3) : 0;
+                img.setPadding(p, p, p, p);
+                if (logo != null) LogoTiles.show(lb, 6, false, img, logo, LogoTiles.ON_NAVY, null);
                 lb.addView(img, new FrameLayout.LayoutParams(-1, -1));
-                card.addView(lb, new LinearLayout.LayoutParams(Ui.dp(c, 40), Ui.dp(c, 28)));
+                card.addView(lb, new LinearLayout.LayoutParams(Ui.dp(c, boxed ? 46 : 40), Ui.dp(c, 28)));
                 TextView nm = Ui.text(c, ch.name, 13, Ui.TEXT, true);
                 nm.setSingleLine(true);
                 nm.setPadding(Ui.dp(c, 8), 0, 0, 0);
@@ -2058,13 +2091,14 @@ public class PlayerActivity extends AppCompatActivity {
         number.setPadding(0, 0, Ui.dp(c, 12), 0);
         row.addView(number);
         FrameLayout box = new FrameLayout(c);
+        logoBox = box;
         box.setBackground(Ui.round(c, 0x26FFFFFF, 10));
         initials = Ui.text(c, "", 14, Ui.SOFT, true);
         initials.setGravity(Gravity.CENTER);
         box.addView(initials, new FrameLayout.LayoutParams(-1, -1));
         logo = new ImageView(c);
         logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        int p = Ui.dp(c, 5);
+        int p = LogoTiles.pad(c, 5);
         logo.setPadding(p, p, p, p);
         box.addView(logo, new FrameLayout.LayoutParams(-1, -1));
         row.addView(box, new LinearLayout.LayoutParams(Ui.dp(c, 68), Ui.dp(c, 46)));

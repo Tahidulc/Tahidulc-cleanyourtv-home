@@ -182,31 +182,56 @@ function makeMain() {
   SP.cap = { c: cb, ax: 20, ay: 20 };
 }
 
-/** A player's picture faded at its foot, S square: the league's cut-out, else FotMob's face smaller, else a figure in the kit. */
-function picture(im, isFace, S, figure) {
+/**
+ * A player's picture, S square, standing on its foot: the league's cut-out, faded at its foot; else FotMob's face as a
+ * round portrait (the picture cut into a disc on the club's colour, nothing drawn under the head); else the club's crest
+ * large over the player's initials on that disc. No drawn figure in place of a face.
+ */
+function picture(im, isFace, S, crest, colour, who) {
   const c = canvas(S, S), x = c.getContext('2d');
-  if (im) {
-    if (isFace) { const s = S * 0.74; x.drawImage(im, (S - s) / 2, S - s, s, s); } else x.drawImage(im, 0, 0, S, S);
-  } else if (figure) {
-    x.drawImage(figure, 0, 0, S, S);
+  if (im && !isFace) {
+    x.drawImage(im, 0, 0, S, S);
+    x.globalCompositeOperation = 'destination-out';
+    const gr = x.createLinearGradient(0, S * 0.8, 0, S);
+    gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,1)');
+    x.fillStyle = gr; x.fillRect(0, 0, S, S);
+    return { c, ax: S / 2, ay: S };
   }
-  x.globalCompositeOperation = 'destination-out';
-  const gr = x.createLinearGradient(0, S * 0.8, 0, S);
-  gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,1)');
-  x.fillStyle = gr; x.fillRect(0, 0, S, S);
+  const r = S * 0.37, cx = S / 2, cy = S - r - S * 0.05;
+  const m = /^#?([0-9a-f]{6})$/i.exec(colour || ''), v = m ? parseInt(m[1], 16) : 0x10185a;
+  const rgb = [(v >> 16) & 255, (v >> 8) & 255, v & 255], deep = rgb.map((n) => Math.round(n * 0.55));
+  x.save();
+  x.shadowColor = 'rgba(10,16,60,0.28)'; x.shadowBlur = S * 0.05; x.shadowOffsetY = S * 0.015;
+  const bg = x.createLinearGradient(0, cy - r, 0, cy + r);
+  bg.addColorStop(0, `rgb(${rgb.join(',')})`); bg.addColorStop(1, `rgb(${deep.join(',')})`);
+  x.beginPath(); x.arc(cx, cy, r, 0, Math.PI * 2); x.fillStyle = bg; x.fill();
+  x.restore();
+  x.save();
+  x.beginPath(); x.arc(cx, cy, r, 0, Math.PI * 2); x.clip();
+  const lg = x.createRadialGradient(cx, cy - r * 0.6, 0, cx, cy - r * 0.6, r * 1.5);
+  lg.addColorStop(0, 'rgba(255,255,255,0.24)'); lg.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = lg; x.fillRect(0, 0, S, S);
+  x.imageSmoothingQuality = 'high';
+  if (im) {
+    // the face filling the disc, its neck cut hidden at the disc's foot
+    const d = r * 2 * 1.06, h = d * im.height / im.width;
+    x.drawImage(im, cx - d / 2, cy - r - (d - 2 * r) / 2 + r * 0.09, d, h);
+  } else {
+    const light = (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255 > 0.6;
+    const label = String(who || '').split(/[\s-]+/).filter(Boolean).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+    if (crest) {
+      const [w, h] = fitIn(crest, r * 0.92, r * 0.92);
+      x.drawImage(crest, cx - w / 2, cy - r * 0.18 - h / 2, w, h);
+    }
+    if (label) {
+      const fs = Math.round(r * (crest ? 0.34 : 0.78));
+      x.font = font(800, fs); x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = light ? INK : '#ffffff';
+      x.fillText(label, cx, crest ? cy + r * 0.6 : cy);
+    }
+  }
+  x.restore();
+  x.beginPath(); x.arc(cx, cy, r - 1, 0, Math.PI * 2); x.lineWidth = Math.max(2, r * 0.025); x.strokeStyle = 'rgba(255,255,255,0.85)'; x.stroke();
   return { c, ax: S / 2, ay: S };
-}
-
-/** A figure for a player with no picture: a dark head and shoulders over the club's shirt in 3D. */
-function figureOf(shirtCanvas) {
-  const c = canvas(640, 640), x = c.getContext('2d');
-  const hg = x.createLinearGradient(0, 40, 0, 330);
-  hg.addColorStop(0, '#2a3470'); hg.addColorStop(1, '#141a46');
-  x.fillStyle = hg;
-  x.beginPath(); x.ellipse(320, 205, 70, 86, 0, 0, Math.PI * 2); x.fill();
-  x.fillRect(290, 262, 60, 80);
-  x.drawImage(shirtCanvas, 320 - 400, 248, 800, 800);
-  return c;
 }
 
 function layout(n) {
@@ -264,24 +289,14 @@ async function makeTeam(team, side, other) {
   // the 3D shirt: the kit it wears, its back with the captain's name and number
   const cap = team.players.find((p) => p.cap) || team.players[0] || {};
   const kit = Object.assign(kitFor(team), { crest, name: String(cap.last || '').toUpperCase(), number: String(cap.n || '') });
-  if (big) {
-    T.shirt = big.add(kit);
-    // a figure for any player with no picture: the shirt from the front
-    if (team.players.some((p) => !p.photo && !p.face)) {
-      big.only(T.shirt);
-      T.shirt.rotation.set(0.04, 0.12, 0); T.shirt.scale.setScalar(1); T.shirt.position.set(0, 0, 0);
-      big.render();
-      const sc = canvas(800, 800); sc.getContext('2d').drawImage(big.canvas, 0, 0, 800, 800);
-      T.figure = figureOf(sc);
-    }
-  }
+  if (big) T.shirt = big.add(kit);
   // each player: the picture, the number's digits, the flag, the names
   T.players = new Map();
   for (const pg of ORDER) {
     const ps = team.players.filter((p) => p.group === pg), L = layout(ps.length);
     for (const p of ps) {
       const im = await load(p.photo || p.face);
-      const P = { pic: picture(im, !p.photo && !!p.face, L.S, T.figure) };
+      const P = { pic: picture(im, !p.photo && !!p.face, L.S, crest, team.color, [p.first, p.last || p.name].filter(Boolean).join(' ')) };
       const num = String(p.n || '');
       P.digits = [];
       for (const d of num) {

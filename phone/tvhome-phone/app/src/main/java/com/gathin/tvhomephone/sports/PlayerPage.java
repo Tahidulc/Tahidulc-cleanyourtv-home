@@ -159,6 +159,11 @@ final class PlayerPage extends FrameLayout {
         card.setColours(club, ground);
     }
 
+    /** The club: its league's own pictures of its players, and its crest for one there is no picture of. */
+    void setClub(String slug, String name, String shortName, String crest) {
+        card.setClub(slug, name, shortName, crest);
+    }
+
     /** The room either side kept for the arrows, and the foot kept for the bars (px). */
     void setInsets(int side, int bottom) {
         sidePad = side;

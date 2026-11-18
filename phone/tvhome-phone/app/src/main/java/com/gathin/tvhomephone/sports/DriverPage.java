@@ -28,7 +28,8 @@ import java.util.List;
  * once its source has it. Upright on a phone the driver is on top and the rest under him.
  *
  * <p>Drawn, not laid out: every place and size is worked out when the page's size or driver changes; a frame only
- * draws. The pictures (formula1.com's driver and car, else ESPN's head and shoulders, else a figure and a car drawn in
+ * draws. The pictures (formula1.com's driver and car, else ESPN's head and shoulders, else his team's logo and his
+ * initials, never a drawn person, and a car drawn in
  * the team's colour) come through the app's picture cache at the size they show at.
  */
 final class DriverPage extends android.view.View {
@@ -44,7 +45,8 @@ final class DriverPage extends android.view.View {
     private boolean started;
 
     private final PagePic photo, car, logo, flag;
-    private PageArt.Figure figure;
+    /** No picture of him at all: his team's logo large and his initials (never a drawn person). */
+    private PageArt.Mark mark;
     private PageArt.Car drawnCar;
     private int colour, cardColour;
 
@@ -108,7 +110,7 @@ final class DriverPage extends android.view.View {
         colour = F1.colour(driver.teamId);
         cardColour = ClubLook.ground(colour);
         cardP.setColor(cardColour);
-        figure = new PageArt.Figure(colour);
+        mark = new PageArt.Mark(logo, TeamData.initials(driver.name), Type.outfit(getContext(), 800));
         drawnCar = new PageArt.Car(ClubLook.lighter(ClubLook.ground(colour), 0.2));
         if (!same) {
             photo.clear();
@@ -352,9 +354,9 @@ final class DriverPage extends android.view.View {
             gpName = "";
             gpDates = "";
         }
-        // the stand-ins' places: a figure where the driver stands, a car where his would be
-        float fw = figH / 2.6f;
-        if (figure != null) figure.setBounds(Math.round(driverCx - fw / 2f), Math.round(driverTop), Math.round(driverCx + fw / 2f), Math.round(driverTop + figH));
+        // the stand-ins' places: his team's logo and his initials where he would stand, a car where his would be
+        float ms = figH * 0.42f, mt = driverTop + figH * 0.12f;
+        if (mark != null) mark.setBounds(Math.round(driverCx - ms / 2f), Math.round(mt), Math.round(driverCx + ms / 2f), Math.round(mt + ms));
         float carH = carLength / 4.3f;
         if (drawnCar != null) drawnCar.setBounds(Math.round(carLeft), Math.round(carBottom - carH), Math.round(carLeft + carLength), Math.round(carBottom));
         setContentDescription(describe());
@@ -428,8 +430,8 @@ final class DriverPage extends android.view.View {
             float hh = headW * b.getHeight() / Math.max(1f, b.getWidth());
             r.set(driverCx - headW / 2f, driverBottom - hh, driverCx + headW / 2f, driverBottom);
             c.drawBitmap(b, null, r, bmp);
-        } else if (photo.failed() && figure != null) {
-            figure.draw(c);
+        } else if (photo.failed() && mark != null) {
+            mark.draw(c);
         }
         if (!wide) c.drawRect(0, clipBottom - u(80f), getWidth(), clipBottom, fade);
         c.restoreToCount(saved);

@@ -20,9 +20,10 @@ import java.util.Random;
 
 /**
  * What the club, player and driver pages draw for themselves: the ground in the club's colour with a soft light at
- * its middle, fine grain and a vignette (Ground); the cards' tall panel with its corners cut (Panel); a neat head and
- * shoulders in the club's colour where there is no photo (Bust); and an F1 car side on in the team's colour where
- * formula1.com has no picture of it (Car). Each builds its shaders when its size changes, never while it draws.
+ * its middle, fine grain and a vignette (Ground); the cards' tall panel with its corners cut (Panel); the club's crest
+ * large with the player's initials where there is no picture of him at all (Mark: never a drawn person); and an F1 car
+ * side on in the team's colour where formula1.com has no picture of it (Car). Each builds its shaders when its size
+ * changes, never while it draws.
  */
 final class PageArt {
     private PageArt() {}
@@ -185,84 +186,52 @@ final class PageArt {
         }
     }
 
-    /** A head and shoulders in the club's colour, lit from above: in place of a photo there is none of. */
-    static final class Bust extends Art {
-        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Path shoulders = new Path();
-        private final RectF head = new RectF();
-        private final int light, dark;
-        private float neckL, neckT, neckR, neckB;
-
-        Bust(int colour) {
-            int g = ClubLook.ground(colour);
-            light = ClubLook.lighter(g, 0.30);
-            dark = ClubLook.lighter(g, 0.12);
-        }
-
-        /** The share of its height above the head's crown (to line it up with the photos). */
-        static final float CROWN = 0.13f;
-
-        @Override protected void onBoundsChange(Rect b) {
-            float w = b.width(), h = b.height(), x = b.left, y = b.top;
-            head.set(x + w * 0.33f, y + h * CROWN, x + w * 0.67f, y + h * 0.53f);
-            neckL = x + w * 0.43f;
-            neckR = x + w * 0.57f;
-            neckT = y + h * 0.46f;
-            neckB = y + h * 0.66f;
-            shoulders.reset();
-            shoulders.moveTo(x + w * 0.04f, y + h);
-            shoulders.cubicTo(x + w * 0.04f, y + h * 0.78f, x + w * 0.18f, y + h * 0.66f, x + w * 0.40f, y + h * 0.63f);
-            shoulders.lineTo(x + w * 0.60f, y + h * 0.63f);
-            shoulders.cubicTo(x + w * 0.82f, y + h * 0.66f, x + w * 0.96f, y + h * 0.78f, x + w * 0.96f, y + h);
-            shoulders.close();
-            paint.setShader(new LinearGradient(0, y, 0, y + h, light, dark, Shader.TileMode.CLAMP));
-        }
-
-        @Override public void draw(Canvas c) {
-            c.drawOval(head, paint);
-            c.drawRect(neckL, neckT, neckR, neckB, paint);
-            c.drawPath(shoulders, paint);
-        }
-    }
-
     /**
-     * A driver standing, in the team's colour, lit from above: in place of his picture where there is none. Drawn on a
-     * box about 2.6 times as tall as it is wide (head at the top, the legs to the box's foot).
+     * Where there is no picture of the man at all: his club's crest large (his team's logo, for a driver) and his
+     * initials under it, in white with a soft shadow; never a drawn person. A faint ring stands for the crest until it
+     * comes, and when there is none. The crest is the page's own picture (a PagePic, its owner redrawn when it comes).
      */
-    static final class Figure extends Art {
-        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Path body = new Path();
-        private final RectF head = new RectF();
-        private final int light, dark;
+    static final class Mark extends Art {
+        private final PagePic crest;
+        private final String initials;
+        private final Paint pic = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG),
+                ring = new Paint(Paint.ANTI_ALIAS_FLAG), text = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final RectF r = new RectF();
+        private float side, cx, top, textY;
 
-        Figure(int colour) {
-            int g = ClubLook.ground(colour);
-            light = ClubLook.lighter(g, 0.26);
-            dark = ClubLook.lighter(g, 0.08);
+        Mark(PagePic crest, String initials, android.graphics.Typeface face) {
+            this.crest = crest;
+            this.initials = initials == null ? "" : initials;
+            ring.setStyle(Paint.Style.STROKE);
+            ring.setColor(0x40FFFFFF);
+            text.setTypeface(face);
+            text.setColor(0xFFFFFFFF);
+            text.setTextAlign(Paint.Align.CENTER);
         }
 
         @Override protected void onBoundsChange(Rect b) {
-            // A 100 by 260 drawing fitted to the box, kept in shape, its middle on the box's.
-            float s = Math.min(b.width() / 100f, b.height() / 260f);
-            float ox = b.exactCenterX() - 50 * s, oy = b.top;
-            head.set(ox + 38 * s, oy + 2 * s, ox + 62 * s, oy + 32 * s);
-            body.reset();
-            float[][] pts = {{44, 30}, {56, 30}, {57, 38}, {74, 43}, {82, 52}, {86, 108}, {84, 132}, {77, 132}, {75, 110},
-                    {72, 70}, {71, 128}, {68, 250}, {54, 252}, {50, 150}, {46, 252}, {32, 250}, {29, 128}, {28, 70}, {25, 110},
-                    {23, 132}, {16, 132}, {14, 108}, {18, 52}, {26, 43}, {43, 38}};
-            for (int i = 0; i < pts.length; i++) {
-                float x = ox + pts[i][0] * s, y = oy + pts[i][1] * s;
-                if (i == 0) body.moveTo(x, y);
-                else body.lineTo(x, y);
-            }
-            body.close();
-            paint.setPathEffect(new CornerPathEffect(6 * s));
-            paint.setShader(new LinearGradient(0, oy, 0, oy + 260 * s, light, dark, Shader.TileMode.CLAMP));
+            float w = b.width(), h = b.height();
+            side = Math.min(w * 0.66f, h * 0.6f);
+            cx = b.exactCenterX();
+            top = b.top + h * 0.05f;
+            ring.setStrokeWidth(Math.max(1f, side * 0.02f));
+            text.setTextSize(Math.max(8f, h * 0.2f));
+            text.setShadowLayer(Math.max(1f, h * 0.02f), 0, h * 0.006f, 0x66000000);
+            Paint.FontMetrics fm = text.getFontMetrics();
+            textY = Math.min(b.bottom - fm.descent, top + side + h * 0.06f - fm.ascent);
         }
 
         @Override public void draw(Canvas c) {
-            c.drawOval(head, paint);
-            c.drawPath(body, paint);
+            Bitmap b = crest == null ? null : crest.bitmap();
+            if (b != null && b.getWidth() > 0 && b.getHeight() > 0) {
+                float k = Math.min(side / b.getWidth(), side / b.getHeight());
+                float bw = b.getWidth() * k, bh = b.getHeight() * k;
+                r.set(cx - bw / 2f, top + (side - bh) / 2f, cx + bw / 2f, top + (side + bh) / 2f);
+                c.drawBitmap(b, null, r, pic);
+            } else {
+                c.drawCircle(cx, top + side / 2f, side * 0.42f, ring);
+            }
+            if (!initials.isEmpty()) c.drawText(initials, cx, textY, text);
         }
     }
 

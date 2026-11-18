@@ -206,6 +206,19 @@ public final class PlPhotos {
         return out;
     }
 
+    /**
+     * The address of a club's player's own Premier League cut-out (head to waist in the kit, see-through round him, 500
+     * square), found in the fantasy game's list by his club and name as the line-ups find it; null when the club is not
+     * in the list, no one matches, or the list cannot be had. For the phone's squad and player pages. Never the main
+     * thread (the list comes from the disk, or the web once in twelve hours).
+     */
+    public static String url(File cacheDir, String club, String name, String last) {
+        JSONObject b = boot(cacheDir);
+        if (b == null) return null;
+        Element e = elementFor(club(b, club), name, last);
+        return e == null || e.code <= 0 ? null : String.format(Locale.ROOT, PICTURES[0], e.code);
+    }
+
     /** The cut-out for a picture code (a real one: see-through round the player), or null. */
     static Bitmap picture(int code) {
         if (code <= 0) return null;
