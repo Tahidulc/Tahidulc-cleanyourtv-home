@@ -65,7 +65,9 @@ import java.util.Set;
  * its minute; with no delay set for the channel and its clock not set at kick-off, the longest a channel runs behind);
  * the +N beside the clock by the shared rule for every look (AddedTime); the kick-off pop-up, the pop-up after a goal and at the second half, and the
  * classic line-ups seven minutes before kick-off (the shared broadcast pages, BroadcastView), the board away while a
- * moment's pop-up is on. Over the channel's own logo, a cover (top right, where most broadcasters put theirs).
+ * moment's pop-up is on. The pop-ups in my scoreboard's look unless set otherwise: a strap in the board's own look that
+ * folds into it where it is (the board away at once while the strap draws it, back at once after). Over the channel's
+ * own logo, a cover (top right, where most broadcasters put theirs).
  *
  * <p>Where they sit: the standard places (the board top left over the broadcaster's own, the cover top right) until moved
  * for a channel; OK held over the match opens the menu (on or off, the look, timing, move and size, the line-ups, the
@@ -130,6 +132,8 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
     private String shownScore, phaseWas;
     private long htSince = -1, ftSince = -1, lastChange, lineupsTried;
     private boolean up, swishBack, dimmed;
+    /** The board coming back as the strap that folded into it goes: at once, all there. */
+    private boolean strapBack;
     private final Set<String> shown = new HashSet<>(), eventKeys = new HashSet<>(), varKeys = new HashSet<>();
     /**
      * The alerts the summary brings (cards, substitutions, VAR), each held until the picture reaches it (AsSeen); the
@@ -368,7 +372,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         anchor = BoardClock.anchorOf(BoardPrefs.anchor(getContext()), g.id);
         lastChange = now;
         bug.game(g.id);
-        bug.competition(g.slug, g.leagueName);
+        bug.competition(g.slug, boardComp(g));
         bug.names(full(g.homeFull, g.homeName), full(g.awayFull, g.awayName));
         bug.crests(g.homeLogo != null || g.awayLogo != null);
         loadImages();
@@ -408,6 +412,14 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
 
     private static String full(String a, String b) {
         return a != null && !a.isEmpty() ? a : b == null ? "" : b;
+    }
+
+    /**
+     * Pure: the competition's name the board is given for g (By competition's look picks by it, the competitions' looks
+     * title it), and the strap with it: its name, else its tag.
+     */
+    static String boardComp(Game g) {
+        return full(g.leagueName, g.league);
     }
 
     private void poll() {
@@ -822,9 +834,13 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         bug.style(BoardPrefs.style(c));
         bug.set(l);
         boolean popupOn = popup != null && !popup.isOver();
-        boolean moment = popupOn && Moments.boardMoment(popupKind), lineupsOn = popupOn && !moment;
+        boolean strap = popupOn && "strap".equals(popupKind);
+        boolean moment = popupOn && Moments.boardMoment(popupKind), lineupsOn = popupOn && !moment && !strap;
         boolean awayForPopup = Moments.boardAwayForPopup(moment, restartWaiting(), !up);
-        boolean want = moving == 1 || (phase == BoardClock.PRE || phase == BoardClock.UP) && !awayForPopup && !lineupsOn;
+        // The strap draws the board itself as it folds into it: the board away at once from the strap's first frame.
+        boolean strapOver = strap && popup.started();
+        if (strapOver && moving != 1) boardAway();
+        boolean want = moving == 1 || (phase == BoardClock.PRE || phase == BoardClock.UP) && !awayForPopup && !lineupsOn && !strapOver;
         if (awayForPopup) swishBack = true;
         layoutAll();
         boardUp(want && clear);
@@ -968,7 +984,10 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         return popup != null && !popup.isOver() || popupMaking || lineupsMaking;
     }
 
-    /** A moment's pop-up ("kickoff", "restart", "second"), once each. */
+    /**
+     * A moment's pop-up ("kickoff", "restart", "second"), once each: in my scoreboard's look (the strap, which folds into
+     * the board where it is), or the classic.
+     */
     private void popup(String kind, int[] score, String scorer, String minute) {
         Game g = game;
         if (g == null) return;
@@ -981,12 +1000,18 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         }
         shown.add(key);
         popupMaking = true;
+        Context c = getContext();
+        boolean strap = "strap".equals(BoardPrefs.popupStyle(c));
         BroadcastData.Match m = match(g);
-        android.content.res.AssetManager assets = getContext().getAssets();
+        BoardBug.Style style = BoardPrefs.style(c);
+        Bitmap comp = compPic, light = bug.competitionLight();
+        float[] at = strap ? boardAt() : null;
+        android.content.res.AssetManager assets = c.getAssets();
         Exec.io(() -> {
             JSONObject cfg = null;
             try {
-                cfg = BroadcastData.withMark(assets, BroadcastData.kickoff(kind, m, score, scorer, minute));
+                cfg = strap ? strapCfg(g, m, kind, score, scorer, minute, style, comp, light, at)
+                        : BroadcastData.withMark(assets, BroadcastData.kickoff(kind, m, score, scorer, minute));
             } catch (Exception ignored) {
                 // none, then
             }
@@ -994,9 +1019,65 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             Exec.main(() -> {
                 popupMaking = false;
                 if (got == null || !started || popup != null) return;
-                showPopup(BroadcastView.page(getContext(), "kickoff", got, this::popupGone), kind);
+                if (strap) clockFromBoard(got);
+                showPopup(BroadcastView.page(getContext(), strap ? "strap" : "kickoff", got, this::popupGone), strap ? "strap" : kind);
             });
         });
+    }
+
+    /** The strap's clock from the board's own as it shows now, while it runs: the two agree as the strap folds into it. */
+    private void clockFromBoard(JSONObject cfg) {
+        BoardBug.Look l = bug.look();
+        int secs = l.live ? clockSecs(l.clock) : -1;
+        if (secs < 0) return;
+        try {
+            cfg.put("clock", secs);
+        } catch (org.json.JSONException ignored) {
+            // the strap's own clock, then
+        }
+    }
+
+    private static final java.util.regex.Pattern MM_SS = java.util.regex.Pattern.compile("^(\\d{1,3}):(\\d{2})$");
+
+    /** Pure: a running clock's words in seconds ("23:41": 1421, "90:05": 5405); -1 for any other ("HT", "FT", "1'", ""). */
+    static int clockSecs(String clock) {
+        java.util.regex.Matcher m = MM_SS.matcher(clock == null ? "" : clock.trim());
+        return m.matches() ? Integer.parseInt(m.group(1)) * 60 + Integer.parseInt(m.group(2)) : -1;
+    }
+
+    /**
+     * The strap's settings for game g: its board as it is drawn (the look, By competition's as the board resolves it for g;
+     * the competition's logos it draws, for dark grounds and for light ones, null for none yet; the competition's name it
+     * is given; each side's colour on it and the name it gives the club) and where it is (at: the board itself on a
+     * 1920 x 1080 picture; null for the standard place). Off the main thread.
+     */
+    static JSONObject strapCfg(Game g, BroadcastData.Match m, String kind, int[] score, String scorer, String minute, BoardBug.Style style,
+                               Bitmap compLogo, Bitmap compLight, float[] at) throws org.json.JSONException {
+        m.compLogo = compLogo;
+        m.compLight = compLight;
+        m.compName = boardComp(g);
+        m.homeBoard = BoardBug.colour(hex(g.homeColor), hex(g.homeAlt));
+        m.awayBoard = BoardBug.colour(hex(g.awayColor), hex(g.awayAlt));
+        m.homeBoardName = full(g.homeFull, g.homeName);
+        m.awayBoardName = full(g.awayFull, g.awayName);
+        return BroadcastData.strap(kind, m, score, scorer, minute, strapLook(style, g.slug, m.compName), at, "");
+    }
+
+    /** Pure: the look the strap is drawn in: the board's own, By competition's as the board resolves it for the game. */
+    static String strapLook(BoardBug.Style style, String slug, String leagueName) {
+        return BroadcastData.strapLook(style.name(), slug, leagueName);
+    }
+
+    /**
+     * The board itself where it is now (inside its edge, with the step it takes against burn-in), on a 1920 x 1080 picture,
+     * for the strap to fold into; null before it is laid out.
+     */
+    private float[] boardAt() {
+        int sw = getWidth(), sh = getHeight();
+        if (sw <= 0 || sh <= 0 || boardRect.width() <= 2 * edge || boardRect.height() <= 2 * edge) return null;
+        float k = 1920f / sw, kh = 1080f / sh;
+        return new float[]{(boardRect.left + edge + bug.getTranslationX()) * k, (boardRect.top + edge + bug.getTranslationY()) * kh,
+                (boardRect.width() - 2 * edge) * k, (boardRect.height() - 2 * edge) * kh};
     }
 
     /** The classic line-ups (FotMob's elevens), once, from seven minutes before kick-off on the picture; or now, asked. */
@@ -1047,13 +1128,35 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         // Over the picture and the board, under the menu and the card.
         addView(v, indexOfChild(card), new LayoutParams(-1, -1));
         drop.fold(null);
+        if ("strap".equals(kind)) h.postDelayed(strapWatch, STRAP_WATCH_MS);
     }
+
+    /** How often a strap loading is looked at, for its first frame on the screen. */
+    private static final long STRAP_WATCH_MS = 40L;
+
+    /** The strap's first frame on the screen (its page loading meanwhile): the board away then, at once (show). */
+    private final Runnable strapWatch = new Runnable() {
+        @Override public void run() {
+            BroadcastView v = popup;
+            if (!started || v == null || v.isOver() || !"strap".equals(popupKind)) return;
+            if (v.started()) update();
+            else h.postDelayed(this, STRAP_WATCH_MS);
+        }
+    };
 
     private void popupGone(BroadcastView v) {
         if (v != popup) return;
+        boolean wasStrap = "strap".equals(popupKind);
         popup = null;
         popupKind = "";
         removeView(v);
+        h.removeCallbacks(strapWatch);
+        if (wasStrap && started) {
+            // The strap folded into the board and ends on its drawing of it: the board itself back at once, as it was.
+            strapBack = true;
+            update();
+            strapBack = false;
+        }
     }
 
     // ---- what slides out beside it ---------------------------------------------------------------------------------------
@@ -1148,10 +1251,11 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             if (bug.getVisibility() != VISIBLE || bug.closing()) {
                 boolean fresh = bug.getVisibility() != VISIBLE;
                 bug.setVisibility(VISIBLE);
-                if (fresh) bug.shownAt(0f);
+                // Back after the strap: all there at once, where the strap's drawing of it ended (no coming in, no swish).
+                if (fresh) bug.shownAt(strapBack ? 1f : 0f);
                 bug.open();
                 // Back after a moment's pop-up: with the swish.
-                if (fresh && swishBack && BoardPrefs.swishOn(getContext())) Sfx.play(getContext(), Sfx.SWISH, -0.5f, 0.7f);
+                if (fresh && swishBack && !strapBack && BoardPrefs.swishOn(getContext())) Sfx.play(getContext(), Sfx.SWISH, -0.5f, 0.7f);
             }
             swishBack = false;
             up = true;
@@ -1163,6 +1267,14 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         if (!bug.closing()) bug.close(() -> {
             if (!up) bug.setVisibility(INVISIBLE);
         });
+    }
+
+    /** The board away at once, not closing as a broadcaster's goes (the strap over it draws it itself). */
+    private void boardAway() {
+        if (!up && bug.getVisibility() != VISIBLE) return;
+        up = false;
+        drop.fold(null);
+        bug.setVisibility(INVISIBLE);
     }
 
     private void logoUp(boolean want) {
@@ -1276,7 +1388,8 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
 
     // ---- the crests --------------------------------------------------------------------------------------------------------
 
-    private Bitmap crestHome, crestAway;
+    /** The crests and the competition's logo as the board draws them (the strap draws the same logo). */
+    private Bitmap crestHome, crestAway, compPic;
 
     private void loadImages() {
         Game g = game;
@@ -1287,8 +1400,8 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         };
         crestHome = Pics.get(g.homeLogo, px, px, Pics.FIT, again);
         crestAway = Pics.get(g.awayLogo, px, px, Pics.FIT, again);
-        Bitmap comp = Pics.get(g.leagueLogo, px, px, Pics.FIT, again);
-        bug.images(crestHome, crestAway, comp);
+        compPic = Pics.get(g.leagueLogo, px, px, Pics.FIT, again);
+        bug.images(crestHome, crestAway, compPic);
     }
 
     // ---- the in-step card at each kick-off ---------------------------------------------------------------------------------
@@ -1379,7 +1492,8 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             card.away();
             return true;
         }
-        if (popup != null && !popup.isOver() && !Moments.boardMoment(popupKind)) {
+        // The line-ups fade away; a moment's pop-up (either style: the strap too) is short and Back is the live screen's.
+        if (popup != null && !popup.isOver() && !Moments.boardMoment(popupKind) && !"strap".equals(popupKind)) {
             popup.back();
             return true;
         }
@@ -1587,7 +1701,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
                 case R_ON: BoardPrefs.setOn(c, !BoardPrefs.on(c)); break;
                 case R_LOGO: BoardPrefs.setLogoOn(c, !BoardPrefs.logoOn(c)); break;
                 case R_ALERTS: BoardPrefs.setDropsOn(c, !BoardPrefs.dropsOn(c)); break;
-                case R_POPUPS: BoardPrefs.setPopupOn(c, !BoardPrefs.popupOn(c)); break;
+                case R_POPUPS: BoardPrefs.setPopupStyle(c, BoardPrefs.nextPopup(BoardPrefs.popupStyle(c), step)); break;
                 case R_ASK: InStep.setAsking(c, !InStep.asking(c)); break;
                 case R_LOOK: {
                     BoardBug.Style[] all = BoardPrefs.looks();
@@ -1660,7 +1774,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
                 case R_ON: return BoardPrefs.on(c) ? "On" : "Off";
                 case R_LOGO: return BoardPrefs.logoOn(c) ? "On" : "Off";
                 case R_ALERTS: return BoardPrefs.dropsOn(c) ? "On" : "Off";
-                case R_POPUPS: return BoardPrefs.popupOn(c) ? "On" : "Off";
+                case R_POPUPS: return "‹  " + BoardPrefs.popupWords(BoardPrefs.popupStyle(c)) + "  ›";
                 case R_ASK: return InStep.asking(c) ? "On" : "Off";
                 case R_LOOK: return "‹  " + BoardPrefs.style(c).label + "  ›";
                 case R_TIMING: {
