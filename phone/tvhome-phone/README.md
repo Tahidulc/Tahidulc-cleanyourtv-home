@@ -716,3 +716,24 @@ Premier League's own photo for its clubs, La Liga's for La Liga's, then ESPN's f
 portrait cut to the card's shape; with none, the club's crest large and his initials. The same in the line-ups (the
 board's, the classic line-ups' and the studio's: a round portrait, or the crest and initials, where there is no cut-out).
 Tests: the switch onto Logo's colour, when a logo gets its halo, a logo's colour and its row, and the pictures' order.
+
+**The TV section in Homefield TV 2.0's look, swiping between channels, and Recently watched.** Live TV is no longer
+black. It sits on a deep, softly lit ground: the picture playing in the guide, copied a few dozen pixels across every
+few seconds and blurred once (never a live blur), glows through it, or the chosen channel's own colour does. The
+panels are tinted glass with a bright hairline along the top: the details beside or over the guide, the categories'
+panel, and the player's guide panel, which floats as a rounded card. The buttons and pills are glass too, and the one
+chosen is white with dark writing. Everything is set in Inter. The guide's channels are raised tiles in their logo's
+colour. Its programmes are cards of frosted glass after them. What's on now is a little brighter, with a white line for
+how far in it is. The chosen card is ringed in white and lifts, and a card lifts under a finger. The day is in amber,
+with an amber dot at now. Recently watched sits over the guide (on a phone on its side, in the pane under the picture)
+as a row of cards: each channel's logo on its own colour, what's on it now and a line for how far in. "Back to" beside
+it returns to the channel before. The list is the app's own watch history, each channel once even when several
+playlists have it, the one playing left out; a channel counts once it has played ten seconds, so swiping past one
+doesn't add it. Full screen, swipe left or right on the picture for the next or previous channel in the category. Only
+a clear, quick sideways fling counts, never one from the phone's own back-gesture strip at the sides, and never while a
+pinch, an edge's brightness or volume slide, a catch-up or rewind, Move and resize, the touch lock, the match centre,
+casting or the small window has the picture. The picture slides across and a quick channel card says what's on. Swipe
+up for the guide panel, now with Channels and Recent over its mini guide and "Back to" the channel before, and down to
+put it away. The player's options and Settings → Live TV have the switch; off, the swipes are as they were (up and down
+change channel, left brings the mini guide and right puts it away). Tests: the swipe's rules (how far, how fast, how
+straight, the edge strip, what stops it) and Recently watched's order, each channel once and its limit.

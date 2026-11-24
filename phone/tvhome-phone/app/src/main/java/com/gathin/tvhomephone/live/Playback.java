@@ -111,6 +111,12 @@ final class Playback {
     private static final long WATCHED_AFTER = 60_000L, WATCHED_EVERY = 60_000L;
     private boolean watchPosted;
     private final Runnable watchTick = this::watchTick;
+    /**
+     * Live TV's recent channels (Picks.recent): a channel counts once it has played Recents.RECORD_AFTER_MS, so swiping
+     * past one (ChannelSwipe) doesn't put it there.
+     */
+    private boolean recentPosted;
+    private final Runnable recentTick = this::recentTick;
     private final Runnable orphan = () -> {
         if (front == null) stop();
     };
@@ -233,7 +239,8 @@ final class Playback {
         // Another channel's audio, subtitle or quality choice means nothing here (subtitles off stays off).
         player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon().clearOverrides().build());
         remember(ch);
-        Picks.watched(app, ch.key);
+        h.removeCallbacks(recentTick);
+        recentPosted = false;
         h.removeCallbacks(watchTick);
         watchPosted = false;
         prepare();
@@ -314,6 +321,8 @@ final class Playback {
         h.removeCallbacks(orphan);
         h.removeCallbacks(watchTick);
         watchPosted = false;
+        h.removeCallbacks(recentTick);
+        recentPosted = false;
         h.removeCallbacks(stallCheck);
         h.removeCallbacks(upCheck);
         h.removeCallbacks(bufferTick);
@@ -397,7 +406,21 @@ final class Playback {
             watchPosted = true;
             h.postDelayed(watchTick, WATCHED_AFTER);
         }
+        if (s == PLAYING && !recentPosted) {
+            recentPosted = true;
+            h.postDelayed(recentTick, Recents.RECORD_AFTER_MS);
+        }
         if (front != null) front.onState(s);
+    }
+
+    /** The channel has played a few seconds: one of Live TV's recent channels (once each time it is put on). */
+    private void recentTick() {
+        if (cur == null || player == null || state != PLAYING) {
+            // Not playing yet (it stalled): asked again once it plays.
+            recentPosted = false;
+            return;
+        }
+        Picks.watched(app, cur.key);
     }
 
     /** The channel has played a while: its programme kept for Home's Recently watched, then again while it plays on. */

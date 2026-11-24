@@ -446,6 +446,11 @@ final class PlayerExtras implements LiveAlerts.Listener {
         return locked;
     }
 
+    /** Whether Move and resize is open (the scoreboard and the mark being placed): a swipe never changes channel then. */
+    boolean adjusting() {
+        return overlay != null && overlay.editing();
+    }
+
     void setLocked(boolean on) {
         locked = on;
         lockCover.setVisibility(on ? View.VISIBLE : View.GONE);

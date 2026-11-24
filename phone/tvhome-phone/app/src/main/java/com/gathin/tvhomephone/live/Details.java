@@ -21,6 +21,8 @@ import com.google.android.material.button.MaterialButton;
  * The selected programme, as the guide shows it above the grid: its title, when, the channel, what it's about, how far
  * in it is when it's on, and what to do: Watch when it's on, Remind me when it's still to come, the favourite's star.
  * Compact on phones held upright (two lines of description, one button); fuller beside the preview and in a sheet.
+ * In the TV section's 07 look (TvLook): Inter, the title semibold in white, the rest in softer greys, a white line for
+ * how far in, Watch as a white pill and the rest as glass.
  */
 @SuppressLint("ViewConstructor")
 final class Details extends LinearLayout {
@@ -65,23 +67,24 @@ final class Details extends LinearLayout {
         logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
         box.addView(logo, new FrameLayout.LayoutParams(-1, -1));
         if (!compact) head.addView(box, new LinearLayout.LayoutParams(Ui.dp(c, LogoTiles.boxed(c) ? 52 : 44), Ui.dp(c, 30)));
-        channel = Ui.text(c, "", 13, Ui.SOFT, true);
+        channel = TvLook.text(c, "", 12.5f, TvLook.L2, true);
         channel.setSingleLine(true);
         channel.setEllipsize(TextUtils.TruncateAt.END);
         channel.setPadding(compact ? 0 : Ui.dp(c, 10), 0, 0, 0);
         head.addView(channel, new LinearLayout.LayoutParams(0, -2, 1f));
 
-        title = Ui.text(c, "", compact ? 17 : 21, Ui.TEXT, true);
+        title = TvLook.text(c, "", compact ? 17 : 21, Ui.TEXT, true);
+        title.setLetterSpacing(-0.02f);
+        title.setLineSpacing(0, 1.05f);
         title.setMaxLines(compact ? 1 : 2);
         title.setEllipsize(TextUtils.TruncateAt.END);
-        when = Ui.text(c, "", compact ? 13 : 14, Ui.G_SELECT, true);
+        when = TvLook.text(c, "", compact ? 12.5f : 13, TvLook.L2, false);
         when.setSingleLine(true);
         when.setEllipsize(TextUtils.TruncateAt.END);
         progress = new ProgressBar(c, null, android.R.attr.progressBarStyleHorizontal);
         progress.setMax(1000);
-        progress.setProgressTintList(ColorStateList.valueOf(Ui.RED));
-        progress.setProgressBackgroundTintList(ColorStateList.valueOf(Ui.LINE));
-        desc = Ui.text(c, "", compact ? 13 : 14, Ui.SOFT, false);
+        TvLook.line(progress);
+        desc = TvLook.text(c, "", compact ? 13 : 13.5f, TvLook.L2, false);
         desc.setMaxLines(descLines);
         // Upright phones: the panel keeps one height whatever is picked, so the grid under it doesn't jump.
         if (compact) desc.setMinLines(descLines);
@@ -119,10 +122,10 @@ final class Details extends LinearLayout {
             pp.topMargin = Ui.dp(c, 6);
             addView(progress, pp);
             LinearLayout.LayoutParams dp = new LinearLayout.LayoutParams(-1, -2);
-            dp.topMargin = Ui.dp(c, 4);
+            dp.topMargin = Ui.dp(c, 6);
             addView(desc, dp);
-            // Black, as the guide around it (the red progress line kept).
-            setBackground(Ui.touch(c, false, GuideLook.GROUND, 0));
+            // Clear: the ground shows through (a ripple when tapped for the sheet).
+            setBackground(Ui.touch(c, false, 0x00000000, 16));
             setOnClickListener(v -> {
                 if (ch != null && actions != null) actions.more(ch, i);
             });
@@ -167,9 +170,15 @@ final class Details extends LinearLayout {
         b.setInsetBottom(0);
         b.setMinHeight(Ui.dp(c, 48));
         b.setPadding(Ui.dp(c, 16), 0, Ui.dp(c, 18), 0);
-        b.setTextColor(primary ? Ui.G_INK : Ui.TEXT);
-        b.setIconTint(ColorStateList.valueOf(primary ? Ui.G_INK : Ui.TEXT));
-        b.setBackgroundTintList(ColorStateList.valueOf(primary ? Ui.G_SELECT : 0x29FFFFFF));
+        // 07's buttons: Watch a white pill with dark writing, the others glass.
+        b.setTypeface(TvLook.semi(c));
+        b.setTextColor(primary ? TvLook.INK : Ui.TEXT);
+        b.setIconTint(ColorStateList.valueOf(primary ? TvLook.INK : Ui.TEXT));
+        b.setBackgroundTintList(ColorStateList.valueOf(primary ? 0xF5FFFFFF : 0x29FFFFFF));
+        if (!primary) {
+            b.setStrokeColor(ColorStateList.valueOf(0x24FFFFFF));
+            b.setStrokeWidth(Math.max(1, Ui.dp(c, 0.75f)));
+        }
         return b;
     }
 
@@ -241,9 +250,9 @@ final class Details extends LinearLayout {
         if (ahead) {
             boolean set = Reminders.has(c, ch, a);
             remind.setText(set ? R.string.live_reminded : R.string.live_remind);
-            remind.setIconTint(ColorStateList.valueOf(set ? Ui.G_INK : Ui.TEXT));
-            remind.setTextColor(set ? Ui.G_INK : Ui.TEXT);
-            remind.setBackgroundTintList(ColorStateList.valueOf(set ? Ui.G_SELECT : 0x29FFFFFF));
+            remind.setIconTint(ColorStateList.valueOf(set ? TvLook.INK : Ui.TEXT));
+            remind.setTextColor(set ? TvLook.INK : Ui.TEXT);
+            remind.setBackgroundTintList(ColorStateList.valueOf(set ? 0xF5FFFFFF : 0x29FFFFFF));
         }
     }
 
