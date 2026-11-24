@@ -138,6 +138,15 @@ public class SettingsParityTest {
         assertEquals("HD", Versions.title("HD"));
     }
 
+    @Test public void qualityChipsSayTheQualityWhereThatTellsThemApart() {
+        assertArrayEquals(new String[]{"FHD", "HD", "SD"}, Versions.labels(Arrays.asList(ch("a", "UK: Bay TV FHD", "G", ""),
+                ch("b", "UK: Bay TV HD", "G", ""), ch("c", "UK: Bay TV SD", "G", ""))));
+        assertArrayEquals(new String[]{"Bay TV HD", "Bay TV"}, Versions.labels(Arrays.asList(ch("a", "Bay TV HD", "G", ""),
+                ch("b", "Bay TV", "G", ""))));
+        assertArrayEquals(new String[]{"Bay TV 4K", "Bay TV UHD"}, Versions.labels(Arrays.asList(ch("a", "Bay TV 4K", "G", ""),
+                ch("b", "Bay TV UHD", "G", ""))));
+    }
+
     @Test public void theVersionShownIsThePickedOneElseTheBestNotHidden() {
         List<Channel> l = Arrays.asList(ch("sd", "Bay TV SD", "G", ""), ch("fhd", "Bay TV FHD", "G", ""),
                 ch("hd", "Bay TV HD", "G", ""), ch("x", "Other", "G", ""));

@@ -186,8 +186,11 @@ final class Sheets {
             picked.accept(vs.get(0));
         });
         row.addView(best, LiveTvSettings.chipParams(c));
-        for (Channel v : vs) {
-            TextView t = LiveTvSettings.pill(c, v.playlistName, !auto && v.key.equals(ch.key));
+        String[] labels = Versions.labels(vs);
+        for (int i = 0; i < vs.size(); i++) {
+            Channel v = vs.get(i);
+            TextView t = LiveTvSettings.pill(c, labels[i], !auto && v.key.equals(ch.key));
+            t.setContentDescription(v.playlistName);
             t.setOnClickListener(x -> {
                 ChannelEdits.setPick(c, keys, v.key);
                 android.widget.Toast.makeText(c, c.getString(R.string.ps_quality_kept, ch.name, v.playlistName), android.widget.Toast.LENGTH_SHORT).show();

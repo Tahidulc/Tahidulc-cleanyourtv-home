@@ -75,6 +75,33 @@ final class Versions {
         return out;
     }
 
+    /** A level as a phone's Quality chip says it ("4K", "FHD", "HD", "SD"; "" for a name that says none). */
+    static String badge(int level) {
+        switch (level) {
+            case 4: return "4K";
+            case 3: return "FHD";
+            case 2: return "HD";
+            case 0: return "SD";
+            default: return "";
+        }
+    }
+
+    /**
+     * The words on a channel's Quality chips, one per version: its quality alone ("FHD", "HD", "SD") where that tells
+     * them apart, else each version's own name, as the playlist gives it.
+     */
+    static String[] labels(List<Channel> versions) {
+        String[] out = new String[versions.size()];
+        java.util.Set<String> seen = new HashSet<>();
+        boolean apart = true;
+        for (int i = 0; i < out.length; i++) {
+            out[i] = badge(Names.info(versions.get(i).playlistName, versions.get(i).group).quality);
+            if (out[i].isEmpty() || !seen.add(out[i])) apart = false;
+        }
+        if (!apart) for (int i = 0; i < out.length; i++) out[i] = versions.get(i).playlistName;
+        return out;
+    }
+
     /** Quality tags, wherever they are in a name: left out of the name the row shows. */
     private static final Set<String> QUALITY = new HashSet<>(Arrays.asList("hd", "fhd", "uhd", "4k", "8k", "sd", "raw", "hevc",
             "h264", "h265", "x264", "x265", "avc", "1080", "1080p", "1080i", "720", "720p", "576", "576p", "576i", "2160", "2160p",

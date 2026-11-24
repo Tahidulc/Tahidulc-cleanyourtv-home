@@ -80,6 +80,7 @@
     <string name="ps_logo_playlist">Playlist\'s</string>
     <string name="ps_logo_sky">Sky\'s</string>
     <string name="ps_logo_of">%1$s\'s</string>
+    <string name="ps_logo_chosen">Chosen before</string>
     <string name="ps_logo_only">This channel has no other logo to choose from yet.</string>
 
     <string name="ps_move_title">Move channels</string>

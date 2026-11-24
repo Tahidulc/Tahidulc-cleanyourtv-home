@@ -138,6 +138,13 @@ public final class AppearanceSettings {
         HorizontalScrollView hs = new HorizontalScrollView(c);
         hs.setHorizontalScrollBarEnabled(false);
         hs.addView(row);
+        // The one in use in sight (Homefield and Amber sit near the end, as on the TV).
+        hs.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+            if (r - l == or - ol || chosen < 0 || chosen >= row.getChildCount()) return;
+            View cell = row.getChildAt(chosen);
+            int want = cell.getRight() + Ui.dp(c, 8) - (r - l);
+            if (want > 0) hs.scrollTo(want, 0);
+        });
         return hs;
     }
 

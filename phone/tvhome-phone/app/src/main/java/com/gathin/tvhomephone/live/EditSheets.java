@@ -242,6 +242,10 @@ final class EditSheets {
             ChannelEdits.setLogo(c, lib.familyKeys(ch.key), null);
             d[0].dismiss();
         }));
+        // One chosen before that isn't among them now (a version gone from the playlist): still there to keep.
+        boolean listed = chosen == null;
+        for (String[] l : choices) listed |= l[1].equals(chosen);
+        if (!listed) choices.add(0, new String[]{c.getString(R.string.ps_logo_chosen), chosen});
         for (String[] l : choices) {
             if (l[1].equals(ch.playlistLogo)) continue;
             box.addView(logoRow(c, ch, l[0], l[1], l[1].equals(chosen), () -> {
