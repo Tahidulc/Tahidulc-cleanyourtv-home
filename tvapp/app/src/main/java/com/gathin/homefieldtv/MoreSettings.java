@@ -4,6 +4,7 @@ import com.gathin.homefieldtv.backups.BackupStore;
 import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.engine.Resume;
 import com.gathin.homefieldtv.prefs.General;
+import com.gathin.homefieldtv.prefs.HomeStyle;
 import com.gathin.homefieldtv.prefs.Look;
 import com.gathin.homefieldtv.prefs.OtherPrefs;
 import com.gathin.homefieldtv.prefs.PlayerPrefs;
@@ -23,7 +24,8 @@ import java.util.Locale;
  *
  * <pre>
  *   general              Auto start app on boot · Start on · Back up data · Restore data › · Sync › · Remove everything
- *   appearance           TV guide › · Player › · Groups › · Logos › · Font size · Color theme › · Posters · Programme times
+ *   appearance           TV guide › · Player › · Groups › · Logos › · Font size · Color theme › · Home style (Editorial or
+ *                        Classic: HomeStyle) · Posters · Programme times
  *                        · Animations (Automatic, Full or Lite: Motion)
  *                        (TV guide, Groups and Logos are EditSettings' pages)
  *   appearance.player    Clock · Panels timeout, sec · Live TV's channel tiles
@@ -189,6 +191,7 @@ final class MoreSettings implements SettingsScreen.Pages {
         out.add(page("appearance.logos", "Logos", ""));
         out.add(pick("text", "Font size", FONT_NAMES[Look.textSize]));
         out.add(page("theme", "Color theme", Theme.name()));
+        out.add(pick("homestyle", "Home style", HomeStyle.NAMES[HomeStyle.get(tv)]));
         out.add(pick("posters", "Posters", POSTER_NAMES[PosterArt.landscape ? 1 : 0]));
         out.add(pick("times", "Programme times", Look.TIMES_NAMES[Look.times24 ? 0 : 1]));
         out.add(pick("motion", "Animations", motionWords()));
@@ -449,6 +452,7 @@ final class MoreSettings implements SettingsScreen.Pages {
             case "start": return new SettingsScreen.Picker("Start on", START_NAMES, General.start(tv),
                     "Used when Homefield TV starts afresh, not when you come back to it.");
             case "text": return new SettingsScreen.Picker("Font size", FONT_NAMES, Look.textSize, "The screens start again in it.");
+            case "homestyle": return new SettingsScreen.Picker("Home style", HomeStyle.NAMES, HomeStyle.get(tv), HomeStyle.ABOUT);
             case "posters": return new SettingsScreen.Picker("Posters", POSTER_NAMES, PosterArt.landscape ? 1 : 0,
                     "Landscape: each film's and show's wide picture with its title at the foot. On the film and TV show rows, "
                             + "the grids and More like this.");
@@ -530,6 +534,13 @@ final class MoreSettings implements SettingsScreen.Pages {
                 if (i != Look.textSize) {
                     Look.setTextSize(tv, i);
                     // The words' size is set as the screens are made: made again, Settings open here.
+                    s.restart("appearance");
+                }
+                break;
+            case "homestyle":
+                if (i != HomeStyle.get(tv)) {
+                    HomeStyle.set(tv, i);
+                    // Home, Movies and TV Shows are made again in it, Settings open here.
                     s.restart("appearance");
                 }
                 break;
