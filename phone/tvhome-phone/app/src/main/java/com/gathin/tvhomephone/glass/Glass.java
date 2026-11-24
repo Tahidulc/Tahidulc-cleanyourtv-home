@@ -36,8 +36,8 @@ import java.util.Locale;
 public final class Glass {
     private Glass() {}
 
-    /** The ground every glass page fades into. */
-    public static final int GROUND = 0xFF0E0F14;
+    /** The ground every glass page fades into: the colour theme's (live.Theme sets it as the app starts). */
+    public static int GROUND = 0xFF0E0F14;
     public static final int TEXT = 0xFFFFFFFF, SOFT = 0xDEFFFFFF, MUTED = 0xA8FFFFFF, FAINT = 0x70FFFFFF;
     /** The floating tab bar's height and the gap under it. */
     public static final int BAR_DP = 64, BAR_GAP_DP = 10;

@@ -45,9 +45,8 @@ final class ChannelLogos {
                 continue;
             }
             own.put(ch.key, ch.logo);
-            Channel n = new Channel(ch.key, ch.name, ch.group, (String) v, ch.url, ch.tvgId, ch.userAgent, ch.referrer, ch.number);
-            n.alternates.addAll(ch.alternates);
-            out.add(n);
+            // Dressed: the playlist's own name and logo stay with it (the cache keeps those).
+            out.add(ch.dressed(ch.name, (String) v));
         }
         return out;
     }

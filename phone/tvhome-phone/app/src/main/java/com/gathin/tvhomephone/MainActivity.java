@@ -94,11 +94,13 @@ public class MainActivity extends AppCompatActivity {
         CrashNote.offer(this);
         tabs.setOnPick(this::show);
         int start = state != null ? state.getInt(TAB, R.id.tab_home) : R.id.tab_home;
-        // Opened afresh from its icon: Live TV (it goes on with the channel last watched), unless Settings says Home.
-        if (state == null && opening(getIntent()) && com.gathin.tvhomephone.live.LiveTvSettings.openOnLive(this)) start = R.id.tab_live;
+        // Opened afresh from its icon: Live TV (it goes on with the channel last watched), or where Settings' Start on
+        // says (live.StartOn; Home: as it was).
+        int startOn = com.gathin.tvhomephone.live.StartOn.tab(this);
+        if (state == null && opening(getIntent()) && startOn != 0) start = startOn;
         // Made again after Android let it go while it was away a while (not only turned on its side): the same.
         if (state != null && opening(getIntent()) && backToLive(System.currentTimeMillis() - state.getLong(SAVED_AT, System.currentTimeMillis()))
-                && com.gathin.tvhomephone.live.LiveTvSettings.openOnLive(this)) start = R.id.tab_live;
+                && startOn != 0) start = startOn;
         if (state == null && OPEN_PLAYLISTS.equals(getIntent().getStringExtra(EXTRA_OPEN))) {
             com.gathin.tvhomephone.settings.SettingsFragment.toPlaylists = true;
             start = R.id.tab_settings;
@@ -135,9 +137,10 @@ public class MainActivity extends AppCompatActivity {
         com.gathin.tvhomephone.update.AppUpdate.opened(this);
         long away = awayAt;
         awayAt = 0;
+        int startOn = com.gathin.tvhomephone.live.StartOn.tab(this);
         if (away > 0 && backToLive(android.os.SystemClock.elapsedRealtime() - away) && tabs != null
-                && com.gathin.tvhomephone.live.LiveTvSettings.openOnLive(this) && tabs.selected() != R.id.tab_live) {
-            open(R.id.tab_live);
+                && startOn != 0 && tabs.selected() != startOn) {
+            open(startOn);
         }
     }
 
@@ -169,10 +172,11 @@ public class MainActivity extends AppCompatActivity {
             com.gathin.tvhomephone.update.AppUpdate.ask(this, true);
             return;
         }
-        // Its icon tapped while it was open in the background: Live TV again, as when it opens afresh.
+        // Its icon tapped while it was open in the background: Live TV again (or Start on's), as when it opens afresh.
+        int startOn = com.gathin.tvhomephone.live.StartOn.tab(this);
         if (intent != null && android.content.Intent.ACTION_MAIN.equals(intent.getAction()) && intent.hasCategory(android.content.Intent.CATEGORY_LAUNCHER)
-                && intent.getStringExtra(EXTRA_OPEN) == null && com.gathin.tvhomephone.live.LiveTvSettings.openOnLive(this)) {
-            if (tabs.selected() != R.id.tab_live) open(R.id.tab_live);
+                && intent.getStringExtra(EXTRA_OPEN) == null && startOn != 0) {
+            if (tabs.selected() != startOn) open(startOn);
             return;
         }
         // The full screen's "TV guide": the Live TV tab, the channel going on in its picture.
@@ -249,8 +253,10 @@ public class MainActivity extends AppCompatActivity {
         int room = Glass.dp(this, Glass.BAR_DP + Glass.BAR_GAP_DP + 6);
         // The keyboard, when up, lifts the page's foot above it (Settings' playlist fields).
         content.setPadding(0, fills ? 0 : insetTop, 0, fills ? 0 : Math.max(insetBottom + room, insetIme));
-        // Under the page as it slides in or out: the glass's ground, the guide's black (GuideLook) or the navy.
-        root.setBackgroundColor(glassPage(shownId) ? Glass.GROUND : shownId == R.id.tab_live ? Color.BLACK : getColor(R.color.ground));
+        // Under the page as it slides in or out: the glass's ground, the guide's black (GuideLook) or the navy (the
+        // colour theme's ground on a tinted one: live.Theme).
+        root.setBackgroundColor(glassPage(shownId) ? Glass.GROUND : shownId == R.id.tab_live ? Color.BLACK
+                : com.gathin.tvhomephone.live.Theme.page());
         if (ask) ViewCompat.requestApplyInsets(content);
     }
 

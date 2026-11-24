@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Homefield TV's customisation on the phone and tablet: Appearance, Channels & categories, the channel's and the
+     category's menus (AppearanceSettings, ChannelSettings, EditSheets, StartOn, Theme, Times). -->
+<resources>
+    <string name="ps_start_home">Home</string>
+    <string name="ps_start_live">Live TV</string>
+    <string name="ps_start_watch">Films and TV</string>
+    <string name="ps_start_sports">Sports</string>
+
+    <string name="ps_sort_playlist">By order in playlist</string>
+    <string name="ps_sort_name">By name</string>
+    <string name="ps_sort_number">By number</string>
+    <string name="ps_sort_manual">Manual</string>
+
+    <string name="ps_appearance_title">Appearance</string>
+    <string name="ps_appearance_body">How Homefield looks on this phone, with the same choices as Homefield TV.</string>
+    <string name="ps_theme">Colour theme</string>
+    <string name="ps_theme_primary">Primary colour</string>
+    <string name="ps_theme_accent">Accent colour</string>
+    <string name="ps_theme_line">The primary colour is the pages\' ground and the panels; the accent is what\'s on now in Live TV. Homefield • Amber is the look the app came in. Kept on this phone, as each TV keeps its own.</string>
+    <string name="ps_times">Programme times</string>
+    <string name="ps_times_24">24-hour · 19:40</string>
+    <string name="ps_times_12">12-hour · 7.40pm</string>
+    <string name="ps_times_line">Every programme\'s time in Live TV, the guide, the programme\'s details and the player.</string>
+    <string name="ps_guide_style">Guide style</string>
+    <string name="ps_guide_grid">Grid</string>
+    <string name="ps_guide_list">List</string>
+    <string name="ps_guide_style_line">Grid: each channel\'s programmes along the times. List: a row for each channel with what\'s on now. Live TV\'s top bar switches it too.</string>
+    <string name="ps_progress">Progress bars</string>
+    <string name="ps_progress_line">How far through each programme on now is, in the guide and on the channels\' cards.</string>
+
+    <string name="ps_channels_title">Channels &amp; categories</string>
+    <string name="ps_channels_body">One row a channel, hidden channels, categories and names, as on Homefield TV. Kept on this phone.</string>
+    <string name="ps_merge">One row per channel (merge qualities)</string>
+    <string name="ps_merge_line">A channel\'s FHD, HD and SD in one category as one row, under its name without the quality, its best played. Hold it in the guide to pick a quality.</string>
+    <string name="ps_hidden">Hidden channels</string>
+    <string name="ps_none">None</string>
+    <string name="ps_categories">Manage categories</string>
+    <string name="ps_categories_shown">%1$d shown</string>
+    <string name="ps_categories_some_hidden">%1$d shown · %2$d hidden</string>
+    <string name="ps_rename">Rename channels</string>
+    <string name="ps_rename_none">Give any channel a name of your own</string>
+    <string name="ps_rename_count">%1$d renamed</string>
+    <string name="ps_sorting">Channels sorting</string>
+    <string name="ps_sorting_line">Manual is the order you put them in with Move channel (hold a channel in the guide). A category can be sorted its own way in Manage categories.</string>
+    <string name="ps_cat_sorting">Categories sorting</string>
+    <string name="ps_cat_sort_playlist">By order in playlist</string>
+    <string name="ps_cat_sort_own">Your own order</string>
+    <string name="ps_channels_note">Hold a channel in the guide to rename it, change its logo, move it or pick its quality; hold a category to rename, move or sort it. Favourite categories stay first.</string>
+    <plurals name="ps_channels_count">
+        <item quantity="one">%d channel</item>
+        <item quantity="other">%d channels</item>
+    </plurals>
+
+    <string name="ps_quality">Quality</string>
+    <string name="ps_quality_best">Best</string>
+    <string name="ps_quality_kept">%1$s: %2$s</string>
+    <string name="ps_rename_channel">Rename channel</string>
+    <string name="ps_restore_name">Restore channel name</string>
+    <string name="ps_change_logo">Change logo</string>
+    <string name="ps_move_channel">Move channel</string>
+
+    <string name="ps_rename_title">A name for %1$s</string>
+    <string name="ps_rename_hint">Its playlist\'s name: %1$s</string>
+    <string name="ps_save">Save</string>
+    <string name="ps_cancel">Cancel</string>
+    <string name="ps_playlist_name">Playlist\'s name</string>
+    <string name="ps_renamed_toast">%1$s is now %2$s</string>
+    <string name="ps_unnamed_toast">%1$s: its playlist\'s name again</string>
+    <string name="ps_rename_sheet_hint">Tap a channel to give it a name of your own; leave it empty for its playlist\'s name. Search finds it by either.</string>
+    <string name="ps_rename_search">Find a channel</string>
+    <string name="ps_renamed_header">Renamed</string>
+    <string name="ps_all_channels_header">Your channels</string>
+    <string name="ps_playlist_name_line">Playlist\'s name: %1$s</string>
+
+    <string name="ps_logo_title">Change logo</string>
+    <string name="ps_logo_hint">The one chosen shows for %1$s everywhere in the app.</string>
+    <string name="ps_logo_own">Its own</string>
+    <string name="ps_logo_playlist">Playlist\'s</string>
+    <string name="ps_logo_sky">Sky\'s</string>
+    <string name="ps_logo_of">%1$s\'s</string>
+    <string name="ps_logo_chosen">Chosen before</string>
+    <string name="ps_logo_only">This channel has no other logo to choose from yet.</string>
+
+    <string name="ps_move_title">Move channels</string>
+    <string name="ps_move_hint">Drag a channel by its handle to its place in %1$s. Its Sort channels becomes Manual.</string>
+    <string name="ps_move_cats_title">Move categories</string>
+    <string name="ps_move_cats_hint">Drag a category by its handle to its place. Categories sorting becomes Your own order; favourite ones stay first.</string>
+    <string name="ps_cat_rename">Rename category</string>
+    <string name="ps_cat_restore">Its playlist\'s name again</string>
+    <string name="ps_cat_sort">Sort channels</string>
+    <string name="ps_cat_sort_default">As Channels sorting</string>
+    <string name="ps_cat_move">Move</string>
+    <string name="ps_cat_playlist_calls">the playlist calls it %1$s</string>
+    <string name="ps_cat_options">Options for %1$s</string>
+
+    <string name="ps_reminders_title">Reminders</string>
+    <string name="ps_reminders_body">The programmes and games you asked to be reminded of, here or on the family\'s other devices, soonest first. Cancel takes one off everywhere.</string>
+    <string name="ps_reminders_none">None yet. In Live TV\'s guide, open a programme to come and tap Remind me.</string>
+    <string name="ps_reminders_cancel">Cancel</string>
+    <string name="ps_reminders_cancel_named">Cancel the reminder for %1$s</string>
+</resources>

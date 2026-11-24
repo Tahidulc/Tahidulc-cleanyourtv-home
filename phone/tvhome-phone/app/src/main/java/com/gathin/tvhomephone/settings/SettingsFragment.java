@@ -50,6 +50,10 @@ public class SettingsFragment extends Fragment {
         col.addView(com.gathin.tvhomephone.sports.SportsSettings.build(this, col));
         android.view.View live = com.gathin.tvhomephone.live.LiveTvSettings.build(this, col);
         col.addView(live);
+        // Homefield TV's Appearance and Channels & categories, the phone's way.
+        col.addView(com.gathin.tvhomephone.live.AppearanceSettings.build(this, col));
+        col.addView(com.gathin.tvhomephone.live.ChannelSettings.build(this, col));
+        col.addView(com.gathin.tvhomephone.live.ReminderSettings.build(this, col));
         // Films and TV shows: portrait or landscape posters on Home and Watch.
         col.addView(com.gathin.tvhomephone.live.PosterSettings.build(this, col));
         // The family's own TorBox files, a source for films and series beside the playlists.
@@ -67,9 +71,10 @@ public class SettingsFragment extends Fragment {
     // ---- a tablet: the list and the page side by side ---------------------------------------------------------------
 
     /** The sections in the list's order: {key, name, Icons glyph}; LIVE is where a playlist's notification opens. */
-    static final String INTRO = "intro", TVS = "tvs", SPORTS = "sports", LIVE = "live", POSTERS = "posters", TORBOX = "torbox",
-            SUBTITLES = "subtitles", UPDATES = "updates";
-    static final String[] KEYS = {INTRO, TVS, SPORTS, LIVE, POSTERS, TORBOX, SUBTITLES, UPDATES};
+    static final String INTRO = "intro", TVS = "tvs", SPORTS = "sports", LIVE = "live", APPEARANCE = "appearance",
+            CHANNELS = "channels", REMINDERS = "reminders", POSTERS = "posters", TORBOX = "torbox", SUBTITLES = "subtitles",
+            UPDATES = "updates";
+    static final String[] KEYS = {INTRO, TVS, SPORTS, LIVE, APPEARANCE, CHANNELS, REMINDERS, POSTERS, TORBOX, SUBTITLES, UPDATES};
     private static final String PREFS = "settings_ui", CHOSEN = "section";
 
     private final List<View> pages = new ArrayList<>();
@@ -105,7 +110,8 @@ public class SettingsFragment extends Fragment {
         ScrollView listScroll = new ScrollView(c);
         listScroll.setVerticalScrollBarEnabled(false);
         GradientDrawable card = new GradientDrawable();
-        card.setColor(c.getColor(R.color.ground_deep));
+        // The navy's deeper shade, or the colour theme's panel (live.Theme).
+        card.setColor(com.gathin.tvhomephone.live.Theme.card());
         card.setCornerRadius(Glass.dp(c, 24));
         card.setStroke(Math.max(1, Glass.dp(c, 1)), 0x1AFFFFFF);
         listScroll.setBackground(card);
@@ -118,8 +124,10 @@ public class SettingsFragment extends Fragment {
         title.setPadding(Glass.dp(c, 8), 0, 0, Glass.dp(c, 18));
         list.addView(title);
         String[] names = {"Matchday intro", "Your TVs and sync", "Sports and alerts", getString(R.string.live_settings_title),
+                getString(R.string.ps_appearance_title), getString(R.string.ps_channels_title), getString(R.string.ps_reminders_title),
                 getString(R.string.posters_title), getString(R.string.torbox_title), getString(R.string.subs_title), "App updates"};
-        int[] glyphs = {Icons.PLAY, Icons.SHARE, Icons.SPORTS, Icons.LIVE, Icons.FILM, Icons.CLOUD, Icons.WATCH, Icons.DOWN};
+        int[] glyphs = {Icons.PLAY, Icons.SHARE, Icons.SPORTS, Icons.LIVE, Icons.STAR, Icons.MORE, Icons.CHECK, Icons.FILM, Icons.CLOUD,
+                Icons.WATCH, Icons.DOWN};
         for (int i = 0; i < KEYS.length; i++) {
             TextView row = row(c, names[i], glyphs[i]);
             int at = i;
@@ -148,6 +156,9 @@ public class SettingsFragment extends Fragment {
         pages.add(com.gathin.tvhomephone.sync.SyncSettings.build(this, col));
         pages.add(com.gathin.tvhomephone.sports.SportsSettings.build(this, col));
         pages.add(com.gathin.tvhomephone.live.LiveTvSettings.build(this, col));
+        pages.add(com.gathin.tvhomephone.live.AppearanceSettings.build(this, col));
+        pages.add(com.gathin.tvhomephone.live.ChannelSettings.build(this, col));
+        pages.add(com.gathin.tvhomephone.live.ReminderSettings.build(this, col));
         pages.add(com.gathin.tvhomephone.live.PosterSettings.build(this, col));
         pages.add(com.gathin.tvhomephone.live.TorBoxSettings.build(this, col));
         pages.add(com.gathin.tvhomephone.live.SubtitleSettings.build(this, col));

@@ -99,6 +99,8 @@ and passes them on like the rest.
 | `board.cover`, `board.style`, `board.custom`, `board.logo`, `board.subs`, `board.fotmob`, `board.seethrough` | `score_overlay`: the same names (`see_through`; `custom`: the id of the board of My scoreboards in use) | |
 | `subs.on`, `subs.langs`, `subs.size`, `subs.look`, `subs.hi`, `subs.auto`, `captions.live` | `subtitles`: `on`, `langs`, `size`, `look`, `hi`, `auto`, `auto_live` | |
 | `sports.kind.<kind>` | `sports_kinds`: each alert kind's switch | |
+| `times.24h`, `look.progress` | `look`: `times24`, `progress` (Programme times, Progress bars) | the same file and keys; not passed on yet |
+| `channels.merge`, `channels.sort` | `live_edits`: `merge`, `sort` (One row per channel, Channels sorting) | |
 
 What belongs to one device stays on it: its theme, picture quality (Adaptive or fixed), buffer, decoder, screen and
 where the scoreboard and logo sit, the bedtime, and **TorBox's key, which is never synced**: TorBox is added on each

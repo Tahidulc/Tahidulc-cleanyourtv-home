@@ -138,6 +138,8 @@ final class ChannelCard extends FrameLayout {
         if (at >= 0) {
             title.setText(s.title[at].isEmpty() ? ch.name : s.title[at]);
             line.setProgress(Math.round(1000 * TvLook.progress(s.start[at], s.stop[at], now)));
+            // Appearance › Progress bars: the line hidden, the minutes left still said.
+            line.setVisibility(Theme.progress ? VISIBLE : INVISIBLE);
             ((LinearLayout) line.getParent()).setVisibility(VISIBLE);
             left.setText(c.getString(R.string.live_min_left, Math.max(1, (int) ((s.stop[at] - now + 59_999) / 60_000))));
         } else {

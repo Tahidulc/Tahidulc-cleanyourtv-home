@@ -1575,6 +1575,14 @@ public class PlayerActivity extends AppCompatActivity {
             box.addView(capNote);
         }
 
+        // Quality, for a channel shown as one row in several qualities (as Homefield TV's Video tracks): its versions,
+        // the one picked kept for the channel and played now.
+        box.addView(new View(c), new LinearLayout.LayoutParams(-1, Ui.dp(c, 12)));
+        Sheets.quality(c, lib, cur, box, v -> {
+            if (sheet != null) sheet.dismiss();
+            if (cur != null && !v.key.equals(cur.key)) switchTo(v);
+        });
+
         List<Track> video = tracks(C.TRACK_TYPE_VIDEO);
         if (video.size() > 1) {
             LinearLayout row = chipRow(c, box, R.string.live_quality);

@@ -34,15 +34,19 @@ import com.gathin.tvhomephone.home.Type;
 final class TvLook {
     private TvLook() {}
 
-    /** The ground (07's #0b0b0f), the three greys for writing under white, amber for now, the live red. */
-    static final int GROUND = 0xFF0B0B0F, L1 = 0xFFFFFFFF, L2 = 0xBDEBEBF5, L3 = 0x85EBEBF5, L4 = 0x4DEBEBF5,
-            AMBER = 0xFFFFB547, RED = 0xFFFF453A, INK = 0xFF111111;
+    /** The three greys for writing under white, the live red. */
+    static final int L1 = 0xFFFFFFFF, L2 = 0xBDEBEBF5, L3 = 0x85EBEBF5, L4 = 0x4DEBEBF5, RED = 0xFFFF453A, INK = 0xFF111111;
+    /**
+     * The ground (07's #0b0b0f) and amber for now: the colour theme's (Theme.apply sets them as the app starts; these
+     * are Homefield • Amber's, the phone's own look).
+     */
+    static int GROUND = 0xFF0B0B0F, AMBER = 0xFFFFB547;
     /** Glass on the ground (a white wash), its rim, and the progress line's track. */
     static final int GLASS = 0x1FFFFFFF, GLASS_ON = 0x2EFFFFFF, RIM = 0x1AFFFFFF, TOP = 0x42FFFFFF, TRACK = 0x42FFFFFF;
-    /** 07's "mat-dark": the panels over a picture, top to foot. */
-    static final int MAT_TOP = 0xBD24242A, MAT_FOOT = 0xD6121216;
+    /** 07's "mat-dark": the panels over a picture, top to foot (the colour theme's panels on a tinted one). */
+    static int MAT_TOP = 0xBD24242A, MAT_FOOT = 0xD6121216;
     /** The same, deeper, where it lies over busy writing (the categories over the guide). */
-    static final int MAT_DEEP_TOP = 0xEB24242A, MAT_DEEP_FOOT = 0xF2121216;
+    static int MAT_DEEP_TOP = 0xEB24242A, MAT_DEEP_FOOT = 0xF2121216;
     /** A card's lift when pressed or chosen (07: .4 s, cubic-bezier(.25,.9,.3,1.12)). */
     static final long LIFT_MS = 400, FADE_MS = 700;
     static final float PRESS_SCALE = 1.03f;

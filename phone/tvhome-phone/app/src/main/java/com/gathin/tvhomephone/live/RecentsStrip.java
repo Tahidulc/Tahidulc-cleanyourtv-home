@@ -214,7 +214,7 @@ final class RecentsStrip extends LinearLayout {
             int at = s == null ? -1 : s.at(t);
             if (at >= 0 && !s.title[at].isEmpty()) {
                 now.setText(s.title[at]);
-                line.setVisibility(VISIBLE);
+                line.setVisibility(Theme.progress ? VISIBLE : INVISIBLE);
                 line.setProgress(Math.round(1000 * TvLook.progress(s.start[at], s.stop[at], t)));
             } else {
                 now.setText(ch.name);

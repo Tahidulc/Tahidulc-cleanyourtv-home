@@ -34,13 +34,9 @@ public final class LiveTvSettings {
     private static final int SOON_DAYS = 14;
     private static final int AMBER = 0xFFFFC93C;
 
-    /** Whether the app opens on Live TV (on until switched off) rather than Home. */
+    /** Whether the app opens on Live TV (as it comes) rather than elsewhere: StartOn. */
     public static boolean openOnLive(Context c) {
-        return c.getSharedPreferences("start", Context.MODE_PRIVATE).getBoolean("open_live", true);
-    }
-
-    static void setOpenOnLive(Context c, boolean on) {
-        c.getSharedPreferences("start", Context.MODE_PRIVATE).edit().putBoolean("open_live", on).apply();
+        return StartOn.get(c) == StartOn.LIVE;
     }
 
     public static View build(Fragment host, ViewGroup parent) {
@@ -55,10 +51,11 @@ public final class LiveTvSettings {
         body.setPadding(0, Ui.dp(c, 4), 0, Ui.dp(c, 12));
         col.addView(body);
 
-        // Open on Live TV: the app opens straight on it (the channel last watched); off, on Home.
-        BoardSettings.row(c, col, c.getString(R.string.live82_open_live), openOnLive(c), on -> setOpenOnLive(c, on));
+        // Open on (Homefield TV's Start on): Home, Live TV (the channel last watched; as it comes), Films and TV, Sports.
+        col.addView(label(c, c.getString(R.string.live82_open_live)));
+        col.addView(choices(c, StartOn.NAMES, StartOn.get(c), i -> StartOn.set(c, i)));
         TextView openLine = Ui.text(c, c.getString(R.string.live82_open_live_line), 13, Ui.DIM, false);
-        openLine.setPadding(0, 0, 0, Ui.dp(c, 12));
+        openLine.setPadding(0, Ui.dp(c, 6), 0, Ui.dp(c, 12));
         col.addView(openLine);
 
         // Use: all together, or one of them (only when there are two or more).
@@ -432,11 +429,13 @@ public final class LiveTvSettings {
         TextView capLine = Ui.text(c, c.getString(R.string.captions_setting_line), 13, Ui.DIM, false);
         capLine.setPadding(0, 0, 0, Ui.dp(c, 6));
         col.addView(capLine);
-        behindLogos(c, col);
     }
 
-    /** Behind logos: Logo's colour (the default), None or Black tile (LogoTiles), for every channel logo in the app. */
-    private static void behindLogos(Context c, LinearLayout col) {
+    /**
+     * Behind logos: Logo's colour (the default), None or Black tile (LogoTiles), for every channel logo in the app; in
+     * Appearance with the other looks, as Homefield TV has it (Appearance › Logos).
+     */
+    static void behindLogos(Context c, LinearLayout col) {
         col.addView(label(c, c.getString(R.string.live3_behind_logos)));
         LinearLayout row = new LinearLayout(c);
         List<TextView> chips = new java.util.ArrayList<>();
@@ -464,6 +463,36 @@ public final class LiveTvSettings {
 
     interface Flip {
         void set(boolean on);
+    }
+
+    interface Pick {
+        void set(int index);
+    }
+
+    /** A row of chips that scrolls sideways, one for each choice (string resources), the one at chosen lit. */
+    static View choices(Context c, int[] names, int chosen, Pick pick) {
+        String[] words = new String[names.length];
+        for (int i = 0; i < names.length; i++) words[i] = c.getString(names[i]);
+        return choices(c, words, chosen, pick);
+    }
+
+    static View choices(Context c, String[] words, int chosen, Pick pick) {
+        LinearLayout row = new LinearLayout(c);
+        List<TextView> chips = new java.util.ArrayList<>();
+        for (int i = 0; i < words.length; i++) {
+            int at = i;
+            TextView t = pill(c, words[i], i == chosen);
+            t.setOnClickListener(v -> {
+                for (TextView x : chips) restyle(c, x, x == v);
+                pick.set(at);
+            });
+            chips.add(t);
+            row.addView(t, chipParams(c));
+        }
+        HorizontalScrollView hs = new HorizontalScrollView(c);
+        hs.setHorizontalScrollBarEnabled(false);
+        hs.addView(row);
+        return hs;
     }
 
     static TextView label(Context c, String words) {

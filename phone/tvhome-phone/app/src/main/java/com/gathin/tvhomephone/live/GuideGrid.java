@@ -446,16 +446,13 @@ final class GuideGrid extends FrameLayout {
             return p;
         }
 
-        /** "09:30" for t into buf at at (the 24-hour clock); the index after it. No allocation (it runs while drawing). */
+        /**
+         * "09:30" (or "9.30am": Settings › Appearance › Programme times) for t into buf at at; the index after it. No
+         * allocation (it runs while drawing).
+         */
         int clock(long t, int at) {
             long mins = Math.floorMod(Math.floorDiv(t + tz.getOffset(t), 60_000L), 1440L);
-            int h = (int) (mins / 60), m = (int) (mins % 60);
-            buf[at++] = (char) ('0' + h / 10);
-            buf[at++] = (char) ('0' + h % 10);
-            buf[at++] = ':';
-            buf[at++] = (char) ('0' + m / 10);
-            buf[at++] = (char) ('0' + m % 10);
-            return at;
+            return Times.write(buf, at, (int) (mins / 60), (int) (mins % 60), Times.h24);
         }
 
         /** Writes s from x on the baseline y, cut with an ellipsis to fit max; the width written. */
@@ -605,8 +602,8 @@ final class GuideGrid extends FrameLayout {
             boolean past = s.stop[i] <= now;
             if (picture(cv, s, i, r - l - 2 * st.gap, h, on, sel, past, wordsEnd)) edges(cv, sel, pressed);
             else card(cv, left, right, h, on, sel, pressed);
-            if (on) {
-                // How far in it is: a white line on a soft track along the card's foot.
+            if (on && Theme.progress) {
+                // How far in it is: a white line on a soft track along the card's foot (Appearance › Progress bars).
                 float y = h - k - st.lineIn / 2 - st.lineH;
                 float x0 = left + k + st.lineIn, x1 = right - k - st.lineIn;
                 if (x1 - x0 > st.lineIn) {

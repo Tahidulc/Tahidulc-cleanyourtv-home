@@ -40,7 +40,15 @@ final class SyncSettingsList {
             {"board.subs", "score_overlay", "subs", "b"},
             {"board.fotmob", "score_overlay", "fotmob", "b"},
             {"board.seethrough", "score_overlay", "see_through", "b"},
+            // Homefield TV's Appearance and Channels & categories, under its own preference names where it has them.
+            {"times.24h", "look", "times24", "b"},
+            {"look.progress", "look", "progress", "b"},
+            {"channels.merge", "live_edits", "merge", "b"},
+            {"channels.sort", "live_edits", "sort", "i"},
     };
+    /** Those kept in memory once read (live.Times, Theme, ChannelEdits): read again when one comes from another device. */
+    static final java.util.Set<String> HELD = new java.util.HashSet<>(java.util.Arrays.asList("times.24h", "look.progress",
+            "channels.merge", "channels.sort"));
     /** Every alert kind's switch (Sports' alerts), each its own setting: "sports.kind." and its key. */
     private static final String KINDS = "sports_kinds", KIND = "sports.kind.";
 
@@ -84,7 +92,9 @@ final class SyncSettingsList {
 
     /** Settings from another device written here (those this app has; any it doesn't know left alone). */
     static void write(Context c, List<JSONObject> items) {
+        boolean held = false;
         for (JSONObject it : items) {
+            if (!it.optBoolean("deleted") && HELD.contains(it.optString("key"))) held = true;
             if (it.optBoolean("deleted")) continue;
             String name = it.optString("key");
             JSONObject d = it.optJSONObject("data");
@@ -112,5 +122,6 @@ final class SyncSettingsList {
                 default: if (!d.optString("v").equals(had)) e.putString(key, d.optString("v")).apply(); break;
             }
         }
+        if (held) com.gathin.tvhomephone.live.ChannelEdits.synced(c);
     }
 }
