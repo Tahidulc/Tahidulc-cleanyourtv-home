@@ -821,3 +821,7 @@ row per channel with Quality, hidden channels, manage, rename and sort categorie
 channel's logo), Open on, and Reminders. The scoreboard menu and settings have My scoreboards: an editor seen live on the
 board, Generate and Ask AI (with the family's own Anthropic key, kept on the phone), synced with the TV. A channel's logo
 can come from a catalogue of logo packs or be made here (offline or with Ask AI).
+
+**Channels in the playlist's order again (5.34).** With one row per channel (5.33), a channel in several qualities stood
+where its best version is in the playlist, so channels whose HD or FHD copy sits further down moved out of order. Each
+row now stands where the first of its versions stands, whichever version it plays.

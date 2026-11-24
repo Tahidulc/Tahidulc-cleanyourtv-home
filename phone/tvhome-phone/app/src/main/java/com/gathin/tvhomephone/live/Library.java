@@ -309,12 +309,10 @@ public final class Library {
             }
             return out;
         }
-        for (int i = 0; i < ch.size(); i++) {
-            Channel c = ch.get(i);
-            if (i < hid.length && hid[i]) continue;
-            if (!rowAt(i)) continue;
+        for (int at : rowPlaces(ch.size(), families, rows, hid)) {
+            Channel c = ch.get(at);
             if (group != null && !group.isEmpty() && !group.equals(c.group)) continue;
-            if (!q.isEmpty() && (i >= low.length || !low[i].contains(q))) continue;
+            if (!q.isEmpty() && (at >= low.length || !low[at].contains(q))) continue;
             out.add(c);
         }
         return sorted(out, group);
@@ -586,6 +584,33 @@ public final class Library {
             if (pick >= 0) r[pick] = true;
         }
         return r;
+    }
+
+    /**
+     * The places of the channels to list, in the playlist's order: a channel in several qualities (one row) stands where
+     * the first of its versions stands, whichever version is its row (the best, or the one picked) — so merging never
+     * moves a channel down the list (5.33's mistake: the row stood where its best version was). Hidden ones left out.
+     */
+    static int[] rowPlaces(int n, int[][] families, boolean[] rows, boolean[] hidden) {
+        int[] out = new int[n];
+        int k = 0;
+        for (int i = 0; i < n; i++) {
+            int at = i;
+            int[] fam = i < families.length ? families[i] : null;
+            if (fam != null && fam.length > 1) {
+                if (min(fam) != i) continue;
+                at = -1;
+                for (int p : fam) {
+                    boolean row = p >= rows.length || rows[p], hid = p < hidden.length && hidden[p];
+                    if (row && !hid) { at = p; break; }
+                }
+                if (at < 0) continue;
+            } else if ((i < rows.length && !rows[i]) || (i < hidden.length && hidden[i])) {
+                continue;
+            }
+            out[k++] = at;
+        }
+        return java.util.Arrays.copyOf(out, k);
     }
 
     private static int min(int[] a) {
