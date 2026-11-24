@@ -22,11 +22,11 @@ import java.util.List;
 /**
  * The live overlay's recently watched channels, as the family chose them (the mock-up "C with programme pictures": "I
  * want the recently watched channels section to be redesigned and show 10 channels underneath the information panel"):
- * under the info card (InfoCard.STACK_Y), a line saying what it is ("Recently watched", "10 channels", and at the right
- * "Down past the second row for settings"), then the channels last watched on this TV, newest first, never the one
- * playing, up to ten, in two rows of five cards (1824 wide from x 48, 14 apart, 120 high, rounded 20), and under them
- * what the keys do ("OK to watch · Left and Right along a row · Down to the second row"). A channel joins them once it
- * has played 10 seconds (Library.recent).
+ * under the info card (InfoCard.STACK_Y), its title ("Recently Watched", nothing else: "I want to keep this as clean as
+ * possible"), then the channels last watched on this TV, newest first, never the one playing, up to ten, in two rows of
+ * five cards (1824 wide from x 48, 14 apart, 120 high, rounded 20), and under them only a little down arrow, centred,
+ * for the settings below ("just have a little down arrow that if I down will take me to the settings buttons"), no words
+ * on what the keys do. A channel joins them once it has played 10 seconds (Library.recent).
  *
  * <p>Each card is the programme on now on its channel: the programme's own picture filling the card (Pics.FILL: its
  * faces whole; asked for once the overlay rests), else the logo's own colour (while the picture comes, or where the
@@ -72,9 +72,7 @@ final class RecentGrid extends View {
     static final float[] SHADE_AT = {0f, 0.46f, 0.74f, 1f};
     /** A card with no colour of its own (Behind logos: None): the slate. */
     static final int EMPTY = 0xFF1E2430;
-    static final String HEAD = "Recently watched", DOWN_TWO = "Down past the second row for settings", DOWN_ONE = "Down for settings",
-            KEYS_TWO = "OK to watch · Left and Right along a row · Down to the second row",
-            KEYS_ONE = "OK to watch · Left and Right along the row · Down for settings",
+    static final String HEAD = "Recently Watched",
             NO_GUIDE = "No programme information", NOTHING_NOW = "Nothing in the guide now";
 
     interface Host {
@@ -89,14 +87,12 @@ final class RecentGrid extends View {
     private final String[] names = new String[MAX], lefts = new String[MAX];
     private final int[] leftFor = new int[MAX];
     private int focus;
-    private String count = "";
     private final Lift07 lift = new Lift07();
     private final Shaders shaders = new Shaders();
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), shade = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG);
     private final Paint track = new Paint(Paint.ANTI_ALIAS_FLAG), done = new Paint(Paint.ANTI_ALIAS_FLAG), ring = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint chevron = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final TextPaint headP = Type.paint(24f, Type.BOLD, Look07.L1), countP = Type.paint(20f, Type.REGULAR, 0x99FFFFFF);
-    private final TextPaint downP = Type.paint(20f, Type.REGULAR, 0xB3FFFFFF), keysP = Type.paint(21f, Type.REGULAR, 0x99FFFFFF);
+    private final TextPaint headP = Type.paint(24f, Type.BOLD, Look07.L1);
     private final TextPaint nameP = Type.paint(15f, Type.REGULAR, 0xADFFFFFF), titleP = Type.paint(19f, Type.SEMIBOLD, Look07.L1);
     private final TextPaint leftP = Type.clock(15f, Type.REGULAR, 0xBFFFFFFF);
     private final TextFit nameFit = new TextFit(nameP, 32), titleFit = new TextFit(titleP, 32);
@@ -128,7 +124,6 @@ final class RecentGrid extends View {
             leftFor[i] = -1;
         }
         int n = chans.size();
-        count = n == 1 ? "1 channel" : n + " channels";
         focus = Math.max(0, Math.min(at, n - 1));
         invalidate();
     }
@@ -223,21 +218,16 @@ final class RecentGrid extends View {
             }
         }
         float foot = TOP + Math.max(1, rows()) * (CARD_H + GAP) - GAP;
-        c.drawText(rows() > 1 ? KEYS_TWO : KEYS_ONE, Ui.f(TEXT_X), Type.centred(keysP, Ui.f(foot + HINT_BELOW)), keysP);
+        // Only a little down arrow under the cards, centred: Down past them is the settings.
+        chevron.setColor(0xB3FFFFFF);
+        chevron.setStrokeWidth(Math.max(1f, Ui.f(2.6f)));
+        Ui.chevron(c, Ui.f(960f), Ui.f(foot + HINT_BELOW), Ui.f(8f), Ui.DOWN, chevron);
         if (moving) postInvalidateOnAnimation();
     }
 
-    /** "Recently watched" and how many at the left; where Down goes at the right, after a chevron. */
+    /** "Recently Watched" at the left, and nothing else. */
     private void drawHead(Canvas c) {
-        float cy = Ui.f(HEAD_Y), base = Type.centred(headP, cy), x = Ui.f(TEXT_X);
-        c.drawText(HEAD, x, base, headP);
-        c.drawText(count, x + headP.measureText(HEAD) + Ui.f(14f), base, countP);
-        String down = rows() > 1 ? DOWN_TWO : DOWN_ONE;
-        float dw = downP.measureText(down), dx = Ui.f(TEXT_R) - dw;
-        c.drawText(down, dx, Type.centred(downP, cy), downP);
-        chevron.setColor(0xB3FFFFFF);
-        chevron.setStrokeWidth(Math.max(1f, Ui.f(2.2f)));
-        Ui.chevron(c, dx - Ui.f(10f + 11f), cy, Ui.f(5.5f), Ui.DOWN, chevron);
+        c.drawText(HEAD, Ui.f(TEXT_X), Type.centred(headP, Ui.f(HEAD_Y)), headP);
     }
 
     /** "40 min left" for card k, made again only when its minute changes. */

@@ -32,10 +32,12 @@ import java.util.Locale;
  * The player's settings, as the family chose them (the mock-up "C with programme pictures", then Down: "Then I press
  * the down button again and it will take me to the settings buttons"): under the live overlay's info card, in the
  * recently watched channels' place (Down past their second row; MENU, and Settings › Remote's player or channel menu,
- * straight here), a line with "↑ Recently watched" at the left and "Settings" at the right, then every button as a
- * pill of glass in two rows (1824 wide from x 48, 14 apart, 86 high, rounded 22; white at 10 % with a hairline at 8 %):
- * its icon (30) at the left, its name (18, semibold) and under it what it is set to or where it goes (15, quiet); under
- * the pills what the keys do. The remote's pill is white with dark ink and lifts toward you (Lift07, to 1.05).
+ * straight here), "Settings" at the left with only a little up arrow, centred, when the recent channels are up there,
+ * then every button as a pill of glass in two rows (1824 wide from x 48, 14 apart, 86 high, rounded 22; white at 10 %
+ * with a hairline at 8 %): its icon (30) at the left, its name (18, semibold) and, only where it is a setting, under it
+ * what it is set to (15, quiet: the picture, the sound, the offset, the subtitles, the display, the sleep timer, a
+ * favourite); nothing under the pills ("Don't have any text underneath all of the settings buttons. I want to keep this
+ * as clean as possible"). The remote's pill is white with dark ink and lifts toward you (Lift07, to 1.05).
  *
  * <pre>
  *   row one        TV guide (the tile that started the old row), Search, Channels list, History, Movies, TV shows,
@@ -98,9 +100,7 @@ final class PlayerBar extends FrameLayout implements PickerCard.Host {
      */
     static final float SCRIM_TOP = 324f, SCRIM_MID = 562f;
     static final int SCRIM_MID_A = 0x99, SCRIM_FOOT_A = 0xEB;
-    static final String HEAD = "Settings", UP = "Recently watched",
-            KEYS_UP = "OK opens it · Left and Right along a row · Up from the first row back to recently watched",
-            KEYS_ALONE = "OK opens it · Left and Right along a row · Down to the second row";
+    static final String HEAD = "Settings";
     /** The sleep timer's choices (minutes; 0 off). */
     static final int[] SLEEP_MINUTES = {0, 15, 30, 45, 60, 90, 120, 180, 240};
 
@@ -228,15 +228,15 @@ final class PlayerBar extends FrameLayout implements PickerCard.Host {
         String name, value;
         int icon;
         switch (it) {
-            case GUIDE: name = "TV guide"; value = "What's on"; icon = Dark.SHEET; break;
-            case SEARCH: name = "Search"; value = "Channels, films"; icon = Dark.SEARCH; break;
-            case CHANNELS: name = "Channels list"; value = "All channels"; icon = Dark.LIST; break;
-            case HISTORY: name = "History"; value = "Watched lately"; icon = Dark.HISTORY; break;
-            case MOVIES: name = "Movies"; value = "Films"; icon = Dark.CLAPPER; break;
-            case SHOWS: name = "TV shows"; value = "Series"; icon = Dark.STACK; break;
-            case RECORDINGS: name = "Recordings"; value = "From catch-up"; icon = Dark.RECORD; break;
-            case MY_LIST: name = "My list"; value = "Saved to watch"; icon = Dark.BOOKMARK; break;
-            case SETTINGS: name = "Settings"; value = "Homefield TV"; icon = Dark.GEAR; break;
+            case GUIDE: name = "TV guide"; value = ""; icon = Dark.SHEET; break;
+            case SEARCH: name = "Search"; value = ""; icon = Dark.SEARCH; break;
+            case CHANNELS: name = "Channels list"; value = ""; icon = Dark.LIST; break;
+            case HISTORY: name = "History"; value = ""; icon = Dark.HISTORY; break;
+            case MOVIES: name = "Movies"; value = ""; icon = Dark.CLAPPER; break;
+            case SHOWS: name = "TV shows"; value = ""; icon = Dark.STACK; break;
+            case RECORDINGS: name = "Recordings"; value = ""; icon = Dark.RECORD; break;
+            case MY_LIST: name = "My list"; value = ""; icon = Dark.BOOKMARK; break;
+            case SETTINGS: name = "Settings"; value = ""; icon = Dark.GEAR; break;
             case VIDEO: {
                 String size = tv.live.sizeWords();
                 name = "Picture";
@@ -271,12 +271,12 @@ final class PlayerBar extends FrameLayout implements PickerCard.Host {
             case FAVOURITE: {
                 boolean fav = ch != null && Library.get(c).isFavourite(ch);
                 name = "Favourites";
-                value = fav ? "Remove" : "Add this channel";
+                value = fav ? "Added" : "";
                 icon = fav ? Dark.STAR : Dark.STAR_LINE;
                 break;
             }
-            case OPTIONS: name = "Channel"; value = "Options"; icon = Dark.OPTIONS; break;
-            default: name = "Exit"; value = "Close the app"; icon = Dark.EXIT; break;
+            case OPTIONS: name = "Channel"; value = ""; icon = Dark.OPTIONS; break;
+            default: name = "Exit"; value = ""; icon = Dark.EXIT; break;
         }
         names[k] = name;
         values[k] = value;
@@ -626,8 +626,7 @@ final class PlayerBar extends FrameLayout implements PickerCard.Host {
     private final class BarView extends View {
         private final Paint scrimP = new Paint(), fill = new Paint(Paint.ANTI_ALIAS_FLAG), edge = new Paint(Paint.ANTI_ALIAS_FLAG),
                 chevron = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final TextPaint headP = Type.paint(24f, Type.BOLD, Look07.L1), upP = Type.paint(20f, Type.REGULAR, QUIET);
-        private final TextPaint keysP = Type.paint(21f, Type.REGULAR, 0x99FFFFFF);
+        private final TextPaint headP = Type.paint(24f, Type.BOLD, Look07.L1);
         private final TextPaint nameP = Type.paint(18f, Type.SEMIBOLD, WORDS), valueP = Type.paint(15f, Type.REGULAR, QUIET);
         private final TextFit nameFit = new TextFit(nameP, 32), valueFit = new TextFit(valueP, 32);
         private final Lift07 lift = new Lift07();
@@ -654,15 +653,15 @@ final class PlayerBar extends FrameLayout implements PickerCard.Host {
             }
             boolean moving = lift.step(KEYS[focus]);
             boolean above = host.recentsAbove();
-            // The line over the pills: back up to the recent channels at the left (when they are there), Settings at the right.
+            // The line over the pills: Settings at the left, and a little up arrow, centred, when the recent channels are
+            // up there (Up from the first row goes back to them); no other words.
             float cy = Ui.f(HEAD_Y), x = Ui.f(RecentGrid.TEXT_X);
             if (above) {
                 chevron.setColor(QUIET);
-                chevron.setStrokeWidth(Math.max(1f, Ui.f(2.2f)));
-                Ui.chevron(c, x + Ui.f(11f), cy, Ui.f(5.5f), Ui.UP, chevron);
-                c.drawText(UP, x + Ui.f(22f + 10f), Type.centred(upP, cy), upP);
+                chevron.setStrokeWidth(Math.max(1f, Ui.f(2.6f)));
+                Ui.chevron(c, Ui.f(960f), cy, Ui.f(8f), Ui.UP, chevron);
             }
-            c.drawText(HEAD, Ui.f(RecentGrid.TEXT_R) - headP.measureText(HEAD), Type.centred(headP, cy), headP);
+            c.drawText(HEAD, x, Type.centred(headP, cy), headP);
             // The resting pills first, then the lifted one over them.
             for (int pass = 0; pass < 2; pass++) {
                 for (int k = 0; k < ORDER.length; k++) {
@@ -670,8 +669,6 @@ final class PlayerBar extends FrameLayout implements PickerCard.Host {
                     if (up == (pass == 1)) drawPill(c, k);
                 }
             }
-            float foot = TOP + 2 * PILL_H + GAP;
-            c.drawText(above ? KEYS_UP : KEYS_ALONE, x, Type.centred(keysP, Ui.f(foot + HINT_BELOW)), keysP);
             if (moving) postInvalidateOnAnimation();
         }
 
@@ -699,9 +696,14 @@ final class PlayerBar extends FrameLayout implements PickerCard.Host {
             RoundButton.glyph(c, icons[k], Ui.f(ICON_X), h / 2f, Ui.f(ICON), ink);
             float tx = Ui.f(WORDS_X), room = w - tx - Ui.f(WORDS_PAD);
             nameP.setColor(ink);
-            nameFit.line(c, names[k], tx, Ui.f(NAME_Y), room);
-            valueP.setColor(blend(QUIET, INK_QUIET, on));
-            valueFit.line(c, values[k], tx, Ui.f(VALUE_Y), room);
+            if (values[k].isEmpty()) {
+                // No setting to show: the name alone, in the middle.
+                nameFit.line(c, names[k], tx, Type.centred(nameP, h / 2f), room);
+            } else {
+                nameFit.line(c, names[k], tx, Ui.f(NAME_Y), room);
+                valueP.setColor(blend(QUIET, INK_QUIET, on));
+                valueFit.line(c, values[k], tx, Ui.f(VALUE_Y), room);
+            }
             c.restore();
         }
     }

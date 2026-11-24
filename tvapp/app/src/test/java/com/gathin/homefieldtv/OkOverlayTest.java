@@ -272,7 +272,9 @@ public class OkOverlayTest {
                 "Picture", "Sound", "Audio offset", "Subtitles", "Display", "Sleep timer", "Favourites", "Channel", "Exit"}) {
             assertTrue(n, names.contains(n));
         }
-        assertEquals("Add this channel", bar.words(15)[1]);
+        // Kept clean: only a setting says what it is set to (a channel not in the favourites says nothing; the TV guide neither).
+        assertEquals("", bar.words(15)[1]);
+        assertEquals("", bar.words(0)[1]);
         // MENU again: away (as the bar's MENU was); then OK on TV guide: the guide, the channel in its picture.
         press(a, KeyEvent.KEYCODE_MENU);
         assertEquals(LiveScreen.NONE, mode(a));
@@ -302,13 +304,11 @@ public class OkOverlayTest {
         for (String n : new String[]{"TV guide", "Channels list", "Recordings", "Audio offset", "Sleep timer", "Favourites", "Subtitles"}) {
             assertTrue(n + " " + name.measureText(n), name.measureText(n) <= room);
         }
-        for (String v : new String[]{"Channels, films", "Watched lately", "From catch-up", "Saved to watch", "Homefield TV", "1920 × 1080",
-                "English · Stereo", "From the channel", "Zoom - 2.35:1", "Add this channel", "Close the app"}) {
+        for (String v : new String[]{"1920 × 1080", "English · Stereo", "From the channel", "Zoom - 2.35:1", "Added"}) {
             assertTrue(v + " " + value.measureText(v), value.measureText(v) <= room);
         }
-        // The lines over and under the cards fit across the overlay.
-        TextPaint keys = Type.paint(21f, Type.REGULAR, 0xFFFFFFFF);
-        assertTrue(keys.measureText(PlayerBar.KEYS_UP) <= Ui.f(RecentGrid.TEXT_R - RecentGrid.TEXT_X));
-        assertTrue(keys.measureText(RecentGrid.KEYS_TWO) <= Ui.f(RecentGrid.TEXT_R - RecentGrid.TEXT_X));
+        // Kept clean: the title alone over the cards, no words on what the keys do over or under the cards or pills.
+        assertEquals("Recently Watched", RecentGrid.HEAD);
+        assertEquals("Settings", PlayerBar.HEAD);
     }
 }
