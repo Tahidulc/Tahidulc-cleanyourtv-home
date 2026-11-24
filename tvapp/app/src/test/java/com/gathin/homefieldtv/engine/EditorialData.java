@@ -24,6 +24,21 @@ public final class EditorialData {
         for (int i = 0; i < CategorySet.NETWORKS.length; i++) NETWORKS.put(CategorySet.NETWORKS[i], names[i % names.length]);
     }
 
+    /**
+     * Tests: the catalogue made afresh for this test's app. Catalog is kept once for the app it was first asked by, and a
+     * test runs with an app of its own: an earlier test's catalogue would read that app's playlists, not this one's.
+     */
+    public static void freshCatalog() {
+        try {
+            java.lang.reflect.Field f = Catalog.class.getDeclaredField("instance");
+            f.setAccessible(true);
+            f.set(null, null);
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError(e);
+        }
+        Shelves.forget();
+    }
+
     /** Every TMDB list made from these titles (films and shows of the catalogue as loaded). */
     public static void load(List<Catalog.Title> films, List<Catalog.Title> shows) {
         List<Catalog.Title> f = new ArrayList<>(films), s = new ArrayList<>(shows);
@@ -41,6 +56,11 @@ public final class EditorialData {
     public static void none() {
         TmdbLists.preview((path, page) -> null, new HashMap<>());
         Shelves.forget();
+    }
+
+    /** TMDB with these pages only (by "path#page"), no network named. */
+    public static void only(Map<String, TmdbLists.Page> pages) {
+        pages(pages, new HashMap<>());
     }
 
     /** These pages exactly, by "path#page" (any other: nothing). */

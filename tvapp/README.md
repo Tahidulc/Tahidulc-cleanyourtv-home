@@ -28,6 +28,28 @@ wordmark are Homefield; it carries no Sky logo or name.
   card, then to the sections, then opens the menu, and Back from the menu goes back to the TV. Home doesn't play
   anything itself.
 
+- **Home, Movies and TV Shows (Home style Editorial, as it comes):** the rows of the family's other film app, in its
+  order, from one table (engine/CategorySet: each row's id, title, source and place). Home: Continue Watching, Latest
+  Releases, Trending Movies, Latest TV Shows, Because you watched (the title watched last), We think you will like these,
+  Because you watched (the one before), then Based on True Story, Critically Acclaimed, 90 Minute Movies, Sci-Fi Movies:
+  Top Picks, Comedy Movies, Oscar Winners: Best Picture, Visually Pleasing, Crazy Plot Twists, British Gangster Movies,
+  Cult Classics, Survival Movies, Nostalgia, Revenge Movies, Zero Gravity Watchlist, No brainers and Thriller Movies.
+  Movies: a carousel, then Trending Movies and 21 themed rows (Conspiracy Theories to Family Favorites, We know you'll
+  love these among them). TV Shows: a carousel, Trending Shows, and a row for each streaming service TMDB names (HBO
+  Max's, Prime Video's and Disney+'s; the other app's rows for Apple's and Netflix's services are left out). The titles
+  come only from the family's playlists (and their own TorBox titles): TMDB's lists (trending, a genre, a keyword found by
+  its name, a list, a network's shows, the recommendations for what was watched) are matched to them by name and year
+  off the main thread (engine/TitleIndex, about 1.6 MB for 200,000 titles), a page at a time as the remote goes along; a
+  row with nothing in the playlists is left out, and without TMDB the rows are the playlists' own (the newest, the
+  categories named for a genre). One row in focus at a time, under the tab bar: the title the remote is on grows from
+  its poster into a wide card (its backdrop, TMDB's logo or its name, how far it was watched and its episode), the one
+  it left shrinking back as the row slides it to the left (Lite: no cross-fade of the pictures); under the row its score,
+  year, genre and length, and three lines of its story; the next row dimmed under it. Down past the last row goes back
+  to the first; Back goes up to the tab bar. The carousel on Movies and TV Shows has the next title peeking in, its facts
+  and View Details. OK opens a title's page, whose buttons are then a menu down the left: Play (or Resume), Trailer, More
+  episodes, Add to My List, More like this. Settings › Appearance › Home style: Classic brings back Home's one big card
+  at a time and Movies' and TV Shows' pills.
+
 - **TV guide:** as the family's other app has it. At the top left the preview, 640 by 360, playing the channel last
   watched (or the programme from the archive Back came from); to its right, on a panel of its own, the programme the
   remote is on: its title, a star for a favourite channel, its times ("10:00 — 11:00") with a bar and the minutes left
@@ -370,7 +392,7 @@ wordmark are Homefield; it carries no Sky logo or name.
   Red, Brown, Blue grey, Grey or Black) with an accent (Blue as it comes, Red, Pink, Purple, Indigo, Cyan, Teal, Green,
   Lime, Yellow, Amber, Orange or Deep orange), each a disc, the pair in use ticked and named ("Indigo • Blue"); OK keeps
   one and the screens start again in it, back on Settings. The themes from before are gone: a TV that had one comes up
-  in Indigo • Blue. Then Posters (Portrait / Landscape), Programme times (24-hour as it comes, or 12-hour) and
+  in Indigo • Blue. Then Home style (Editorial as it comes, or Classic), Posters (Portrait / Landscape), Programme times (24-hour as it comes, or 12-hour) and
   Animations: Automatic (as it comes), Full or Lite. Lite keeps the look and the motion (cards lift, rows slide,
   pictures cross-fade) but leaves out what a slower TV's graphics chip finds hardest: the cards' tilt and the light
   sweeping across them, a lifted card's picture drifting under its frame, and the page's big blurred picture changing

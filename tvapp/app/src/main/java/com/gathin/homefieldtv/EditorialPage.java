@@ -502,6 +502,11 @@ final class EditorialPage implements Editorial.Host {
         return -1;
     }
 
+    /** Previews: the remote's row caught part way through its last move along it. */
+    void previewBetween(float k) {
+        view.previewBetween(k);
+    }
+
     /** Tests: how many TMDB rows have been asked for so far. */
     int previewAsked() {
         return asked.size();

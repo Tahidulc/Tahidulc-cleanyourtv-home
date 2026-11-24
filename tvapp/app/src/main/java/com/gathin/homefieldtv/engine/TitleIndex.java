@@ -37,8 +37,8 @@ public final class TitleIndex {
         return last;
     }
 
-    /** Pure, for the tests: an index of these lists. */
-    static TitleIndex of(List<Catalog.Title> films, List<Catalog.Title> series) {
+    /** Pure, for the tests: an index of these lists (made now, whatever was made before). */
+    public static TitleIndex of(List<Catalog.Title> films, List<Catalog.Title> series) {
         return new TitleIndex(films, series);
     }
 

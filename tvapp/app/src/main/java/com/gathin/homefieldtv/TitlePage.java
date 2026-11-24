@@ -31,7 +31,9 @@ import java.util.Locale;
  * remote's kept third, its story under it; watched ones ticked, UP NEXT on the one to carry on with, a line between
  * seasons); the white pill slides with the remote into the next season and the page turns that season's colour. Further
  * down the page rises to About, its genres, the cast's faces and More like this; a film has its cast and More like this
- * under its buttons. Every move glides; only what is in sight is drawn; nothing is made while drawing.
+ * under its buttons. With Home style Editorial (vertical) the buttons are a menu down the left instead, four lines in sight,
+ * Up and Down along it, the rest of the page further down. Every move glides; only what is in sight is drawn; nothing
+ * is made while drawing.
  */
 final class TitlePage extends View {
     interface Host {
@@ -693,6 +695,22 @@ final class TitlePage extends View {
         } else if (p == CAST) castAt = along;
         else moreAt = along;
         settle();
+    }
+
+    /** Tests: the buttons' words in order, and whether they are the menu down the left. */
+    List<String> previewLabels() {
+        List<String> out = new ArrayList<>();
+        for (Button b : buttons) out.add(b.label);
+        return out;
+    }
+
+    boolean previewVertical() {
+        return vertical;
+    }
+
+    /** Tests: the button the remote is on (its place). */
+    int previewButton() {
+        return buttonAt;
     }
 
     /** How far the page has risen. */

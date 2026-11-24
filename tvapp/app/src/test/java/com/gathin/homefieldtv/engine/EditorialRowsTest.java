@@ -47,7 +47,16 @@ public class EditorialRowsTest {
     private Context c;
 
     @Before public void setUp() {
+        // Another test's catalogue still being read off the main thread would replace this one: done first.
+        for (int i = 0; i < 20_000 && Exec.busy() > 0; i++) {
+            try {
+                Thread.sleep(1);
+            } catch (InterruptedException e) {
+                break;
+            }
+        }
         c = RuntimeEnvironment.getApplication();
+        EditorialData.freshCatalog();
         Sources.clear(c);
         Sources.put(c, "p0", "Home", new Source(Source.XTREAM, null, null, "http://provider.invalid:8080", "family", "test"));
         List<String> rows = new ArrayList<>();
@@ -74,6 +83,8 @@ public class EditorialRowsTest {
     @After public void tearDown() {
         EditorialData.clear();
         Resume.clear(c);
+        // The next test's own app makes its own catalogue.
+        EditorialData.freshCatalog();
     }
 
     // ---- the table ---------------------------------------------------------------------------------------------------

@@ -117,7 +117,7 @@ final class Editorial extends View {
 
     private final List<Card> hero = new ArrayList<>();
     private final List<Row> rows = new ArrayList<>();
-    private int heroAt, row, area = ROWS;
+    private int heroAt, row, area = HERO;
     private final Glide y = new Glide(DOWN_MS), heroX = new Glide(HERO_MS);
     /** The card growing in the remote's row (0 to 100 of the way to wide), and the one shrinking back (100 to 0). */
     private final Glide grow = new Glide(GROW_MS, 100f), shrink = new Glide(GROW_MS, 100f);
@@ -390,7 +390,11 @@ final class Editorial extends View {
             }
         }
         Row rw = current();
-        if (rw == null) return false;
+        if (rw == null) {
+            // Nothing on the page yet: Up goes back to the tab bar, the rest wait.
+            if (code == KeyEvent.KEYCODE_DPAD_UP) return host != null && host.edge(Ui.UP);
+            return code == KeyEvent.KEYCODE_DPAD_DOWN || code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT;
+        }
         switch (code) {
             case KeyEvent.KEYCODE_DPAD_LEFT:
                 if (rw.focus > 0) move(rw, rw.focus - 1);
@@ -920,6 +924,17 @@ final class Editorial extends View {
             b.append(w);
         }
         return b.toString();
+    }
+
+    /** Previews: the remote's row caught k of the way (0 to 1) through its last move along it, a card growing, one shrinking. */
+    void previewBetween(float k) {
+        Row rw = current();
+        if (rw == null || shrinking == null) return;
+        int from = rw.cards.indexOf(shrinking);
+        grow.jump(100f * k);
+        shrink.jump(100f * (1f - k));
+        rw.x.jump(target(rw) + (1f - k) * (POSTER_W + GAP) * (from < rw.focus ? 1f : -1f));
+        invalidate();
     }
 
     /** Tests: how wide the remote's card is now, and the card before it (design px). */

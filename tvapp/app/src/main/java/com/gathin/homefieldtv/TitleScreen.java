@@ -287,6 +287,11 @@ final class TitleScreen extends Screen implements TitlePage.Host {
         page.focus(part, along);
     }
 
+    /** Tests: the page itself. */
+    TitlePage page() {
+        return page;
+    }
+
     /** Previews: TMDB's extras as if it had answered. */
     void previewExtras(Tmdb.Extras x) {
         page.extras(x);

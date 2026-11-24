@@ -52,12 +52,16 @@ public class EditorialFrameTest {
     private final List<FrameMeter.Run> runs = new ArrayList<>();
 
     @After public void after() {
+        Exec.inline = false;
+        EditorialPageTest.drain();
         if (app != null) {
             Library.get(app).clear();
             Sources.clear(app);
         }
         EditorialData.clear();
         Exec.inline = false;
+        // The next test's own app makes its own catalogue.
+        EditorialData.freshCatalog();
     }
 
     private static void idle() {
@@ -66,7 +70,9 @@ public class EditorialFrameTest {
     }
 
     private void start() throws Exception {
+        EditorialPageTest.drain();
         app = RuntimeEnvironment.getApplication();
+        EditorialData.freshCatalog();
         Exec.inline = true;
         FrameCostData.load(app, new File(app.getCacheDir(), "frame-cost"));
         EditorialData.load(Catalog.get(app).films(), Catalog.get(app).series());
