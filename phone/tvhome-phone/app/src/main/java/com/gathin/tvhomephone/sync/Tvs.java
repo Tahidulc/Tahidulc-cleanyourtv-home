@@ -103,6 +103,35 @@ public final class Tvs {
         });
     }
 
+    /**
+     * The family's Anthropic API key (and the model chosen) sent to every paired TV over the pairing (POST /ai/key), for
+     * the launcher's Ask AI; never logged. The answer: how many TVs took it, or why none did.
+     */
+    public static void sendAiKey(Context c, String key, String model, Result<Integer> cb) {
+        Context a = c.getApplicationContext();
+        App.io.execute(() -> {
+            int sent = 0, tried = 0;
+            String err = null;
+            for (JSONObject tv : list(a)) {
+                if (tv.optString("token").isEmpty()) continue;
+                tried++;
+                try {
+                    Syncer.call(a, tv, "/ai/key", new JSONObject().put("key", key == null ? "" : key).put("model", model), 8_000);
+                    sent++;
+                } catch (IOException e) {
+                    int s = Link.status(e);
+                    err = s == 401 ? "Pair with " + tv.optString("name") + " again in Settings"
+                            : s == 404 ? tv.optString("name") + " needs the newer TV launcher" : "Couldn't reach " + tv.optString("name");
+                } catch (JSONException e) {
+                    err = "Couldn't send it";
+                }
+            }
+            int n = sent;
+            String e = tried == 0 ? "No TV is paired yet (Settings, TVs)" : sent == 0 ? err : null;
+            App.main.post(() -> cb.done(n, e));
+        });
+    }
+
     /** Opens the title on that TV in the licensed streaming app that carries it (POST /play). */
     public static void playOnTv(Context c, String tvName, int id, boolean isTv, String title, Result<Boolean> cb) {
         Context a = c.getApplicationContext();

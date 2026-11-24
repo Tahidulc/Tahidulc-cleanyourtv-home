@@ -369,6 +369,18 @@ final class DeliveryLink {
                 reply(s, 200, new JSONObject().put("key", Config.themeString(context, "tmdb_key", "").trim()).toString());
                 return;
             }
+            case "/ai/key": {
+                // The family's Anthropic API key for Ask AI, from a paired phone (kept here in the app's own storage,
+                // never logged or shown; "" takes it away).
+                if (!paired(token)) { reply(s, 401, "{\"error\":\"not paired\"}"); return; }
+                String key = json.optString("key", "").trim();
+                if (key.length() > 400 || key.contains(" ") || key.contains("\n")) { reply(s, 400, "{\"error\":\"not a key\"}"); return; }
+                com.gathin.broadcast.AiKey.set(context, key);
+                if (json.has("model")) com.gathin.broadcast.AiKey.setModel(context, json.optString("model"));
+                AlertLog.note(context, key.isEmpty() ? "Ask AI's key taken away by the phone" : "Ask AI's key set from the phone");
+                reply(s, 200, "{\"ok\":true}");
+                return;
+            }
             case "/unpair": {
                 // A phone forgetting this TV: its token stops working.
                 Set<String> tokens = new HashSet<>(prefs.getStringSet("tokens", new HashSet<>()));

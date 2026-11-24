@@ -257,7 +257,7 @@ public final class BoardSpec {
     }
 
     private static String name(String n) {
-        String s = n == null ? "" : n.replaceAll("[\\p{Cntrl}]", " ").trim().replaceAll("\\s+", " ");
+        String s = n == null ? "" : n.replaceAll("[\\x00-\\x1F\\x7F]", " ").trim().replaceAll("\\s+", " ");
         if (s.isEmpty()) s = "My scoreboard";
         return s.length() > NAME_MAX ? s.substring(0, NAME_MAX).trim() : s;
     }
