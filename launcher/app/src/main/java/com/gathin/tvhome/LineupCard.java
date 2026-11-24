@@ -84,6 +84,8 @@ final class LineupCard {
     private static final int NAVY = 0xFF151A63;
     /** The card's size in the design's pixels on a 1920-wide screen, and its scale there. */
     private static final int W = 700, H = 232, BAND = 84;
+    /** The F1 boards' red band, wider than a line-up's for F1's larger white mark (F1Mark); the board as much wider. */
+    private static final int F1_BAND = 112, F1_W = W + F1_BAND - BAND;
     private static final float SCALE = 0.88f;
     /** How long each page stays: the fixture, each half eleven, and the pitch (long, for time to press OK). */
     private static final long FIRST_MS = 11_000L, PLAYERS_MS = 8_000L, PITCH_MS = 16_000L;
@@ -1329,7 +1331,7 @@ final class LineupCard {
 
     private static void f1Card(Context c, F1 f, Data carrier) {
         k = c.getResources().getDisplayMetrics().widthPixels / 1920f * SCALE;
-        int w = px(W), h = px(H), margin = px(10);
+        int w = px(F1_W), h = px(H), margin = px(10);
         FrameLayout win = new FrameLayout(c);
         FrameLayout card = new FrameLayout(c);
         float r = px(14);
@@ -1340,11 +1342,11 @@ final class LineupCard {
         card.setBackground(new Streaks(F1_BLACK, F1_BLACK_DEEP, 0, px(60), px(4)));
         FrameLayout band = new FrameLayout(c);
         band.setBackground(new Streaks(F1_RED, F1_RED_DEEP, 0x1AFFFFFF, px(14), px(3)));
-        card.addView(band, new FrameLayout.LayoutParams(px(BAND), h));
+        card.addView(band, new FrameLayout.LayoutParams(px(F1_BAND), h));
         FrameLayout stage = new FrameLayout(c);
         stage.setClipChildren(true);
-        FrameLayout.LayoutParams sl = new FrameLayout.LayoutParams(w - px(BAND), h);
-        sl.leftMargin = px(BAND);
+        FrameLayout.LayoutParams sl = new FrameLayout.LayoutParams(w - px(F1_BAND), h);
+        sl.leftMargin = px(F1_BAND);
         card.addView(stage, sl);
         FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(w, h);
         cl.setMargins(margin, margin, margin, margin);
@@ -1420,7 +1422,7 @@ final class LineupCard {
         ImageView mark = new ImageView(c);
         mark.setImageBitmap(sharp(f.mark));
         mark.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        col.addView(mark, new LinearLayout.LayoutParams(px(64), px(17)));
+        col.addView(mark, new LinearLayout.LayoutParams(px(F1_BAND - 16), px(26)));
         TextView ses = text(c, f.session, 10, 0xE6FFFFFF, Typeface.create("sans-serif-condensed", Typeface.BOLD));
         ses.setLetterSpacing(0.18f);
         LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-2, -2);
@@ -1431,7 +1433,7 @@ final class LineupCard {
         cap.setSingleLine(false);
         cap.setMaxLines(2);
         cap.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams cpl = new LinearLayout.LayoutParams(px(BAND) - px(6), -2);
+        LinearLayout.LayoutParams cpl = new LinearLayout.LayoutParams(px(F1_BAND) - px(6), -2);
         cpl.topMargin = px(16);
         col.addView(cap, cpl);
         band.addView(col, new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER));
@@ -1793,7 +1795,7 @@ final class LineupCard {
 
     private static void f1Bar(Context c, F1 f, Data carrier) {
         k = c.getResources().getDisplayMetrics().widthPixels / 1920f;
-        int w = ScoresTicker.corner() ? ScoresTicker.laneRight - ScoresTicker.laneLeft : px(1728), h = px(80), bandW = px(150);
+        int w = ScoresTicker.corner() ? ScoresTicker.laneRight - ScoresTicker.laneLeft : px(1728), h = px(80), bandW = px(180);
         // Square-edged as the cards over the apps when it opens out of the Sky top bar; else round-ended.
         float r = ScoresTicker.sky && ScoresTicker.corner() ? SkyStyle.corner(c) : h / 2f;
         FrameLayout win = new FrameLayout(c);
@@ -1811,7 +1813,7 @@ final class LineupCard {
         ImageView mark = new ImageView(c);
         mark.setImageBitmap(sharp(f.mark));
         mark.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        band.addView(mark, new FrameLayout.LayoutParams(px(118), px(40), Gravity.CENTER));
+        band.addView(mark, new FrameLayout.LayoutParams(px(152), px(44), Gravity.CENTER));
         row.addView(band, new LinearLayout.LayoutParams(bandW, h));
         LinearLayout label = new LinearLayout(c);
         label.setOrientation(LinearLayout.VERTICAL);

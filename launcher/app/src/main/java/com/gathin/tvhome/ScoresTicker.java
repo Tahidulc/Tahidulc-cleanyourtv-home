@@ -1076,7 +1076,8 @@ final class ScoresTicker {
                     default: return false;
                 }
             });
-            if (g.leagueLogo != null) b.addView(logoView(g.leagueLogo, 0));
+            if ((g.drivers != null || g.text != null) && F1Mark.is(g.leagueLogo)) b.addView(f1View());
+            else if (g.leagueLogo != null) b.addView(logoView(g.leagueLogo, 0));
             else b.addView(label(league(g)));
             if (g.drivers != null || g.text != null) {
                 // F1: the session, then its top three with their team logos (or the Grand Prix, before it starts).
@@ -1180,26 +1181,30 @@ final class ScoresTicker {
             }
         });
         boolean f1 = shown.f1;
-        // The competition's logo on its dark block (F1's red), at the start.
+        // The competition's logo on its dark block (F1's red), at the start. F1's block is a little wider, its mark
+        // white and cut to its edges so it fills it (ESPN's red mark sat small and shaded into the red).
+        int compW = f1 ? BUG_COMP_F1 : BUG_COMP;
         FrameLayout comp = new FrameLayout(context);
         comp.setBackground(new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
                 f1 ? new int[]{SkyStyle.F1_RED, SkyStyle.F1_DEEP} : new int[]{0xFF141B63, BUG_NAVY}));
         if (g.leagueLogo != null) {
             ImageView lv = new ImageView(context);
             lv.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            loadLogo(g.leagueLogo, lv);
-            comp.addView(lv, new FrameLayout.LayoutParams(sk(f1 ? 40 : 30), sk(30), Gravity.CENTER));
+            boolean mark = f1 && F1Mark.is(g.leagueLogo);
+            loadLogo(mark ? F1Mark.ON_RED : g.leagueLogo, lv);
+            comp.addView(lv, new FrameLayout.LayoutParams(sk(mark ? BUG_COMP_F1 - 8 : f1 ? 40 : 30), sk(mark ? 28 : 30), Gravity.CENTER));
         } else {
             TextView lt = skyText(league(g), 11, 0xFFFFFFFF, 800);
             comp.addView(lt, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
         }
-        b.addView(comp, new FrameLayout.LayoutParams(sk(BUG_COMP), ViewGroup.LayoutParams.MATCH_PARENT));
+        b.addView(comp, new FrameLayout.LayoutParams(sk(compW), ViewGroup.LayoutParams.MATCH_PARENT));
         if (f1) {
             // F1: the session and its leaders (team logos) on the white, the lap or time on the blue at the end.
             LinearLayout mid = new LinearLayout(context);
             mid.setGravity(Gravity.CENTER_VERTICAL);
             mid.setBackground(bugWhite());
-            mid.setPadding(sk(10), 0, sk(8), 0);
+            // A little closer together than they were, for the wider F1 block.
+            mid.setPadding(sk(7), 0, sk(8), 0);
             mid.addView(skyText(g.home, 15, BUG_INK, 800));
             if (g.drivers != null) {
                 for (String[] d : g.drivers) {
@@ -1207,7 +1212,7 @@ final class ScoresTicker {
                     tl.setScaleType(ImageView.ScaleType.FIT_CENTER);
                     loadLogo("light:" + d[1], tl);
                     LinearLayout.LayoutParams il = new LinearLayout.LayoutParams(sk(18), sk(18));
-                    il.leftMargin = sk(9);
+                    il.leftMargin = sk(6);
                     mid.addView(tl, il);
                     LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
                     nl.leftMargin = sk(3);
@@ -1221,7 +1226,7 @@ final class ScoresTicker {
                 mid.addView(name, nl);
             }
             FrameLayout.LayoutParams ml = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-            ml.leftMargin = sk(BUG_COMP);
+            ml.leftMargin = sk(compW);
             ml.rightMargin = sk(86);
             b.addView(mid, ml);
             shown.homeWedge = mid;
@@ -1294,6 +1299,8 @@ final class ScoresTicker {
      * the crests' size on their tiles (large, the box being 50 high).
      */
     private static final int BUG_COMP = 52, BUG_TILE = 110, BUG_MID = 142, BUG_CREST = 40;
+    /** F1's red block in the Sky top bar's pill: wider than a competition's, for its wide mark. */
+    private static final int BUG_COMP_F1 = 64;
     /** Its navy (the competition's block and the focus rim), its ink on the white, and the white's foot. */
     private static final int BUG_NAVY = 0xFF0B1150, BUG_INK = 0xFF0B1150, BUG_WHITE_FOOT = 0xFFE4E7F1;
 
@@ -1676,6 +1683,20 @@ final class ScoresTicker {
         return lp;
     }
 
+    /** F1's mark on the plain glass pills: in its red, cut to its edges, f1Lead wide (it had a crest's square). */
+    private ImageView f1View() {
+        ImageView v = new ImageView(context);
+        v.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        v.setLayoutParams(new LinearLayout.LayoutParams(f1Lead(), logo));
+        loadLogo(F1Mark.ON_DARK, v);   // its red reads on the dark glass and on a light wallpaper's white pills alike
+        return v;
+    }
+
+    /** The width F1's mark takes at the start of a plain pill. */
+    private int f1Lead() {
+        return Math.round(logo * 2.6f);
+    }
+
     private ImageView logoView(String url, int left) {
         ImageView v = new ImageView(context);
         v.setScaleType(ImageView.ScaleType.FIT_CENTER);
@@ -1693,7 +1714,7 @@ final class ScoresTicker {
             int extra = dp(8 + 8);
             if (g.drivers != null) for (String[] d : g.drivers) { t += measure.measureText(d[0]); extra += logo + dp(8 + 3); }
             else { t += measure.measureText(g.text); extra += dp(8); }
-            return Math.round(t) + logo + extra + dp(24) + dp(4);
+            return Math.round(t) + (F1Mark.is(g.leagueLogo) ? f1Lead() : logo) + extra + dp(24) + dp(4);
         }
         float text = measure.measureText(teams(g).toString()) + measure.measureText(detail(g).toString());
         int lead = g.leagueLogo != null ? logo : Math.round(measure.measureText(league(g).toString()));
@@ -1814,6 +1835,8 @@ final class ScoresTicker {
 
     /** From the disk cache, or from ESPN's resizer at twice the logo size, then saved for next time. */
     private Bitmap fetchLogo(String url) {
+        // F1's mark cut to its edges, white for its red block or in its red for the glass (F1Mark).
+        if (url.startsWith("f1mark:")) return F1Mark.of(context, url);
         // On the Sky ticker's pale stage: the logo as it is (its version for light grounds), never whitened.
         if (url.startsWith("light:")) return cachedLogo(context, url.substring(6).replace("/500-dark/", "/500/"), logo);
         // The scores line is dark glass, but for a light wallpaper's white pills: there, a competition's logo in its
@@ -1852,6 +1875,26 @@ final class ScoresTicker {
      * then made from that copy at twice the size (at least 256 pixels) with smooth scaling. Off the main thread.
      */
     static Bitmap cachedLogo(Context context, String url, int logo) {
+        // At least twice the size it is drawn at (and never under 256 pixels), so it stays sharp however it is shown.
+        return cached(context, url, Math.max(256, Math.min(1024, logo * 2)), false);
+    }
+
+    /**
+     * A photo (a still, a backdrop, a face) for drawing at most side pixels along its longer side: from the same disk
+     * cache, made at that size and no larger (a photo needs no doubling to stay sharp), in 16-bit colour when opaque
+     * (half the memory: a JPEG has nothing see-through). Null when it cannot be had, or there is no memory for it (the
+     * caches then let go of half of what they hold). Off the main thread.
+     */
+    static Bitmap cachedPicture(Context context, String url, int side, boolean opaque) {
+        try {
+            return cached(context, url, Math.max(32, side), opaque);
+        } catch (OutOfMemoryError e) {
+            ByteLru.trimAll(0.5f);
+            return null;
+        }
+    }
+
+    private static Bitmap cached(Context context, String url, int target, boolean opaque) {
         if (url == null || url.isEmpty()) return null;
         File dir = new File(context.getCacheDir(), "pictures");
         dropOldCache(context);
@@ -1871,8 +1914,7 @@ final class ScoresTicker {
                 if (!part.renameTo(file)) { part.delete(); return null; }
             }
         }
-        // At least twice the size it is drawn at (and never under 256 pixels), so it stays sharp however it is shown.
-        Bitmap b = decodeTo(file, Math.max(256, Math.min(1024, logo * 2)));
+        Bitmap b = decodeTo(file, target, opaque);
         if (b == null) { file.delete(); return null; }
         return url.endsWith("#uhd") ? uhdLogo(context, b) : b;
     }
@@ -1920,7 +1962,7 @@ final class ScoresTicker {
      * (whole halvings, cheaply) to no less than one and a half times that, then brought down in halves with filtering
      * and a last smooth step, so edges stay clean; marked for mipmaps, so drawn smaller still it stays smooth.
      */
-    private static Bitmap decodeTo(File f, int target) {
+    private static Bitmap decodeTo(File f, int target, boolean opaque) {
         BitmapFactory.Options o = new BitmapFactory.Options();
         o.inJustDecodeBounds = true;
         BitmapFactory.decodeFile(f.getPath(), o);
@@ -1929,7 +1971,7 @@ final class ScoresTicker {
         while (big / (sample * 2) >= target * 3 / 2) sample *= 2;
         BitmapFactory.Options d = new BitmapFactory.Options();
         d.inSampleSize = sample;
-        d.inPreferredConfig = Bitmap.Config.ARGB_8888;
+        d.inPreferredConfig = opaque ? Bitmap.Config.RGB_565 : Bitmap.Config.ARGB_8888;
         Bitmap b = BitmapFactory.decodeFile(f.getPath(), d);
         if (b == null) return null;
         while (Math.max(b.getWidth(), b.getHeight()) >= target * 2) {

@@ -85,19 +85,29 @@ final class HomeV2 {
             R.drawable.ic_v2_shows, R.drawable.ic_v2_sport, R.drawable.ic_v2_grid, R.drawable.ic_v2_kids};
     private static final String[] CAT_MODES = {"guide", "discover", "movies", "shows", "sport", "apps", "kids"};
     static final int KIDS = 6;
-    /** The sections' order along the dock: Kids between Sports and Apps. */
-    static final int[] DOCK_ORDER = {0, 1, 2, 3, 4, KIDS, 5};
+    /** The sections' usual order along the dock: Kids between Sports and Apps. */
+    static final int[] DOCK_ORDER = DockOrder.DEFAULT_SECTIONS;
+    /**
+     * The sections along the dock now, in order (Edit dock moves them, and takes off any but TV Guide and Apps): a
+     * section not in it is not on the dock. Its view is then off the dock's layer, its page still opened by openBox.
+     */
+    int[] secOrder = DOCK_ORDER.clone();
 
-    /** Where section `which` stands along the dock (beside the rail, its own place). */
-    private int dockPos(int which) {
+    /** Where section `which` stands along the dock (beside the rail, its own place); -1 when it is off the dock. */
+    int dockPos(int which) {
         if (!dockMode) return which;
-        for (int i = 0; i < DOCK_ORDER.length; i++) if (DOCK_ORDER[i] == which) return i;
-        return which;
+        for (int i = 0; i < secOrder.length; i++) if (secOrder[i] == which) return i;
+        return -1;
     }
 
     /** The section standing at place `pos` along the dock. */
     private int sectionAt(int pos) {
-        return dockMode ? DOCK_ORDER[pos] : pos;
+        return dockMode ? secOrder[Math.max(0, Math.min(secOrder.length - 1, pos))] : pos;
+    }
+
+    /** How many sections stand along the dock (beside the rail, all six boxes). */
+    private int dockSections() {
+        return dockMode ? secOrder.length : catViews.size();
     }
 
     /** The rail: a glyph for each kind of dock app, matched on its package. */
@@ -158,6 +168,14 @@ final class HomeV2 {
     final Handler main = new Handler(Looper.getMainLooper());
     final ExecutorService io = Executors.newFixedThreadPool(3);
     private final ExecutorService pics = Executors.newFixedThreadPool(6);
+    /**
+     * The hero's pictures, one at a time (the big ones: a picture the width of most of the screen and its faded copy).
+     * On the six picture threads, a run along a row or the posters made a hero for every title passed, several at
+     * once, each its full-size picture and a full-size copy, until the Streamer ran out of memory (5.37, 19 Nov).
+     */
+    private final ExecutorService heroPics = Executors.newSingleThreadExecutor();
+    /** The hero picture last asked for: one passed over meanwhile is not made. */
+    private volatile String heroWanted;
     private final BitmapCache cache = new BitmapCache("home", BitmapCache.share(6, 48L * 1024 * 1024));
     private final Map<String, List<Tile>> rows = new HashMap<>();
     private final Map<String, Long> rowsAt = new HashMap<>();
@@ -166,6 +184,11 @@ final class HomeV2 {
     Typeface regular, semi, displayRegular, displaySemi;
     String tmdbKey;
     private List<String> dock;
+    /** The theme's dock_apps (the dock as it comes), and the dock's order now (DockOrder: the family's, else that). */
+    List<String> dockDefault = new ArrayList<>();
+    DockOrder dockOrder = DockOrder.defaults(new ArrayList<>());
+    /** Edit dock while it is open (hold OK on a dock item, or the Control Centre), else null. */
+    private DockEditor dockEdit;
     List<String[]> channels;
 
     FrameLayout root;
@@ -427,7 +450,11 @@ final class HomeV2 {
         // where its web process (some 130 MB) left the apps opened from Home short of memory: there it loads with
         // the first trailer, and goes when Home does (stop).
         if (!tmdbKey.isEmpty() && !lite) players.warm();
-        dock = new ArrayList<>(Config.load(a).dockApps);
+        // The dock's apps and sections in the family's order (Edit dock), else the theme's dock_apps as they come.
+        dockDefault = new ArrayList<>(Config.load(a).dockApps);
+        dockOrder = DockOrder.current(a, dockDefault);
+        dock = dockOrder.packages();
+        secOrder = dockOrder.sectionArray();
         // Two at once left mid-way (the launcher restarted): its windows full size and every app's sound back.
         TwoUp.recover(a);
         channels = guideChannels(a);
@@ -992,6 +1019,9 @@ final class HomeV2 {
         // The launcher's look (HomeStyle): Home, SWIPTV style or UHF style, changed at once from its picker.
         items.add(new ControlCentre.Item("Launcher style", R.drawable.ic_style, () -> HomeStyle.name(HomeStyle.chosen(a)), null,
                 () -> HomeStyle.pick(this)));
+        // Edit dock: the dock's apps added, taken off and moved, its sections moved (holding OK on a dock item opens it too).
+        if (dockMode) items.add(new ControlCentre.Item("Edit dock", R.drawable.ic_dock_edit, () -> "Add, remove and move apps", null,
+                () -> editDock(false)));
         items.add(new ControlCentre.Item("Wi-Fi", R.drawable.ic_wifi, () -> wifi.getText().toString(), null,
                 () -> open(new Intent(android.provider.Settings.ACTION_WIFI_SETTINGS))));
         items.add(new ControlCentre.Item("Inputs", R.drawable.ic_input, () -> "HDMI and sources", null, () -> showInputs(wifi)));
@@ -1187,30 +1217,21 @@ final class HomeV2 {
 
     private void buildRail() {
         List<String> apps = new ArrayList<>();
-        for (String p : dock) if (installed(p)) apps.add(p);
-        apps.add(null);   // all apps
+        // The dock's apps in its order, All apps (null) where the family put it (last, as it comes); only those on the TV.
+        for (String p : dockOrder.apps) {
+            if (DockOrder.ALL.equals(p)) apps.add(null);
+            else if (installed(p)) apps.add(p);
+        }
         int y = 300;
         for (String p : apps) {
-            FrameLayout f = new FrameLayout(a);
-            f.setTag(p);
-            f.setClipToOutline(true);
-            f.setOutlineProvider(round(18));
-            f.setBackground(fill(18, GLASS));
-            ImageView art = new ImageView(a);
-            art.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            art.setAlpha(0f);
+            FrameLayout f = railView(p);
             if (p != null) {
                 try {
                     Drawable icon = a.getPackageManager().getApplicationIcon(p);
-                    art.setImageDrawable(fullSquare(icon));
+                    ((ImageView) f.getChildAt(0)).setImageDrawable(fullSquare(icon));
                 } catch (PackageManager.NameNotFoundException ignored) {
                 }
             }
-            f.addView(art, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-            ImageView g = new ImageView(a);
-            g.setImageResource(glyph(p));
-            g.setAlpha(0.85f);
-            f.addView(g, new FrameLayout.LayoutParams(px(30), px(30), Gravity.CENTER));
             if (!dockMode) add(f, 96, y, 64, 64);
             railViews.add(f);
             y += 84;
@@ -1225,6 +1246,38 @@ final class HomeV2 {
     }
 
     private View markView;
+
+    /**
+     * One app's place on the rail or the dock (null: All apps): its icon (set by the caller, alpha 0 until painted) over
+     * the glass, and its glyph for when it is not in colour.
+     */
+    FrameLayout railView(String p) {
+        FrameLayout f = new FrameLayout(a);
+        f.setTag(p);
+        f.setClipToOutline(true);
+        f.setOutlineProvider(round(18));
+        f.setBackground(fill(18, GLASS));
+        ImageView art = new ImageView(a);
+        art.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        art.setAlpha(0f);
+        f.addView(art, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        ImageView g = new ImageView(a);
+        g.setImageResource(glyph(p));
+        g.setAlpha(0.85f);
+        f.addView(g, new FrameLayout.LayoutParams(px(30), px(30), Gravity.CENTER));
+        if (lite) f.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        return f;
+    }
+
+    /** An app's icon for its place on the dock, read off the main thread: null when it has none (or is gone). */
+    Drawable dockIcon(String p) {
+        if (p == null) return null;
+        try {
+            return fullSquare(a.getPackageManager().getApplicationIcon(p));
+        } catch (PackageManager.NameNotFoundException | RuntimeException e) {
+            return null;
+        }
+    }
 
     /**
      * An app's icon filling its whole rounded square. An adaptive icon (Disney+, Prime Video) is two layers Android
@@ -1266,33 +1319,22 @@ final class HomeV2 {
      * focus sits between the glass and the icons.
      */
     private void layoutDock() {
-        int n = railViews.size(), sections = catViews.size();
-        int width = DOCK_EDGE + n * DOCK_APP + (n - 1) * DOCK_GAP + DOCK_EDGE + 2 + DOCK_GAP + sections * DOCK_SEC + (sections - 1) * DOCK_GAP + 20;
-        int x0 = (1920 - width) / 2;
         dockLayer = new FrameLayout(a);
         dockLayer.setClipChildren(false);
+        // No outline: lifted over Edit dock's shade (translationZ) it casts no shadow.
+        dockLayer.setOutlineProvider(null);
         root.addView(dockLayer, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         dockBg = new View(a);
         GradientDrawable g = fill(30, 0x1FFFFFFF);
         g.setStroke(px(1.5f), 0x3DFFFFFF);
         dockBg.setBackground(g);
-        addDock(dockBg, x0, DOCK_Y, width, DOCK_H);
+        addDock(dockBg, 0, DOCK_Y, 10, DOCK_H);
         lens = new GlassLens(a, s);
         dockLayer.addView(lens, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        int x = x0 + DOCK_EDGE;
-        for (FrameLayout f : railViews) {
-            addDock(f, x, DOCK_Y + (DOCK_H - DOCK_APP) / 2, DOCK_APP, DOCK_APP);
-            x += DOCK_APP + DOCK_GAP;
-        }
-        x += DOCK_EDGE - DOCK_GAP;
         dockSep = new View(a);
         dockSep.setBackgroundColor(0x47FFFFFF);
-        addDock(dockSep, x, DOCK_Y + 20, 2, DOCK_H - 40);
-        x += 2 + DOCK_GAP;
-        for (int k = 0; k < catViews.size(); k++) {
-            addDock(catViews.get(sectionAt(k)), x, DOCK_Y + 10, DOCK_SEC, DOCK_H - 20);
-            x += DOCK_SEC + DOCK_GAP;
-        }
+        addDock(dockSep, 0, DOCK_Y + 20, 2, DOCK_H - 40);
+        placeDock(false);
         if (markView != null) {
             markView.setBackground(fill(3, Color.WHITE));
             addDock(markView, 0, DOCK_Y + DOCK_H - 11, 6, 6);
@@ -1326,6 +1368,179 @@ final class HomeV2 {
         lp.leftMargin = px(x);
         lp.topMargin = px(y);
         dockLayer.addView(v, lp);
+    }
+
+    /**
+     * Every item along the dock in its order now (railViews, then secOrder's sections), centred, the glass as wide as
+     * they need: at Home's start, and again after each change in Edit dock (animate: each item slides from where it
+     * was, one new to the dock grows in, the glass widens or narrows with them). Sections off the dock leave its layer.
+     */
+    void placeDock(boolean animate) {
+        if (dockLayer == null) return;
+        int n = railViews.size(), sections = secOrder.length;
+        int width = DockOrder.width(n, sections), x0 = (1920 - width) / 2;
+        FrameLayout.LayoutParams bl = (FrameLayout.LayoutParams) dockBg.getLayoutParams();
+        int fromL = bl.leftMargin, fromW = bl.width, toL = px(x0), toW = px(width);
+        if (dockGlassAnim != null) dockGlassAnim.cancel();
+        if (animate && fromW > px(20) && (fromL != toL || fromW != toW)) {
+            android.animation.ValueAnimator va = android.animation.ValueAnimator.ofFloat(0f, 1f);
+            va.setDuration(240);
+            va.setInterpolator(SKY);
+            va.addUpdateListener(an -> {
+                float f = (float) an.getAnimatedValue();
+                bl.leftMargin = Math.round(fromL + (toL - fromL) * f);
+                bl.width = Math.round(fromW + (toW - fromW) * f);
+                dockBg.setLayoutParams(bl);
+            });
+            dockGlassAnim = va;
+            va.start();
+        } else {
+            bl.leftMargin = toL;
+            bl.width = toW;
+            dockBg.setLayoutParams(bl);
+        }
+        int x = x0 + DOCK_EDGE;
+        for (FrameLayout f : railViews) {
+            putDock(f, x, DOCK_Y + (DOCK_H - DOCK_APP) / 2, DOCK_APP, DOCK_APP, animate);
+            x += DOCK_APP + DOCK_GAP;
+        }
+        x += DOCK_EDGE - DOCK_GAP;
+        putDock(dockSep, x, DOCK_Y + 20, 2, DOCK_H - 40, animate);
+        x += 2 + DOCK_GAP;
+        List<View> on = new ArrayList<>();
+        for (int k = 0; k < sections; k++) {
+            View v = catViews.get(secOrder[k]);
+            on.add(v);
+            putDock(v, x, DOCK_Y + 10, DOCK_SEC, DOCK_H - 20, animate);
+            x += DOCK_SEC + DOCK_GAP;
+        }
+        for (View v : catViews) if (!on.contains(v) && v.getParent() == dockLayer) dockLayer.removeView(v);
+    }
+
+    /** The dock's glass widening or narrowing after an edit (one at a time). */
+    private android.animation.ValueAnimator dockGlassAnim;
+
+    /** OK held down on a dock item has opened Edit dock: its release is not a press. */
+    private boolean okHeld;
+
+    FrameLayout dockLayer() {
+        return dockLayer;
+    }
+
+    boolean editingDock() {
+        return dockEdit != null;
+    }
+
+    /**
+     * Edit dock: hold OK on a dock item (held: that item picked up, Left and Right moving it at once), or the Control
+     * Centre's Edit dock (the focus on the dock's first app). Home's own dock layout only: under a Home style there is
+     * no dock on screen to edit.
+     */
+    void editDock(boolean held) {
+        if (dockEdit != null || dockLayer == null) return;
+        if (!dockMode || skin != null) {
+            android.widget.Toast.makeText(a, "Edit dock works on Home's own look: choose Home under Launcher style first",
+                    android.widget.Toast.LENGTH_LONG).show();
+            return;
+        }
+        int at = 0;
+        if (held && zone == Z_RAIL && railIdx < railViews.size()) at = railIdx;
+        else if (held && zone == Z_CATS && dockPos(catIdx) >= 0) at = railViews.size() + dockPos(catIdx);
+        guide.hide();
+        if (page != null) closePage();
+        main.removeCallbacks(previewNow);
+        main.removeCallbacks(heroLater);
+        // No tile's video under the shade.
+        main.removeCallbacks(playNow);
+        if (players != null) players.stop();
+        playingTile = null;
+        dockEdit = new DockEditor(this, at, held);
+        dockEdit.open();
+    }
+
+    /**
+     * Edit dock closed, its order saved: the dock as edited (DockEditor left railViews and secOrder in their new order),
+     * the focus on the item that had it there, each item painted afresh (the swell, the slide and the glass).
+     */
+    void dockDone(DockOrder saved, int focus) {
+        dockEdit = null;
+        dockOrder = saved;
+        dock = saved.packages();
+        for (View v : railViews) v.setTag(R.id.v2_state, null);
+        for (View v : catViews) v.setTag(R.id.v2_state, null);
+        if (focus >= 0 && focus < railViews.size()) {
+            zone = Z_RAIL;
+            railIdx = focus;
+        } else {
+            zone = Z_CATS;
+            catIdx = sectionAt(Math.max(0, focus - railViews.size()));
+        }
+        paint();
+    }
+
+    /**
+     * The app whose tiles are showing (railSel) found again after Edit dock moved the dock's views (dock: its view),
+     * or, taken off the dock, For You in its place.
+     */
+    void dockSelected(View was) {
+        int now = was == null ? -1 : railViews.indexOf(was);
+        if (railSel >= 0 && now < 0) {
+            railSel = -1;
+            load("foryou");
+        } else if (railSel >= 0) {
+            railSel = now;
+        }
+        if (railIdx >= railViews.size()) railIdx = Math.max(0, railViews.size() - 1);
+    }
+
+    /** The app whose tiles are showing, its dock view (null: none, or not an app). */
+    View dockSelectedView() {
+        return railSel >= 0 && railSel < railViews.size() ? railViews.get(railSel) : null;
+    }
+
+    /** Edit dock's glass round one item: an app's rounded square or a section's pill, grown and lifted with it. */
+    void lensAt(View item, boolean app, float grow, float lift) {
+        if (lens == null || item == null || !(item.getLayoutParams() instanceof FrameLayout.LayoutParams)) return;
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) item.getLayoutParams();
+        if (app) {
+            float size = lp.width * grow, m = px(APP_GLASS);
+            float cx = lp.leftMargin + lp.width / 2f, cy = lp.topMargin + lp.height / 2f - lift;
+            lens.to(cx - size / 2f - m, cy - size / 2f - m, size + 2 * m, size + 2 * m, px(18) * grow + m, false);
+        } else {
+            float w = lp.width * grow, cx = lp.leftMargin + lp.width / 2f;
+            lens.to(cx - w / 2f - px(10), px(DOCK_Y + 8) - lift + px(4), w + px(20), px(DOCK_H - 16), px(26), false);
+        }
+    }
+
+    /** The dock's mark (the dot under the app whose tiles show), hidden while Edit dock is open. */
+    void dockMark(boolean show) {
+        if (markView != null) markView.animate().alpha(show ? 1f : 0f).setDuration(150).start();
+    }
+
+    /** One item at its place on the dock's layer: put there (growing in, animate), or slid from where it stood. */
+    private void putDock(View v, int x, int y, int w, int h, boolean animate) {
+        if (v.getParent() != dockLayer) {
+            if (v.getParent() instanceof ViewGroup) ((ViewGroup) v.getParent()).removeView(v);
+            addDock(v, x, y, w, h);
+            if (animate) {
+                v.setScaleX(0.4f);
+                v.setScaleY(0.4f);
+                v.setAlpha(0f);
+                v.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(260).setInterpolator(SKY).start();
+            }
+            return;
+        }
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) v.getLayoutParams();
+        int was = lp.leftMargin, to = px(x);
+        lp.leftMargin = to;
+        lp.topMargin = px(y);
+        lp.width = px(w);
+        lp.height = px(h);
+        v.setLayoutParams(lp);
+        if (animate && was != to) {
+            v.setTranslationX(v.getTranslationX() + was - to);
+            v.animate().translationX(0f).setDuration(240).setInterpolator(SKY).start();
+        }
     }
 
     /**
@@ -1410,7 +1625,7 @@ final class HomeV2 {
     /** A dock item's place in the dock (apps first, then the sections); -1 when the focus is not in the dock. */
     private int dockFocus() {
         if (zone == Z_RAIL) return railIdx;
-        if (zone == Z_CATS) return railViews.size() + dockPos(catIdx);
+        if (zone == Z_CATS) return dockPos(catIdx) < 0 ? -1 : railViews.size() + dockPos(catIdx);
         return -1;
     }
 
@@ -1432,7 +1647,7 @@ final class HomeV2 {
             return;
         }
         View item = zone == Z_RAIL && railIdx < railViews.size() ? railViews.get(railIdx)
-                : zone == Z_CATS && catIdx < catViews.size() && (page == null || preview) ? catViews.get(catIdx) : null;
+                : zone == Z_CATS && catIdx < catViews.size() && dockPos(catIdx) >= 0 && (page == null || preview) ? catViews.get(catIdx) : null;
         if (item != null && zone == Z_RAIL) {
             // An app's icon: the glass a rounded square round it, the same margin all round, its corners following the
             // icon's, rising with it. (The sections' pill, wider than tall and left where it was as the icon rose, left
@@ -1718,6 +1933,8 @@ final class HomeV2 {
 
     void stop() {
         onScreen = false;
+        // Edit dock left open as Home goes (an app opened over it): what was done so far is kept.
+        if (dockEdit != null) dockEdit.finish();
         if (skin != null) skin.stop();
         main.removeCallbacks(filmNight);
         TrailerReel.close();
@@ -1775,6 +1992,7 @@ final class HomeV2 {
         io.shutdownNow();
         sportIo.shutdownNow();
         pics.shutdownNow();
+        heroPics.shutdownNow();
         meshIo.shutdownNow();
         cache.evictAll();
         blurSource.evictAll();
@@ -1819,6 +2037,8 @@ final class HomeV2 {
     void home() {
         // Home pressed while two apps are on screen together: their options, not Home.
         if (TwoUp.home(this)) return;
+        // Home pressed in Edit dock: it saves and closes, as Back does.
+        if (dockEdit != null) dockEdit.finish();
         if (controlCentre != null) controlCentre.hide();
         if (notifyPanel != null) notifyPanel.hide();
         if (matchPanel != null) matchPanel.hide();
@@ -1917,6 +2137,8 @@ final class HomeV2 {
         }
         // Movie mode's pre-show: Back twice skips to the film; nothing else moves under it.
         if (MovieMode.isOpen()) return MovieMode.key(e);
+        // Edit dock: every key is its own until Back (or Done) saves.
+        if (dockEdit != null) return dockEdit.key(e);
         // Two at once: its options (Home pressed while both are up) or the apps to choose from.
         if (TwoUp.open()) return TwoUp.key(e);
         if (HomeStyle.isOpen()) return HomeStyle.key(e);
@@ -2004,6 +2226,17 @@ final class HomeV2 {
         if (!ok && !nav) return false;
         // OK acts on release (as Android's buttons do), arrows on press and repeat.
         if (ok) {
+            // Held on a dock item (the remote repeating OK): Edit dock, with that item picked up to move. Its release is
+            // then not a press.
+            if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) okHeld = false;
+            if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() > 0) {
+                if (!okHeld && dockMode && (zone == Z_RAIL || (zone == Z_CATS && dockPos(catIdx) >= 0))) {
+                    okHeld = true;
+                    editDock(true);
+                }
+                return true;
+            }
+            if (e.getAction() == KeyEvent.ACTION_UP && okHeld) { okHeld = false; return true; }
             if (e.getAction() == KeyEvent.ACTION_UP && e.getRepeatCount() == 0 && !e.isCanceled()) press();
             return true;
         }
@@ -2109,7 +2342,7 @@ final class HomeV2 {
                         if (railIdx > 0) selectRail(railIdx - 1);
                     } else if (code == KeyEvent.KEYCODE_DPAD_RIGHT) {
                         if (railIdx < railViews.size() - 1) selectRail(railIdx + 1);
-                        else { if (appsFromRail) closePage(); zone = Z_CATS; catIdx = 0; }
+                        else { if (appsFromRail) closePage(); zone = Z_CATS; catIdx = sectionAt(0); }
                     } else if (code == KeyEvent.KEYCODE_DPAD_UP) {
                         if (appsFromRail && page != null) { enterPage(); return; }
                         int m = shown.size();
@@ -2169,11 +2402,14 @@ final class HomeV2 {
                 break;
             case Z_CATS:
                 if (dockMode && code == KeyEvent.KEYCODE_DPAD_DOWN) break;
+                // A section opened while off the dock (openBox) has no place along it: Left or Right goes to the first.
+                int at = dockPos(catIdx);
                 if (code == KeyEvent.KEYCODE_DPAD_LEFT) {
-                    if (dockPos(catIdx) > 0) catIdx = sectionAt(dockPos(catIdx) - 1);
+                    if (at > 0) catIdx = sectionAt(at - 1);
+                    else if (at < 0) catIdx = sectionAt(0);
                     else { if (page != null) closePage(); zone = Z_RAIL; selectRail(railViews.size() - 1); }
-                } else if (code == KeyEvent.KEYCODE_DPAD_RIGHT && dockPos(catIdx) < catViews.size() - 1) {
-                    catIdx = sectionAt(dockPos(catIdx) + 1);
+                } else if (code == KeyEvent.KEYCODE_DPAD_RIGHT && at < dockSections() - 1) {
+                    catIdx = sectionAt(at < 0 ? 0 : at + 1);
                 } else if (code == KeyEvent.KEYCODE_DPAD_UP) {
                     // Up from a box goes into the section showing above it; with none showing, back to the row.
                     if (page != null && preview) { enterPage(); return; }
@@ -2197,7 +2433,8 @@ final class HomeV2 {
         int best = -1;
         float bestD = Float.MAX_VALUE;
         List<View> all = new ArrayList<>(railViews);
-        all.addAll(catViews);
+        // The sections along the dock, in its order (one off the dock has no place there).
+        for (int k = 0; k < dockSections(); k++) all.add(catViews.get(sectionAt(k)));
         for (int i = 0; i < all.size(); i++) {
             FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) all.get(i).getLayoutParams();
             float d = Math.abs(lp.leftMargin + lp.width / 2f - cx);
@@ -2205,7 +2442,7 @@ final class HomeV2 {
         }
         if (best < 0) return;
         if (best < railViews.size()) { zone = Z_RAIL; railIdx = best; }
-        else { zone = Z_CATS; catIdx = best - railViews.size(); }
+        else { zone = Z_CATS; catIdx = sectionAt(best - railViews.size()); }
     }
 
     private void press() {
@@ -2363,7 +2600,7 @@ final class HomeV2 {
             preview = true;
             clipAboveBoxes();
             zone = Z_CATS;
-            catIdx = pageWhich;
+            catIdx = dockPos(pageWhich) >= 0 ? pageWhich : sectionAt(0);
             paint();
             return;
         }
@@ -2473,6 +2710,8 @@ final class HomeV2 {
     }
 
     void paint() {
+        // Edit dock paints the dock itself, Home frozen under its shade until it closes (dockDone paints again).
+        if (dockEdit != null) return;
         // The background's light in Match Day's clubs' colours while it has the focus.
         if (mesh && zone == Z_MATCH && page == null && match != null && match.active()) adaptMeshClubs(match.shownHome, match.shownAway);
         dockRoom();
@@ -2558,6 +2797,7 @@ final class HomeV2 {
             FrameLayout box = (FrameLayout) catViews.get(i);
             boolean on = zone == Z_CATS && i == catIdx && (page == null || preview);
             boolean sel = page != null && i == pageWhich;
+            if (dockPos(i) < 0) continue;   // off the dock
             float sw = swell(railViews.size() + dockPos(i));
             if (!restyle(box, (on ? 1 : 0) | (sel ? 2 : 0) | Math.round(sw * 100) << 2)) continue;
             LinearLayout in = (LinearLayout) box.getChildAt(1);
@@ -3940,7 +4180,12 @@ final class HomeV2 {
         Bitmap home = fetch(p[0], 300), away = fetch(p[1], 300);
         if (home == null || away == null) return null;
         int size = 300, gap = 200;
-        Bitmap out = Bitmap.createBitmap(size * 2 + gap, size, Bitmap.Config.ARGB_8888);
+        Bitmap out;
+        try {
+            out = Bitmap.createBitmap(size * 2 + gap, size, Bitmap.Config.ARGB_8888);
+        } catch (OutOfMemoryError e) {
+            return null;   // the loading cover without the crests
+        }
         android.graphics.Canvas c = new android.graphics.Canvas(out);
         android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG | android.graphics.Paint.FILTER_BITMAP_FLAG);
         for (int i = 0; i < 2; i++) {
@@ -4277,6 +4522,12 @@ final class HomeV2 {
                 b = Bitmap.createScaledBitmap(b, width, Math.max(1, Math.round(b.getHeight() * width / (float) b.getWidth())), true);
             }
             if (url.contains("newchanlogos")) b = trim(b);
+            // F1's mark (a sport row's chip): cut to its edges, so it fills the chip instead of sitting small in a square.
+            if (F1Mark.is(url) && b != null) {
+                Bitmap cut = trim(b);
+                if (cut != b) b.recycle();
+                b = cut;
+            }
             return url.endsWith("#uhd") ? ScoresTicker.uhdLogo(a, b) : b;
         } catch (Exception | OutOfMemoryError e) {
             return null;
@@ -4443,13 +4694,27 @@ final class HomeV2 {
             then.run();
             return;
         }
-        pics.execute(() -> {
-            Bitmap b = fetch(url, px(1400));
-            if (b == null) return;
-            // A small copy of the whole picture (before its fades) for the background's blur.
-            Bitmap raw = blurBg ? Bitmap.createScaledBitmap(b, BLUR_W, BLUR_H, true) : null;
+        heroWanted = key;
+        heroPics.execute(() -> {
+            // Passed over while the focus ran on (a newer hero asked for): not made at all.
+            if (!key.equals(heroWanted)) return;
+            Bitmap m, raw;
+            try {
+                Bitmap b = fetch(url, px(1400));
+                if (b == null) return;
+                if (!key.equals(heroWanted)) { b.recycle(); return; }
+                // A small copy of the whole picture (before its fades) for the background's blur.
+                raw = blurBg ? Bitmap.createScaledBitmap(b, BLUR_W, BLUR_H, true) : null;
+                m = fade(b);
+                // The picture as fetched is let go at once (fetch made it for this alone); only the hero's copy stays.
+                if (m != b) b.recycle();
+            } catch (OutOfMemoryError | RuntimeException e) {
+                // Short of memory: the picture caches let go of half of what they hold, and this hero goes without its
+                // picture (the one showing stays) rather than the launcher closing.
+                ByteLru.trimAll(0.5f);
+                return;
+            }
             if (raw != null) blurSource.put(key, raw);
-            Bitmap m = fade(b);
             m.prepareToDraw();
             cache.put(key, m);
             main.post(() -> {
@@ -4796,7 +5061,7 @@ final class HomeV2 {
             c.drawRect(0, 0, bw, bh, q);
             shades(c, q, 0, 0, bw / (float) sw);
             return out;
-        } catch (RuntimeException e) {
+        } catch (RuntimeException | OutOfMemoryError e) {
             return null;
         }
     }
@@ -4952,29 +5217,30 @@ final class HomeV2 {
         c.drawRect(-x0 * k, -y0 * k, (1920 - x0) * k, (240 - y0) * k, p);
     }
 
-    /** The bitmap with the hero's fades: out to the left over 40% of the view's width, and out at its foot. */
+    /**
+     * The hero's picture with its fades (out to the left over 40% of the view's width, and out at its foot): only the
+     * part centre-crop shows in the 1400 by 720 view, at no more than the view's size on this screen. It was the whole
+     * picture as fetched (up to twice the view's width) copied at full size: two to four times the memory for each.
+     */
     private Bitmap fade(Bitmap src) {
         int bw = src.getWidth(), bh = src.getHeight();
-        Bitmap out = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888);
+        float[] crop = BakedHero.shownPart(bw, bh, px(1400));
+        int ow = (int) crop[4], oh = (int) crop[5];
+        Bitmap out = Bitmap.createBitmap(ow, oh, Bitmap.Config.ARGB_8888);
         android.graphics.Canvas c = new android.graphics.Canvas(out);
-        c.drawBitmap(src, 0, 0, null);
-        // What centre-crop shows of it in the 1400 by 720 view.
-        float view = 1400f / 720f, visW = bw, visH = bh, x0 = 0, y0 = 0;
-        if (bw / (float) bh > view) { visW = bh * view; x0 = (bw - visW) / 2f; } else { visH = bw / view; y0 = (bh - visH) / 2f; }
+        c.drawBitmap(src, new android.graphics.Rect(Math.round(crop[0]), Math.round(crop[1]), Math.round(crop[0] + crop[2]), Math.round(crop[1] + crop[3])),
+                new android.graphics.Rect(0, 0, ow, oh), new android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG));
         android.graphics.Paint p = new android.graphics.Paint();
         p.setXfermode(new android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_IN));
-        p.setShader(new android.graphics.LinearGradient(x0, 0, x0 + visW * 0.4f, 0, 0x00000000, 0xFF000000, android.graphics.Shader.TileMode.CLAMP));
-        c.drawRect(0, 0, bw, bh, p);
-        p.setShader(new android.graphics.LinearGradient(0, y0 + visH * (1 - 260f / 720f), 0, y0 + visH, 0xFF000000, 0x00000000, android.graphics.Shader.TileMode.CLAMP));
-        c.drawRect(0, 0, bw, bh, p);
+        p.setShader(new android.graphics.LinearGradient(0, 0, ow * 0.4f, 0, 0x00000000, 0xFF000000, android.graphics.Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, ow, oh, p);
+        p.setShader(new android.graphics.LinearGradient(0, oh * (1 - 260f / 720f), 0, oh, 0xFF000000, 0x00000000, android.graphics.Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, ow, oh, p);
         // The background's shades over the picture too (they used to be views above it): the view sits at design
-        // (520, 0), 1400 wide, so one design pixel is visW / 1400 bitmap pixels.
+        // (520, 0), 1400 wide, so one design pixel is ow / 1400 bitmap pixels.
         android.graphics.Paint q = new android.graphics.Paint();
         q.setXfermode(new android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.SRC_ATOP));
-        c.save();
-        c.translate(x0, y0);
-        shades(c, q, 520, 0, visW / 1400f / s);
-        c.restore();
+        shades(c, q, 520, 0, ow / 1400f / s);
         return out;
     }
 

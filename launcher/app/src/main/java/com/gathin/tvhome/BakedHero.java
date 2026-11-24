@@ -22,4 +22,17 @@ final class BakedHero {
         }
         return new float[]{scale, Math.round(dx), Math.round(dy)};
     }
+
+    /**
+     * What of a bw by bh picture the 1400 by 720 hero view shows with centre-crop, and the size it is kept at (no wider
+     * than viewPx, the view's width on this screen, and never enlarged): {x, y, width, height} of the part shown, then
+     * {kept width, kept height}. HomeV2 keeps only that (it kept the whole picture as fetched, up to twice the view's
+     * width, and copied it at full size: two to four times the memory a hero needs).
+     */
+    static float[] shownPart(int bw, int bh, int viewPx) {
+        float view = 1400f / 720f, visW = Math.max(1, bw), visH = Math.max(1, bh), x0 = 0, y0 = 0;
+        if (visW / visH > view) { visW = visH * view; x0 = (Math.max(1, bw) - visW) / 2f; } else { visH = visW / view; y0 = (Math.max(1, bh) - visH) / 2f; }
+        float k = Math.min(1f, Math.max(1, viewPx) / visW);
+        return new float[]{x0, y0, visW, visH, Math.max(1, Math.round(visW * k)), Math.max(1, Math.round(visH * k))};
+    }
 }

@@ -64,6 +64,8 @@ final class PopupFrame {
     /** The dock layout: the glass behind the dock item chosen, the apps' count (the sections come after), the first to take the remote. */
     private static GlassLens lens;
     private static int dockApps, firstFocus;
+    /** The sections along the dock, in Home's order (Edit dock's, DockOrder). */
+    private static int[] secs = HomeV2.DOCK_ORDER;
     private static boolean chrome;
     private static int swallowUp;
 
@@ -145,8 +147,9 @@ final class PopupFrame {
     private static final int DOCK_H = 100, DOCK_APP = 64, DOCK_SEC = 112, DOCK_GAP = 14;
 
     /**
-     * Home's dock along the foot, as on Home: one pane of glass, the dock's apps in their own icons (All apps last),
-     * a thin rule, the six sections (each its icon in its colour over its name). The item with the remote swells, its
+     * Home's dock along the foot, as on Home: one pane of glass, the dock's apps in their own icons (All apps last, or
+     * where Edit dock put it), a thin rule, the sections (each its icon in its colour over its name), all in the order
+     * Home's dock has them (DockOrder). The item with the remote swells, its
      * neighbours a little, and the liquid glass flows behind it from one to the next. An app chosen opens (pop-up mode
      * goes on, over it); All apps or a section opens Home on that section, as the boxes did.
      */
@@ -154,14 +157,18 @@ final class PopupFrame {
         boxes.clear();
         List<String> apps = new ArrayList<>();
         android.content.pm.PackageManager pm = c.getPackageManager();
-        for (String p : Config.load(c).dockApps) {
+        DockOrder order = DockOrder.current(c, Config.load(c).dockApps);
+        for (String p : order.apps) {
+            if (DockOrder.ALL.equals(p)) { apps.add(null); continue; }   // All apps
             try { pm.getPackageInfo(p, 0); apps.add(p); } catch (android.content.pm.PackageManager.NameNotFoundException ignored) { }
         }
-        apps.add(null);   // All apps
+        secs = order.sectionArray();
         dockApps = apps.size();
-        firstFocus = dockApps;   // the TV guide, as the boxes started on
-        int sections = HomeV2.CAT_NAMES.length;
-        int width = HomeV2.DOCK_EDGE + dockApps * DOCK_APP + (dockApps - 1) * DOCK_GAP + HomeV2.DOCK_EDGE + 2 + DOCK_GAP + sections * DOCK_SEC + (sections - 1) * DOCK_GAP + 20;
+        int guide = 0;
+        for (int k = 0; k < secs.length; k++) if (secs[k] == DockOrder.GUIDE) guide = k;
+        firstFocus = dockApps + guide;   // the TV guide, as the boxes started on
+        int sections = secs.length;
+        int width = DockOrder.width(dockApps, sections);
         int x0 = (1920 - width) / 2;
         FrameLayout pane = new FrameLayout(c);
         pane.setClipChildren(false);
@@ -207,7 +214,7 @@ final class PopupFrame {
         place(pane, rule, x, 20, 2, DOCK_H - 40);
         x += 2 + DOCK_GAP;
         for (int k = 0; k < sections; k++) {
-            int i = HomeV2.DOCK_ORDER[k];   // Kids before Apps, as on Home
+            int i = secs[k];   // in Home's order (Kids before Apps as it comes)
             FrameLayout box = new FrameLayout(c);
             box.setClipChildren(false);
             LinearLayout in = new LinearLayout(c);
@@ -247,11 +254,11 @@ final class PopupFrame {
             vv.post(() -> { if (host != null && (host.findFocus() == null || !boxes.contains(host.findFocus()))) dockLook(-1); });
         });
         v.setOnClickListener(vv -> {
-            if (at >= dockApps) openBox(HomeV2.DOCK_ORDER[at - dockApps]);
+            if (at >= dockApps) openBox(secs[at - dockApps]);
             else if (pkg == null) openBox(5);
             else openDockApp(pkg);
         });
-        int last = dockApps + HomeV2.CAT_NAMES.length - 1;
+        int last = dockApps + secs.length - 1;
         v.setOnKeyListener((vv, code, e) -> {
             if (e.getAction() != KeyEvent.ACTION_DOWN) return false;
             if (code == KeyEvent.KEYCODE_DPAD_UP) { if (scores == null || !scores.focus()) leaveFocus(); return true; }
@@ -275,7 +282,7 @@ final class PopupFrame {
             v.animate().scaleX(sw).scaleY(sw).translationX(aside).translationY(on ? -px(i < dockApps ? HomeV2.APP_LIFT : 4) : 0).setDuration(260).setInterpolator(HomeV2.SKY).start();
             if (i >= dockApps && v instanceof FrameLayout && ((FrameLayout) v).getChildAt(0) instanceof LinearLayout) {
                 LinearLayout in = (LinearLayout) ((FrameLayout) v).getChildAt(0);
-                ((ImageView) in.getChildAt(0)).setColorFilter(on ? Color.WHITE : HomeV2.CAT_COLOURS[HomeV2.DOCK_ORDER[i - dockApps]]);
+                ((ImageView) in.getChildAt(0)).setColorFilter(on ? Color.WHITE : HomeV2.CAT_COLOURS[secs[i - dockApps]]);
                 ((TextView) in.getChildAt(1)).setTypeface(Fonts.get(app, on ? R.font.inter_semibold : R.font.inter_ui));
             }
         }

@@ -353,8 +353,9 @@ final class ScoreCard {
         boolean alone = d.crest == null || d.f1;
         if (d.leagueLogo != null) {
             ImageView l = image(c, d.leagueLogo);
-            int lw = d.bigMark ? px(150) : d.wideMark ? px(68) : alone ? px(48) : px(26);
-            int lh = d.bigMark ? px(44) : d.wideMark ? px(30) : alone ? px(48) : px(26);
+            // F1's white mark larger, on a wider red band (F1Mark: it was small in its band).
+            int lw = d.f1 ? px(100) : d.bigMark ? px(150) : d.wideMark ? px(68) : alone ? px(48) : px(26);
+            int lh = d.f1 ? px(34) : d.bigMark ? px(44) : d.wideMark ? px(30) : alone ? px(48) : px(26);
             band.addView(l, new LinearLayout.LayoutParams(lw, lh));
         }
         if (d.crest != null && !d.f1) {
@@ -363,7 +364,7 @@ final class ScoreCard {
             cl.topMargin = px(4);
             band.addView(image(c, d.crest), cl);
         }
-        int bandW = d.bigMark ? px(176) : d.wideMark ? px(86) : px(62);
+        int bandW = d.f1 ? px(118) : d.bigMark ? px(176) : d.wideMark ? px(86) : px(62);
         FrameLayout bandBox = new FrameLayout(c);
         bandBox.setBackground(band.getBackground());
         band.setBackground(null);
@@ -460,10 +461,10 @@ final class ScoreCard {
         boolean ko = "kickoff".equals(d.kind);
         FrameLayout band = new FrameLayout(c);
         band.setBackground(bandGround(d, false));
-        int bandW = d.bigMark ? px(230) : d.wideMark ? px(150) : px(120);
+        int bandW = d.f1 ? px(190) : d.bigMark ? px(230) : d.wideMark ? px(150) : px(120);
         if (!plainBlack(d)) band.addView(stripes(c, d), new FrameLayout.LayoutParams(bandW + STRIPE_PERIOD_PX(), h));
         if (d.leagueLogo != null) band.addView(image(c, d.leagueLogo), new FrameLayout.LayoutParams(
-                d.bigMark ? px(200) : d.wideMark ? px(124) : px(40), d.bigMark ? px(40) : px(40), Gravity.CENTER));
+                d.f1 ? px(164) : d.bigMark ? px(200) : d.wideMark ? px(124) : px(40), d.f1 ? px(46) : px(40), Gravity.CENTER));
         bar.addView(band, new LinearLayout.LayoutParams(bandW, h));
         // A kick-off's label is KICK-OFF alone: how long until it is said once, after the clubs.
         String small = d.labelSmall;
