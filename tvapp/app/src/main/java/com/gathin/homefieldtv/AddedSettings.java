@@ -95,7 +95,7 @@ final class AddedSettings implements SettingsScreen.Pages {
             case "about.auto": auto(out); break;
             case "channels.merged": merged(out); break;
             case "other.scoreboard.more": board(out); break;
-            case AiSettings.PAGE: AiSettings.rows(tv, out); break;
+            case AiSettings.PAGE: AiSettings.rows(s, tv, out); break;
             case LICENCES: licences(out); break;
             default: break;
         }

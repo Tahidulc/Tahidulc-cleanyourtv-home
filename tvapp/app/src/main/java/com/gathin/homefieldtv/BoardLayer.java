@@ -25,6 +25,7 @@ import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.sports.BoardClock;
+import com.gathin.homefieldtv.sports.BoardTime;
 import com.gathin.homefieldtv.sports.Espn;
 import com.gathin.homefieldtv.sports.FotMob;
 import com.gathin.homefieldtv.sports.Game;
@@ -126,7 +127,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
     private final BoardClock.Steady steady = time.steady;
     private final int[] announced = new int[4];
     /** "Checking VAR" out beside the board, and when it comes off (VarCheck). */
-    private final BoardVar var = new BoardVar();
+    private final BoardVar varOut = new BoardVar();
     /** The check whose game was seen gone on past it (the commentary's next line), once each. */
     private String varMovedKey;
     private long nextFind, nextPoll, nextSummary;
@@ -486,7 +487,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         game = null;
         time.reset();
         Arrays.fill(announced, 0);
-        var.off();
+        varOut.off();
         varMovedKey = null;
         shownScore = null;
         phaseWas = null;
@@ -616,7 +617,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         time.fotmob(at, g.id, fm.status);
         boolean flag = fm.varPending;
         String id = g.id;
-        if (flag || var.isOut(id)) pending.add(id, stamp(g, at, -1), () -> var.flag(id, flag));
+        if (flag || varOut.isOut(id)) pending.add(id, stamp(g, at, -1), () -> varOut.flag(id, flag));
     }
 
     /** The game's summary read at seen: the minutes added, the elevens, and what happened, each waiting for the picture. */
@@ -1353,7 +1354,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             while (drops.size() > 4) queuedAt.remove(drops.removeFirst());
         }
         // A VAR decision while its check is out: the check turns into it now, not after the check's longest.
-        if ("VAR".equals(d.chip) && !d.varCheck && var.isOut(d.gameId) && drop.isOut()) {
+        if ("VAR".equals(d.chip) && !d.varCheck && varOut.isOut(d.gameId) && drop.isOut()) {
             hideDrop();
             return;
         }
@@ -1367,8 +1368,8 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
      */
     private void varOn(String gameId) {
         if (gameId == null) return;
-        var.movedOn(gameId);
-        if (var.isOut(gameId)) return;
+        varOut.movedOn(gameId);
+        if (varOut.isOut(gameId)) return;
         boolean gone = false;
         for (Iterator<BoardDrop.Drop> it = drops.iterator(); it.hasNext(); ) {
             BoardDrop.Drop q = it.next();
@@ -1384,14 +1385,14 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
     /** The VAR check out beside the board, each second: off as soon as it is over (VarCheck), or turned into its decision. */
     private void varTick(long now) {
         BoardDrop.Drop out = drop.isOut() ? drop.showing() : null;
-        if (out == null) var.off();
+        if (out == null) varOut.off();
         // None out, or the one out already going (hideDrop let it go).
-        if (out == null || !out.varCheck || !var.isOut(out.gameId)) return;
+        if (out == null || !out.varCheck || !varOut.isOut(out.gameId)) return;
         BoardDrop.Drop next = drops.peekFirst();
         boolean decided = next != null && "VAR".equals(next.chip) && !next.varCheck && out.gameId != null && out.gameId.equals(next.gameId);
-        if (!var.over(now, decided)) return;
+        if (!varOut.over(now, decided)) return;
         if (!decided) VarExplained.checkEnded(out.gameId, now);
-        var.off();
+        varOut.off();
         hideDrop();
     }
 
@@ -1436,8 +1437,8 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         if (out != null && out.varCheck && "VAR".equals(d.chip) && !d.varCheck) drop.turnTo(d);
         else drop.show(d);
         // A check out from now until it is over (varTick: VarCheck), its longest at most.
-        if (d.varCheck) var.out(d.gameId, System.currentTimeMillis());
-        else var.off();
+        if (d.varCheck) varOut.out(d.gameId, System.currentTimeMillis());
+        else varOut.off();
         h.removeCallbacks(hideDropRun);
         h.postDelayed(hideDropRun, d.varCheck ? VarExplained.CHECK_MAX_MS
                 : "VAR".equals(d.chip) ? Math.max(VarExplained.WHY_MS, drop.showFor(DROP_MS)) : drop.showFor(DROP_MS));
@@ -1448,7 +1449,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         // A check whose decision is waiting: the decision turns it over in place.
         BoardDrop.Drop next = drops.peekFirst(), out = drop.showing();
         // The check out goes (folded away, or turned into its decision): nothing more to wait for on it.
-        if (out != null && out.varCheck) var.off();
+        if (out != null && out.varCheck) varOut.off();
         if (out != null && out.varCheck && next != null && "VAR".equals(next.chip) && !next.varCheck) {
             nextDrop();
             return;
