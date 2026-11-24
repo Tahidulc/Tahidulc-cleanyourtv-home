@@ -36,6 +36,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 final class ChannelCards {
     private static final long SOON_MS = 1_500L, PICTURES_MS = 2_500L, TICK_MS = 20 * 60_000L;
+    /** The one maker, for the app's process: it holds the application's context only (never an activity). */
+    @android.annotation.SuppressLint("StaticFieldLeak")
     private static ChannelCards instance;
 
     private final Context app;
