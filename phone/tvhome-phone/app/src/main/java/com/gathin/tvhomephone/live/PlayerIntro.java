@@ -707,7 +707,7 @@ final class PlayerIntro {
         viewKind = kind;
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(pw > 0 ? Math.round(pw) : -1, ph > 0 ? Math.round(ph) : -1);
         // just over the picture and the scoreboard: the player's own tile and buttons still come up over it
-        root.addView(v, Math.min(5, root.getChildCount()), lp);
+        root.addView(v, Gestures.over(root, 4), lp);
         v.setTranslationX(pw > 0 ? px : 0);
         v.setTranslationY(ph > 0 ? py : 0);
         if (hidesBoard(kind)) lineupsUp.accept(true);

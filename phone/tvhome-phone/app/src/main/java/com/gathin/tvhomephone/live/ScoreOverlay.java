@@ -205,11 +205,12 @@ final class ScoreOverlay implements ScoreBoard.Source {
             adjust();
             return true;
         });
-        // Just over the picture and its touch layer: the tile, the buttons and the sheets stay over them.
-        root.addView(cover, Math.min(2, root.getChildCount()), new FrameLayout.LayoutParams(0, 0, Gravity.TOP | Gravity.START));
+        // Just over the picture and its touch layer (found, not counted: Gestures.over), so it can be held and tapped
+        // twice; the tile, the buttons and the sheets stay over them.
+        root.addView(cover, Gestures.over(root, 1), new FrameLayout.LayoutParams(0, 0, Gravity.TOP | Gravity.START));
         // The fill just under the cover, over the whole picture (it draws only the logo's strokes, where they are).
         root.addView(fill, root.indexOfChild(cover), new FrameLayout.LayoutParams(-1, -1));
-        root.addView(board.view, Math.min(3, root.getChildCount()), new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START));
+        root.addView(board.view, Gestures.over(root, 2), new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START));
         // The plates over what grows out of the channel's own scoreboard: just under the board, so what slides out of
         // it is always over them.
         plates = new BugPlates(a);
@@ -2123,7 +2124,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
         adBreak = view;
         // The board's half-time and full-time pop-outs wait while it is up (they come after it, not on top of it).
         board.holdBreakMoments(true);
-        root.addView(view, Math.min(4, root.getChildCount()), new FrameLayout.LayoutParams(-1, -1));
+        root.addView(view, Gestures.over(root, 3), new FrameLayout.LayoutParams(-1, -1));
         App.io.execute(() -> {
             AdBreakData.Content k = g != null ? AdBreakData.load(app, g) : AdBreakData.general(app, title);
             App.main.post(() -> {

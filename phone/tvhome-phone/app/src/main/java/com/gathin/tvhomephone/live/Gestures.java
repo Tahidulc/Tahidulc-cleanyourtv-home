@@ -16,6 +16,25 @@ import androidx.annotation.NonNull;
  * or a swipe; a slide that starts at an edge is the edge's, never a change of channel.
  */
 final class Gestures implements View.OnTouchListener {
+    /**
+     * The full screen's touch layer is tagged with this, so what goes over the picture (the scoreboard, the cover over
+     * the channel's logo, the ad break, the broadcast pages) is put just over it, wherever it stands among the player's
+     * views (over), never by a count from the bottom that a view added under it (the swipe's veil, 5.29) can throw out:
+     * under it, they never had a touch, so they couldn't be held, dragged or tapped twice (the family, 24 Nov).
+     */
+    static final Object LAYER = new Object();
+
+    /**
+     * Pure: where to put a view k places over the touch layer among root's children (1: just over it), as the player's
+     * views had them when the layer was the second child; with no layer found, as if it were.
+     */
+    static int over(android.view.ViewGroup root, int k) {
+        int layer = -1;
+        for (int i = 0; i < root.getChildCount(); i++) if (root.getChildAt(i).getTag() == LAYER) layer = i;
+        if (layer < 0) layer = 1;
+        return Math.max(0, Math.min(layer + k, root.getChildCount()));
+    }
+
     static final int NONE = 0, UP = 1, DOWN = 2, LEFT = 3, RIGHT = 4;
     static final int MIDDLE = 0, LEFT_EDGE = 1, RIGHT_EDGE = 2;
     /** The share of the width either side that is an edge, for its slides. */

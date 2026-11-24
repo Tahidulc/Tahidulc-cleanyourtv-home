@@ -832,3 +832,8 @@ a small tile on the right with the channel, LIVE, the programme and its progress
 full screen, or the channel line to open everything out again; another channel tapped meanwhile plays in the small
 picture. The stream never restarts as it shrinks or grows. On a tablet upright the picture and details stay in sight
 and the picture shrinks in place. Sideways it already stayed put.
+
+**The scoreboard and the logo held and tapped twice again (5.36).** Since the swipe between channels (5.29), the
+scoreboard, the cover over the channel's logo, the ad break and the kick-off pages had slipped under the picture's
+touch layer, so holding them to move them or tapping twice for Move and resize did nothing. They are put just over that
+layer again, found rather than counted, so a view added under it can't push them back under.

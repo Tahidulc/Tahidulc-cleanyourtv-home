@@ -1873,6 +1873,8 @@ public class PlayerActivity extends AppCompatActivity {
     @SuppressLint("ClickableViewAccessibility")
     private View gestures() {
         View touch = new View(this);
+        // What goes over the picture finds this and goes just over it (Gestures.over).
+        touch.setTag(Gestures.LAYER);
         audio = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         touch.setOnTouchListener(new Gestures(this, new Gestures.Callback() {
             @Override public void onTap() {
