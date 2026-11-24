@@ -1756,8 +1756,8 @@ public class GoalWatchService extends Service {
             main.post(() -> FightNight.test(this));
         }
         if (intent != null && intent.hasExtra("test_classic")) {
-            // adb only: the classic pop-up ("kickoff", "restart", "second") or line-ups ("lineups") now, as the Scoreboard
-            // card's Try rows play them, for the Premier League's latest game.
+            // adb only: the classic pop-up ("kickoff", "restart", "second", "full") or line-ups ("lineups") now, as the
+            // Scoreboard card's Try rows play them, for the Premier League's latest game.
             String kind = intent.getStringExtra("test_classic");
             main.post(() -> ClassicIntro.tryIt(this, null, kind, (why) -> android.util.Log.i("Sport", "classic try: " + why)));
         }

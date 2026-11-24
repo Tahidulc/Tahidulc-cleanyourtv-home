@@ -3709,8 +3709,8 @@ final class BoardCover {
             main().post(nextDropRun);
             return;
         }
-        // A goal's scorer beside the board, when the after-goal pop-up showed that goal (its scorer, its minute): left out,
-        // the pop-up said it. Only with that pop-up switched off (or where it did not come) does the scorer come out here.
+        // A goal's scorer beside the board, when the after-goal pop-up showed that goal (its score): left out, the pop-up
+        // stood for it. Only with that pop-up switched off (or where it did not come) does the scorer come out here.
         if (afterGoalShowed(d)) {
             if (app != null) AlertLog.note(app, "goal beside the board left out: the after-goal pop-up showed it (" + d.title + ")");
             main().post(nextDropRun);

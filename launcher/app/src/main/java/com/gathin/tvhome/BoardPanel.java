@@ -482,18 +482,22 @@ final class BoardPanel extends SportPanel {
         tryKick.words = () -> "Plays it now (" + popupStyleWords() + "), with " + tryGame();
         tryKick.ok = () -> tryClassic("kickoff");
         Row tryGoal = row("Try the goal pop-up", false);
-        tryGoal.words = () -> "As play starts again after a goal: the score, scorer and minute";
+        tryGoal.words = () -> "As play starts again after a goal: the score";
         tryGoal.ok = () -> tryClassic("restart");
         add(tryKick, tryGoal);
         Row trySecond = row("Try the second-half pop-up", false);
         trySecond.words = () -> "The second half's kick-off, with the score";
         trySecond.ok = () -> tryClassic("second");
+        Row tryFull = row("Try the full-time pop-up", false);
+        tryFull.words = () -> "Full time, with the final score";
+        tryFull.ok = () -> tryClassic("full");
+        add(trySecond, tryFull);
         Row tryLineups = row("Try the line-ups", false);
         tryLineups.words = () -> ("stadium".equals(ClassicIntro.lineupsStyle(c)) ? "Stadium board"
                 : "studio".equals(ClassicIntro.lineupsStyle(c)) ? "Studio" : "Classic beam-in")
                 + ": the chosen game's when they're out, else the last Premier League game's · Back closes them";
         tryLineups.ok = () -> tryClassic("lineups");
-        add(trySecond, tryLineups);
+        add(tryLineups);
         // Tennis, boxing and UFC: their own scoreboard in the look chosen (SportCover), each tried there and then.
         Row sports = row("Tennis, boxing and UFC boards", true);
         sports.on = () -> SportCover.on(c);

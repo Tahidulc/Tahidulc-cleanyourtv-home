@@ -38,7 +38,8 @@ import java.util.function.Consumer;
  * <li>the line-ups once, from seven minutes before kick-off on the screen (when FotMob has them), both teams in about a
  * minute and a half, the scoreboard out of the way meanwhile; Back closes them, straight back to the channel;</li>
  * <li>the pop-up as the kick-off reaches the screen, when play starts again after a goal (40 seconds after the goal shows,
- * with the score, scorer and minute) and at the second half's kick-off (with the score).</li>
+ * or once live play is back: the score alone), at the second half's kick-off (with the score) and at full time (the final
+ * score, as the board's own full time reaches the screen: Moments, Whistle; then the board goes as it does after it).</li>
  * </ul>
  * Each moment is shown once. Nothing shows over Home, another app, the screensaver or another of the launcher's frames,
  * except a try from the Scoreboard card (tryIt), which shows over whatever is in front.
@@ -323,8 +324,9 @@ final class ClassicIntro {
     }
 
     /**
-     * The moments' pop-ups in the classic look: the kick-off, play starting again after a goal, the second half. The board
-     * is away while one is on (never on the screen with it) and comes back in once it has gone, with its swish (BoardCover).
+     * The moments' pop-ups in the classic look: the kick-off, play starting again after a goal, the second half, full time.
+     * The board is away while one is on (never on the screen with it) and comes back in once it has gone, with its swish
+     * (BoardCover).
      * The strap is the board's own look and folds into it, so it is not one of them.
      */
     static boolean moment(String kind) {
@@ -343,7 +345,8 @@ final class ClassicIntro {
     private static int restartSide;
     /**
      * The goals whose restart pop-up came up (Moments.restartKey: the game, the side, that side's goals with it): their
-     * card over the app (GoalWatchService) and their scorer beside the board (BoardCover) are left out, the pop-up said it.
+     * card over the app (GoalWatchService) and their scorer beside the board (BoardCover) are left out, the pop-up stood for
+     * them (the score alone, as the family asked).
      */
     private static final Set<String> restartsUp = new HashSet<>();
 
@@ -383,9 +386,10 @@ final class ClassicIntro {
     // ---- when (com.gathin.broadcast.Moments: the same on the phone) ---------------------------------------------
 
     /**
-     * From the board each time it draws the game (main thread): its phase moved on (the kick-off, the second half's), or
-     * the line-ups due. screenNow: the time the channel's picture has reached; period: the half the scores give for it (0
-     * not known), so a game joined part way through still has its goals' restart pop-ups.
+     * From the board each time it draws the game (main thread): its phase moved on (the kick-off, the second half's, full
+     * time's: state is the board's own, its full time as the whistle reaches the screen), or the line-ups due. screenNow:
+     * the time the channel's picture has reached; period: the half the scores give for it (0 not known), so a game joined
+     * part way through still has its goals' restart pop-ups.
      */
     static void tick(Context c, ScoresTicker.Game g, boolean pre, int state, boolean halftime, String score, long screenNow, int period) {
         if (g == null || g.id == null) return;
@@ -399,7 +403,7 @@ final class ClassicIntro {
         }
         if (prep != null && up - prepAt > PREP_KEEP_MS) dropPrepared();
         String kind = was == null ? null : Moments.moment(was, now);
-        if (kind != null && popupOn(c)) popup(c, g, kind, "kickoff".equals(kind) ? null : BroadcastData.score(score), null, null);
+        if (kind != null && popupOn(c)) popup(c, g, kind, momentScore(kind, score), null, null);
         if ("pre".equals(now) && g.kickoff > 0 && lineupsOn(c) && Moments.lineupsDue(lineupsStyle(c), g.kickoff - screenNow)) lineups(c, g);
         // the match intro's clubs and players gathered ahead of the breaks before the game
         if ("pre".equals(now) && g.kickoff > 0 && matchOn(c) && Moments.matchWarm(g.kickoff - screenNow)) warmMatch(c, g);
@@ -423,8 +427,18 @@ final class ClassicIntro {
         Long since = phaseSince.get(g.id);
         if ("ht".equals(now) && since != null && up - since >= PREP_SECOND_MS) {
             int[] sc = BroadcastData.score(score);
-            if (sc != null) prepare(c, g, "second", sc, null, null, g.id + "|second|" + sc[0] + "-" + sc[1], null, null);
+            if (sc != null) prepare(c, g, "second", sc, null, null, popupKey(g.id, "second", sc), null, null);
         }
+    }
+
+    /** Pure: the score a moment's pop-up shows (the board's, "2–1"): none at the kick-off; null when it is not a score. */
+    static int[] momentScore(String kind, String boardScore) {
+        return "kickoff".equals(kind) ? null : BroadcastData.score(boardScore);
+    }
+
+    /** Pure: what a moment's pop-up is known by, each shown once: the game, the kind and the score it shows. */
+    static String popupKey(String gameId, String kind, int[] score) {
+        return gameId + "|" + kind + (score == null ? "" : "|" + score[0] + "-" + score[1]);
     }
 
     /** A goal reached the screen (the board's moment): the restart's pop-up in a little while, if the half goes on. */
@@ -441,7 +455,7 @@ final class ClassicIntro {
             int[] sc = BroadcastData.score(score);
             if (sc == null) return;
             prepare(app, game, "restart", sc, Moments.scorer(last), last == null ? "" : BroadcastData.minute(last[2]),
-                    id + "|restart|" + sc[0] + "-" + sc[1], null, null);
+                    popupKey(id, "restart", sc), null, null);
         }, PREP_RESTART_MS);
         long at = android.os.SystemClock.uptimeMillis();
         // What comes out of the board after the goal waits for this pop-up (restartWaiting), so they never meet.
@@ -506,7 +520,7 @@ final class ClassicIntro {
     }
 
     private static void popup(Context c, ScoresTicker.Game g, String kind, int[] score, String scorer, String minute) {
-        String key = g.id + "|" + kind + (score == null ? "" : "|" + score[0] + "-" + score[1]);
+        String key = popupKey(g.id, kind, score);
         if (shown.contains(key) || showing() || !BoardCover.playerUp(c)) return;
         boolean restart = "restart".equals(kind);
         if (goPrepared(key)) {
@@ -942,8 +956,8 @@ final class ClassicIntro {
     // ---- a try (the Scoreboard card's Try rows, adb) ------------------------------------------------------------
 
     /**
-     * The pop-up ("kickoff", "restart", "second") or the line-ups ("lineups") now, over whatever is in front, for a real
-     * game: the one chosen on the Scoreboard card first, else the Premier League's latest played, looking back a
+     * The pop-up ("kickoff", "restart", "second", "full") or the line-ups ("lineups") now, over whatever is in front, for
+     * a real game: the one chosen on the Scoreboard card first, else the Premier League's latest played, looking back a
      * fortnight (the line-ups need a game whose teams are out; the goal's pop-up one with a goal). note: why nothing came
      * (main thread). Main thread.
      */
