@@ -182,6 +182,12 @@ public final class Tmdb {
         return kept(c, "d|" + (tv ? "tv" : "movie") + "|" + id, (tv ? "tv/" : "movie/") + id + "?append_to_response=credits,videos");
     }
 
+    /** A title's videos by TMDB's id (the family's language, English and none given), kept three days; null when not to be had. */
+    static JSONObject videos(Context c, boolean tv, int id) {
+        return kept(c, "v|" + (tv ? "tv" : "movie") + "|" + id, (tv ? "tv/" : "movie/") + id + "/videos?include_video_language="
+                + videoLanguages(), 3 * 24 * 3600_000L);
+    }
+
     /** A series' season as TMDB has it (its episodes' names, stories and stills), kept a fortnight; null when not to be had. */
     static JSONObject season(Context c, int id, int number) {
         return kept(c, "s|" + id + "|" + number, "tv/" + id + "/season/" + number);

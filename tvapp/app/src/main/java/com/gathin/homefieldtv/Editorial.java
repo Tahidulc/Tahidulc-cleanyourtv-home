@@ -35,7 +35,8 @@ import java.util.List;
  * back to the first); Up to the one before. Movies and TV Shows have a big carousel above the rows (1500 x 580, the next
  * one peeking in): its picture, what it is, its logo or name, its score, year, genre, age and length, its story and View
  * Details. Over the page's own blurred picture (Ground). Only what is in sight is drawn; nothing is made while drawing
- * but a card's words as it comes into focus.
+ * but a card's words as it comes into focus. Once the remote's wide card has settled, its trailer may play in it
+ * (EditorialPage's Trailer, in a window over the card where trailerSpot says it is).
  */
 final class Editorial extends View {
     interface Host {
@@ -208,6 +209,26 @@ final class Editorial extends View {
     void setActive(boolean on) {
         active = on;
         invalidate();
+    }
+
+    boolean active() {
+        return active;
+    }
+
+    /**
+     * Where the remote's wide card is on the screen (screen px), lifted as it is drawn, once it has settled there: its
+     * trailer's window. False while the card grows or another shrinks, the row slides or the page rises, or the remote
+     * isn't in the rows.
+     */
+    boolean trailerSpot(RectF out) {
+        Row rw = active ? current() : null;
+        Card on = rw == null ? null : focusCard();
+        if (on == null || on != growing || grow.value() < 99.5f || shrinking != null && shrink.value() > 0.5f) return false;
+        if (Math.abs(y.value() - rise(row)) > 0.5f || Math.abs(rw.x.value() - target(rw)) > 0.5f) return false;
+        float g = 1f + 0.02f * Math.max(0f, Math.min(1f, cardLift.of(on)));
+        float x = Ui.f(LEFT), top = Ui.f(top(row) + HEAD) - Ui.f(y.value()), w = Ui.f(WIDE_W), h = Ui.f(CARD_H);
+        out.set(x, top + h / 2f - h * g / 2f, x + w * g, top + h / 2f + h * g / 2f);
+        return true;
     }
 
     // ---- what it shows ----------------------------------------------------------------------------------------------

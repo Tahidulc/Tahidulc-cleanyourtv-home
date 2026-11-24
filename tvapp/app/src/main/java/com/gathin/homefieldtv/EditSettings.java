@@ -39,6 +39,7 @@ import java.util.Set;
  *   appearance.groups         Categories: Categories sorting (as the family's TiviMate has it, 89-set-app-groups)
  *   appearance.logos          Logos: Logos priority (New logos (Homefield), as it comes, or Playlist's logos) · Refresh
  *                             logos · Behind logos (Logo's colour as it comes, None, Black tile: Logos)
+ *   appearance.home           Home: Trailers · Sound (HomeSettings: the trailer in the poster the remote rests on)
  * </pre>
  *
  * Homefield's Settings → Categories (hide, rename and move them) lives on in Manage categories and each category's page;
@@ -62,7 +63,7 @@ final class EditSettings implements SettingsScreen.Pages {
     @Override public boolean owns(String page) {
         return page.equals("appearance.guide") || page.startsWith("appearance.guide.") || page.startsWith("group:")
                 || page.equals("appearance.groups") || page.equals("appearance.logos") || page.equals("channels")
-                || page.startsWith("channels.") || page.startsWith("rename:");
+                || page.startsWith("channels.") || page.startsWith("rename:") || HomeSettings.owns(page);
     }
 
     @Override public String title(String page) {
@@ -78,6 +79,7 @@ final class EditSettings implements SettingsScreen.Pages {
             case "channels.rename": return "Rename channels";
             case "appearance.groups": return "Categories";
             case "appearance.logos": return "Logos";
+            case HomeSettings.PAGE: return "Home";
             default: return "";
         }
     }
@@ -92,6 +94,10 @@ final class EditSettings implements SettingsScreen.Pages {
         }
         if (page.startsWith("rename:")) {
             renameCategory(page.substring(7), out);
+            return out;
+        }
+        if (HomeSettings.owns(page)) {
+            HomeSettings.rows(tv, out);
             return out;
         }
         switch (page) {
@@ -329,6 +335,10 @@ final class EditSettings implements SettingsScreen.Pages {
 
     @Override public void chosen(String page, RowList.Row row) {
         String t = row.tag instanceof String ? (String) row.tag : "";
+        if (HomeSettings.owns(page)) {
+            if (HomeSettings.chosen(tv, t)) s.refresh();
+            return;
+        }
         String g = page.startsWith("group:") ? page.substring(6) : null;
         if (t.startsWith("page:")) {
             s.open(t.substring(5));

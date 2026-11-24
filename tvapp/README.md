@@ -45,8 +45,16 @@ wordmark are Homefield; it carries no Sky logo or name.
   its poster into a wide card (its backdrop, TMDB's logo or its name, how far it was watched and its episode), the one
   it left shrinking back as the row slides it to the left (Lite: no cross-fade of the pictures); under the row its score,
   year, genre and length, and three lines of its story; the next row dimmed under it. Down past the last row goes back
-  to the first; Back goes up to the tab bar. The carousel on Movies and TV Shows has the next title peeking in, its facts
-  and View Details. OK opens a title's page, whose buttons are then a menu down the left: Play (or Resume), Trailer, More
+  to the first; Back goes up to the tab bar. When the remote rests on a title in a row (about a second and a half; two
+  and a half on the Lite motion tier), its trailer plays inside the wide card ("Can you implement trailers to
+  automatically play over a poster when I'm on it"): TMDB's trailers for it (the official trailer, then a teaser, the
+  family's language first) or the playlist's own, on YouTube's own embedded player (no controls, muted unless Settings
+  say otherwise) in one WebView kept for the app; the card's picture cross-fades to the video once it is playing (Lite:
+  no cross-fade) and back as the remote moves on or the trailer ends. One that won't play (embedding turned off, an
+  error, nothing within four seconds) is let go quietly for the next, or the poster stays; nothing is ever said on
+  screen. It stops at once as the remote moves, goes up to the tab bar or anything comes over the page, and the player
+  is let go of whole when the app is left, so nothing plays in the background. The carousel on Movies and TV Shows has
+  the next title peeking in, its facts and View Details. OK opens a title's page, whose buttons are then a menu down the left: Play (or Resume), Trailer, More
   episodes, Add to My List, More like this. Settings › Appearance › Home style: Classic brings back Home's one big card
   at a time and Movies' and TV Shows' pills.
 
@@ -549,7 +557,8 @@ wordmark are Homefield; it carries no Sky logo or name.
   Red, Brown, Blue grey, Grey or Black) with an accent (Blue as it comes, Red, Pink, Purple, Indigo, Cyan, Teal, Green,
   Lime, Yellow, Amber, Orange or Deep orange), each a disc, the pair in use ticked and named ("Indigo • Blue"); OK keeps
   one and the screens start again in it, back on Settings. The themes from before are gone: a TV that had one comes up
-  in Indigo • Blue. Then Home style (Editorial as it comes, or Classic), Posters (Portrait / Landscape), Programme times (24-hour as it comes, or 12-hour) and
+  in Indigo • Blue. Then Home style (Editorial as it comes, or Classic), Home (Trailers: a title's trailer in the poster
+  the remote rests on, On as it comes; their Sound, Off as it comes), Posters (Portrait / Landscape), Programme times (24-hour as it comes, or 12-hour) and
   Animations: Automatic (as it comes), Full or Lite. Lite keeps the look and the motion (cards lift, rows slide,
   pictures cross-fade) but leaves out what a slower TV's graphics chip finds hardest: the cards' tilt and the light
   sweeping across them, a lifted card's picture drifting under its frame, and the page's big blurred picture changing

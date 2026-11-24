@@ -16,6 +16,7 @@ import com.gathin.homefieldtv.engine.Shelves;
 import com.gathin.homefieldtv.engine.Sources;
 import com.gathin.homefieldtv.engine.Tmdb;
 import com.gathin.homefieldtv.engine.TmdbLists;
+import com.gathin.homefieldtv.engine.Videos;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -38,8 +39,12 @@ import java.util.Set;
  * length, genre and age) and TMDB's logo; the backdrops either side of it are read ahead at the size they are drawn. OK on
  * a card opens its page (Continue Watching carries on); OK on the carousel is View Details; OK held puts it on My List or
  * takes it off; Back, or Up past the top, goes up to the tab bar.
+ *
+ * <p>When the remote rests on a row's card its trailer plays in it (Trailer): its trailers are found as its details and
+ * TMDB's extras are read (Videos.trailers: TMDB's, the family's language first, then the playlist's own); it stops as the
+ * remote moves, goes up to the tab bar, or the page goes.
  */
-final class EditorialPage implements Editorial.Host {
+final class EditorialPage implements Editorial.Host, Trailer.Host {
     /** The TMDB rows asked for as the page opens, and how far past the remote's row they are asked for. */
     static final int FIRST = 8, AHEAD = 6;
 
@@ -60,7 +65,11 @@ final class EditorialPage implements Editorial.Host {
     private final Runnable rested = this::rested;
     /** TMDB's extras (the logo, the age) of the titles rested on, read once and kept here. */
     private final Map<String, Tmdb.Extras> extrasKnown = new HashMap<>();
+    /** The titles whose extras have been looked for (found or not): their trailers are known as far as they will be. */
+    private final Set<String> looked = new HashSet<>();
     private boolean publishing, again;
+    /** The trailer in the card the remote rests on. */
+    private Trailer trailer;
 
     EditorialPage(TvActivity tv, String page) {
         this.tv = tv;
@@ -80,8 +89,14 @@ final class EditorialPage implements Editorial.Host {
         view = new Editorial(tv);
         view.setHost(this);
         f.addView(view, new FrameLayout.LayoutParams(-1, -1));
+        trailer = new Trailer(tv, f, this);
         fill();
         return f;
+    }
+
+    /** Tests: the trailer of the card the remote rests on. */
+    Trailer trailer() {
+        return trailer;
     }
 
     Editorial view() {
@@ -105,9 +120,11 @@ final class EditorialPage implements Editorial.Host {
 
     void hidden() {
         h.removeCallbacks(rested);
+        if (trailer != null) trailer.hidden();
     }
 
     void catalogChanged() {
+        if (trailer != null) trailer.moved();
         round++;
         Shelves.forget();
         shelves.clear();
@@ -303,9 +320,18 @@ final class EditorialPage implements Editorial.Host {
 
     @Override public void focused(Editorial.Row row, Editorial.Card card) {
         h.removeCallbacks(rested);
-        if (card == null) return;
+        if (card == null) {
+            trailer.moved();
+            return;
+        }
         view.ground(card.wide);
         restingOn = card;
+        // Its trailer, after a rest (a row's card only: the carousel's has its words over it), the remote in the page.
+        if (row == null || !view.active()) trailer.moved();
+        else {
+            trailer.rest(trailerKey(card));
+            trailers(card);
+        }
         if (Exec.inline) rested();
         else h.postDelayed(rested, 450);
         readAhead(row == null);
@@ -328,7 +354,10 @@ final class EditorialPage implements Editorial.Host {
         }
     }
 
-    /** The remote rested on a card: its page's details (length, genre, age) and TMDB's logo, read off the main thread. */
+    /**
+     * The remote rested on a card: its page's details (length, genre, age, the playlist's trailer) and TMDB's extras (its
+     * logo, its videos), read off the main thread; extras kept from before videos were are asked for again.
+     */
     private void rested() {
         Editorial.Card card = restingOn;
         Catalog.Title t = card == null ? null : card.title();
@@ -338,20 +367,57 @@ final class EditorialPage implements Editorial.Host {
                 if (d != null) known(t);
             });
         }
-        if (extrasKnown.containsKey(t.key)) return;
+        Tmdb.Extras had = extrasKnown.get(t.key);
+        if (looked.contains(t.key) && (had == null || !had.old)) return;
         Exec.io(() -> {
             Tmdb.Extras x = Tmdb.keptExtras(tv, t);
-            if (x == null) x = Tmdb.extras(tv, t);
+            if (x == null || x.old) {
+                Tmdb.Extras asked = Tmdb.extras(tv, t);
+                if (asked != null) x = asked;
+            }
             Tmdb.Extras got = x;
-            if (got == null) return;
             Runnable done = () -> {
-                if (extrasKnown.size() > 200) extrasKnown.clear();
-                extrasKnown.put(t.key, got);
+                if (looked.size() > 400) looked.clear();
+                looked.add(t.key);
+                if (got != null) {
+                    if (extrasKnown.size() > 200) extrasKnown.clear();
+                    extrasKnown.put(t.key, got);
+                }
                 known(t);
             };
             if (Exec.inline) done.run();
             else Exec.main(done);
         });
+    }
+
+    // ---- its trailer ----------------------------------------------------------------------------------------------
+
+    /** What a card's trailer is kept by: its title's key (null for none). */
+    private static Object trailerKey(Editorial.Card c) {
+        Catalog.Title t = c.title();
+        return t == null ? null : t.key;
+    }
+
+    /** A card's trailers as far as they are known now (once its extras have been looked for), handed to the trailer. */
+    private void trailers(Editorial.Card c) {
+        Catalog.Title t = c.title();
+        if (t == null || !looked.contains(t.key)) return;
+        Tmdb.Extras x = extrasKnown.get(t.key);
+        Catalog.Details d = Catalog.get(tv).cachedDetails(t);
+        trailer.keys(t.key, Videos.trailers(x == null ? null : x.videos, Tmdb.language(), d == null ? "" : d.trailer));
+    }
+
+    /** The remote's card's place for its trailer, once it has grown and the page has settled. */
+    @Override public boolean spot(android.graphics.RectF out) {
+        return view != null && view.trailerSpot(out);
+    }
+
+    /** Whether this page is on screen in front (its screen on top, the app in front) with the remote in its rows. */
+    @Override public boolean mayPlay() {
+        Screen top = tv.top();
+        boolean mine = top instanceof HomeScreen ? ((HomeScreen) top).editorial() == this
+                : top instanceof BrowseScreen && ((BrowseScreen) top).editorial() == this;
+        return mine && tv.showing(top) && view != null && view.active() && view.area() == Editorial.ROWS;
     }
 
     /** More is known of a title (its details, its extras): its cards' words made again where they are shown. */
@@ -371,6 +437,8 @@ final class EditorialPage implements Editorial.Host {
                 view.refresh(c);
             }
         }
+        Editorial.Card on = restingOn;
+        if (on != null && on.title() == t) trailers(on);
     }
 
     @Override public void more(Editorial.Row row) {
@@ -435,9 +503,10 @@ final class EditorialPage implements Editorial.Host {
         return false;
     }
 
-    /** The remote up to the tab bar (nothing on the page lifted meanwhile). */
+    /** The remote up to the tab bar (nothing on the page lifted meanwhile, no trailer). */
     void toBar() {
         if (tv.tabs() == null) return;
+        trailer.moved();
         tv.tabs().enter();
         view.setActive(false);
     }
@@ -487,6 +556,7 @@ final class EditorialPage implements Editorial.Host {
     /** Previews and tests: TMDB's extras for a title as if it had answered. */
     void previewExtras(Catalog.Title t, Tmdb.Extras x) {
         extrasKnown.put(t.key, x);
+        looked.add(t.key);
         known(t);
     }
 

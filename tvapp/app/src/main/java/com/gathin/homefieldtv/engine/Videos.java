@@ -87,6 +87,53 @@ public final class Videos {
         return out.size() > MOST ? new ArrayList<>(out.subList(0, MOST)) : out;
     }
 
+    /** At most this many trailers are tried in a poster. */
+    public static final int TRIES = 3;
+
+    /**
+     * Pure: the trailers to try in a poster the remote rests on, best first (their YouTube keys): TMDB's trailers and
+     * teasers only, the family's language first (then English, then none given, then the rest), within each the trailer
+     * before the teaser and the official one before the others, the newest first; then the playlist's own trailer (its
+     * youtube_trailer, as a key or an address) where TMDB has none such; at most TRIES.
+     */
+    public static List<String> trailers(List<Video> all, String lang, String playlist) {
+        String l = lang == null ? "" : lang.toLowerCase(Locale.ROOT);
+        List<Video> ts = new ArrayList<>();
+        if (all != null) for (Video v : all) if (kind(v.type) < 2) ts.add(v);
+        ts.sort((a, b) -> {
+            int k = Integer.compare(language(a.lang, l), language(b.lang, l));
+            if (k != 0) return k;
+            k = Integer.compare(kind(a.type), kind(b.type));
+            if (k != 0) return k;
+            k = Boolean.compare(b.official, a.official);
+            if (k != 0) return k;
+            return b.published.compareTo(a.published);
+        });
+        List<String> out = new ArrayList<>();
+        for (Video v : ts) if (out.size() < TRIES && !out.contains(v.key)) out.add(v.key);
+        String own = key(playlist);
+        if (!own.isEmpty() && !out.contains(own) && out.size() < TRIES) out.add(own);
+        return out;
+    }
+
+    /** Pure: a YouTube key from what a playlist gives ("dQw4w9WgXcQ", a watch, youtu.be or embed address), else "". */
+    public static String key(String s) {
+        if (s == null) return "";
+        String t = s.trim();
+        if (t.matches("[A-Za-z0-9_-]{11}")) return t;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(?:v=|youtu\\.be/|embed/|shorts/)([A-Za-z0-9_-]{11})").matcher(t);
+        return m.find() ? m.group(1) : "";
+    }
+
+    /**
+     * A title's videos by TMDB's id (a Coming soon card, which no playlist has yet): asked with the launcher's key and
+     * kept a few days (Tmdb); empty when TMDB can't be asked. Off the main thread.
+     */
+    public static List<Video> of(android.content.Context c, boolean tv, int id) {
+        if (id <= 0) return new ArrayList<>();
+        return parse(Tmdb.videos(c, tv, id));
+    }
+
     /** A video's kind's place: trailers, teasers, then the rest. */
     static int kind(String type) {
         if ("Trailer".equalsIgnoreCase(type)) return 0;

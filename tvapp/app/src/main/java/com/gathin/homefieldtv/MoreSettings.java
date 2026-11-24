@@ -197,6 +197,7 @@ final class MoreSettings implements SettingsScreen.Pages {
         out.add(pick("text", "Font size", FONT_NAMES[Look.textSize]));
         out.add(page("theme", "Color theme", Theme.name()));
         out.add(pick("homestyle", "Home style", HomeStyle.NAMES[HomeStyle.get(tv)]));
+        out.add(page(HomeSettings.PAGE, "Home", HomeSettings.value(tv)));
         out.add(pick("posters", "Posters", POSTER_NAMES[PosterArt.landscape ? 1 : 0]));
         out.add(pick("times", "Programme times", Look.TIMES_NAMES[Look.times24 ? 0 : 1]));
         out.add(pick("motion", "Animations", motionWords()));
