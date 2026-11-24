@@ -8,6 +8,7 @@ import android.widget.FrameLayout;
 import android.widget.Toast;
 
 import com.gathin.homefieldtv.engine.Catalog;
+import com.gathin.homefieldtv.engine.CategorySet;
 import com.gathin.homefieldtv.engine.Catchup;
 import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Exec;
@@ -20,6 +21,7 @@ import com.gathin.homefieldtv.engine.Resume;
 import com.gathin.homefieldtv.engine.Sources;
 import com.gathin.homefieldtv.engine.Tmdb;
 import com.gathin.homefieldtv.prefs.ChannelEdits;
+import com.gathin.homefieldtv.prefs.HomeStyle;
 import com.gathin.homefieldtv.sports.Game;
 import com.gathin.homefieldtv.sports.InStep;
 import com.gathin.homefieldtv.sports.Matching;
@@ -32,7 +34,8 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Home, the first page of 07's shell (HomeCard): one big card at a time for whatever the remote is on, from the sections
+ * Home, the first page of 07's shell. Settings › Appearance › Home style: Editorial (as it comes) hands the page to
+ * EditorialPage (the carousel and rows of CategorySet.HOME); Classic is this page's own (HomeCard): one big card at a time for whatever the remote is on, from the sections
  * under the tab bar: what's on now, Continue watching, the family's own TorBox titles, the newest films and TV shows from
  * the playlists, sport on now and the favourite channels. A channel's card is its programme on now (the score where it
  * is a match, held back to the channel's delay) with its later programmes and what's on now on the next channels along
@@ -50,6 +53,8 @@ final class HomeScreen extends Screen implements HomeCard.Host {
     private static final int LATER = 3, ALSO = 5;
 
     private HomeCard home;
+    /** Home style Editorial: the page (null for Classic). */
+    private EditorialPage editorial;
     private final Handler h = new Handler(Looper.getMainLooper());
     private HomeCard.Card pending, extrasFor, scoreFor;
     private final Runnable fetch = this::fetchDetails, extras = this::fetchExtras, score = this::fetchScore;
@@ -76,6 +81,10 @@ final class HomeScreen extends Screen implements HomeCard.Host {
 
     @Override View build() {
         Cine.init(tv);
+        if (HomeStyle.editorial(tv)) {
+            editorial = new EditorialPage(tv, CategorySet.HOME);
+            return editorial.build();
+        }
         FrameLayout f = new FrameLayout(tv);
         // No background of its own: its page draws its opaque ground first (a full screen of fill saved each frame).
         home = new HomeCard(tv, this);
@@ -89,6 +98,10 @@ final class HomeScreen extends Screen implements HomeCard.Host {
         tv.takeMiniTvHeld();
         tv.live.stop();
         tv.live.place(null);
+        if (editorial != null) {
+            editorial.shown();
+            return;
+        }
         if (home != null) home.setActive(tv.tabs() == null || !tv.tabs().active());
         fill();
     }
@@ -97,6 +110,7 @@ final class HomeScreen extends Screen implements HomeCard.Host {
         h.removeCallbacks(fetch);
         h.removeCallbacks(extras);
         h.removeCallbacks(score);
+        if (editorial != null) editorial.hidden();
     }
 
     @Override void tick() {
@@ -108,7 +122,13 @@ final class HomeScreen extends Screen implements HomeCard.Host {
     }
 
     @Override void catalogChanged() {
-        fill();
+        if (editorial != null) editorial.catalogChanged();
+        else fill();
+    }
+
+    /** Home style Editorial's page (null for Classic). */
+    EditorialPage editorial() {
+        return editorial;
     }
 
     // ---- the sections -------------------------------------------------------------------------------------------
@@ -524,6 +544,7 @@ final class HomeScreen extends Screen implements HomeCard.Host {
             zap(code == KeyEvent.KEYCODE_CHANNEL_UP ? -1 : 1);
             return true;
         }
+        if (editorial != null) return editorial.key(code);
         return home.key(code);
     }
 
@@ -536,10 +557,15 @@ final class HomeScreen extends Screen implements HomeCard.Host {
     }
 
     @Override void ok() {
-        home.ok();
+        if (editorial != null) editorial.ok();
+        else home.ok();
     }
 
     @Override void okLong() {
+        if (editorial != null) {
+            editorial.okLong();
+            return;
+        }
         HomeCard.Card c = home.card();
         if (home.area() == HomeCard.CARD && c != null && c.item instanceof Channel) {
             Library.get(tv).toggleFavourite((Channel) c.item);
@@ -549,6 +575,7 @@ final class HomeScreen extends Screen implements HomeCard.Host {
     }
 
     @Override boolean back() {
+        if (editorial != null) return editorial.back();
         if (home.back()) return true;
         menu();
         return true;
@@ -560,6 +587,10 @@ final class HomeScreen extends Screen implements HomeCard.Host {
 
     /** Up from the sections, or Back there: the remote up to 07's tab bar. */
     @Override public void menu() {
+        if (editorial != null) {
+            editorial.toBar();
+            return;
+        }
         if (tv.tabs() == null) return;
         tv.tabs().enter();
         home.setActive(false);
@@ -575,6 +606,10 @@ final class HomeScreen extends Screen implements HomeCard.Host {
 
     /** Down from the tab bar: the sections along the top of the page. */
     @Override void fromTabs() {
+        if (editorial != null) {
+            editorial.fromTabs();
+            return;
+        }
         home.setActive(true);
         home.fromAbove();
     }

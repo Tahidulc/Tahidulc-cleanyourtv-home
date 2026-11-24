@@ -24,7 +24,9 @@ import java.util.List;
  * and From the Start. Then round buttons: My List (a tick once on it), the trailer (in the TV's YouTube app) and, where
  * something was started, Remove from Continue watching. Play shows every source first, the best first (VodActivity's Choose a
  * source); Resume carries on straight away from the copy it was started on. TMDB's logo, cast and seasons' colours come
- * when it has answered (kept on the TV after, so the page has them at once next time).
+ * when it has answered (kept on the TV after, so the page has them at once next time). With Home style Editorial the
+ * buttons are a menu down the left, as the family's other film app has them: Play (or Resume), Trailer, More episodes
+ * (a series: down to its episodes), Add to My List, More like this (down to it).
  */
 final class TitleScreen extends Screen implements TitlePage.Host {
     private Catalog.Title title;
@@ -47,6 +49,7 @@ final class TitleScreen extends Screen implements TitlePage.Host {
         FrameLayout f = new FrameLayout(tv);
         // No background of its own: its page draws its opaque ground first (a full screen of fill saved each frame).
         page = new TitlePage(tv, this);
+        page.vertical(com.gathin.homefieldtv.prefs.HomeStyle.editorial(tv));
         f.addView(page, new FrameLayout.LayoutParams(-1, -1));
         details = Catalog.get(tv).cachedDetails(title);
         fill();
@@ -167,7 +170,25 @@ final class TitleScreen extends Screen implements TitlePage.Host {
                 if (t != title) more.add(t);
             }
         }
+        if (com.gathin.homefieldtv.prefs.HomeStyle.editorial(tv)) buttons = menu(buttons.get(0), on, trailer, more);
         page.set(title, details, buttons, more, resumeEpisode(p));
+    }
+
+    /**
+     * Home style Editorial's menu down the left, as the family's other film app has it: Play (or Resume, the main one
+     * as made), Trailer, More episodes (a series with any), Add to My List (or Remove from My List), More like this.
+     */
+    private List<TitlePage.Button> menu(TitlePage.Button main, boolean on, String trailer, List<Catalog.Title> more) {
+        List<TitlePage.Button> out = new ArrayList<>();
+        out.add(main);
+        if (!trailer.isEmpty()) out.add(new TitlePage.Button("Trailer", TitlePage.TRAILER, false, () -> trailer(trailer)));
+        if (title.series && details != null && !details.episodes().isEmpty()) {
+            out.add(new TitlePage.Button("More episodes", TitlePage.EPS, false, () -> page.toPart(TitlePage.EPISODES)));
+        }
+        out.add(new TitlePage.Button(on ? "Remove from My List" : "Add to My List", on ? TitlePage.TICK : TitlePage.PLUS, false, on,
+                this::toggleList));
+        if (!more.isEmpty()) out.add(new TitlePage.Button("More like this", TitlePage.LIKE, false, () -> page.toPart(TitlePage.MORE)));
+        return out;
     }
 
     /** "18 min left" after Resume: how much of it is still to watch ("" when that isn't known). */
@@ -264,6 +285,11 @@ final class TitleScreen extends Screen implements TitlePage.Host {
     /** Previews: the remote on a part (TitlePage.BUTTONS…) and along it. */
     void previewFocus(int part, int along) {
         page.focus(part, along);
+    }
+
+    /** Tests: the page itself. */
+    TitlePage page() {
+        return page;
     }
 
     /** Previews: TMDB's extras as if it had answered. */

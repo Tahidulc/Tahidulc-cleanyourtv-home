@@ -274,6 +274,8 @@ public class BigPlaylistTest {
 
         // ---- the screens, as the remote opens them ------------------------------------------------------------------
         Exec.inline = true;
+        // Home style Classic: the steps below are its pages' (EditorialBigTest times Editorial's).
+        com.gathin.homefieldtv.prefs.HomeStyle.set(app, com.gathin.homefieldtv.prefs.HomeStyle.CLASSIC);
         TvActivity a = Robolectric.buildActivity(TvActivity.class).setup().get();
         idle();
         Exec.inline = false;

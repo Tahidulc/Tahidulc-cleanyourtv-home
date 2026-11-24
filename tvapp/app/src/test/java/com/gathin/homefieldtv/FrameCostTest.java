@@ -79,6 +79,8 @@ public class FrameCostTest {
             if (s == null) continue;
             for (int i = 0; i < s.start.length; i++) ProgrammePictures.preview(ch, s, i, FrameCostData.programmeOf(dir, ci, i));
         }
+        // Home style Classic: these runs are its pages' (Home's card and strip, Movies' pills); EditorialFrameTest has Editorial's.
+        com.gathin.homefieldtv.prefs.HomeStyle.set(app, com.gathin.homefieldtv.prefs.HomeStyle.CLASSIC);
         a = Robolectric.buildActivity(TvActivity.class).setup().get();
         idle();
         View root = a.getWindow().getDecorView();

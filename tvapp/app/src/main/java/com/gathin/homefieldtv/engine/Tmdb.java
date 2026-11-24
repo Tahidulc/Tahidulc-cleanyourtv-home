@@ -446,6 +446,21 @@ public final class Tmdb {
 
     // ---- asking, and keeping ------------------------------------------------------------------------------------
 
+    /**
+     * One of TMDB's lists or pages by its path ("trending/movie/day?page=2", "discover/tv?with_networks=49"), asked now
+     * with the launcher's key (TmdbLists keeps what it says); null without a key or when TMDB couldn't be asked. Off the
+     * main thread.
+     */
+    static JSONObject ask(Context c, String path) {
+        String k = key(c);
+        if (k == null) return null;
+        try {
+            return get(k, path);
+        } catch (IOException | JSONException e) {
+            return null;
+        }
+    }
+
     /** One TMDB answer; an error never carries the address (the key is in it). */
     private static JSONObject get(String key, String path) throws IOException, JSONException {
         HttpURLConnection h;

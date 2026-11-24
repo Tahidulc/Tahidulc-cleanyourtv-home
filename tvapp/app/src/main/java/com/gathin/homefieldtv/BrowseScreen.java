@@ -7,12 +7,14 @@ import android.view.View;
 import android.widget.FrameLayout;
 
 import com.gathin.homefieldtv.engine.Catalog;
+import com.gathin.homefieldtv.engine.CategorySet;
 import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.engine.MyList;
 import com.gathin.homefieldtv.engine.Resume;
 import com.gathin.homefieldtv.engine.Sources;
 import com.gathin.homefieldtv.engine.Tmdb;
+import com.gathin.homefieldtv.prefs.HomeStyle;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -22,7 +24,8 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Movies, or TV Shows, as 07 pages under the tab bar (homefield-07-real 09 and 11; the page itself is CineRows): the
+ * Movies, or TV Shows, as 07 pages under the tab bar. Settings › Appearance › Home style: Editorial (as it comes) hands
+ * the page to EditorialPage (the carousel and rows of CategorySet.MOVIES or SHOWS); Classic is this page's own (homefield-07-real 09 and 11; the page itself is CineRows): the
  * playlists' lists as pills (All movies, Recently added, Your TorBox, then each category) with the sort at the right
  * (as in the playlist, by name, newest first, best rated), the title the remote is on in a big card (its logo, facts,
  * story, cast and director), then the chosen list as a shelf of posters (a series' as wide cards), then Continue
@@ -45,6 +48,8 @@ final class BrowseScreen extends Screen implements CineRows.Host {
 
     private final boolean series;
     private CineRows rows;
+    /** Home style Editorial: the page (null for Classic). */
+    private EditorialPage editorial;
     private final Handler h = new Handler(Looper.getMainLooper());
     private Catalog.Title pending, extrasFor;
     private final Runnable fetch = this::fetchDetails, extras = this::fetchExtras;
@@ -73,6 +78,10 @@ final class BrowseScreen extends Screen implements CineRows.Host {
     @Override View build() {
         Cine.init(tv);
         PosterArt.init(tv);
+        if (HomeStyle.editorial(tv)) {
+            editorial = new EditorialPage(tv, series ? CategorySet.SHOWS : CategorySet.MOVIES);
+            return editorial.build();
+        }
         FrameLayout f = new FrameLayout(tv);
         // No background of its own: its page draws its opaque ground first (a full screen of fill saved each frame).
         rows = new CineRows(tv);
@@ -86,6 +95,10 @@ final class BrowseScreen extends Screen implements CineRows.Host {
         // No live picture here: the stream let go (a film may want the provider's one connection).
         tv.live.stop();
         tv.live.place(null);
+        if (editorial != null) {
+            editorial.shown();
+            return;
+        }
         if (rows != null) rows.setActive(tv.tabs() == null || !tv.tabs().active());
         fill();
     }
@@ -93,9 +106,19 @@ final class BrowseScreen extends Screen implements CineRows.Host {
     @Override void hidden() {
         h.removeCallbacks(fetch);
         h.removeCallbacks(extras);
+        if (editorial != null) editorial.hidden();
+    }
+
+    /** Home style Editorial's page (null for Classic). */
+    EditorialPage editorial() {
+        return editorial;
     }
 
     @Override void catalogChanged() {
+        if (editorial != null) {
+            editorial.catalogChanged();
+            return;
+        }
         sorted = null;
         sortedFor = null;
         fill();
@@ -111,6 +134,10 @@ final class BrowseScreen extends Screen implements CineRows.Host {
 
     /** Down from the tab bar: the pills. */
     @Override void fromTabs() {
+        if (editorial != null) {
+            editorial.fromTabs();
+            return;
+        }
         if (rows != null) {
             rows.setActive(true);
             rows.fromAbove();
@@ -435,14 +462,22 @@ final class BrowseScreen extends Screen implements CineRows.Host {
     // ---- the remote -----------------------------------------------------------------------------------------------
 
     @Override boolean key(int code, KeyEvent e) {
+        if (editorial != null) return editorial.key(code);
         return rows.key(code);
     }
 
     @Override void ok() {
-        rows.ok();
+        if (editorial != null) editorial.ok();
+        else rows.ok();
+    }
+
+    @Override void okLong() {
+        if (editorial != null) editorial.okLong();
+        else rows.ok();
     }
 
     @Override boolean back() {
+        if (editorial != null) return editorial.back();
         if (rows.back()) return true;
         toBar();
         return true;
