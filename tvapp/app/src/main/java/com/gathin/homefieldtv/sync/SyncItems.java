@@ -59,9 +59,9 @@ public final class SyncItems {
 
     /**
      * One item as kept (its JSON text, tombstone or not), or null: one look in the store, nothing else read (for what is
-     * looked at often: the scoreboard in use, My scoreboards).
+     * looked at often: the scoreboard in use, My scoreboards). Not held behind a sync's merge: the main thread asks it.
      */
-    public static synchronized String raw(Context c, String type, String key) {
+    public static String raw(Context c, String type, String key) {
         return prefs(c).getString(id(type, key), null);
     }
 

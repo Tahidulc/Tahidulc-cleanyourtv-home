@@ -212,9 +212,9 @@ final class BoardEditor extends FrameLayout implements Keyboard.Host {
 
     boolean key(int code) {
         if (typing) {
-            if (!keys.key(code, null)) return code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN
-                    || code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT;
-            return true;
+            // Every key to the keyboard while it is up (the number keys type their figures, never change channel).
+            keys.key(code, new KeyEvent(KeyEvent.ACTION_DOWN, code));
+            return code != KeyEvent.KEYCODE_CHANNEL_UP && code != KeyEvent.KEYCODE_CHANNEL_DOWN;
         }
         switch (code) {
             case KeyEvent.KEYCODE_DPAD_UP: move(-1); return true;

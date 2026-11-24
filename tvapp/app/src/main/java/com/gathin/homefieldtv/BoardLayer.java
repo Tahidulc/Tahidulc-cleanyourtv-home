@@ -1806,7 +1806,11 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         int n = Math.floorMod(i + 1 + step, all.size() + 1) - 1;
         BoardPrefs.setCustom(c, n < 0 ? null : all.get(n).id);
         restyle(MyBoardStore.inUse(c));
+        mineLine = mineWords();
     }
+
+    /** My scoreboards' value as the menu shows it: worked out as it opens and as it changes (never while drawing). */
+    private String mineLine = "";
 
     /** My scoreboards' value: the board in use, or the look. */
     private String mineWords() {
@@ -1835,6 +1839,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         void show() {
             open = true;
             at = 0;
+            mineLine = mineWords();
             setVisibility(VISIBLE);
             invalidate();
         }
@@ -1882,6 +1887,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
                     for (int k = 0; k < all.length; k++) if (all[k] == now) i = k;
                     BoardPrefs.setStyle(c, all[(i + step + all.length) % all.length]);
                     restyle(null);
+                    mineLine = mineWords();
                     break;
                 }
                 case R_TIMING: timing(step); break;
@@ -1959,7 +1965,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             Context c = getContext();
             switch (row) {
                 case R_ON: return BoardPrefs.on(c) ? "On" : "Off";
-                case R_MINE: return mineWords();
+                case R_MINE: return mineLine;
                 case R_EDIT: return BoardPrefs.customId(c) == null ? "Colours, finish, Generate, Ask AI" : "Edit the one in use";
                 case R_LOGO: return BoardPrefs.logoOn(c) ? "On" : "Off";
                 case R_ALERTS: return BoardPrefs.dropsOn(c) ? "On" : "Off";

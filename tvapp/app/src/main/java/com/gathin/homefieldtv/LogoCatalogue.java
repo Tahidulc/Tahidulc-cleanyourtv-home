@@ -27,7 +27,7 @@ final class LogoCatalogue {
     /** Robolectric (the tests and previews): no pack is fetched; useForPreview gives them instead. */
     private static final boolean TESTS = "robolectric".equals(android.os.Build.FINGERPRINT);
 
-    private static SoftReference<Map<LogoPacks.Pack, List<LogoPacks.Logo>>> packs;
+    private static volatile SoftReference<Map<LogoPacks.Pack, List<LogoPacks.Logo>>> packs;
     private static volatile Map<LogoPacks.Pack, List<LogoPacks.Logo>> preview;
 
     /** What a search found: each pack's logos, best first (packs in order), and what stood in the way ("" for nothing). */
@@ -75,8 +75,8 @@ final class LogoCatalogue {
         return new Result(LogoPacks.search(all, words, PER_PACK), problem);
     }
 
-    /** The picker closed: the packs' names let go of (read again from the cache next time). */
-    static synchronized void release() {
+    /** The picker closed: the packs' names let go of (read again from the cache next time); never waits for a search. */
+    static void release() {
         packs = null;
     }
 
