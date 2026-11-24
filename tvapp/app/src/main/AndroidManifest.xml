@@ -15,6 +15,14 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- The channel cards the TV launcher on this TV shows for this app (ChannelCardsProvider): readable only by an app
+         signed with this app's own key. Declared by both apps (the launcher too, with the same name and protection), so
+         whichever is installed first defines it and the other is granted it whatever the order they came in. -->
+    <permission
+        android:name="com.gathin.homefieldtv.permission.READ_CHANNEL_CARDS"
+        android:label="@string/app_name"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="com.gathin.homefieldtv.permission.READ_CHANNEL_CARDS" />
 
     <!-- A TV app only: Android TV's launcher row, the remote, no touch screen. -->
     <uses-feature android:name="android.software.leanback" android:required="true" />
@@ -47,6 +55,12 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+            <!-- Play this channel (PlayChannel, PlayRequest): the launcher's channel cards open the app straight on one,
+                 full screen, by its key (its name and number as fallbacks); a locked channel still asks for the PIN. -->
+            <intent-filter>
+                <action android:name="com.gathin.homefieldtv.action.PLAY_CHANNEL" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
 
@@ -94,6 +108,15 @@
         <!-- A playlist added from a computer over adb, so a long login need not be typed on the remote:
              content insert - -uri content://com.gathin.homefieldtv.setup/xtream - -bind server:s:… (see Setup). Only the
              adb shell holds WRITE_SECURE_SETTINGS; ordinary apps cannot get it. -->
+        <!-- The launcher's channel cards for this app (ChannelCards): read-only, from memory or a small file, never the
+             playlists; only for apps signed with this app's key (the permission above). -->
+        <provider
+            android:name=".ChannelCardsProvider"
+            android:authorities="com.gathin.homefieldtv.cards"
+            android:exported="true"
+            android:readPermission="com.gathin.homefieldtv.permission.READ_CHANNEL_CARDS"
+            android:writePermission="com.gathin.homefieldtv.permission.READ_CHANNEL_CARDS" />
+
         <provider
             android:name=".engine.Setup"
             android:authorities="${applicationId}.setup"
