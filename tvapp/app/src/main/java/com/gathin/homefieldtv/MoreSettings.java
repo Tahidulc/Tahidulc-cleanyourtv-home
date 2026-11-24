@@ -184,7 +184,7 @@ final class MoreSettings implements SettingsScreen.Pages {
     private void appearance(List<RowList.Row> out) {
         out.add(page("appearance.guide", "TV guide", ""));
         out.add(page("appearance.player", "Player", ""));
-        out.add(page("appearance.groups", "Groups", ""));
+        out.add(page("appearance.groups", "Categories", ""));
         out.add(page("appearance.logos", "Logos", ""));
         out.add(pick("text", "Font size", FONT_NAMES[Look.textSize]));
         out.add(page("theme", "Color theme", Theme.name()));

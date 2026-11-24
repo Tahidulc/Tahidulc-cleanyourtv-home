@@ -6,7 +6,8 @@ import java.util.List;
 /**
  * One of the lists of live channels the screens show (all the channels listed, a group's, one of the guide's
  * categories, or a short list such as the favourites), with where a channel or a number is in it, found at once from
- * the lists the library made (Lists), however many channels there are.
+ * the lists the library made (Lists), however many channels there are. One row per channel: any of a channel's quality
+ * versions is where its row is, and any version's number finds that row.
  */
 public final class Lineup {
     static final int EVERY = 0, GROUP = 1, KIND = 2, FEW = 3;
@@ -25,26 +26,39 @@ public final class Lineup {
         this.channels = channels;
     }
 
-    /** Where a channel is in it (by its key), or -1. */
+    /** Where a channel is in it (by its key; one of its versions: its row), or -1. */
     public int indexOf(Channel c) {
         if (c == null) return -1;
+        int e = lists.index.find(c);
         if (kind == FEW) {
-            for (int i = 0; i < channels.size(); i++) if (channels.get(i).key.equals(c.key)) return i;
+            Channel row = e < 0 ? null : lists.row(e);
+            String also = row == null ? null : row.key;
+            for (int i = 0; i < channels.size(); i++) {
+                String k = channels.get(i).key;
+                if (k.equals(c.key) || k.equals(also)) return i;
+            }
             return -1;
         }
-        int e = lists.index.find(c);
         if (e < 0) return -1;
+        int r = lists.rowOf[e];
         switch (kind) {
             case EVERY: return lists.at[e];
-            case GROUP: return lists.index.channels.get(e).group.equals(group) ? lists.inGroup[e] : -1;
-            default: return lists.index.genre[e] == genre ? lists.inGenre[e] : -1;
+            case GROUP: return lists.index.channels.get(r).group.equals(group) ? lists.inGroup[e] : -1;
+            default: return lists.index.genre[r] == genre ? lists.inGenre[e] : -1;
         }
     }
 
-    /** Where the first channel with this number is in it, or -1. */
+    /** Where the first channel with this number (or, one row per channel, one of its versions with it) is in it, or -1. */
     public int indexOfNumber(int number) {
         if (kind == FEW) {
-            for (int i = 0; i < channels.size(); i++) if (lists.index.number(channels.get(i)) == number) return i;
+            for (int i = 0; i < channels.size(); i++) {
+                Channel c = channels.get(i);
+                if (lists.index.number(c) == number) return i;
+                int e = lists.merged ? lists.index.find(c) : -1;
+                int[] g = e < 0 ? null : lists.index.versionsAt[e];
+                if (g == null) continue;
+                for (int m : g) if (lists.index.number(lists.index.channels.get(m)) == number) return i;
+            }
             return -1;
         }
         long[] nums = lists.numbers;

@@ -120,9 +120,23 @@ public final class Catchup {
 
     // ---- a channel's archive -----------------------------------------------------------------------------------------
 
-    /** The copy of the channel whose provider keeps an archive: its own, else one in another playlist; null for none. */
+    /**
+     * The copy of the channel whose provider keeps an archive: its own, else one in another playlist; one row per channel,
+     * else one of its quality versions' (best first) or theirs; null for none.
+     */
     public static Channel source(Channel c) {
         if (c == null) return null;
+        Channel s = own(c);
+        if (s != null) return s;
+        Versions v = Versions.of(c);
+        if (v == null) return null;
+        Channel[] all = v.all;
+        for (int i = 0; i < all.length; i++) if (all[i] != c && (s = own(all[i])) != null) return s;
+        return null;
+    }
+
+    /** The copy of this very channel (its own, or another playlist's) that keeps an archive, or null. */
+    private static Channel own(Channel c) {
         if (c.hasArchive()) return c;
         // By index: asked for each row of the guide on every frame it draws (no iterator made).
         List<Channel> alts = c.alternates;

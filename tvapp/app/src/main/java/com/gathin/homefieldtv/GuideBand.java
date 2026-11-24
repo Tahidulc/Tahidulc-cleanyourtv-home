@@ -229,7 +229,7 @@ final class GuideBand extends View {
     /** "50 FPS" for the channel playing (as the player has it), else as last seen on this channel; "" when not known. */
     private String fpsFor(Channel c) {
         int f = live != null && live.channel() != null && live.channel().key.equals(c.key) ? live.fps() : 0;
-        if (f <= 0) f = FrameRates.of(getContext(), c.key);
+        if (f <= 0) f = FrameRates.of(getContext(), c);
         return FrameRates.chip(f);
     }
 

@@ -12,13 +12,15 @@ import java.util.List;
 
 /**
  * OK held on a group in the TV guide's groups column: its menu, as TiviMate's group options and Manage groups have
- * them (FUNCTIONS.md, Groups panel and Group options), on the long-OK card (GuideMenu):
+ * them (FUNCTIONS.md, Groups panel and Group options), on the long-OK card (GuideMenu). The family calls groups
+ * categories, so every line and toast does:
  *
  * <pre>
- *   the group's name     Rename group · Restore group name (once renamed) · Hide group · Move group (it lifts, Up and
- *                        Down move it, OK puts it down, Back leaves it: MoveMode) · Sort channels › (By order in
- *                        playlist, By name, By number, Manual: the group's own, the one in use ticked)
- *   Groups               Show all groups · Hide all groups · Manage groups (Settings › Appearance › TV guide › Manage groups)
+ *   the category's name  Rename category · Restore category name (once renamed) · Hide category · Move category (it
+ *                        lifts, Up and Down move it, OK puts it down, Back leaves it: MoveMode) · Sort channels › (By
+ *                        order in playlist, By name, By number, Manual: the category's own, the one in use ticked)
+ *   Categories           Show all categories · Hide all categories · Manage categories (Settings › Channels &amp;
+ *                        categories › Manage categories)
  * </pre>
  *
  * On Favourites, All channels, Recently watched or one of the guide's own kinds, the Groups lines alone. Kept with
@@ -39,18 +41,18 @@ final class GroupMenu {
         List<GuideMenu.Item> out = new ArrayList<>();
         if (group != null) {
             out.add(GuideMenu.Item.section(Categories.label(c, group)));
-            out.add(GuideMenu.Item.item(RENAME, "Rename group"));
-            if (Categories.renamed(c, group)) out.add(GuideMenu.Item.item(UNNAME, "Restore group name"));
-            out.add(GuideMenu.Item.item(HIDE, "Hide group"));
-            out.add(GuideMenu.Item.item(MOVE, "Move group"));
+            out.add(GuideMenu.Item.item(RENAME, "Rename category"));
+            if (Categories.renamed(c, group)) out.add(GuideMenu.Item.item(UNNAME, "Restore category name"));
+            out.add(GuideMenu.Item.item(HIDE, "Hide category"));
+            out.add(GuideMenu.Item.item(MOVE, "Move category"));
             // The one in use at the line's right (07), and ticked on its own card (sortItems).
             out.add(GuideMenu.Item.item(SORT, "Sort channels").value(ChannelEdits.SORT_NAMES[Math.max(0,
                     Math.min(ChannelEdits.SORT_NAMES.length - 1, sortOf(c, group)))]));
         }
-        out.add(GuideMenu.Item.section("Groups"));
-        out.add(GuideMenu.Item.item(SHOW_ALL, "Show all groups"));
-        out.add(GuideMenu.Item.item(HIDE_ALL, "Hide all groups"));
-        out.add(GuideMenu.Item.item(MANAGE, "Manage groups"));
+        out.add(GuideMenu.Item.section("Categories"));
+        out.add(GuideMenu.Item.item(SHOW_ALL, "Show all categories"));
+        out.add(GuideMenu.Item.item(HIDE_ALL, "Hide all categories"));
+        out.add(GuideMenu.Item.item(MANAGE, "Manage categories"));
         return out;
     }
 
@@ -100,7 +102,7 @@ final class GroupMenu {
             case HIDE:
                 if (group == null) return;
                 Categories.setHidden(tv, group, true);
-                Toast.makeText(tv, Categories.label(tv, group) + " hidden. Settings › Appearance › TV guide › Manage groups brings it back",
+                Toast.makeText(tv, Categories.label(tv, group) + " hidden. Settings › Channels & categories › Manage categories brings it back",
                         Toast.LENGTH_LONG).show();
                 break;
             case SHOW_ALL:
@@ -108,11 +110,11 @@ final class GroupMenu {
                 break;
             case HIDE_ALL:
                 Categories.hideAll(tv, Categories.every(tv, lib.groups()));
-                Toast.makeText(tv, "Every group hidden: hold OK on All channels, then Show all groups, or show some in Manage groups",
+                Toast.makeText(tv, "Every category hidden: hold OK on All channels, then Show all categories, or show some in Manage categories",
                         Toast.LENGTH_LONG).show();
                 break;
             case MANAGE:
-                PinScreen.forSettings(tv, () -> tv.push(new SettingsScreen(tv, "appearance.guide.groups")));
+                PinScreen.forSettings(tv, () -> tv.push(new SettingsScreen(tv, "channels.categories")));
                 break;
             default:
                 break;

@@ -82,8 +82,8 @@ public class PanelsTest {
     }
 
     @Test public void settingsHasTheOtherAppsSectionsInItsOrder() {
-        assertEquals(Arrays.asList("General", "Playlists", "EPG", "Appearance", "Playback", "Remote control", "Parental controls",
-                "Other", "About"), Arrays.asList(SettingsScreen.SECTION_NAMES));
+        assertEquals(Arrays.asList("General", "Playlists", "EPG", "Appearance", "Channels & categories", "Playback", "Remote control",
+                "Parental controls", "Other", "About"), Arrays.asList(SettingsScreen.SECTION_NAMES));
         assertEquals(SettingsScreen.SECTIONS.length, SettingsScreen.SECTION_NAMES.length);
     }
 
@@ -92,10 +92,12 @@ public class PanelsTest {
         assertEquals(Arrays.asList("playlists", "playlists.add", "playlists.add.m3u"), SettingsScreen.chain("playlists.add.m3u"));
         // A playlist's or a group's own page, whose name can hold dots.
         assertEquals(Arrays.asList("playlists", "playlist:p0"), SettingsScreen.chain("playlist:p0"));
-        assertEquals(Arrays.asList("appearance", "appearance.guide", "appearance.guide.groups", "group:U.K. | Sport"),
-                SettingsScreen.chain("group:U.K. | Sport"));
-        assertEquals(Arrays.asList("appearance", "appearance.guide", "appearance.guide.groups", "group:U.K. | Sport", "pick:gsort:U.K. | Sport"),
+        // A category's page: under Channels & categories › Manage categories (its name may hold dots), as is its channels' renaming.
+        assertEquals(Arrays.asList("channels", "channels.categories", "group:U.K. | Sport"), SettingsScreen.chain("group:U.K. | Sport"));
+        assertEquals(Arrays.asList("channels", "channels.categories", "group:U.K. | Sport", "pick:gsort:U.K. | Sport"),
                 SettingsScreen.chain("pick:gsort:U.K. | Sport"));
+        assertEquals(Arrays.asList("channels", "channels.rename", "rename:U.K. | Sport"), SettingsScreen.chain("rename:U.K. | Sport"));
+        assertEquals(Arrays.asList("channels", "channels.hidden"), SettingsScreen.chain("channels.hidden"));
         assertEquals(Arrays.asList("appearance", "appearance.guide", "pick:csort"), SettingsScreen.chain("pick:csort"));
         assertEquals(Arrays.asList("appearance", "appearance.logos", "pick:lpriority"), SettingsScreen.chain("pick:lpriority"));
         assertEquals(Arrays.asList("appearance", "theme"), SettingsScreen.chain("theme"));

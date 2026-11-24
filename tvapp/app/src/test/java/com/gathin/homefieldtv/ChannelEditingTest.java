@@ -123,10 +123,10 @@ public class ChannelEditingTest {
         assertEquals(GuideMenu.SECTION, card.get(at).kind);
         assertEquals(Arrays.asList("Add to Favourites", "Block channel", "Hide channel", "Rename channel", "Change logo", "Move channel",
                 "Catch-up"), t.subList(at + 1, t.size()));
-        // Channel names editor off: no Rename; the archive's card: no Move.
+        // Rename channel is always there now (the old Channel names editor off too); the archive's card: no Move.
         ChannelEdits.setEditor(app, false);
         t = titles(GuideActions.card(app, kestrel, s, -1, false));
-        assertFalse(t.contains("Rename channel"));
+        assertTrue(t.contains("Rename channel"));
         assertFalse(t.contains("Move channel"));
         assertTrue(t.contains("Hide channel"));
         ChannelEdits.setEditor(app, true);
@@ -219,8 +219,9 @@ public class ChannelEditingTest {
         assertEquals("group:Entertainment", g.list());
         hold(a, KeyEvent.KEYCODE_DPAD_CENTER);
         assertTrue(g.menuOpen());
-        assertEquals(Arrays.asList("Entertainment", "Rename group", "Hide group", "Move group", "Sort channels",
-                "Groups", "Show all groups", "Hide all groups", "Manage groups"), titles(GroupMenu.items(app, "Entertainment")));
+        // The family's word: categories.
+        assertEquals(Arrays.asList("Entertainment", "Rename category", "Hide category", "Move category", "Sort channels",
+                "Categories", "Show all categories", "Hide all categories", "Manage categories"), titles(GroupMenu.items(app, "Entertainment")));
         // Sort channels: its choices, the one in use ticked; by name.
         assertEquals(Arrays.asList("Sort channels  ·  Entertainment", "By order in playlist", "By name", "By number", "Manual"),
                 titles(GroupMenu.sortItems(app, "Entertainment")));
@@ -253,7 +254,8 @@ public class ChannelEditingTest {
         idle();
         assertTrue(Categories.isHidden(app, "Entertainment"));
         assertTrue(Library.get(app).group("Entertainment").channels.isEmpty());
-        assertEquals(Arrays.asList("Groups", "Show all groups", "Hide all groups", "Manage groups"), titles(GroupMenu.items(app, null)));
+        assertEquals(Arrays.asList("Categories", "Show all categories", "Hide all categories", "Manage categories"),
+                titles(GroupMenu.items(app, null)));
         GroupMenu.act(a, GroupMenu.SHOW_ALL, null);
         assertFalse(Categories.isHidden(app, "Entertainment"));
     }

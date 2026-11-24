@@ -100,7 +100,7 @@ final class LogoScreen extends Screen {
 
     /** What the channel shows now: a new logo's path, or the playlist's. */
     private String shownNow() {
-        String choice = ChannelEdits.logo(ch.key);
+        String choice = ChannelEdits.logo(ch);
         if (!choice.isEmpty()) return choice;
         String auto = LogoPack.on() ? LogoPack.auto(ch) : null;
         return auto == null ? PLAYLIST : auto;
@@ -128,7 +128,8 @@ final class LogoScreen extends Screen {
         String keep;
         if (PLAYLIST.equals(path)) keep = LogoPack.on() && auto != null ? PLAYLIST : "";
         else keep = LogoPack.on() && path.equals(auto) ? "" : path;
-        ChannelEdits.setLogo(tv, ch.key, keep);
+        // A channel in several qualities: its logo on every version (one row per channel).
+        ChannelEdits.setLogo(tv, ch, keep);
         tv.pop();
     }
 

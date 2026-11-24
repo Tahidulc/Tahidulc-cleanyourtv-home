@@ -2,6 +2,7 @@ package com.gathin.homefieldtv.prefs;
 
 import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Names;
+import com.gathin.homefieldtv.engine.Versions;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -17,6 +18,10 @@ import java.util.TreeMap;
  * version's copies in the family's other playlists (Channel.alternates) behind it. The screens go on showing the
  * channel picked (its name, number, logo, guide, favourites, recents, scoreboard); only the stream under it changes,
  * and the quality badge with it. Pure (tests).
+ *
+ * <p>One row per channel (engine.Versions): the channel's quality versions in its category are its levels, found at
+ * once; it starts on its best (or the version picked by hand: picked()), and one that doesn't answer falls back to the
+ * next (fellBack() says so).
  */
 public final class Ladder {
     /** Levels as Names reads them from a name: SD … UHD; PLAIN is a name that says nothing of its picture. */
@@ -50,6 +55,24 @@ public final class Ladder {
         int[] lv = new int[versions.size()];
         for (int i = 0; i < lv.length; i++) lv[i] = level(versions.get(i));
         return new Ladder(new ArrayList<>(versions), chosen, start(lv, chosen, quality));
+    }
+
+    /** The channel's versions with one picked by hand (its Quality choice): that one plays, and Adaptive never goes above it. */
+    public static Ladder picked(List<Channel> versions, Channel pick) {
+        if (versions == null || versions.isEmpty()) return single(pick);
+        int chosen = Math.max(0, versions.indexOf(pick));
+        return new Ladder(new ArrayList<>(versions), chosen, chosen);
+    }
+
+    /**
+     * Pure: the note when a channel falls back to its next version, the new one's name and the one that failed by its
+     * quality: "Playing ITV 1 HD: FHD wasn't answering" (by its name when that says no quality).
+     */
+    public static String fellBack(Channel from, Channel to) {
+        if (to == null) return "";
+        String was = from == null ? "" : Versions.badge(level(from));
+        if (was.isEmpty() && from != null) was = from.name;
+        return was.isEmpty() ? "Playing " + to.name : "Playing " + to.name + ": " + was + " wasn't answering";
     }
 
     /**
@@ -107,8 +130,14 @@ public final class Ladder {
         return ia.uk && !ib.uk;
     }
 
+    /** A version's level from its name (one rule with the Quality choice's order: Versions.level). */
     static int level(Channel c) {
-        return c == null ? PLAIN : Names.info(c.name, c.group).quality;
+        return c == null ? PLAIN : Versions.level(c.name);
+    }
+
+    /** The version at a rung (0 the best), or null. */
+    public Channel version(int r) {
+        return r < 0 || r >= rungs.size() ? null : rungs.get(r);
     }
 
     public int size() {

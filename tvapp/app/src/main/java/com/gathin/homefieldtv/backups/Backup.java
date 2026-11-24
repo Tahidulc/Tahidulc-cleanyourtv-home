@@ -36,7 +36,7 @@ public final class Backup {
     static final List<String> FILES = Collections.unmodifiableList(Arrays.asList(
             "live_sources", "live_source", "live_tv", "reminders", "reminders_ui", "my_list", "resume",
             "player", "look", "general", "remote", "guide", "live_groups", "parental",
-            "live_subs", "scoreboard", "sports_competitions", "in_step", "channel_edits"));
+            "live_subs", "scoreboard", "sports_competitions", "in_step", "channel_edits", "quality_picks"));
 
     /** A backup read back: when it was made, by which version, and its settings files. */
     public static final class Contents {

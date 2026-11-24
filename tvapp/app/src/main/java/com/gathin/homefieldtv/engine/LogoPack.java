@@ -108,7 +108,8 @@ public final class LogoPack {
     /** The logo to draw for a channel: its own choice, else the new one when sure (and the setting says so), else the playlist's. */
     public static String url(Channel ch) {
         if (ch == null) return "";
-        String choice = ChannelEdits.logo(ch.key);
+        // Its own choice (one row per channel: or one of its versions').
+        String choice = ChannelEdits.logo(ch);
         String path;
         if (ChannelEdits.LOGO_PLAYLIST.equals(choice)) return ch.logo;
         if (!choice.isEmpty()) path = choice;

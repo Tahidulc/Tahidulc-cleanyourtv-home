@@ -143,6 +143,15 @@ final class ReminderCard {
         }
     }
 
+    /**
+     * The name a reminder's channel shows under now (a name given to it since, or its channel's without the quality, one
+     * row per channel), else the name it had when the reminder was set.
+     */
+    static String channelName(Context c, Reminders.Reminder r) {
+        com.gathin.homefieldtv.engine.Channel ch = com.gathin.homefieldtv.engine.Library.get(c).byKey(r.key);
+        return ch == null ? r.channel : com.gathin.homefieldtv.prefs.ChannelEdits.name(ch);
+    }
+
     // ---- the notification, where the card can't go over other apps ---------------------------------------------
 
     private static void notify(Context app, Reminders.Reminder r) {
@@ -163,7 +172,7 @@ final class ReminderCard {
         Notification n = new Notification.Builder(app, CHANNEL)
                 .setSmallIcon(R.drawable.ic_reminder)
                 .setContentTitle(when(now, r.start) + ": " + r.title)
-                .setContentText(r.channel + "  ·  " + LiveText.hm(r.start))
+                .setContentText(channelName(app, r) + "  ·  " + LiveText.hm(r.start))
                 .setCategory(Notification.CATEGORY_REMINDER)
                 .setContentIntent(watch)
                 .setFullScreenIntent(full, true)
@@ -292,7 +301,7 @@ final class ReminderCard {
         private final RectF rect = new RectF();
         private final Runnable redraw = this::invalidate;
         /** What the guide says of the programme (its channel, schedule and index), read once; the words cut to fit once. */
-        private String sub = "", desc = "", pic, titleFit, subFit;
+        private String sub = "", desc = "", pic, titleFit, subFit, name = "";
         private com.gathin.homefieldtv.engine.Channel ch;
         private com.gathin.homefieldtv.engine.Guide.Schedule sched;
         private int index = -1;
@@ -344,7 +353,8 @@ final class ReminderCard {
             int i = s == null ? -1 : s.at(r.start + 1);
             int n = ch == null ? 0 : lib.number(ch);
             String times = r.end > r.start ? LiveText.hm(r.start) + " – " + LiveText.hm(r.end) : LiveText.hm(r.start);
-            sub = (n > 0 ? n + " " : "") + r.channel + "  ·  " + times;
+            name = ch == null ? r.channel : com.gathin.homefieldtv.prefs.ChannelEdits.name(ch);
+            sub = (n > 0 ? n + " " : "") + name + "  ·  " + times;
             if (i >= 0 && s.start[i] == r.start) {
                 sched = s;
                 index = i;
@@ -385,7 +395,7 @@ final class ReminderCard {
             float lx = pad, ly = Ui.f(26f + 8f), lw = Ui.f(110f), lh = Ui.f(72f);
             rect.set(lx, ly, lx + lw, ly + lh);
             if (!Logos.draw(c, r.logo, rect, redraw)) {
-                String n = Ui.fit(r.channel, nameP, lw - Ui.f(16f));
+                String n = Ui.fit(name, nameP, lw - Ui.f(16f));
                 c.drawText(n, rect.centerX() - nameP.measureText(n) / 2f, Type.centred(nameP, rect.centerY()), nameP);
             }
             // Homefield · the bell and "Starts in 1 min"; the title; the channel and its time.

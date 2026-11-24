@@ -54,6 +54,8 @@ public class LibraryListsTest {
         c = RuntimeEnvironment.getApplication();
         Parental.forget();
         Categories.forget();
+        // 1.10's lists: every channel its own row (its invented names may read alike: One row per channel off).
+        com.gathin.homefieldtv.prefs.ChannelEdits.setMerging(c, false);
         lib = Library.get(c);
         made = channels(new Random(7), 1_500);
         long now = System.currentTimeMillis();
@@ -82,6 +84,8 @@ public class LibraryListsTest {
         lib.clear();
         Parental.forget();
         Categories.forget();
+        c.getSharedPreferences("channel_edits", Context.MODE_PRIVATE).edit().clear().commit();
+        com.gathin.homefieldtv.prefs.ChannelEdits.forget();
         Exec.inline = false;
     }
 
