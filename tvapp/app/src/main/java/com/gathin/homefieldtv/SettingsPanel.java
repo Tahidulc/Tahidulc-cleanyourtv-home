@@ -88,7 +88,7 @@ final class SettingsPanel extends FrameLayout implements RowList.Host {
     private String previewOf = "";
     private String title = "", crumb = "", about = "";
 
-    private final Paint scrim = new Paint(), fill = new Paint(Paint.ANTI_ALIAS_FLAG), dot = new Paint(Paint.ANTI_ALIAS_FLAG),
+    private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), dot = new Paint(Paint.ANTI_ALIAS_FLAG),
             amber = new Paint(Paint.ANTI_ALIAS_FLAG), amberInk = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Frost frost = new Frost(Look07.MAT);
     private final TextPaint brandP = Type.paint(Type.H3, Type.BOLD, Look07.L1), sectionP = Type.paint(Type.MENU, Type.MEDIUM, Look07.L2),
@@ -100,9 +100,27 @@ final class SettingsPanel extends FrameLayout implements RowList.Host {
     private final RectF box = new RectF(), r = new RectF();
     private final Runnable redraw = this::invalidate;
 
+    /** The dimmed screen behind (faded as the panel opens: a property, nothing drawn again). */
+    private final View scrimView;
+    /** The panel itself, laid out over its own part of the screen: a frame of the sections moving redraws only that. */
+    private final View body;
+
     SettingsPanel(Context c) {
         super(c);
-        setWillNotDraw(false);
+        setWillNotDraw(true);
+        scrimView = new View(c);
+        scrimView.setBackgroundColor(0x8C000000);
+        scrimView.setAlpha(0f);
+        addView(scrimView, new LayoutParams(-1, -1));
+        body = new View(c) {
+            @Override protected void onDraw(Canvas canvas) {
+                canvas.save();
+                canvas.translate(-getLeft(), -getTop());
+                drawPanel(canvas);
+                canvas.restore();
+            }
+        };
+        addView(body, new LayoutParams(-1, -1));
         sections = new RowList(c);
         sections.setHost(this);
         sections.setVisibility(View.INVISIBLE);
@@ -370,7 +388,22 @@ final class SettingsPanel extends FrameLayout implements RowList.Host {
             out.setTranslationX(base - slideDir * d * slide);
             out.setAlpha(open * (1f - slide));
         }
+        scrimView.setAlpha(open);
         invalidate();
+    }
+
+    /** Drawn again: the panel only (its body), never the whole screen it covers. */
+    @Override public void invalidate() {
+        if (body != null) body.invalidate();
+    }
+
+    /** The body over the panel and its shadow; the pages' lists over the pages' part, inside the panel. */
+    @Override protected void onLayout(boolean changed, int l, int t, int r, int b) {
+        super.onLayout(changed, l, t, r, b);
+        int w = r - l, h = b - t;
+        body.layout(Math.max(0, Ui.px(X - 120f)), 0, w, h);
+        int left = Ui.px(X + SECTIONS_W), top = Ui.px(Y), right = Math.min(w, Ui.px(X + W + SLIDE)), bottom = Math.min(h, Ui.px(Y + H));
+        for (RowList list : lists) list.layout(left, top, right, bottom);
     }
 
     // ---- drawing --------------------------------------------------------------------------------------------------
@@ -378,15 +411,16 @@ final class SettingsPanel extends FrameLayout implements RowList.Host {
     /** The logos' preview on Appearance › Logos (design px): its label's baseline, its tiles' top. */
     static final float LOGOS_Y = 640f;
 
-    @Override protected void onDraw(Canvas c) {
-        scrim.setColor(Palette.alpha(0x8C000000, Math.round(0x8C * open)));
-        c.drawRect(0, 0, getWidth(), getHeight(), scrim);
+    /** The panel (the body draws it, from the screen's corner): its frost, the sections, the page's header. */
+    private void drawPanel(Canvas c) {
         float off = Ui.f(SLIDE) * (1f - open);
         box.set(Ui.f(X) + off, Ui.f(Y), Ui.f(X + W) + off, Ui.f(Y + H));
         frost.draw(c, box, Ui.f(RADIUS), open);
         if (open <= 0f) return;
         int a = Math.round(255 * open);
-        c.saveLayerAlpha(box, a);
+        // Faded through a layer only while it opens or closes (an offscreen pass each frame otherwise).
+        if (a < 255) c.saveLayerAlpha(box, a);
+        else c.save();
         c.translate(off, 0f);
         boolean moving = drawSections(c);
         // The line between the panes.
@@ -395,7 +429,7 @@ final class SettingsPanel extends FrameLayout implements RowList.Host {
         drawHeader(c);
         if ("appearance.logos".equals(shownTag())) drawLogos(c);
         c.restore();
-        if (moving) postInvalidateOnAnimation();
+        if (moving) body.postInvalidateOnAnimation();
     }
 
     /** Homefield's mark and "Settings", then the sections: the remote's white, the one open white at 16 %. */
@@ -475,6 +509,7 @@ final class SettingsPanel extends FrameLayout implements RowList.Host {
     /** The pages are kept inside the panel as they slide. */
     @Override protected boolean drawChild(Canvas c, View child, long time) {
         if (child == sections) return false;
+        if (child == scrimView || child == body) return super.drawChild(c, child, time);
         float off = Ui.f(SLIDE) * (1f - open);
         c.save();
         c.clipRect(Ui.f(X + SECTIONS_W) + off, Ui.f(Y), Ui.f(X + W) + off, Ui.f(Y + H));

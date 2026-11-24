@@ -10,3 +10,6 @@
 -keepclassmembers class * extends com.sun.jna.** { public *; }
 -keep class org.vosk.** { *; }
 -dontwarn java.awt.**
+
+# The memory log names the screen on top and each screen's frame times (MemLog, FrameStats) by the screen's class.
+-keepnames class * extends com.gathin.homefieldtv.Screen

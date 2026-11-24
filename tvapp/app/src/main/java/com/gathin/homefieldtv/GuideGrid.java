@@ -172,8 +172,9 @@ final class GuideGrid extends View {
             tiles[i].colour(CELL);
         }
         ring.setStyle(Paint.Style.STROKE);
-        Shadows.prepare(SH_CELL, CELL_R);
-        Shadows.prepare(GLOW_CELL, CELL_R);
+        // A short programme's cell is narrower than its corners: its lift's shadow and glow at every corner, made now.
+        Shadows.prepareAll(SH_CELL, CELL_R);
+        Shadows.prepareAll(GLOW_CELL, CELL_R);
         Shadows.prepare(Look07.SH_CHANNEL, Look07.R_CHANNEL);
         Shadows.prepare(Look07.SH_CHANNEL_UP, Look07.R_CHANNEL);
         Shadows.prepare(Look07.GLOW_CHANNEL, Look07.R_CHANNEL);

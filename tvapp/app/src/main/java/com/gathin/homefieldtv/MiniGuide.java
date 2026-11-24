@@ -62,6 +62,8 @@ final class MiniGuide {
     private final Channel[] subFor = new Channel[ROWS + 2];
     private final long[] subMinute = new long[ROWS + 2];
     private final String[] subText = new String[ROWS + 2];
+    private final long[] subStart = new long[ROWS + 2];
+    private int subNext;
 
     MiniGuide(View owner) {
         this.owner = owner;
@@ -211,11 +213,18 @@ final class MiniGuide {
     /** "19:00 – 20:10 · 40 min left": the programme's times and what is left of it (kept by row, channel and minute). */
     private String sub(int k, Channel ch, Guide.Schedule s, int i, long now) {
         long minute = now / 60_000L;
-        if (subFor[k] == ch && subMinute[k] == minute && subText[k] != null) return subText[k];
+        // Kept by the programme (its channel and start) and the minute, in any of the slots: as the rows slide a row
+        // moves to the next slot, its words found again (nothing made a frame).
+        for (int j = 0; j < subFor.length; j++) {
+            if (subFor[j] == ch && subMinute[j] == minute && subStart[j] == s.start[i] && subText[j] != null) return subText[j];
+        }
+        k = subNext;
+        subNext = (subNext + 1) % subFor.length;
         String t = LiveText.hm(s.start[i]) + " – " + LiveText.hm(s.stop[i]) + " · "
                 + GuideGrid.leftWords((int) Math.max(1L, (s.stop[i] - now + 59_999L) / 60_000L));
         subFor[k] = ch;
         subMinute[k] = minute;
+        subStart[k] = s.start[i];
         subText[k] = t;
         return t;
     }

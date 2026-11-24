@@ -80,6 +80,11 @@ final class DriverScreen extends Screen {
     /** For previews: a driver's pictures from these addresses (drawn ones) instead of formula1.com's; null for none. */
     final Map<F1.Standing, String[]> previewPictures = new HashMap<>();
 
+    /** Its page draws an opaque ground over the whole screen (the window's own isn't drawn under it). */
+    @Override boolean opaque() {
+        return true;
+    }
+
     @Override View build() {
         FrameLayout f = new FrameLayout(tv);
         page = new Page();
@@ -376,6 +381,22 @@ final class DriverScreen extends Screen {
             }
         }
 
+        /** The ground, its grain and its vignette: three screens of fill that don't move, kept as one picture (Cached). */
+        private final Cached still = new Cached(true);
+        private final Cached.Painter paintStill = this::paintStill;
+
+        private void paintStill(Canvas c) {
+            int w = getWidth(), h = getHeight();
+            c.drawColor(0xFF05070C);
+            c.drawRect(0, 0, w, h, ground);
+            c.drawRect(0, 0, w, h, grain);
+        }
+
+        @Override protected void onDetachedFromWindow() {
+            super.onDetachedFromWindow();
+            still.forget();
+        }
+
         @Override protected void onDraw(Canvas c) {
             boolean moving = pos.step();
             int w = getWidth(), h = getHeight();
@@ -386,9 +407,7 @@ final class DriverScreen extends Screen {
             // The colour mixed in steps of a tenth, so a slide makes ten shaders at most, not one a frame.
             int colour = sa == null ? 0xFFE10600 : t <= 0f ? sa.colour : Theme.mix(sa.colour, sb.colour, Math.round(t * 10f) / 10f);
             shaders(colour);
-            c.drawColor(0xFF05070C);
-            c.drawRect(0, 0, w, h, ground);
-            c.drawRect(0, 0, w, h, grain);
+            still.draw(c, w, h, ground.getShader(), Math.round(Ui.s * 1000f), paintStill, 1f, 0f);
             // The card: the team's colour falling away across it, its edge lit, a deep shadow.
             cardR.set(x(CARD_L), x(CARD_T), x(CARD_R), x(CARD_B));
             float rad = x(52f);

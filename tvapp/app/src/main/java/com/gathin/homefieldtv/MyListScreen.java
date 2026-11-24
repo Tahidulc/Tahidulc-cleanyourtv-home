@@ -114,6 +114,11 @@ final class MyListScreen extends Screen implements DialogCard.Host {
 
     // ---- the screen -------------------------------------------------------------------------------------------------
 
+    /** Its page draws an opaque ground over the whole screen (the window's own isn't drawn under it). */
+    @Override boolean opaque() {
+        return true;
+    }
+
     @Override View build() {
         FrameLayout f = new FrameLayout(tv);
         page = new Page(tv);

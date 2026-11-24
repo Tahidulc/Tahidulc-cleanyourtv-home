@@ -27,6 +27,14 @@ abstract class Screen {
 
     abstract View build();
 
+    /**
+     * Its view draws an opaque ground over the whole screen (a 07 page's Ground, a solid colour): then the window's own
+     * ground under it isn't drawn (a full screen of fill saved every frame). Off as it comes.
+     */
+    boolean opaque() {
+        return false;
+    }
+
     /** Its view goes over the live picture (the channel banner) rather than under it. */
     boolean overVideo() {
         return false;

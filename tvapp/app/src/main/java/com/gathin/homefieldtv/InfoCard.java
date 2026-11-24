@@ -92,6 +92,7 @@ final class InfoCard {
     private final float[] lay = new float[PicFill.SIZE];
     /** Laid out once: what the programme is about (for descKey, at descWidth), and its lines' widest. */
     private String descKey = "", whereKey = "", whereText = "", nextKey = "", nextLabel = "";
+    private long nextStart = Long.MIN_VALUE;
     private long descStart = Long.MIN_VALUE;
     private int descWidth = -1;
     private float descWide;
@@ -157,7 +158,9 @@ final class InfoCard {
         Context ctx = owner.getContext();
         long now = System.currentTimeMillis();
         r.set(Ui.f(X), Ui.f(top), Ui.f(X + W), Ui.f(top + H));
-        frost.draw(c, r, Ui.f(RADIUS), 1f);
+        // Under a picture that fills the card whole (not fading), only the card's shadow: its frost would be hidden.
+        if (pic != null && !fading) Shadows.under(c, r, Ui.f(RADIUS), Look07.SH_PANEL, 1f);
+        else frost.draw(c, r, Ui.f(RADIUS), 1f);
         Guide.Schedule s = Library.get(ctx).schedule(ch.key);
         int i = s == null ? -1 : s.at(at);
         long st = i >= 0 ? s.start[i] : Long.MIN_VALUE;
@@ -387,9 +390,10 @@ final class InfoCard {
 
     /** NEXT · 22:00, its picture (420 x 170, faces whole: PicTile), its title and times. */
     private void drawNext(Canvas c, float top, Channel ch, Guide.Schedule s, int n) {
-        String key = ch.key + "|" + s.start[n];
-        if (!key.equals(nextKey)) {
-            nextKey = key;
+        // Kept by channel and start (compared as they are: nothing made a frame).
+        if (!ch.key.equals(nextKey) || s.start[n] != nextStart) {
+            nextKey = ch.key;
+            nextStart = s.start[n];
             nextLabel = "NEXT · " + LiveText.hm(s.start[n]);
         }
         float x = Ui.f(NEXT_X);

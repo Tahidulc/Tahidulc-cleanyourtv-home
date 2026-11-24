@@ -615,8 +615,9 @@ final class HomeCard extends View {
         // The card: its shadow and frame, the card it is leaving fading out under the new one fading in.
         float x = Ui.f(L), y = Ui.f(T), cw = Ui.f(W), ch = Ui.f(H), rad = Ui.f(Look07.R_HERO);
         r.set(x, y, x + cw, y + ch);
-        Shadows.draw(c, r, rad, Look07.SH_HERO, 1f);
-        c.drawRoundRect(r, rad, rad, frame);
+        // The card is opaque: its shadow's hidden middle left out; its frame only where its picture doesn't cover it all.
+        Shadows.under(c, r, rad, Look07.SH_HERO, 1f);
+        if (leaving != null || k < 1f || !whole(shown)) c.drawRoundRect(r, rad, rad, frame);
         if (leaving != null) drawCard(c, leaving, markOld, 1f - k, 1f, 1f, 1f);
         float settle = 1f - (float) Math.pow(1f - zoom, 3);
         drawCard(c, shown, mark, k, words, strip, ZOOM - (ZOOM - 1f) * settle);
@@ -719,6 +720,14 @@ final class HomeCard extends View {
             if (layer) c.restore();
         }
         c.restore();
+    }
+
+    /** Whether a card's picture is read and opaque (it covers its frame whole, so the frame needn't be drawn under it). */
+    private boolean whole(Card card) {
+        String url = card.art;
+        Bitmap b = url.isEmpty() ? null : Pics.cached(url, picW(), picH(), Pics.FACE);
+        if (b == null && url.isEmpty() && !card.logo.isEmpty()) b = Pics.cached(card.logo, picW(), picH(), Pics.LOGO_ART);
+        return b != null && !b.hasAlpha();
     }
 
     /** Where the fades end and start for a card's picture (its faces kept clear), once each picture. */

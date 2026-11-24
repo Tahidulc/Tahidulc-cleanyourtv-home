@@ -37,10 +37,15 @@ final class TitleScreen extends Screen implements TitlePage.Host {
         this.title = t;
     }
 
+    /** Its page draws an opaque ground over the whole screen (the window's own isn't drawn under it). */
+    @Override boolean opaque() {
+        return true;
+    }
+
     @Override View build() {
         Cine.init(tv);
         FrameLayout f = new FrameLayout(tv);
-        f.setBackgroundColor(Look07.GROUND);
+        // No background of its own: its page draws its opaque ground first (a full screen of fill saved each frame).
         page = new TitlePage(tv, this);
         f.addView(page, new FrameLayout.LayoutParams(-1, -1));
         details = Catalog.get(tv).cachedDetails(title);

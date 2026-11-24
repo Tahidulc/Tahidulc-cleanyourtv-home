@@ -418,6 +418,20 @@ final class RowList extends View {
     }
 
     @Override protected void onDraw(Canvas c) {
+        // Its rows are placed in screen pixels; laid out inside a panel's page (RightPanel, SettingsPanel: so a frame of
+        // the rows moving redraws only that page, not the screen under it), it draws from the screen's corner.
+        int l = getLeft(), t0 = getTop();
+        if (l != 0 || t0 != 0) {
+            c.save();
+            c.translate(-l, -t0);
+            drawRows(c);
+            c.restore();
+        } else {
+            drawRows(c);
+        }
+    }
+
+    private void drawRows(Canvas c) {
         long t = SystemClock.uptimeMillis();
         boolean moving = scroll.step();
         Row lit = active ? focused() : null;

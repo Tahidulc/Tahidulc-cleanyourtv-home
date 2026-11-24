@@ -93,9 +93,13 @@ final class Cine {
 
     /** The baseline that centres a line of p on cy. */
     static float mid(TextPaint p, float cy) {
-        Paint.FontMetrics m = p.getFontMetrics();
+        // Read into one kept on the main thread (a frame draws many: nothing made); elsewhere one of its own.
+        Paint.FontMetrics m = android.os.Looper.getMainLooper().isCurrentThread() ? FM : new Paint.FontMetrics();
+        p.getFontMetrics(m);
         return cy - (m.ascent + m.descent) / 2f;
     }
+
+    private static final Paint.FontMetrics FM = new Paint.FontMetrics();
 
     // ---- colours from artwork (pure) --------------------------------------------------------------------------------
 
