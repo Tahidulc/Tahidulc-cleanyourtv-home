@@ -70,7 +70,11 @@ import java.util.TimeZone;
  * waiting, paused until tapped, when its picture was closed with ✕). A later programme shows its details and Remind me; the star makes
  * the channel a favourite; a long press opens the channel's menu (favourite, hide, similar channels, its info). The day
  * button at the grid's corner picks the day. The list view is the Now and Next list. The page fills the whole screen:
- * its black runs up under the status bar and down under the floating tab bar, the guide's rows scrolling on under it.
+ * its ground runs up under the status bar and down under the floating tab bar, the guide's rows scrolling on under it.
+ * The look is Homefield TV 2.0's 07 made for a finger (TvLook): a deep, softly lit ground (TvGround: the picture playing
+ * in the guide, copied small and blurred once every few seconds, or the chosen channel's colour), panels of tinted
+ * glass with a bright hairline, buttons and pills of glass (the chosen one white), Inter. Recently watched (Recents)
+ * sits over the guide as a row of cards with "Back to" the channel before; on its side, in the pane under the details.
  */
 public class LiveTvFragment extends Fragment {
     private static final String S_GROUP = "group", S_KEY = "key", S_START = "start", S_LEFT = "left", S_UPRIGHT = "upright",
@@ -146,6 +150,14 @@ public class LiveTvFragment extends Fragment {
     /** The room at the page's foot that the tab bar and the navigation bar cover (the keyboard's height while it is up). */
     private int foot;
     private OnBackPressedCallback back;
+    /** The deep, softly lit ground behind the whole page (07's backdrop). */
+    private TvGround ground;
+    /** Recently watched, over the guide (upright) or in the pane beside it (on its side). */
+    private RecentsStrip recents;
+    /** The guide's picture copied small for the ground, now and then while it plays (off the main thread). */
+    private FrameSampler sampler;
+    private final Runnable sample = this::sampleGround;
+    private static final long SAMPLE_MS = 9_000;
 
     private final Runnable changed = this::refreshAll;
     private final Runnable runSearch = this::searchNow;
@@ -158,6 +170,7 @@ public class LiveTvFragment extends Fragment {
             }
             if (details != null) details.refresh();
             if (inline != null) inline.refresh();
+            if (recents != null) recents.tick();
             if (sport != null && sport.getVisibility() == View.VISIBLE) sport.load();
             listAdapter.notifyItemRangeChanged(0, listAdapter.getItemCount());
             h.postDelayed(this, 60_000);
@@ -189,8 +202,19 @@ public class LiveTvFragment extends Fragment {
 
         LinearLayout root = new LinearLayout(c);
         root.setOrientation(LinearLayout.VERTICAL);
-        // The guide's dark look (GuideLook): black, the panels a near-black grey.
-        root.setBackgroundColor(GuideLook.GROUND);
+        // No ground of its own: the deep, softly lit one (TvGround) under it all shows through the glass.
+        ground = new TvGround(c);
+        recents = new RecentsStrip(c, lib, mode == SIDE);
+        recents.setListener(new RecentsStrip.Listener() {
+            @Override public void play(Channel ch) {
+                if (lib.ready() && grid.channels().contains(ch)) selectNow(ch);
+                LiveTvFragment.this.play(ch);
+            }
+
+            @Override public void menu(Channel ch) {
+                LiveTvFragment.this.menu(ch);
+            }
+        });
 
         buildToolbar(c, root);
         // While casting: "Casting to …" with Stop, under the top bar (it shows and hides itself).
@@ -206,7 +230,9 @@ public class LiveTvFragment extends Fragment {
         inline.setListener(inlineListener());
         if (mode == COMPACT) {
             // Upright phones: the picture across the top, over the guide, when something has been played.
-            head.addView(inline, new LinearLayout.LayoutParams(-1, -2));
+            LinearLayout.LayoutParams ip = new LinearLayout.LayoutParams(-1, -2);
+            ip.setMargins(Ui.dp(c, 12), Ui.dp(c, 6), Ui.dp(c, 12), Ui.dp(c, 4));
+            head.addView(inline, ip);
             inline.setVisibility(View.GONE);
         }
         buildStrip(c);
@@ -217,6 +243,10 @@ public class LiveTvFragment extends Fragment {
             toolbar.getChildAt(0).getLayoutParams().width = -2;
         } else {
             head.addView(stripRow, new LinearLayout.LayoutParams(-1, Ui.dp(c, 60)));
+            // Recently watched over the details (it folds away with them).
+            LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-1, -2);
+            rp.topMargin = Ui.dp(c, 8);
+            head.addView(recents, rp);
         }
 
         // The categories on the side: the bar at the guide's top (always in sight, the guide, the list or Sport under it)
@@ -235,14 +265,18 @@ public class LiveTvFragment extends Fragment {
             head.addView(details, new LinearLayout.LayoutParams(-1, -2));
         } else if (mode == TOP) {
             band = new LinearLayout(c);
-            band.setBackgroundColor(GuideLook.PANEL);
-            band.setPadding(Ui.dp(c, 16), Ui.dp(c, 14), 0, Ui.dp(c, 6));
+            // A panel of tinted glass, rounded, a little in from the edges (07's mat).
+            band.setBackground(TvLook.mat(c, 24));
+            band.setElevation(Ui.dp(c, 4));
+            band.setPadding(Ui.dp(c, 14), Ui.dp(c, 14), 0, Ui.dp(c, 6));
             // The picture about half the tablet's width (288 to 420dp), 16:9, the details beside it.
             int iw = Math.min(Ui.dp(c, 420), Math.max(Ui.dp(c, 288), getResources().getDisplayMetrics().widthPixels / 2 - Ui.dp(c, 12)));
             band.addView(inline, new LinearLayout.LayoutParams(iw, iw * 9 / 16));
             details = new Details(c, lib, false, 4);
             band.addView(details, new LinearLayout.LayoutParams(0, -2, 1f));
-            head.addView(band, new LinearLayout.LayoutParams(-1, -2));
+            LinearLayout.LayoutParams bandP = new LinearLayout.LayoutParams(-1, -2);
+            bandP.setMargins(Ui.dp(c, 12), Ui.dp(c, 6), Ui.dp(c, 12), Ui.dp(c, 8));
+            head.addView(band, bandP);
         } else {
             LinearLayout content = new LinearLayout(c);
             LinearLayout main = new LinearLayout(c);
@@ -264,18 +298,36 @@ public class LiveTvFragment extends Fragment {
             }
             side = new LinearLayout(c);
             side.setOrientation(LinearLayout.VERTICAL);
-            side.setBackgroundColor(GuideLook.PANEL);
+            // The pane beside the guide: a rounded panel of tinted glass, standing off the edges (07's mat).
+            side.setBackground(TvLook.mat(c, 24));
+            side.setElevation(Ui.dp(c, 4));
             int sw = Ui.dp(c, tablet ? SIDE_TABLET_DP : 300);
-            int pad = Ui.dp(c, 14);
+            int pad = Ui.dp(c, 12), gap = Ui.dp(c, 8);
             side.setPadding(pad, pad, pad, 0);
-            side.addView(inline, new LinearLayout.LayoutParams(-1, (sw - 2 * pad) * 9 / 16));
+            side.addView(inline, new LinearLayout.LayoutParams(-1, (sw - 2 * pad - gap) * 9 / 16));
             ScrollView ds = new ScrollView(c);
+            ds.setVerticalScrollBarEnabled(false);
             sideScroll = ds;
+            LinearLayout under = new LinearLayout(c);
+            under.setOrientation(LinearLayout.VERTICAL);
             details = new Details(c, lib, false, tablet ? 8 : 5);
-            details.setPadding(0, Ui.dp(c, 12), 0, Ui.dp(c, 16));
-            ds.addView(details, new FrameLayout.LayoutParams(-1, -2));
+            details.setPadding(Ui.dp(c, 4), Ui.dp(c, 12), Ui.dp(c, 4), Ui.dp(c, 12));
+            under.addView(details, new LinearLayout.LayoutParams(-1, -2));
+            // Recently watched in smaller cards, to the pane's edges: on a phone right under the picture (the pane is
+            // short), on a tablet under the details.
+            LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-1, -2);
+            rp.leftMargin = rp.rightMargin = -pad;
+            rp.bottomMargin = Ui.dp(c, 8);
+            if (tablet) under.addView(recents, rp);
+            else {
+                rp.topMargin = Ui.dp(c, 10);
+                under.addView(recents, 0, rp);
+            }
+            ds.addView(under, new FrameLayout.LayoutParams(-1, -2));
             side.addView(ds, new LinearLayout.LayoutParams(-1, 0, 1f));
-            content.addView(side, new LinearLayout.LayoutParams(sw, -1));
+            LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(sw - gap, -1);
+            sp.setMargins(0, Ui.dp(c, 4), gap, gap);
+            content.addView(side, sp);
             root.addView(content, new LinearLayout.LayoutParams(-1, 0, 1f));
         }
         details.setActions(actions);
@@ -312,8 +364,10 @@ public class LiveTvFragment extends Fragment {
         sport.setNestedScrollingEnabled(fold != null);
         body.addView(sport, new FrameLayout.LayoutParams(-1, -1));
         sport.setVisibility(View.GONE);
-        // Over it all, the categories' panel and its scrim (docked, it is in the guide's frame instead).
+        // Over it all, the categories' panel and its scrim (docked, it is in the guide's frame instead); under it all,
+        // the ground.
         FrameLayout frame = new FrameLayout(c);
+        frame.addView(ground, new FrameLayout.LayoutParams(-1, -1));
         frame.addView(root, new FrameLayout.LayoutParams(-1, -1));
         if (!dock) frame.addView(cats, new FrameLayout.LayoutParams(-1, -1));
         // The whole screen (MainActivity leaves Live TV the window): the black up under the status bar, the top bar just
@@ -357,7 +411,7 @@ public class LiveTvFragment extends Fragment {
         catsButton.setOnClickListener(v -> openCats());
         paintCatsButton(c);
         bar.addView(catsButton, new LinearLayout.LayoutParams(-2, -1));
-        catsCount = Ui.text(c, "", 13, Ui.DIM, false);
+        catsCount = TvLook.text(c, "", 12.5f, TvLook.L3, false);
         catsCount.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
         catsCount.setMaxLines(1);
         catsCount.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
@@ -367,13 +421,14 @@ public class LiveTvFragment extends Fragment {
         return bar;
     }
 
-    /** The button as a dark pill, lit (as the chosen chip was) while the docked panel is out beside the guide. */
+    /** The button as a pill of glass, white (as 07's chosen pill) while the docked panel is out beside the guide. */
     private void paintCatsButton(Context c) {
         boolean lit = dock && dockedOpen;
         styleDark(c, catsButton, lit);
-        catsButton.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         int inset = Ui.dp(c, 4);
         catsButton.setPadding(Ui.dp(c, 14), inset, Ui.dp(c, 18), inset);
+        android.graphics.drawable.Drawable[] d = catsButton.getCompoundDrawablesRelative();
+        if (d[0] != null) d[0].setTint(lit ? TvLook.INK : Ui.TEXT);
     }
 
     /** The button's words: the category showing (its flag or star as the panel has it), and what a tap does. */
@@ -574,7 +629,8 @@ public class LiveTvFragment extends Fragment {
         titleView = new FitName(c, Ui.sp(c, NAME_SP), Ui.sp(c, MIN_NAME_SP));
         titleView.setText(R.string.app_name);
         titleView.setTextColor(Ui.TEXT);
-        titleView.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        titleView.setTypeface(TvLook.semi(c));
+        titleView.setLetterSpacing(-0.02f);
         titleView.setMaxLines(1);
         titleView.setIncludeFontPadding(false);
         LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(0, Ui.dp(c, 30), 1f);
@@ -589,7 +645,7 @@ public class LiveTvFragment extends Fragment {
         playlistPill.setSingleLine(true);
         playlistPill.setEllipsize(android.text.TextUtils.TruncateAt.END);
         playlistPill.setMaxWidth(Ui.dp(c, 140));
-        playlistPill.setBackground(Ui.touch(c, false, 0x26FFFFFF, 12));
+        playlistPill.setBackground(TvLook.glass(c, 12));
         playlistPill.setPadding(Ui.dp(c, 10), Ui.dp(c, 3), Ui.dp(c, 8), Ui.dp(c, 3));
         playlistPill.setOnClickListener(this::playlistMenu);
         LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(-2, -2);
@@ -597,7 +653,8 @@ public class LiveTvFragment extends Fragment {
         under.addView(playlistPill, pp);
         // The channels' count as the name is: a little smaller if it must, else not drawn (never cut off).
         sub = new FitName(c, Ui.sp(c, 12), Ui.sp(c, 10));
-        sub.setTextColor(Ui.DIM);
+        sub.setTextColor(TvLook.L3);
+        sub.setTypeface(TvLook.inter(c));
         sub.setMaxLines(1);
         under.addView(sub, new LinearLayout.LayoutParams(0, -2, 1f));
         titles.addView(under);
@@ -610,9 +667,11 @@ public class LiveTvFragment extends Fragment {
         nowButton.setIconPadding(Ui.dp(c, 6));
         nowButton.setIconTint(ColorStateList.valueOf(Ui.TEXT));
         nowButton.setTextColor(Ui.TEXT);
-        nowButton.setBackgroundTintList(ColorStateList.valueOf(GuideLook.PILL));
-        nowButton.setStrokeColor(ColorStateList.valueOf(GuideLook.PILL_RIM));
-        nowButton.setStrokeWidth(Ui.dp(c, 1));
+        // A pill of glass (07's): its wash and a fine bright rim.
+        nowButton.setBackgroundTintList(ColorStateList.valueOf(TvLook.GLASS_ON));
+        nowButton.setStrokeColor(ColorStateList.valueOf(0x33FFFFFF));
+        nowButton.setStrokeWidth(Math.max(1, Ui.dp(c, 0.75f)));
+        nowButton.setTypeface(TvLook.semi(c));
         nowButton.setCornerRadius(Ui.dp(c, 20));
         nowButton.setInsetTop(Ui.dp(c, 4));
         nowButton.setInsetBottom(Ui.dp(c, 4));
@@ -834,16 +893,11 @@ public class LiveTvFragment extends Fragment {
 
     // ---- the groups ---------------------------------------------------------------------------------------------
 
-    /** A dark pill, as in the guide's look (40dp to see, 48dp to touch), lit with a white rim when on. */
+    /** A pill of glass, as 07's (40dp to see, 48dp to touch): white with dark writing when on. */
     static void styleDark(Context c, TextView t, boolean on) {
         int inset = Ui.dp(c, 4);
-        android.graphics.drawable.GradientDrawable g = Ui.ring(c, on ? GuideLook.PILL_ON : GuideLook.PILL,
-                on ? Ui.TEXT : GuideLook.PILL_RIM, on ? 1.5f : 1, 20);
-        t.setBackground(new android.graphics.drawable.InsetDrawable(new android.graphics.drawable.RippleDrawable(
-                ColorStateList.valueOf(0x33FFFFFF), g, Ui.round(c, Ui.TEXT, 20)), 0, inset, 0, inset));
+        TvLook.pill(c, t, on);
         t.setPadding(Ui.dp(c, 16), inset, Ui.dp(c, 16), inset);
-        t.setTypeface(on ? android.graphics.Typeface.DEFAULT_BOLD : android.graphics.Typeface.DEFAULT);
-        t.setSelected(on);
     }
 
     /** The categories for the panel, in the app's order: Favourites, All, Recent, Sport, then the playlist's own. */
@@ -926,9 +980,9 @@ public class LiveTvFragment extends Fragment {
         return max * (room / w) * 0.98f;
     }
 
-    /** A top-bar button as a dark circle, as the guide's own buttons. */
+    /** A top-bar button as a circle of glass (07's). */
     private static ImageButton round(Context c, ImageButton b) {
-        b.setBackground(Ui.touch(c, false, GuideLook.PILL, com.gathin.tvhomephone.glass.Wide.tablet(c) ? 24 : 22));
+        b.setBackground(TvLook.glass(c, com.gathin.tvhomephone.glass.Wide.tablet(c) ? 24 : 22));
         return b;
     }
 
@@ -981,6 +1035,7 @@ public class LiveTvFragment extends Fragment {
         started = true;
         refreshAll();
         h.postDelayed(tick, 60_000);
+        h.postDelayed(sample, 1_500);
         if (autoFull) {
             autoFull = false;
             if (pb.live() && inline.live()) fullScreen(pb.channel(), true);
@@ -1000,11 +1055,89 @@ public class LiveTvFragment extends Fragment {
     @Override public void onStop() {
         lib.removeListener(changed);
         h.removeCallbacks(tick);
+        h.removeCallbacks(sample);
+        h.removeCallbacks(retint);
         h.removeCallbacks(runSearch);
         // Leaving the tab (or the app) stops the stream; turning round keeps it playing for the guide that comes next,
         // and full screen has already taken it over.
         inline.leave(requireActivity().isChangingConfigurations());
         super.onStop();
+    }
+
+    @Override public void onDestroyView() {
+        if (sampler != null) {
+            sampler.quit();
+            sampler = null;
+        }
+        super.onDestroyView();
+    }
+
+    // ---- the ground and Recently watched ------------------------------------------------------------------------
+
+    /**
+     * Recently watched as it is now (Recents: newest first, each merged channel once, hidden ones and the one in the
+     * picture left out), over the guide; not over a search.
+     */
+    private void showRecents() {
+        if (recents == null || !isAdded()) return;
+        if (searching || !lib.ready()) {
+            recents.setVisibility(View.GONE);
+            return;
+        }
+        Channel shown = pb.live() && pb.channel() != null ? pb.channel() : inline.channel();
+        recents.set(Recents.list(Picks.recent(requireContext()), lib::resolve, lib::isHidden, shown == null ? null : shown.key,
+                Recents.SHOWN));
+    }
+
+    private Channel tinted;
+    private final Runnable retint = () -> {
+        if (tinted != null) tintGround(tinted, false);
+    };
+
+    /**
+     * The ground glows in the chosen channel's colour (its logo's row colour, else its name's), the playing picture
+     * over it when one has been copied. A logo whose colour isn't worked out yet is looked at again in a moment.
+     */
+    private void tintGround(Channel ch, boolean again) {
+        if (ground == null || ch == null) return;
+        tinted = ch;
+        String logo = Ui.logo(ch);
+        int[] cols = logo == null ? null : LogoTiles.known(logo);
+        int colour;
+        if (cols != null && (cols[2] != 0 || cols[3] != 0)) colour = cols[2];
+        else if (cols != null && (cols[0] != 0 || cols[1] != 0)) colour = cols[0];
+        else if (logo == null) colour = GuideLook.nameColour(ch.name);
+        else colour = 0;
+        ground.setTint(colour);
+        h.removeCallbacks(retint);
+        if (colour == 0 && again) h.postDelayed(retint, 900);
+    }
+
+    /**
+     * The guide's picture, while it plays, copied a few dozen pixels across now and then (FrameSampler: the video alone),
+     * made smooth and blurred off the main thread, and faded in as the ground (never a live blur). Stopped, the ground
+     * goes back to the channel's colour.
+     */
+    private void sampleGround() {
+        h.removeCallbacks(sample);
+        if (!isResumed() || ground == null || inline == null) return;
+        View surface = inline.surface();
+        if (inline.live() && !pb.paused() && surface != null && surface.isShown()) {
+            if (sampler == null) sampler = new FrameSampler();
+            TvGround g = ground;
+            android.graphics.Bitmap into = android.graphics.Bitmap.createBitmap(TvGround.COPY_W, TvGround.COPY_H,
+                    android.graphics.Bitmap.Config.ARGB_8888);
+            sampler.copy(surface, into, (b, at) -> {
+                // A black frame (a channel starting) is no picture.
+                android.graphics.Bitmap smooth = b == null || TvGround.dark(b) ? null : TvGround.smooth(b);
+                if (smooth != null) App.main.post(() -> {
+                    if (ground == g && isAdded()) g.setPicture(smooth);
+                });
+            });
+        } else if (ground.hasPicture() && !inline.live()) {
+            ground.setPicture(null);
+        }
+        h.postDelayed(sample, SAMPLE_MS);
     }
 
     @Override public void onSaveInstanceState(@NonNull Bundle out) {
@@ -1043,6 +1176,7 @@ public class LiveTvFragment extends Fragment {
             favHint.setVisibility(View.GONE);
             sport.setVisibility(View.GONE);
             stripRow.setVisibility(mode == SIDE ? View.INVISIBLE : View.GONE);
+            recents.setVisibility(View.GONE);
             guideBar.setVisibility(View.GONE);
             if (cats.isOpen() && !dock) cats.close(false);
             layDock(false);
@@ -1075,6 +1209,7 @@ public class LiveTvFragment extends Fragment {
         shownFavs = !favs.isEmpty();
         shownRecent = hasRecent;
         setStrip(favs);
+        showRecents();
         timeline(true);
         refreshRows();
         grid.favouritesChanged();
@@ -1282,6 +1417,7 @@ public class LiveTvFragment extends Fragment {
         Guide.Schedule s = lib.schedule(ch.key);
         int i = s == null || start == 0 ? -1 : s.at(start);
         details.bind(ch, i);
+        tintGround(ch, true);
         // Stopped, the pane follows the choice (play to watch it), except to keep the last channel played on offer.
         if (mode != COMPACT && !inline.live()) {
             Channel shown = inline.channel(), last = pb.last(lib);
@@ -1330,6 +1466,10 @@ public class LiveTvFragment extends Fragment {
         if (mode == COMPACT) openInline(true);
         inline.play(ch);
         showInline();
+        showRecents();
+        // The ground takes the new picture soon after it starts.
+        h.removeCallbacks(sample);
+        h.postDelayed(sample, 2_500);
         // Folded away: it opens again to show the picture asked for.
         if (fold != null) fold.setShut(false, true);
     }
@@ -1397,6 +1537,7 @@ public class LiveTvFragment extends Fragment {
 
             @Override public void onShowing(Channel ch) {
                 if (lib.ready() && grid.channels().contains(ch)) selectNow(ch);
+                showRecents();
             }
         };
     }
@@ -1481,6 +1622,7 @@ public class LiveTvFragment extends Fragment {
         toolbar.setVisibility(View.GONE);
         searchBar.setVisibility(View.VISIBLE);
         stripRow.setVisibility(View.GONE);
+        recents.setVisibility(View.GONE);
         search.requestFocus();
         keyboard(true);
         showBody();
@@ -1618,7 +1760,7 @@ public class LiveTvFragment extends Fragment {
             LinearLayout texts = new LinearLayout(c);
             texts.setOrientation(LinearLayout.VERTICAL);
             texts.setPadding(Ui.dp(c, 14), 0, Ui.dp(c, 6), 0);
-            name = Ui.text(c, "", 16, Ui.TEXT, true);
+            name = TvLook.text(c, "", 15.5f, Ui.TEXT, true);
             name.setSingleLine(true);
             name.setEllipsize(TextUtils.TruncateAt.END);
             texts.addView(name);
@@ -1627,10 +1769,11 @@ public class LiveTvFragment extends Fragment {
             nowTag = Ui.text(c, getString(R.string.live_now), 11, Ui.RED, true);
             nowTag.setPadding(0, 0, Ui.dp(c, 6), 0);
             now.addView(nowTag);
-            nowTitle = Ui.text(c, "", 14, Ui.SOFT, false);
+            nowTitle = TvLook.text(c, "", 13.5f, Ui.SOFT, false);
             nowTitle.setSingleLine(true);
             nowTitle.setEllipsize(TextUtils.TruncateAt.END);
             now.addView(nowTitle, new LinearLayout.LayoutParams(0, -2, 1f));
+            now.setPadding(0, Ui.dp(c, 3), 0, 0);
             texts.addView(now);
             progress = new ProgressBar(c, null, android.R.attr.progressBarStyleHorizontal);
             progress.setMax(1000);
@@ -1640,11 +1783,12 @@ public class LiveTvFragment extends Fragment {
             pp.topMargin = Ui.dp(c, 4);
             pp.bottomMargin = Ui.dp(c, 3);
             texts.addView(progress, pp);
-            next = Ui.text(c, "", 12, Ui.DIM, false);
+            next = TvLook.text(c, "", 12, TvLook.L3, false);
             next.setSingleLine(true);
             next.setEllipsize(TextUtils.TruncateAt.END);
             texts.addView(next);
             view.addView(texts, new LinearLayout.LayoutParams(0, -2, 1f));
+            view.setElevation(Ui.dp(c, 2));
             star = Ui.icon(c, R.drawable.live_ic_star_outline, R.string.live_favourite);
             view.addView(star, new LinearLayout.LayoutParams(Ui.dp(c, 48), Ui.dp(c, 48)));
             view.setOnClickListener(v -> {
@@ -1665,7 +1809,7 @@ public class LiveTvFragment extends Fragment {
             ch = c;
             Context ctx = view.getContext();
             boolean sel = mode != COMPACT && !searching && c.key.equals(selKey);
-            view.setBackground(Ui.touch(ctx, sel, 0x14FFFFFF, 14));
+            view.setBackground(plain(ctx, sel));
             int n = lib.number(c);
             name.setText(n > 0 ? n + "  " + c.name : c.name);
             initials.setText(Ui.initials(c.name));
@@ -1684,12 +1828,12 @@ public class LiveTvFragment extends Fragment {
                 LogoTiles.show(box, 12, false, logo, pic, LogoTiles.ON_BLACK, cols -> {
                     if (ch != c) return;
                     android.graphics.drawable.Drawable row = LogoTiles.row(ctx, cols, sel, Ui.TEXT, 14);
-                    view.setBackground(row != null ? row : Ui.touch(ctx, sel, 0x14FFFFFF, 14));
+                    view.setBackground(row != null ? row : plain(ctx, sel));
                     tinted(row != null);
                 }, () -> {
                     if (ch != c) return;
                     box.setBackground(Ui.round(ctx, Ui.GLASS, 12));
-                    view.setBackground(Ui.touch(ctx, sel, 0x14FFFFFF, 14));
+                    view.setBackground(plain(ctx, sel));
                     tinted(false);
                     initials.setVisibility(View.VISIBLE);
                 });
@@ -1719,13 +1863,17 @@ public class LiveTvFragment extends Fragment {
             } else next.setVisibility(View.GONE);
         }
 
-        /** On a row in its logo's colour the red NOW and its line turn white, so they show on any colour. */
+        /** On a row in its logo's colour the red NOW turns white, so it shows on any colour; the line is white on both. */
         private void tinted(boolean coloured) {
-            nowTag.setTextColor(coloured ? Ui.TEXT : Ui.RED);
-            progress.setProgressTintList(ColorStateList.valueOf(coloured ? Ui.TEXT : Ui.RED));
-            progress.setProgressBackgroundTintList(ColorStateList.valueOf(coloured ? 0x40FFFFFF : Ui.LINE));
-            next.setTextColor(coloured ? 0xB3FFFFFF : Ui.DIM);
+            nowTag.setTextColor(coloured ? Ui.TEXT : TvLook.RED);
+            TvLook.line(progress);
+            next.setTextColor(coloured ? 0xB3FFFFFF : TvLook.L3);
         }
+    }
+
+    /** A row with no colour of its own: a card of glass (07's), ringed in white when it is the one chosen. */
+    private static android.graphics.drawable.Drawable plain(Context c, boolean selected) {
+        return selected ? Ui.touch(c, true, 0, 16) : TvLook.glass(c, 16);
     }
 
     /** A programme the search found: its title, the channel, the day and time, ON NOW when it is on. */
@@ -1744,7 +1892,7 @@ public class LiveTvFragment extends Fragment {
             RecyclerView.LayoutParams lp = new RecyclerView.LayoutParams(-1, -2);
             lp.bottomMargin = Ui.dp(c, 6);
             view.setLayoutParams(lp);
-            view.setBackground(Ui.touch(c, false, 0x14FFFFFF, 14));
+            view.setBackground(TvLook.glass(c, 16));
             box = new FrameLayout(c);
             box.setBackground(Ui.round(c, Ui.GLASS, 10));
             initials = Ui.text(c, "", 12, Ui.SOFT, true);

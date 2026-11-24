@@ -423,6 +423,8 @@ public final class LiveTvSettings {
             rRow.addView(t, chipParams(c));
         }
         col.addView(rRow);
+        // Swipe left or right on the picture for the next or previous channel (ChannelSwipe; on unless switched off).
+        col.addView(toggle(c, c.getString(R.string.tv07_swipe_setting), ChannelSwipe.on(c), on -> ChannelSwipe.setOn(c, on)));
         col.addView(toggle(c, c.getString(R.string.live3_hold), LiveAlerts.holding(c), on -> LiveAlerts.setHolding(c, on)));
         if (NightSound.available()) col.addView(toggle(c, c.getString(R.string.live3_night), NightSound.on(c), on -> NightSound.set(c, on)));
         // Automatic subtitles: made on the phone from what is said on the channel, as it plays.

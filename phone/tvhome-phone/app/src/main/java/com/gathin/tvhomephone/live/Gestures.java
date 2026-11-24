@@ -46,6 +46,13 @@ final class Gestures implements View.OnTouchListener {
         default void onEdge(int edge, float level) {}
 
         default void onEdgeEnd() {}
+
+        /**
+         * A fling with one finger, not an edge's slide, before it is read as a swipe: where it began across the view
+         * (startX of width), how far it went, its speed and how long it took. True when taken (a change of channel:
+         * ChannelSwipe); false lets it be read as a swipe as before.
+         */
+        default boolean onFling(float startX, float width, float dx, float dy, float vx, float vy, long ms) { return false; }
     }
 
     /**
@@ -100,6 +107,8 @@ final class Gestures implements View.OnTouchListener {
 
             @Override public boolean onFling(MotionEvent a, @NonNull MotionEvent b, float vx, float vy) {
                 if (edge || multi) return false;
+                long ms = b.getEventTime() - b.getDownTime();
+                if (cb.onFling(downX, width, b.getX() - downX, b.getY() - downY, vx, vy, ms)) return true;
                 int d = direction(b.getX() - downX, b.getY() - downY, vx, vy, minDistance, minVelocity);
                 if (d == NONE) return false;
                 // Up and down from an edge is the edge's slide.

@@ -74,14 +74,16 @@ final class Inline extends FrameLayout implements Playback.Host {
         this.upright = upright;
         pb = Playback.get(c);
         store = Aspect.prefs(c);
-        setBackground(Ui.round(c, 0xFF000000, upright ? 0 : 12));
+        // A rounded picture that stands off the ground (07's cards), black behind the stream.
+        setBackground(Ui.round(c, 0xFF000000, upright ? 18 : 16));
         setClipToOutline(true);
+        setElevation(Ui.dp(c, 6));
 
         video = new Video(c);
         addView(video, new LayoutParams(-1, -1));
 
         cover = new FrameLayout(c);
-        cover.setBackgroundColor(0xFF050B2C);
+        cover.setBackgroundColor(0xFF15151A);
         initials = Ui.text(c, "", 22, Ui.SOFT, true);
         initials.setGravity(Gravity.CENTER);
         cover.addView(initials, new LayoutParams(-1, -1));
@@ -108,7 +110,7 @@ final class Inline extends FrameLayout implements Playback.Host {
         message = Ui.text(c, "", 13, Ui.TEXT, true);
         message.setGravity(Gravity.CENTER);
         message.setPadding(Ui.dp(c, 14), Ui.dp(c, 8), Ui.dp(c, 14), Ui.dp(c, 8));
-        message.setBackground(Ui.round(c, 0xCC0B0C21, 12));
+        message.setBackground(TvLook.mat(c, 12));
         message.setVisibility(GONE);
         LayoutParams mp = new LayoutParams(-2, -2, Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM);
         mp.bottomMargin = Ui.dp(c, 14);
@@ -117,12 +119,12 @@ final class Inline extends FrameLayout implements Playback.Host {
 
         zoom = Ui.text(c, "", 15, Ui.TEXT, true);
         zoom.setPadding(Ui.dp(c, 16), Ui.dp(c, 8), Ui.dp(c, 16), Ui.dp(c, 8));
-        zoom.setBackground(Ui.round(c, 0xCC0A1A4C, 18));
+        zoom.setBackground(TvLook.mat(c, 18));
         zoom.setVisibility(GONE);
         addView(zoom, new LayoutParams(-2, -2, Gravity.CENTER));
 
         play = Ui.icon(c, R.drawable.live_ic_play, R.string.live_play);
-        play.setBackground(Ui.touch(c, false, 0xCC0B0C21, 28));
+        play.setBackground(TvLook.dark(c, 28));
         play.setOnClickListener(v -> resume());
         addView(play, new LayoutParams(Ui.dp(c, 56), Ui.dp(c, 56), Gravity.CENTER));
 
@@ -144,7 +146,7 @@ final class Inline extends FrameLayout implements Playback.Host {
         addView(bar, new LayoutParams(-1, -2, Gravity.TOP));
 
         full = Ui.icon(c, R.drawable.live_ic_fullscreen, R.string.live_fullscreen);
-        full.setBackground(Ui.touch(c, false, 0x990B0C21, 24));
+        full.setBackground(TvLook.dark(c, 22));
         full.setOnClickListener(v -> {
             if (listener != null && ch != null) listener.onFullScreen();
         });
@@ -158,6 +160,11 @@ final class Inline extends FrameLayout implements Playback.Host {
 
     /** What it shows: playing, or stopped (paused until tapped); null for nothing yet. */
     Channel channel() { return ch; }
+
+    /** The picture's own surface (for the ground's copy of it), or null. */
+    View surface() {
+        return video.surface();
+    }
 
     /** This channel's stream is open here. */
     boolean playing(Channel c) {
@@ -368,8 +375,9 @@ final class Inline extends FrameLayout implements Playback.Host {
             @Override public void onSwipe(int d) {
                 if (listener == null || ch == null) return;
                 if (d == Gestures.UP) listener.onFullScreen();
-                else if (d == Gestures.LEFT) listener.onStep(1);
-                else if (d == Gestures.RIGHT) listener.onStep(-1);
+                // Left and right change channel, unless switched off (ChannelSwipe's setting, the player's too).
+                else if (d == Gestures.LEFT && ChannelSwipe.on(getContext())) listener.onStep(1);
+                else if (d == Gestures.RIGHT && ChannelSwipe.on(getContext())) listener.onStep(-1);
             }
         };
     }

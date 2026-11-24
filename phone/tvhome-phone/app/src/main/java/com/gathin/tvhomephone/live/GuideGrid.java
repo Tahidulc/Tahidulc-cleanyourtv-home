@@ -34,11 +34,12 @@ import java.util.List;
 import java.util.TimeZone;
 
 /**
- * The TV guide's grid, dark (GuideLook): the day big at the top left and the times across with a white mark at now;
- * each channel a row of rounded cards, its logo on a tile in the logo's own colour over the row's start (or as it is on
- * the guide's black, or on a black tile: LogoTiles; a star on a favourite), and its programmes as rounded blocks each in
- * a deep colour of its own, what has been shown a shade
- * darker, the channel's name with its picture's tag and each start time over the titles. One RecyclerView of rows,
+ * The TV guide's grid, in Homefield TV 2.0's 07 look made for a finger (TvLook): on the TV section's softly lit ground
+ * (TvGround), the day in amber at the top left and the times across with an amber dot at now; each channel a row of
+ * rounded cards, its logo on a raised tile in the logo's own colour at the row's start (or as it is, or on a black tile:
+ * LogoTiles; a star on a favourite), and its programmes as cards of frosted glass after it, what's on now a little
+ * brighter with a white line for how far in it is, the one chosen ringed in white and lifted, one pressed lifting under
+ * the finger; the channel's name with its picture's tag and each start time over the titles, in Inter. One RecyclerView of rows,
  * each row one view that draws its blocks from a shared horizontal offset, so twenty thousand channels and a day of
  * guide stay smooth: no view per programme. A sideways drag or fling moves every row and the ruler together; up and
  * down is the RecyclerView's own scrolling. A tap on a logo plays the channel; a long press on it, or on a programme,
@@ -74,6 +75,8 @@ final class GuideGrid extends FrameLayout {
     private final Rows adapter = new Rows();
     private final OverScroller scroller;
     private final int slop, minFling, maxFling, colW, rowH, margin;
+    /** The logos' tiles start this far in from the screen's left edge. */
+    private final int tileIn;
     private final boolean wide;
     private VelocityTracker tracker;
     private float downX, downY, lastX;
@@ -97,6 +100,7 @@ final class GuideGrid extends FrameLayout {
         st = new State(c, wide);
         margin = Ui.dp(c, 12);
         colW = Ui.dp(c, wide ? 120 : 88);
+        tileIn = Ui.dp(c, 6);
         st.tileW = colW;
         rowH = Ui.dp(c, wide ? 70 : 62);
         ViewConfiguration vc = ViewConfiguration.get(c);
@@ -104,7 +108,7 @@ final class GuideGrid extends FrameLayout {
         minFling = vc.getScaledMinimumFlingVelocity();
         maxFling = vc.getScaledMaximumFlingVelocity();
         scroller = new OverScroller(c);
-        setBackgroundColor(GuideLook.GROUND);
+        // No ground of its own: the TV section's (TvGround) shows through the glass.
 
         LinearLayout col = new LinearLayout(c);
         col.setOrientation(LinearLayout.VERTICAL);
@@ -112,7 +116,8 @@ final class GuideGrid extends FrameLayout {
         FrameLayout head = new FrameLayout(c);
         ruler = new Ruler(c);
         head.addView(ruler, new FrameLayout.LayoutParams(-1, -1));
-        corner = Ui.text(c, "", wide ? 26 : 24, Ui.TEXT, true);
+        // The day in amber, as 07 has its date over the guide.
+        corner = TvLook.text(c, "", wide ? 22 : 20, TvLook.AMBER, true);
         corner.setGravity(Gravity.CENTER_VERTICAL);
         corner.setPadding(margin, 0, Ui.dp(c, 8), 0);
         corner.setBackground(Ui.touch(c, false, 0, 12));
@@ -365,13 +370,13 @@ final class GuideGrid extends FrameLayout {
         /** The logo's tile over each row's start: the writing starts after it. */
         float tileW;
         final TimeZone tz = TimeZone.getDefault();
-        final Paint block = fill(0), past = fill(GuideLook.PAST), chosen = fill(0x2EFFFFFF), ring = fill(Ui.TEXT),
-                badge = fill(GuideLook.SMALL), nowMark = fill(Ui.TEXT);
+        final Paint block = fill(TvLook.GLASS), onNow = fill(TvLook.GLASS_ON), chosen = fill(0x24FFFFFF), ring = fill(Ui.TEXT),
+                badge = fill(TvLook.L3), nowMark = fill(TvLook.AMBER), rim = fill(TvLook.RIM), hair = fill(TvLook.TOP),
+                track = fill(TvLook.TRACK), done = fill(TvLook.L1), pressed = fill(0x1AFFFFFF);
         final Paint title, titleInk, small, smallName, badgeText, ruler, rulerNow;
-        final RectF rect = new RectF(), tag = new RectF();
-        final android.graphics.Path tri = new android.graphics.Path();
+        final RectF rect = new RectF(), tag = new RectF(), bar = new RectF();
         final char[] buf = new char[24];
-        final float gap, radius, pad, minText, one, ringW, badgePad, badgeR;
+        final float gap, radius, pad, minText, one, ringW, badgePad, badgeR, lineH, lineIn, lift, dot;
 
         State(Context c, boolean wide) {
             // Rounded blocks a little apart, each in a deep colour of its own, as cards in a row.
@@ -379,20 +384,30 @@ final class GuideGrid extends FrameLayout {
             radius = Ui.dp(c, 11);
             one = Math.max(1, Ui.dp(c, 1));
             ringW = Ui.dp(c, 2);
+            lineH = Math.max(2, Ui.dp(c, 3));
+            lineIn = Ui.dp(c, 10);
+            lift = Ui.dp(c, 1.5f);
+            dot = Ui.dp(c, 3.5f);
             pad = Ui.dp(c, 12);
-            minText = Ui.dp(c, 18);
+            // A card cut too narrow by the column or the edge keeps no writing (no lone "N…").
+            minText = Ui.dp(c, 34);
             badgePad = Ui.dp(c, 4);
             badgeR = Ui.dp(c, 4);
-            Typeface medium = Typeface.create("sans-serif-medium", Typeface.NORMAL);
-            title = text(c, wide ? 18 : 17, Ui.TEXT, Typeface.DEFAULT);
-            titleInk = text(c, wide ? 18 : 17, Ui.TEXT, medium);
-            small = text(c, wide ? 14 : 13, GuideLook.SMALL, Typeface.DEFAULT);
-            smallName = text(c, wide ? 14 : 13, GuideLook.SMALL, medium);
-            badgeText = text(c, wide ? 10 : 9.5f, GuideLook.SMALL, medium);
-            ruler = text(c, wide ? 18 : 17, GuideLook.RULER, Typeface.DEFAULT);
-            rulerNow = text(c, wide ? 18 : 17, Ui.TEXT, Typeface.DEFAULT);
+            // Inter: the titles semibold in white, the times and names regular in 07's softer greys.
+            Typeface regular = TvLook.inter(c), semi = TvLook.semi(c);
+            title = text(c, wide ? 16.5f : 15.5f, Ui.TEXT, semi);
+            titleInk = text(c, wide ? 16.5f : 15.5f, Ui.TEXT, semi);
+            small = text(c, wide ? 13 : 12, TvLook.L3, regular);
+            smallName = text(c, wide ? 13 : 12, TvLook.L2, semi);
+            badgeText = text(c, wide ? 9.5f : 9f, TvLook.L2, semi);
+            ruler = text(c, wide ? 15 : 14, TvLook.L3, regular);
+            rulerNow = text(c, wide ? 15 : 14, Ui.TEXT, semi);
             ring.setStyle(Paint.Style.STROKE);
             ring.setStrokeWidth(ringW);
+            rim.setStyle(Paint.Style.STROKE);
+            rim.setStrokeWidth(one);
+            hair.setStyle(Paint.Style.STROKE);
+            hair.setStrokeWidth(one);
             badge.setStyle(Paint.Style.STROKE);
             badge.setStrokeWidth(one);
         }
@@ -455,12 +470,18 @@ final class GuideGrid extends FrameLayout {
         Channel ch;
         Listener listener;
         private float topY, titleY, tapX = -1;
+        /** Where a finger is pressing (the card under it lifts), or below 0. */
+        private float pressX = -1;
 
         Blocks(Context c, State st) {
             super(c);
             this.st = st;
             touch = new GestureDetector(c, new GestureDetector.SimpleOnGestureListener() {
                 @Override public boolean onDown(@NonNull MotionEvent e) { return true; }
+
+                @Override public void onShowPress(@NonNull MotionEvent e) {
+                    press(e.getX());
+                }
 
                 @Override public boolean onSingleTapUp(@NonNull MotionEvent e) {
                     tapX = e.getX();
@@ -479,8 +500,15 @@ final class GuideGrid extends FrameLayout {
 
         @Override protected void onSizeChanged(int w, int h, int ow, int oh) {
             super.onSizeChanged(w, h, ow, oh);
-            topY = h * 0.40f;
-            titleY = h * 0.78f;
+            topY = h * 0.37f;
+            titleY = h * 0.71f;
+        }
+
+        /** The card under a finger lifts (x below 0: none). */
+        private void press(float x) {
+            if (x == pressX) return;
+            pressX = x;
+            invalidate();
         }
 
         private void tapAt(float x) {
@@ -492,6 +520,8 @@ final class GuideGrid extends FrameLayout {
 
         @SuppressLint("ClickableViewAccessibility")
         @Override public boolean onTouchEvent(MotionEvent e) {
+            int a = e.getActionMasked();
+            if (a == MotionEvent.ACTION_UP || a == MotionEvent.ACTION_CANCEL) press(-1);
             return touch.onTouchEvent(e) || super.onTouchEvent(e);
         }
 
@@ -513,15 +543,10 @@ final class GuideGrid extends FrameLayout {
             Guide.Schedule s = schedule;
             named = false;
             if (s == null || s.start.length == 0) {
-                st.rect.set(0, 0, w, h);
-                st.block.setColor(GuideLook.blockColour(name));
-                cv.drawRoundRect(st.rect, st.radius, st.radius, st.block);
-                if (mine && st.selStart == 0) {
-                    cv.drawRoundRect(st.rect, st.radius, st.radius, st.chosen);
-                    inset(st.rect);
-                    cv.drawRoundRect(st.rect, st.radius, st.radius, st.ring);
-                }
-                writing(cv, st.tileW + st.pad, w - st.pad, -1, noGuide, 0);
+                // No guide: one card of glass after the logo's tile.
+                boolean sel = mine && st.selStart == 0;
+                card(cv, st.tileW + st.gap, w, h, false, sel, pressX >= 0);
+                writing(cv, st.tileW + st.gap + st.pad, w - st.pad, -1, noGuide, 0);
                 return;
             }
             int n = s.start.length;
@@ -541,33 +566,53 @@ final class GuideGrid extends FrameLayout {
         }
 
         private void block(Canvas cv, Guide.Schedule s, int i, float l, float r, float h, float w, boolean mine) {
-            float left = l + st.gap, right = r - st.gap;
+            // The cards start after the logo's tile (one that began earlier is cut there, as 07's grid has it).
+            float left = Math.max(l + st.gap, st.tileW + st.gap), right = r - st.gap;
             if (right - left < 1 || right < 0 || left > w) return;
             long now = st.now;
             boolean on = s.start[i] <= now && now < s.stop[i];
             boolean sel = mine && s.start[i] == st.selStart;
-            st.rect.set(left, 0, right, h);
-            st.block.setColor(GuideLook.blockColour(s.title[i]));
-            cv.drawRoundRect(st.rect, st.radius, st.radius, st.block);
+            boolean pressed = pressX >= 0 && pressX >= l && pressX < r;
+            card(cv, left, right, h, on, sel, pressed);
             if (on) {
-                // What has been shown already, a shade darker.
-                float px = Math.min(st.tl.x(now) - st.offset, right);
-                if (px > left) {
-                    cv.save();
-                    cv.clipRect(left, 0, px, h);
-                    cv.drawRoundRect(st.rect, st.radius, st.radius, st.past);
-                    cv.restore();
+                // How far in it is: a white line on a soft track along the card's foot.
+                float k = sel || pressed ? 0 : st.lift;
+                float y = h - k - st.lineIn / 2 - st.lineH;
+                float x0 = left + k + st.lineIn, x1 = right - k - st.lineIn;
+                if (x1 - x0 > st.lineIn) {
+                    float r2 = st.lineH / 2;
+                    st.bar.set(x0, y, x1, y + st.lineH);
+                    cv.drawRoundRect(st.bar, r2, r2, st.track);
+                    st.bar.right = x0 + (x1 - x0) * TvLook.progress(s.start[i], s.stop[i], now);
+                    if (st.bar.right - x0 > 1) cv.drawRoundRect(st.bar, r2, r2, st.done);
                 }
             }
-            if (sel) {
-                cv.drawRoundRect(st.rect, st.radius, st.radius, st.chosen);
-                inset(st.rect);
-                cv.drawRoundRect(st.rect, st.radius, st.radius, st.ring);
-            }
-            // The writing starts after the logo's tile and stays in sight while the block runs on under it.
-            float tx = Math.max(left, st.tileW) + st.pad, end = right - st.pad;
+            // The writing starts inside the card and stays in sight while the card runs on.
+            float tx = left + st.pad, end = right - st.pad;
             if (end - tx < st.minText) return;
             writing(cv, tx, end, s.start[i], s.title[i].isEmpty() ? "—" : s.title[i], sel ? 1 : 0);
+        }
+
+        /**
+         * A card of frosted glass from left to right: what's on now a little brighter, its rim and the bright hairline
+         * along its top; chosen (ringed in white) or pressed, it lifts to fill its place (at rest it sits a little in).
+         */
+        private void card(Canvas cv, float left, float right, float h, boolean on, boolean sel, boolean pressed) {
+            float k = sel || pressed ? 0 : st.lift;
+            st.rect.set(left + k, k, right - k, h - k);
+            float rad = st.radius;
+            cv.drawRoundRect(st.rect, rad, rad, on ? st.onNow : st.block);
+            if (pressed) cv.drawRoundRect(st.rect, rad, rad, st.pressed);
+            if (sel) cv.drawRoundRect(st.rect, rad, rad, st.chosen);
+            float half = st.one / 2;
+            st.rect.inset(half, half);
+            cv.drawRoundRect(st.rect, rad, rad, st.rim);
+            if (st.rect.width() > rad * 2) cv.drawLine(st.rect.left + rad, st.rect.top, st.rect.right - rad, st.rect.top, st.hair);
+            st.rect.inset(-half, -half);
+            if (sel) {
+                inset(st.rect);
+                cv.drawRoundRect(st.rect, rad, rad, st.ring);
+            }
         }
 
         /**
@@ -602,14 +647,13 @@ final class GuideGrid extends FrameLayout {
         }
     }
 
-    /** The times across the top in grey, and now as a white mark and its time. */
+    /** The times across the top in grey, and now as an amber dot and its time in white. */
     private final class Ruler extends View {
-        private final float markW, markH, gapAfter, room;
+        private final float markW, gapAfter, room;
 
         Ruler(Context c) {
             super(c);
             markW = Ui.dp(c, 9);
-            markH = Ui.dp(c, 7);
             gapAfter = Ui.dp(c, 3);
             room = Ui.dp(c, 64);
             setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
@@ -632,13 +676,12 @@ final class GuideGrid extends FrameLayout {
                 cv.drawText(st.buf, 0, len, x, base, st.ruler);
             }
             if (nowSeen) {
-                float mx = Math.max(from - markW, nx - markW / 2);
-                st.tri.reset();
-                st.tri.moveTo(mx, base - st.rulerNow.getTextSize() * 0.62f);
-                st.tri.lineTo(mx + markW, base - st.rulerNow.getTextSize() * 0.62f);
-                st.tri.lineTo(mx + markW / 2, base - st.rulerNow.getTextSize() * 0.62f + markH);
-                st.tri.close();
-                cv.drawPath(st.tri, st.nowMark);
+                // Now: 07's amber dot under the time, glowing a little, and the time in white beside it.
+                float mx = Math.max(from - markW, nx - markW / 2), cx = mx + markW / 2, cy = h - st.dot * 2.2f;
+                st.nowMark.setAlpha(0x40);
+                cv.drawCircle(cx, cy, st.dot * 2.1f, st.nowMark);
+                st.nowMark.setAlpha(0xFF);
+                cv.drawCircle(cx, cy, st.dot, st.nowMark);
                 int len = st.clock(st.now, 0);
                 cv.drawText(st.buf, 0, len, mx + markW + gapAfter, base, st.rulerNow);
             }
@@ -682,14 +725,16 @@ final class GuideGrid extends FrameLayout {
             blocks = new Blocks(c, st);
             blocks.noGuide = c.getString(R.string.live_no_guide_info);
             item.addView(blocks, new FrameLayout.LayoutParams(-1, -1));
-            // The logo's tile over the row's start: in the logo's own colour, nothing (the guide's black) or black (LogoTiles).
+            // The logo's tile at the row's start, raised a little off the ground (07's colour tile: the logo's own colour,
+            // a soft gradient with its light top edge), or as it is, or black (LogoTiles).
             tile = new FrameLayout(c);
             ground = new android.graphics.drawable.GradientDrawable();
             ground.setOrientation(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM);
-            // Square at the screen's edge, round where it meets the programmes.
-            ground.setCornerRadii(new float[]{0, 0, st.radius, st.radius, st.radius, st.radius, 0, 0});
+            ground.setCornerRadius(st.radius);
             tile.setBackground(new android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(0x33FFFFFF), ground, null));
             tile.setClipToOutline(true);
+            tile.setElevation(Ui.dp(c, 3));
+            tile.setForeground(new TvLook.Pane(c, st.radius / c.getResources().getDisplayMetrics().density, 0, 0, true));
             initials = Ui.text(c, "", wide ? 18 : 16, Ui.TEXT, true);
             initials.setGravity(Gravity.CENTER);
             tile.addView(initials, new FrameLayout.LayoutParams(-1, -1));
@@ -719,7 +764,10 @@ final class GuideGrid extends FrameLayout {
                 }
                 return true;
             });
-            item.addView(tile, new FrameLayout.LayoutParams(colW, -1));
+            // In from the screen's edge by a little, so its corners and its shadow show on the ground.
+            FrameLayout.LayoutParams tp = new FrameLayout.LayoutParams(colW - tileIn, -1);
+            tp.leftMargin = tileIn;
+            item.addView(tile, tp);
         }
 
         void bind(Channel c) {
@@ -747,7 +795,8 @@ final class GuideGrid extends FrameLayout {
                 initials.setVisibility(View.INVISIBLE);
                 LogoTiles.load(logo, url, GuideLook.GROUND, cols -> {
                     if (ch != c) return;
-                    if (cols[0] == 0 && cols[1] == 0) paint(GuideLook.GROUND, GuideLook.GROUND);
+                    // None: the logo as it is on a faint glass tile (the ground is no longer black).
+                    if (cols[0] == 0 && cols[1] == 0) paint(0x1FFFFFFF, 0x0FFFFFFF);
                     else paint(cols[0], cols[1]);
                 }, () -> {
                     if (ch != c) return;

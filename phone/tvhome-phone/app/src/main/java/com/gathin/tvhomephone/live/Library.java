@@ -101,6 +101,21 @@ public final class Library {
         return i == null || i >= ch.size() ? null : ch.get(i);
     }
 
+    /**
+     * A channel by its key, or the channel it was merged into when the key is one of the other playlists' copies of it
+     * (merged: its alternates), as a recent channel kept on another device can be; null when the playlists have neither.
+     */
+    public Channel resolve(String key) {
+        Channel c = byKey(key);
+        if (c != null || key == null) return c;
+        List<Channel> ch = channels;
+        for (Channel m : ch) {
+            if (m.alternates.isEmpty()) continue;
+            for (Channel a : m.alternates) if (key.equals(a.key)) return m;
+        }
+        return null;
+    }
+
     public Guide.Schedule schedule(String key) { return guide.get(key); }
 
     /** Whether the channel is hidden on this phone. */
@@ -183,9 +198,8 @@ public final class Library {
         String q = query == null ? "" : Names.plain(query).toLowerCase(Locale.ROOT).trim();
         List<Channel> out = new ArrayList<>();
         if (RECENT.equals(group)) {
-            for (String k : Picks.recent(app)) {
-                Channel c = byKey(k);
-                if (c == null || ownHiddenAt(c)) continue;
+            // Newest first, each merged channel once (Recents), whichever playlist's copy was the one watched.
+            for (Channel c : Recents.list(Picks.recent(app), this::resolve, this::ownHiddenAt, null, Integer.MAX_VALUE)) {
                 if (q.isEmpty() || Names.plain(c.name).toLowerCase(Locale.ROOT).contains(q)) out.add(c);
             }
             return out;

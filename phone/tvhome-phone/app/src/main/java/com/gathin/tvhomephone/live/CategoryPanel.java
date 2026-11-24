@@ -95,19 +95,19 @@ final class CategoryPanel extends FrameLayout {
         sheet = new LinearLayout(c);
         sheet.setOrientation(LinearLayout.VERTICAL);
         sheet.setClickable(true);
-        GradientDrawable ground = new GradientDrawable();
-        ground.setColor(GuideLook.PANEL);
+        // 07's frosted panel: tinted glass with its bright hairline, deep enough to read over the guide (no live blur).
+        // Over the page: rounded where it meets the scrim. Docked: a rounded card standing off the guide's edge.
+        TvLook.Pane ground = docked ? TvLook.mat(c, 24) : TvLook.deep(c, 24);
         float r = Ui.dp(c, 24);
-        // Over the page: rounded where it meets the scrim. Docked: square, a fine line where it meets the guide.
-        if (!docked) ground.setCornerRadii(new float[]{0, 0, r, r, r, r, 0, 0});
-        else ground.setStroke(Math.max(1, Ui.dp(c, 1)), GuideLook.PILL_RIM);
+        if (!docked) ground.corners(0, r, r, 0);
         sheet.setBackground(ground);
-        sheet.setElevation(docked ? 0 : Ui.dp(c, 16));
+        sheet.setElevation(Ui.dp(c, docked ? 4 : 16));
 
         LinearLayout head = new LinearLayout(c);
         head.setGravity(Gravity.CENTER_VERTICAL);
         head.setPadding(Ui.dp(c, 20), Ui.dp(c, 14), Ui.dp(c, 8), Ui.dp(c, 6));
-        TextView title = Ui.text(c, c.getString(R.string.groups_title), 22, Ui.TEXT, true);
+        TextView title = TvLook.text(c, c.getString(R.string.groups_title), 22, Ui.TEXT, true);
+        title.setLetterSpacing(-0.02f);
         title.setSingleLine(true);
         head.addView(title, new LinearLayout.LayoutParams(0, -2, 1f));
         close = Ui.icon(c, R.drawable.live_ic_close, R.string.cats_close);
@@ -125,7 +125,9 @@ final class CategoryPanel extends FrameLayout {
         list.setAdapter(rows);
         sheet.addView(list, new LinearLayout.LayoutParams(-1, 0, 1f));
 
-        addView(sheet, new LayoutParams(docked ? -1 : Ui.dp(c, WIDTH_DP), -1, Gravity.START));
+        LayoutParams sp = new LayoutParams(docked ? -1 : Ui.dp(c, WIDTH_DP), -1, Gravity.START);
+        if (docked) sp.setMargins(Ui.dp(c, 8), Ui.dp(c, 4), Ui.dp(c, 4), Ui.dp(c, 8));
+        addView(sheet, sp);
         if (!docked) setVisibility(GONE);
     }
 
@@ -371,7 +373,7 @@ final class CategoryPanel extends FrameLayout {
         @NonNull @Override public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int type) {
             Context c = parent.getContext();
             if (type == HEAD) {
-                TextView t = Ui.text(c, c.getString(R.string.cats_playlist), 11, GuideLook.SMALL, true);
+                TextView t = TvLook.text(c, c.getString(R.string.cats_playlist), 11, TvLook.L3, true);
                 t.setLetterSpacing(0.12f);
                 t.setPadding(Ui.dp(c, 12), Ui.dp(c, 14), 0, Ui.dp(c, 6));
                 t.setLayoutParams(new RecyclerView.LayoutParams(-1, -2));
@@ -390,7 +392,7 @@ final class CategoryPanel extends FrameLayout {
             LinearLayout.LayoutParams ip = new LinearLayout.LayoutParams(Ui.dp(c, 20), Ui.dp(c, 20));
             ip.rightMargin = Ui.dp(c, 14);
             row.addView(icon, ip);
-            TextView words = Ui.text(c, "", 16, Ui.TEXT, false);
+            TextView words = TvLook.text(c, "", 15.5f, Ui.TEXT, false);
             words.setMaxLines(2);
             words.setEllipsize(TextUtils.TruncateAt.END);
             words.setPadding(0, Ui.dp(c, 8), 0, Ui.dp(c, 8));
@@ -426,13 +428,14 @@ final class CategoryPanel extends FrameLayout {
             boolean own = it.length > 2, on = it[1].equals(chosen);
             // A playlist's own category with its country's flag where it names one; the guide's own with an icon.
             words.setText(own ? GuideLook.chip(it[1], it[0]) : it[0]);
-            words.setTextColor(on ? Ui.TEXT : 0xE6FFFFFF);
-            words.setTypeface(on ? android.graphics.Typeface.DEFAULT_BOLD : android.graphics.Typeface.DEFAULT);
+            // 07's list: the chosen one white with dark writing, the rest in a soft white.
+            words.setTextColor(on ? TvLook.INK : 0xE6FFFFFF);
+            words.setTypeface(on ? TvLook.semi(c) : TvLook.inter(c));
             int glyph = glyph(it[1]);
             icon.setVisibility(own ? GONE : VISIBLE);
             if (!own) {
                 icon.setImageResource(glyph);
-                icon.setImageTintList(ColorStateList.valueOf(Library.FAVOURITES.equals(it[1]) ? Ui.STAR : on ? Ui.TEXT : Ui.SOFT));
+                icon.setImageTintList(ColorStateList.valueOf(Library.FAVOURITES.equals(it[1]) ? (on ? 0xFFB07A00 : Ui.STAR) : on ? TvLook.INK : Ui.SOFT));
             }
             h.itemView.setBackground(look(c, on));
             h.itemView.setSelected(on);
@@ -455,13 +458,12 @@ final class CategoryPanel extends FrameLayout {
         return R.drawable.live_ic_list;
     }
 
-    /** A row's ground: the chosen one lit as the guide's chosen chip, the rest clear, each with a ripple. */
+    /** A row's ground: the chosen one white (07's chosen row), the rest clear, each with a ripple. */
     private static RippleDrawable look(Context c, boolean on) {
         GradientDrawable g = new GradientDrawable();
         g.setCornerRadius(Ui.dp(c, 14));
-        g.setColor(on ? GuideLook.PILL_ON : 0x00000000);
-        if (on) g.setStroke(Math.max(1, Ui.dp(c, 1.5f)), Ui.TEXT);
-        return new RippleDrawable(ColorStateList.valueOf(0x33FFFFFF), g, Ui.round(c, Ui.TEXT, 14));
+        g.setColor(on ? 0xF0FFFFFF : 0x00000000);
+        return new RippleDrawable(ColorStateList.valueOf(on ? 0x22000000 : 0x33FFFFFF), g, Ui.round(c, Ui.TEXT, 14));
     }
 
     // ---- what goes in it ------------------------------------------------------------------------------------------------

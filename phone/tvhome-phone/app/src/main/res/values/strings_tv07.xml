@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The TV section in Homefield TV 2.0's 07 look: Recently watched, swiping between channels. -->
+<resources>
+    <string name="tv07_recent_title">Recently watched</string>
+    <string name="tv07_back_to">Back to %1$s ›</string>
+    <string name="tv07_back_to_short">Back to %1$s</string>
+    <string name="tv07_strip_channels">Channels</string>
+    <string name="tv07_strip_recent">Recent</string>
+    <string name="tv07_swipe_setting">Swipe left or right on the picture to change channel</string>
+    <string name="tv07_swipe_on">Swipe to change channel: on</string>
+    <string name="tv07_swipe_off">Swipe to change channel: off</string>
+    <string name="tv07_swipe_now_on">Swipe left or right for the next or previous channel</string>
+    <string name="tv07_swipe_now_off">Swiping no longer changes channel: up and down do, as before</string>
+    <string name="tv07_hint_swipe">Swipe left or right for the next or previous channel in the category</string>
+    <string name="tv07_hint_up">Swipe up for the guide with the channels either side and Recent, down to put it away</string>
+</resources>

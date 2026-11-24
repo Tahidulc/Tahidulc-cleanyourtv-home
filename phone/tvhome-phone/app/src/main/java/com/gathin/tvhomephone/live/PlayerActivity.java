@@ -11,7 +11,6 @@ import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.content.res.Configuration;
 import android.graphics.Color;
-import android.graphics.drawable.GradientDrawable;
 import android.media.AudioManager;
 import android.os.Build;
 import android.os.Bundle;
@@ -80,9 +79,12 @@ import java.util.Locale;
  * the mini guide of the channels either side: tap one to change channel); they go after a few seconds. The ⋯ opens
  * the options: the info tile's style, the picture's shape (remembered per
  * channel), audio, subtitles, quality, similar channels, the favourite, a sleep timer, picture in picture, restarting the
- * stream and the programme's details. Swipe up or down for the next or previous channel (hidden ones passed over), left
- * for the mini guide and right to put it away; double tap or pinch between Fit and Fill; slide on the left edge for
- * brightness and on the right for volume. The panel and buttons keep clear of the cutout.
+ * stream and the programme's details. Swipe left or right for the next or previous channel in the category (ChannelSwipe:
+ * only a clear fling, hidden ones passed over), with a quick channel card and the picture sliding across; swipe up for
+ * the guide panel (its mini guide, or Recent with "Back to" the channel before) and down to put it away. With the swipe
+ * switched off (the options, Settings), up and down change channel, left brings the mini guide and right puts it away,
+ * as before. Double tap or pinch between Fit and Fill; slide on the left edge for brightness and on the right for
+ * volume. The panel, its cards and the buttons are 07's frosted glass (TvLook), and keep clear of the cutout.
  * It plays through the one shared player (Playback): opened from the guide's own picture it takes that stream over as
  * it plays and hands it back on the way out (and, when turning the phone on its side opened it, turning it upright again
  * goes back). Picture in picture on leaving, the phone's audio focus, the screen kept on, and a few retries when the
@@ -146,6 +148,16 @@ public class PlayerActivity extends AppCompatActivity {
     private final com.gathin.tvhomephone.cast.Casting.Listener castWatch = this::castChanged;
     private List<Channel> order = new ArrayList<>();
     private int pos;
+    /** The quick channel card a swipe brings (ChannelSwipe), and the veil the picture slides under as it changes. */
+    private ChannelCard card;
+    private View veil;
+    /** A swipe is changing channel: its card shows, not the info tile. */
+    private boolean swiped;
+    /** The guide panel's strip: the channels either side (false) or Recently watched (Recents). */
+    private boolean stripRecent;
+    private List<Channel> recentList = new ArrayList<>();
+    private TextView tabChannels, tabRecent, backTo;
+    private Channel backChannel;
     private Channel cur;
     private Aspect aspect = Aspect.FIT;
     private long sleepAt;
@@ -611,7 +623,11 @@ public class PlayerActivity extends AppCompatActivity {
         if (pb.paused()) pb.resume();
         aspect = Aspect.get(store, ch.key, landscape);
         video.apply(aspect);
-        if (!same || !overlayShown()) showOverlay();
+        if (swiped) {
+            // A swipe: its channel card says what's on; the panel, when up, follows the change; the tile goes.
+            if (panelShown()) showPanel();
+            else if (tilesShown()) hideOverlay();
+        } else if (!same || !overlayShown()) showOverlay();
         lookForMatch();
     }
 
@@ -731,6 +747,56 @@ public class PlayerActivity extends AppCompatActivity {
         if (at < 0 || at == pos) return;
         pos = at;
         watch(order.get(pos));
+    }
+
+    /**
+     * A swipe's change of channel (ChannelSwipe): the next or previous in the category (hidden ones passed over), the
+     * picture sliding out the way the finger went and the new one in from the other side under a brief veil, and the
+     * quick channel card.
+     */
+    private void swipeTo(int direction) {
+        if (order == null || order.isEmpty() || cur == null) return;
+        int at = Hidden.step(order.size(), pos, ChannelSwipe.step(direction), i -> lib.isHidden(order.get(i)));
+        if (at < 0 || at == pos) return;
+        pos = at;
+        Channel next = order.get(pos);
+        slide(direction);
+        swiped = true;
+        try {
+            watch(next);
+        } finally {
+            swiped = false;
+        }
+        // The guide panel up already says what's on (it followed the change): the card only over the picture.
+        if (!panelShown()) card.show(next, direction);
+    }
+
+    /** The picture slides the way the finger went and back in from the other side, a veil over it while it changes. */
+    private void slide(int direction) {
+        float w = Math.max(1, root.getWidth()) * 0.16f, d = direction == ChannelSwipe.NEXT ? -1 : 1;
+        video.animate().cancel();
+        veil.animate().cancel();
+        veil.setVisibility(View.VISIBLE);
+        veil.animate().alpha(0.62f).setDuration(120).start();
+        video.animate().translationX(d * w).setDuration(120).setInterpolator(TvLook.ease2()).withEndAction(() -> {
+            video.setTranslationX(-d * w);
+            video.animate().translationX(0).setDuration(300).setInterpolator(TvLook.ease()).start();
+            veil.animate().alpha(0f).setStartDelay(160).setDuration(280)
+                    .withEndAction(() -> veil.setVisibility(View.GONE)).start();
+        }).start();
+    }
+
+    /** What stops a swipe changing channel now (ChannelSwipe.State). */
+    private ChannelSwipe.State swipeState() {
+        ChannelSwipe.State s = new ChannelSwipe.State();
+        s.off = !ChannelSwipe.on(this);
+        s.pip = isInPictureInPictureMode();
+        s.replaying = pb.replaying();
+        s.adjusting = extras != null && extras.adjusting();
+        s.locked = extras != null && extras.locked();
+        s.matchOpen = extras != null && extras.matchShown();
+        s.casting = com.gathin.tvhomephone.cast.Casting.active();
+        return s;
     }
 
     /** Straight to a channel (from the mini guide or Similar channels). */
@@ -881,6 +947,14 @@ public class PlayerActivity extends AppCompatActivity {
         if (inPip) captions.pause();
         if (inPip) {
             hideOverlay();
+            // The small window has the picture alone: no channel card, the picture back in its place.
+            if (card != null) card.out(false);
+            video.animate().cancel();
+            video.setTranslationX(0);
+            if (veil != null) {
+                veil.animate().cancel();
+                veil.setVisibility(View.GONE);
+            }
             // Asked for with the button: off the app, so the picture is over the home screen and other apps.
             if (leaveOnPip) {
                 leaveOnPip = false;
@@ -914,6 +988,8 @@ public class PlayerActivity extends AppCompatActivity {
     private void showTile() {
         if (cur == null || isInPictureInPictureMode()) return;
         if (panel.getVisibility() == View.VISIBLE) fade(panel, false);
+        // The tile says it all: a swipe's card goes.
+        if (card != null) card.out(true);
         TileData.Info fresh = TileData.now(this, lib, cur);
         boolean same = info != null && info.enriched && info.id().equals(fresh.id());
         boolean animate = !tilesShown();
@@ -1078,10 +1154,10 @@ public class PlayerActivity extends AppCompatActivity {
         int lp = LogoTiles.pad(this, 5);
         logo.setPadding(lp, lp, lp, lp);
         if (cur.logo.isEmpty()) {
-            logoBox.setBackground(Ui.round(this, 0x26FFFFFF, 10));
+            logoBox.setBackground(TvLook.glass(this, 12));
             Glide.with(logo).clear(logo);
         } else {
-            LogoTiles.show(logoBox, 10, false, logo, cur.logo, LogoTiles.ON_NAVY, null);
+            LogoTiles.show(logoBox, 12, false, logo, cur.logo, TvLook.GROUND, null);
         }
         markStar();
         Guide.Schedule s = lib.schedule(cur.key);
@@ -1107,6 +1183,8 @@ public class PlayerActivity extends AppCompatActivity {
             sleepLine.setVisibility(View.VISIBLE);
         } else sleepLine.setVisibility(View.GONE);
         boolean was = panel.getVisibility() == View.VISIBLE && panel.getAlpha() > 0.5f;
+        if (card != null) card.out(false);
+        showRecent();
         neighbours.notifyDataSetChangedSafe();
         // The mini guide opens on this channel (and follows a change of channel); otherwise it stays where it was swiped to.
         if (!was || !cur.key.equals(centred)) {
@@ -1121,7 +1199,7 @@ public class PlayerActivity extends AppCompatActivity {
     private void centreStrip() {
         strip.post(() -> {
             LinearLayoutManager lm = (LinearLayoutManager) strip.getLayoutManager();
-            if (lm != null) lm.scrollToPositionWithOffset(pos, Math.max(0, (strip.getWidth() - Ui.dp(this, 216)) / 2));
+            if (lm != null) lm.scrollToPositionWithOffset(stripRecent ? 0 : pos, stripRecent ? 0 : Math.max(0, (strip.getWidth() - Ui.dp(this, 216)) / 2));
         });
     }
 
@@ -1187,7 +1265,10 @@ public class PlayerActivity extends AppCompatActivity {
 
     /** The mini guide: the channels either side with their now and next; tap one to change channel. */
     private final class Neighbours extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
-        @Override public int getItemCount() { return order == null ? 0 : order.size(); }
+        @Override public int getItemCount() {
+            List<Channel> items = stripItems();
+            return items == null ? 0 : items.size();
+        }
 
         @SuppressLint("NotifyDataSetChanged")
         void notifyDataSetChangedSafe() {
@@ -1204,32 +1285,32 @@ public class PlayerActivity extends AppCompatActivity {
             card.setLayoutParams(lp);
             LinearLayout head = new LinearLayout(c);
             head.setGravity(Gravity.CENTER_VERTICAL);
-            TextView num = Ui.text(c, "", 12, Ui.G_SELECT, true);
+            TextView num = TvLook.text(c, "", 12, TvLook.L2, true);
             num.setPadding(0, 0, Ui.dp(c, 8), 0);
             head.addView(num);
             FrameLayout box = new FrameLayout(c);
             // The logo on a small tile in its own colour or black, a little wider for its room (LogoTiles); or as it is.
             boolean boxed = LogoTiles.boxed(c);
-            TextView ini = Ui.text(c, "", 10, Ui.SOFT, true);
+            TextView ini = TvLook.text(c, "", 10, Ui.SOFT, true);
             ini.setGravity(Gravity.CENTER);
             box.addView(ini, new FrameLayout.LayoutParams(-1, -1));
             ImageView img = new ImageView(c);
             img.setScaleType(ImageView.ScaleType.FIT_CENTER);
             box.addView(img, new FrameLayout.LayoutParams(-1, -1));
             head.addView(box, new LinearLayout.LayoutParams(Ui.dp(c, boxed ? 44 : 34), Ui.dp(c, boxed ? 26 : 22)));
-            TextView nm = Ui.text(c, "", 12, Ui.SOFT, true);
+            TextView nm = TvLook.text(c, "", 12, TvLook.L2, true);
             nm.setSingleLine(true);
             nm.setEllipsize(TextUtils.TruncateAt.END);
             nm.setPadding(Ui.dp(c, 8), 0, 0, 0);
             head.addView(nm, new LinearLayout.LayoutParams(0, -2, 1f));
             card.addView(head);
-            TextView now = Ui.text(c, "", 14, Ui.TEXT, true);
+            TextView now = TvLook.text(c, "", 14, Ui.TEXT, true);
             now.setSingleLine(true);
             now.setEllipsize(TextUtils.TruncateAt.END);
             LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(-1, -2);
             np.topMargin = Ui.dp(c, 4);
             card.addView(now, np);
-            TextView next = Ui.text(c, "", 12, Ui.DIM, false);
+            TextView next = TvLook.text(c, "", 12, TvLook.L3, false);
             next.setSingleLine(true);
             next.setEllipsize(TextUtils.TruncateAt.END);
             card.addView(next);
@@ -1237,20 +1318,22 @@ public class PlayerActivity extends AppCompatActivity {
             RecyclerView.ViewHolder vh = new RecyclerView.ViewHolder(card) {};
             card.setOnClickListener(v -> {
                 int at = vh.getBindingAdapterPosition();
-                if (at >= 0 && at < order.size()) {
-                    if (order.get(at) == cur) hideOverlay();
-                    else switchTo(order.get(at));
+                List<Channel> items = stripItems();
+                if (at >= 0 && at < items.size()) {
+                    if (items.get(at) == cur) hideOverlay();
+                    else switchTo(items.get(at));
                 }
             });
             return vh;
         }
 
         @Override public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
-            Channel ch = order.get(position);
+            Channel ch = stripItems().get(position);
             Context c = holder.itemView.getContext();
             View[] v = (View[]) holder.itemView.getTag();
             boolean me = ch == cur;
-            holder.itemView.setBackground(me ? Ui.ring(c, 0x332A6BD8, Ui.G_SELECT, 2, 12) : Ui.touch(c, false, 0xCC132D6B, 12));
+            // Cards of glass (07's), the one playing ringed in white.
+            holder.itemView.setBackground(me ? Ui.ring(c, 0x26FFFFFF, Ui.TEXT, 2, 14) : TvLook.glass(c, 14));
             int n = lib.number(ch);
             ((TextView) v[0]).setText(n > 0 ? String.valueOf(n) : "");
             ((TextView) v[1]).setText(ch.logo.isEmpty() ? Ui.initials(ch.name) : "");
@@ -1258,7 +1341,7 @@ public class PlayerActivity extends AppCompatActivity {
             View box = (View) img.getParent();
             int p = LogoTiles.boxed(c) ? LogoTiles.pad(c, 3) : 0;
             img.setPadding(p, p, p, p);
-            ((TextView) v[0]).setTextColor(Ui.G_SELECT);
+            ((TextView) v[0]).setTextColor(TvLook.L2);
             if (ch.logo.isEmpty()) {
                 box.setBackground(null);
                 Glide.with(img).clear(img);
@@ -1266,8 +1349,8 @@ public class PlayerActivity extends AppCompatActivity {
                 // Logo's colour: the whole card (its number, logo and name) in it, a touch lighter than the tile; the one
                 // playing still ringed.
                 View card = holder.itemView;
-                LogoTiles.show(box, 5, false, img, ch.logo, 0xFF132D6B, cols -> {
-                    android.graphics.drawable.Drawable row = LogoTiles.row(c, cols, me, Ui.G_SELECT, 12);
+                LogoTiles.show(box, 6, false, img, ch.logo, TvLook.GROUND, cols -> {
+                    android.graphics.drawable.Drawable row = LogoTiles.row(c, cols, me, Ui.TEXT, 14);
                     if (row != null) {
                         card.setBackground(row);
                         ((TextView) v[0]).setTextColor(Ui.TEXT);
@@ -1563,6 +1646,12 @@ public class PlayerActivity extends AppCompatActivity {
                 if (sheet != null) sheet.dismiss();
             });
         }
+        boolean swipeOn = ChannelSwipe.on(c);
+        action(c, box, R.drawable.live_ic_similar, swipeOn ? R.string.tv07_swipe_on : R.string.tv07_swipe_off, () -> {
+            ChannelSwipe.setOn(c, !ChannelSwipe.on(c));
+            Toast.makeText(c, ChannelSwipe.on(c) ? R.string.tv07_swipe_now_on : R.string.tv07_swipe_now_off, Toast.LENGTH_SHORT).show();
+            if (sheet != null) sheet.dismiss();
+        });
         extras.options(box);
         action(c, box, R.drawable.live_ic_replay, R.string.live_restart, () -> {
             if (sheet != null) sheet.dismiss();
@@ -1823,10 +1912,35 @@ public class PlayerActivity extends AppCompatActivity {
                 if (a != aspect) setAspect(a, true);
             }
 
+            @Override public boolean onFling(float startX, float width, float dx, float dy, float vx, float vy, long ms) {
+                ChannelSwipe.State s = swipeState();
+                int d = ChannelSwipe.decide(s, startX, width, dx, dy, vx, vy, ms, getResources().getDisplayMetrics().density);
+                if (d != ChannelSwipe.NONE) {
+                    swipeTo(d);
+                    return true;
+                }
+                // Swiping on but not a clear horizontal fling: nothing (a sloppy one never opens the guide by mistake).
+                // Anything else having the picture (a replay, Move and resize…): the swipes as they were.
+                return !s.off && !s.blocked() && Math.abs(dx) > Math.abs(dy) * 1.3f;
+            }
+
             @Override public void onSwipe(int d) {
                 // Kept until swiped down (the options): a swipe down while it shows takes the tile away instead.
                 if (d == Gestures.DOWN && tilesShown() && tileMs() == 0) {
                     hideOverlay();
+                    return;
+                }
+                if (ChannelSwipe.on(PlayerActivity.this)) {
+                    // Left and right are the channels (onFling): up brings the guide panel, down puts it away.
+                    if (d == Gestures.UP) {
+                        if (!panelShown()) showPanel();
+                    } else if (d == Gestures.DOWN) {
+                        if (overlayShown()) hideOverlay();
+                    } else if (d == Gestures.LEFT) {
+                        if (!panelShown()) showPanel();
+                    } else if (d == Gestures.RIGHT) {
+                        if (overlayShown()) hideOverlay();
+                    }
                     return;
                 }
                 if (d == Gestures.UP) step(1);
@@ -1865,10 +1979,11 @@ public class PlayerActivity extends AppCompatActivity {
         card.setOrientation(LinearLayout.VERTICAL);
         int pad = Ui.dp(this, 22);
         card.setPadding(pad, pad, pad, Ui.dp(this, 14));
-        card.setBackground(Ui.round(this, Ui.G_PANEL, 20));
+        card.setBackground(TvLook.mat(this, 22));
         card.addView(Ui.text(this, getString(R.string.live_hint_title), 20, Ui.TEXT, true));
-        int[] lines = {R.string.live_hint_tap, R.string.live_hint_swipe, R.string.live_hint_sides, R.string.live_hint_zoom,
-                R.string.live_hint_edges};
+        boolean swipe = ChannelSwipe.on(this);
+        int[] lines = {R.string.live_hint_tap, swipe ? R.string.tv07_hint_swipe : R.string.live_hint_swipe,
+                swipe ? R.string.tv07_hint_up : R.string.live_hint_sides, R.string.live_hint_zoom, R.string.live_hint_edges};
         for (int l : lines) {
             TextView t = Ui.text(this, "•  " + getString(l), 15, Ui.SOFT, false);
             t.setPadding(0, Ui.dp(this, 10), 0, 0);
@@ -1877,7 +1992,7 @@ public class PlayerActivity extends AppCompatActivity {
         TextView ok = Ui.text(this, getString(R.string.live_got_it), 15, Ui.G_INK, true);
         ok.setGravity(Gravity.CENTER);
         ok.setPadding(Ui.dp(this, 22), 0, Ui.dp(this, 22), 0);
-        ok.setBackground(Ui.touch(this, false, Ui.G_SELECT, 24));
+        ok.setBackground(TvLook.white(this, 24));
         LinearLayout.LayoutParams op = new LinearLayout.LayoutParams(-2, Ui.dp(this, 48));
         op.topMargin = Ui.dp(this, 18);
         op.gravity = Gravity.END;
@@ -1907,6 +2022,13 @@ public class PlayerActivity extends AppCompatActivity {
         root.setBackgroundColor(0xFF000000);
         video = new Video(this);
         root.addView(video, new FrameLayout.LayoutParams(-1, -1));
+        // The veil the picture slides under as a swipe changes channel (it takes no touch).
+        veil = new View(this);
+        veil.setBackgroundColor(0xFF000000);
+        veil.setAlpha(0f);
+        veil.setVisibility(View.GONE);
+        veil.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        root.addView(veil, new FrameLayout.LayoutParams(-1, -1));
         root.addView(gestures(), new FrameLayout.LayoutParams(-1, -1));
         // The automatic subtitles: over the picture, under everything else (they take no touch).
         captionView = new com.gathin.tvhomephone.captions.CaptionView(this);
@@ -1920,7 +2042,7 @@ public class PlayerActivity extends AppCompatActivity {
         message = Ui.text(this, "", 16, Ui.TEXT, true);
         message.setGravity(Gravity.CENTER);
         message.setPadding(Ui.dp(this, 20), Ui.dp(this, 14), Ui.dp(this, 20), Ui.dp(this, 14));
-        message.setBackground(Ui.round(this, 0xCC0B0C21, 14));
+        message.setBackground(TvLook.mat(this, 16));
         message.setVisibility(View.GONE);
         FrameLayout.LayoutParams mp = new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER);
         mp.leftMargin = mp.rightMargin = Ui.dp(this, 32);
@@ -1928,7 +2050,7 @@ public class PlayerActivity extends AppCompatActivity {
 
         zoom = Ui.text(this, "", 18, Ui.TEXT, true);
         zoom.setPadding(Ui.dp(this, 20), Ui.dp(this, 10), Ui.dp(this, 20), Ui.dp(this, 10));
-        zoom.setBackground(Ui.round(this, 0xCC0A1A4C, 22));
+        zoom.setBackground(TvLook.mat(this, 22));
         zoom.setVisibility(View.GONE);
         root.addView(zoom, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
 
@@ -1936,7 +2058,7 @@ public class PlayerActivity extends AppCompatActivity {
         level.setOrientation(LinearLayout.VERTICAL);
         level.setGravity(Gravity.CENTER_HORIZONTAL);
         level.setPadding(Ui.dp(this, 18), Ui.dp(this, 14), Ui.dp(this, 18), Ui.dp(this, 16));
-        level.setBackground(Ui.round(this, 0xCC0A1A4C, 18));
+        level.setBackground(TvLook.mat(this, 20));
         levelIcon = new ImageView(this);
         levelIcon.setImageTintList(ColorStateList.valueOf(Ui.TEXT));
         level.addView(levelIcon, new LinearLayout.LayoutParams(Ui.dp(this, 28), Ui.dp(this, 28)));
@@ -1945,13 +2067,18 @@ public class PlayerActivity extends AppCompatActivity {
         level.addView(levelText);
         levelBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         levelBar.setMax(100);
-        levelBar.setProgressTintList(ColorStateList.valueOf(Ui.G_SELECT));
-        levelBar.setProgressBackgroundTintList(ColorStateList.valueOf(Ui.LINE));
+        TvLook.line(levelBar);
         level.addView(levelBar, new LinearLayout.LayoutParams(Ui.dp(this, 120), Ui.dp(this, 6)));
         level.setVisibility(View.GONE);
         root.addView(level, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
 
         root.addView(buildPanel(), new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
+        // The quick channel card a swipe brings, at the picture's foot (over the tile, under the buttons).
+        card = new ChannelCard(this, lib);
+        card.setOnClickListener(v -> {
+            card.out(true);
+            showPanel();
+        });
 
         // The info tile: only its cards take a touch; a tap anywhere else reaches the picture (and puts it away).
         tiles = new FrameLayout(this) {
@@ -1962,6 +2089,7 @@ public class PlayerActivity extends AppCompatActivity {
         };
         tiles.setVisibility(View.GONE);
         root.addView(tiles, new FrameLayout.LayoutParams(-1, -1));
+        root.addView(card, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL));
 
         // Picture in picture and close, top right.
         top = new LinearLayout(this);
@@ -2054,10 +2182,23 @@ public class PlayerActivity extends AppCompatActivity {
 
     private void clearCutout() {
         // On a tablet the panel's words and mini guide keep to the middle 960dp, as wide as reads well.
+        int screen = getResources().getDisplayMetrics().widthPixels;
         int side = com.gathin.tvhomephone.glass.Wide.tablet(this)
-                ? com.gathin.tvhomephone.glass.Wide.side(getResources().getDisplayMetrics().widthPixels, Ui.dp(this, 960), Ui.dp(this, 24))
-                : Ui.dp(this, 20);
-        panel.setPadding(side + cut.left, Ui.dp(this, 36), side + cut.right, Ui.dp(this, 12) + cut.bottom);
+                ? com.gathin.tvhomephone.glass.Wide.side(screen, Ui.dp(this, 960), Ui.dp(this, 24))
+                : Ui.dp(this, 10);
+        // The panel floats as a card of glass (07's), a little in from the sides and the foot.
+        FrameLayout.LayoutParams pl = (FrameLayout.LayoutParams) panel.getLayoutParams();
+        pl.leftMargin = side + cut.left;
+        pl.rightMargin = side + cut.right;
+        pl.bottomMargin = Ui.dp(this, 10) + cut.bottom;
+        panel.setLayoutParams(pl);
+        panel.setPadding(Ui.dp(this, 14), Ui.dp(this, 12), Ui.dp(this, 8), Ui.dp(this, 12));
+        if (card != null) {
+            FrameLayout.LayoutParams cl = (FrameLayout.LayoutParams) card.getLayoutParams();
+            cl.width = Math.min(Ui.dp(this, 460), screen - 2 * Ui.dp(this, 14) - cut.left - cut.right);
+            cl.bottomMargin = Ui.dp(this, 22) + cut.bottom;
+            card.setLayoutParams(cl);
+        }
         FrameLayout.LayoutParams tp = (FrameLayout.LayoutParams) top.getLayoutParams();
         tp.topMargin = cut.top;
         tp.rightMargin = cut.right;
@@ -2080,20 +2221,21 @@ public class PlayerActivity extends AppCompatActivity {
         };
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setClickable(true);
-        int side = Ui.dp(c, 20);
-        panel.setPadding(side, Ui.dp(c, 36), side, Ui.dp(c, 12));
-        panel.setBackground(new GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP,
-                new int[]{0xF2050B2C, 0xE00B2766, 0x000B2766}));
+        panel.setPadding(Ui.dp(c, 14), Ui.dp(c, 12), Ui.dp(c, 8), Ui.dp(c, 12));
+        // 07's frosted panel over the picture: tinted glass with its bright hairline (no live blur over a stream).
+        panel.setBackground(TvLook.mat(c, 26));
+        panel.setElevation(Ui.dp(c, 8));
 
         LinearLayout row = new LinearLayout(c);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        number = Ui.text(c, "", 22, Ui.G_SELECT, true);
+        number = TvLook.text(c, "", 21, Ui.TEXT, true);
         number.setPadding(0, 0, Ui.dp(c, 12), 0);
         row.addView(number);
         FrameLayout box = new FrameLayout(c);
         logoBox = box;
-        box.setBackground(Ui.round(c, 0x26FFFFFF, 10));
-        initials = Ui.text(c, "", 14, Ui.SOFT, true);
+        box.setBackground(TvLook.glass(c, 12));
+        box.setElevation(Ui.dp(c, 2));
+        initials = TvLook.text(c, "", 14, Ui.SOFT, true);
         initials.setGravity(Gravity.CENTER);
         box.addView(initials, new FrameLayout.LayoutParams(-1, -1));
         logo = new ImageView(c);
@@ -2108,11 +2250,11 @@ public class PlayerActivity extends AppCompatActivity {
         info.setPadding(Ui.dp(c, 14), 0, Ui.dp(c, 8), 0);
         LinearLayout names = new LinearLayout(c);
         names.setGravity(Gravity.CENTER_VERTICAL);
-        name = Ui.text(c, "", 15, Ui.SOFT, true);
+        name = TvLook.text(c, "", 13.5f, TvLook.L2, true);
         name.setSingleLine(true);
         name.setEllipsize(TextUtils.TruncateAt.END);
         names.addView(name, new LinearLayout.LayoutParams(-2, -2));
-        group = Ui.text(c, "", 12, Ui.DIM, false);
+        group = TvLook.text(c, "", 12, TvLook.L3, false);
         group.setSingleLine(true);
         group.setEllipsize(TextUtils.TruncateAt.END);
         group.setPadding(Ui.dp(c, 10), 0, 0, 0);
@@ -2121,33 +2263,65 @@ public class PlayerActivity extends AppCompatActivity {
         sleepLine.setPadding(Ui.dp(c, 10), 0, 0, 0);
         names.addView(sleepLine);
         info.addView(names);
-        LinearLayout now = new LinearLayout(c);
-        now.setGravity(Gravity.CENTER_VERTICAL);
-        nowTitle = Ui.text(c, "", 18, Ui.TEXT, true);
+        // What's on across the whole width (a narrow phone kept no room for it beside its times), 07's white line for how
+        // far in, then its times with what's next after them.
+        nowTitle = TvLook.text(c, "", 18, Ui.TEXT, true);
+        nowTitle.setLetterSpacing(-0.015f);
         nowTitle.setSingleLine(true);
         nowTitle.setEllipsize(TextUtils.TruncateAt.END);
-        now.addView(nowTitle, new LinearLayout.LayoutParams(0, -2, 1f));
-        nowTime = Ui.text(c, "", 13, Ui.G_SELECT, true);
-        nowTime.setPadding(Ui.dp(c, 10), 0, 0, 0);
-        now.addView(nowTime);
-        info.addView(now);
+        LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(-1, -2);
+        np.topMargin = Ui.dp(c, 3);
+        info.addView(nowTitle, np);
         progress = new ProgressBar(c, null, android.R.attr.progressBarStyleHorizontal);
         progress.setMax(1000);
-        progress.setProgressTintList(ColorStateList.valueOf(Ui.RED));
-        progress.setProgressBackgroundTintList(ColorStateList.valueOf(Ui.LINE));
+        TvLook.line(progress);
         LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(-1, Ui.dp(c, 4));
-        pp.topMargin = Ui.dp(c, 5);
-        pp.bottomMargin = Ui.dp(c, 4);
+        pp.topMargin = Ui.dp(c, 6);
+        pp.bottomMargin = Ui.dp(c, 5);
         info.addView(progress, pp);
-        nextLine = Ui.text(c, "", 13, Ui.SOFT, false);
+        LinearLayout when = new LinearLayout(c);
+        when.setGravity(Gravity.CENTER_VERTICAL);
+        nowTime = TvLook.text(c, "", 12, TvLook.L2, false);
+        nowTime.setSingleLine(true);
+        nowTime.setPadding(0, 0, Ui.dp(c, 10), 0);
+        when.addView(nowTime);
+        nextLine = TvLook.text(c, "", 12, TvLook.L3, false);
         nextLine.setSingleLine(true);
         nextLine.setEllipsize(TextUtils.TruncateAt.END);
-        info.addView(nextLine);
+        when.addView(nextLine, new LinearLayout.LayoutParams(0, -2, 1f));
+        info.addView(when, new LinearLayout.LayoutParams(-1, -2));
         row.addView(info, new LinearLayout.LayoutParams(0, -2, 1f));
         star = button(R.drawable.live_ic_star_outline, R.string.live_favourite, v -> toggleFavourite());
         row.addView(star);
         row.addView(button(R.drawable.live_ic_more, R.string.live_options, v -> options()));
         panel.addView(row);
+
+        // Over the mini guide: the channels either side, or Recently watched; and Back to the channel before.
+        LinearLayout tabs = new LinearLayout(c);
+        tabs.setGravity(Gravity.CENTER_VERTICAL);
+        tabChannels = stripTab(c, R.string.tv07_strip_channels, false);
+        tabRecent = stripTab(c, R.string.tv07_strip_recent, true);
+        LinearLayout.LayoutParams t1 = new LinearLayout.LayoutParams(-2, Ui.dp(c, 40));
+        t1.rightMargin = Ui.dp(c, 6);
+        tabs.addView(tabChannels, t1);
+        tabs.addView(tabRecent, new LinearLayout.LayoutParams(-2, Ui.dp(c, 40)));
+        backTo = TvLook.text(c, "", 12.5f, Ui.TEXT, true);
+        backTo.setSingleLine(true);
+        backTo.setEllipsize(TextUtils.TruncateAt.END);
+        backTo.setGravity(Gravity.CENTER);
+        backTo.setMaxWidth(Ui.dp(c, 220));
+        backTo.setPadding(Ui.dp(c, 14), 0, Ui.dp(c, 14), 0);
+        backTo.setOnClickListener(v -> {
+            if (backChannel != null) switchTo(lib.byKey(backChannel.key) != null ? lib.byKey(backChannel.key) : backChannel);
+        });
+        tabs.addView(new View(c), new LinearLayout.LayoutParams(0, 1, 1f));
+        LinearLayout.LayoutParams bt = new LinearLayout.LayoutParams(-2, Ui.dp(c, 40));
+        bt.leftMargin = Ui.dp(c, 10);
+        tabs.addView(backTo, bt);
+        LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(-1, -2);
+        tp.topMargin = Ui.dp(c, 8);
+        tp.rightMargin = Ui.dp(c, 6);
+        panel.addView(tabs, tp);
 
         strip = new RecyclerView(c);
         strip.setLayoutManager(new LinearLayoutManager(c, LinearLayoutManager.HORIZONTAL, false));
@@ -2156,17 +2330,61 @@ public class PlayerActivity extends AppCompatActivity {
         strip.setClipToPadding(false);
         strip.setContentDescription(getString(R.string.live_mini_guide));
         LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-1, Ui.dp(c, 76));
-        sp.topMargin = Ui.dp(c, 12);
+        sp.topMargin = Ui.dp(c, 6);
         panel.addView(strip, sp);
         panel.setVisibility(View.GONE);
         return panel;
+    }
+
+    /** One of the strip's two tabs (Channels, Recent): a pill of glass, white when chosen. */
+    private TextView stripTab(Context c, int label, boolean recent) {
+        TextView t = TvLook.text(c, getString(label), 13, Ui.TEXT, true);
+        t.setGravity(Gravity.CENTER);
+        t.setPadding(Ui.dp(c, 14), 0, Ui.dp(c, 14), 0);
+        t.setOnClickListener(v -> {
+            if (stripRecent == recent) return;
+            stripRecent = recent;
+            paintStripTabs();
+            neighbours.notifyDataSetChangedSafe();
+            if (recent) strip.scrollToPosition(0);
+            else centreStrip();
+            keepPanel();
+        });
+        return t;
+    }
+
+    private void paintStripTabs() {
+        for (TextView t : new TextView[]{tabChannels, tabRecent}) {
+            boolean on = (t == tabRecent) == stripRecent;
+            t.setBackground(on ? TvLook.white(this, 20) : TvLook.glass(this, 20));
+            t.setTextColor(on ? TvLook.INK : Ui.TEXT);
+            t.setSelected(on);
+        }
+    }
+
+    /** The strip's channels now: the category's (the mini guide) or Recently watched. */
+    private List<Channel> stripItems() {
+        return stripRecent ? recentList : order;
+    }
+
+    /** Recently watched for the panel (Recents), and Back to the channel before. */
+    private void showRecent() {
+        recentList = Recents.list(Picks.recent(this), lib::resolve, lib::isHidden, cur == null ? null : cur.key, Recents.SHOWN);
+        backChannel = recentList.isEmpty() ? null : recentList.get(0);
+        backTo.setText(backChannel == null ? "" : getString(R.string.tv07_back_to_short, backChannel.name));
+        backTo.setContentDescription(backChannel == null ? null : getString(R.string.tv07_back_to, backChannel.name));
+        backTo.setBackground(backChannel == null ? null : TvLook.glass(this, 20));
+        backTo.setVisibility(backChannel == null ? View.INVISIBLE : View.VISIBLE);
+        tabRecent.setVisibility(recentList.isEmpty() ? View.GONE : View.VISIBLE);
+        if (recentList.isEmpty()) stripRecent = false;
+        paintStripTabs();
     }
 
     private ImageButton button(int icon, int label, View.OnClickListener l) {
         ImageButton b = Ui.icon(this, icon, label);
         // A little larger to touch on a tablet.
         int s = com.gathin.tvhomephone.glass.Wide.tablet(this) ? 56 : 48;
-        b.setBackground(Ui.touch(this, false, 0x990B0C21, s / 2f));
+        b.setBackground(TvLook.dark(this, s / 2f));
         b.setOnClickListener(l);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Ui.dp(this, s), Ui.dp(this, s));
         lp.leftMargin = Ui.dp(this, 8);
