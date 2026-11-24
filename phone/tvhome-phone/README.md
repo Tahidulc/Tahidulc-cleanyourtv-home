@@ -843,3 +843,11 @@ layer again, found rather than counted, so a view added under it can't push them
 panel shows, shaded behind the words and fading softly into the guide; with no picture for the programme, in the
 panel's colour. It comes in as the picture shrinks and goes as it opens out, follows the channel and the programme,
 and on a tablet held upright the band does the same.
+
+**The scoreboard's and the logo's own menus (5.38).** A tap on the scoreboard opens its menu, a tap on the channel's
+logo the logo's: everything about each in one place, as a sheet that leaves them in sight so every change shows at once
+(at the side on a tablet or sideways). The scoreboard's starts with Match centre (what a tap used to do), then its
+sections: the board on or off, its look and My scoreboards, timing, pop-ups and alerts, where it sits and its size,
+and this channel's own; the logo's: the cover on or off, its look (pictures to choose from), what's on it, the
+channel's own logo and its place. Big rows, switches and choices you can see; a hold still drags them and a double tap
+still goes straight to Move and resize. The player's options open the same two menus.
