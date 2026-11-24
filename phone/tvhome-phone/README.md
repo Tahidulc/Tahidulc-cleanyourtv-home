@@ -851,3 +851,9 @@ sections: the board on or off, its look and My scoreboards, timing, pop-ups and 
 and this channel's own; the logo's: the cover on or off, its look (pictures to choose from), what's on it, the
 channel's own logo and its place. Big rows, switches and choices you can see; a hold still drags them and a double tap
 still goes straight to Move and resize. The player's options open the same two menus.
+
+**Settings easier to get round (5.39).** Settings opens on a short page of its sections under plain headings (Watching,
+Sport and matchday, Your channels, Films and shows, TVs and sync, App), each with its icon and a line on how it is set
+now; a tap opens the section on its own page, Back returns to the list where it was. A search at the top finds any
+setting by its words and opens its section there, the setting lit for a moment. A tablet keeps the list and the page
+side by side, with the same headings and search.
