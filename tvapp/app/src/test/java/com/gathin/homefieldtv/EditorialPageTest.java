@@ -14,6 +14,7 @@ import android.view.KeyEvent;
 
 import com.gathin.homefieldtv.engine.Catalog;
 import com.gathin.homefieldtv.engine.CategorySet;
+import com.gathin.homefieldtv.engine.DayRows;
 import com.gathin.homefieldtv.engine.EditorialData;
 import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Library;
@@ -41,7 +42,7 @@ import java.util.Map;
 
 /**
  * The Editorial Home, Movies and TV Shows as the family's remote finds them: Editorial as it comes and Classic when
- * chosen (Settings › Appearance › Home style); the rows in the table's order, a row with nothing in the playlists left
+ * chosen (Settings › Appearance › Home style); the rows in the day's order (DayRows), a row with nothing in the playlists left
  * out; the first rows asked for as the page opens and the next as the remote goes down; the title the remote is on wide
  * and the one it left a poster again; its line under the row; Down past the last row back to the first; Back to the tab
  * bar; OK opening a title, Continue Watching carrying on, the carousel's View Details; the title page's menu down the left.
@@ -62,6 +63,7 @@ public class EditorialPageTest {
         if (tv != null) tv.pause().stop().destroy();
         tv = null;
         EditorialData.clear();
+        DayRows.now = null;
         if (app != null) {
             Library.get(app).clear();
             Sources.clear(app);
@@ -101,6 +103,8 @@ public class EditorialPageTest {
         app = RuntimeEnvironment.getApplication();
         EditorialData.freshCatalog();
         Exec.inline = true;
+        // The day's rows for now, the same all through the test.
+        DayRows.now = System.currentTimeMillis();
         Sources.clear(app);
         Sources.put(app, "p0", "Home", new Source(Source.XTREAM, null, null, "http://provider.invalid:8080", "family", "test"));
         List<String> rows = new ArrayList<>();
@@ -177,17 +181,18 @@ public class EditorialPageTest {
         }
     }
 
-    @Test public void theRowsAreInTheTablesOrderAndEmptyOnesAreLeftOut() {
+    @Test public void theRowsAreInTheDaysOrderAndEmptyOnesAreLeftOut() {
         TvActivity a = start(true);
         EditorialPage home = a.homeScreen().editorial();
         List<String> shown = ids(home), table = new ArrayList<>();
-        for (CategorySet.Entry e : CategorySet.of(CategorySet.HOME)) table.add(e.id);
+        for (CategorySet.Entry e : DayRows.today(CategorySet.HOME)) if (e.kind == CategorySet.ROW) table.add(e.id);
+        assertEquals(DayRows.key(DayRows.local(DayRows.now())), home.previewDayKey());
         assertFalse(shown.isEmpty());
         assertEquals("continue", shown.get(0));
         int last = -1;
         for (String id : shown) {
             int at = table.indexOf(id);
-            assertTrue(id + " in the table's order", at > last);
+            assertTrue(id + " in the day's order", at > last);
             last = at;
         }
         // Rows with no title in them are never shown: here, TMDB knows only one list.
@@ -195,13 +200,13 @@ public class EditorialPageTest {
         Map<String, TmdbLists.Page> pages = new HashMap<>();
         List<TmdbLists.Item> items = new ArrayList<>();
         for (Catalog.Title t : Catalog.get(app).films()) items.add(new TmdbLists.Item(t.name.length(), false, t.name, t.name, t.year, "", "", "", "7", null));
-        pages.put("trending/movie/day#1", new TmdbLists.Page(items, 1, 1));
+        pages.put("trending/all/day#1", new TmdbLists.Page(items, 1, 1));
         EditorialData.only(pages);
         tv = Robolectric.buildActivity(TvActivity.class).setup();
         idle();
         List<String> now = ids(tv.get().homeScreen().editorial());
-        assertTrue(now.contains("trending.movies"));
-        assertTrue("its own fallback: the playlists' newest", now.contains("latest.releases"));
+        assertTrue("Top 10 Today, every day", now.contains("top10"));
+        assertTrue("New This Week: the playlists' own", now.contains("fresh"));
         assertFalse(now.contains("acclaimed"));
         assertFalse(now.contains("oscars"));
         assertFalse(now.contains("because.0"));
@@ -223,7 +228,7 @@ public class EditorialPageTest {
         TvActivity a = start(true);
         press(a, KeyEvent.KEYCODE_DPAD_DOWN);
         EditorialPage home = a.homeScreen().editorial();
-        int i = home.previewRow("trending.movies");
+        int i = home.previewRow("top10");
         home.previewFocus(i, 0);
         press(a, KeyEvent.KEYCODE_DPAD_RIGHT);
         float[] w = home.view().previewWidths();
@@ -255,7 +260,7 @@ public class EditorialPageTest {
         TvActivity a = start(true);
         press(a, KeyEvent.KEYCODE_DPAD_DOWN);
         EditorialPage home = a.homeScreen().editorial();
-        home.previewFocus(home.previewRow("trending.movies"), 1);
+        home.previewFocus(home.previewRow("top10"), 1);
         assertNotNull(home.view().card().title());
         press(a, KeyEvent.KEYCODE_DPAD_CENTER);
         assertTrue(a.top() instanceof TitleScreen);

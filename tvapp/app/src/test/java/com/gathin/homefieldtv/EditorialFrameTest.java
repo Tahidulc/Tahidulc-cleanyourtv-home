@@ -135,7 +135,7 @@ public class EditorialFrameTest {
         Motion.force(false);
         // Once along a row before anything is measured: the JVM's first calls of each drawing path make garbage.
         leaveBar();
-        onRow(a.homeScreen().editorial(), "latest.releases");
+        onRow(a.homeScreen().editorial(), "top10");
         warm(() -> keys(KeyEvent.KEYCODE_DPAD_RIGHT, 8), () -> keys(KeyEvent.KEYCODE_DPAD_LEFT, 8));
         a.tabs().enter();
         idle();
@@ -169,7 +169,7 @@ public class EditorialFrameTest {
         leaveBar();
         EditorialPage home = a.homeScreen().editorial();
         assertNotNull("Home is Editorial as it comes", home);
-        onRow(home, "latest.releases");
+        onRow(home, "top10");
         measure("Editorial Home: a row" + tier, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_LEFT, 6);
         onRow(home, "continue");
         measure("Editorial Home: Continue Watching" + tier, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_LEFT, 2);
@@ -189,7 +189,7 @@ public class EditorialFrameTest {
         measure("Editorial Movies: a row" + tier, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_LEFT, 6);
         measure("Editorial Movies: rows down" + tier, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_UP, 3);
 
-        // TV Shows: its carousel, a streaming service's row.
+        // TV Shows: its carousel, its Top 10.
         a.home();
         idle();
         a.fromHome(new BrowseScreen(a, true));
@@ -198,8 +198,8 @@ public class EditorialFrameTest {
         EditorialPage shows = ((BrowseScreen) a.top()).editorial();
         shows.previewFocus(-1, 0);
         measure("Editorial TV Shows: carousel" + tier, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_LEFT, 3);
-        onRow(shows, "network.3186");
-        measure("Editorial TV Shows: a service" + tier, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_LEFT, 4);
+        onRow(shows, "top10");
+        measure("Editorial TV Shows: a row" + tier, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_LEFT, 4);
         a.home();
         idle();
     }

@@ -302,9 +302,10 @@ final class Editorial extends View {
         return old.focus;
     }
 
-    /** What a card is kept by: its title. */
+    /** What a card is kept by: its title (a Coming Soon card's, TMDB's id). */
     private static Object key(Card c) {
-        return c.pick.title == null ? c : c.pick.title.key;
+        String k = c.pick.key();
+        return k.isEmpty() ? c : k;
     }
 
     /** Nothing to show: its words (the playlists still being read, none yet). */

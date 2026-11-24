@@ -26,10 +26,10 @@ import java.util.Map;
  * TMDB's lists for the Editorial rows: trending, popular, a themed discover (a genre, a keyword, a running time, a
  * decade), a list, a network's shows, a title's recommendations, a page of 20 at a time; and the names and ids they
  * need (a network's name, a keyword's id, a watched title's id). Asked with the launcher's key as Tmdb asks (its generic
- * user agent, nothing about the family), kept on this TV for a few hours (trending), half a day (popular and the like)
- * or two days (the rest), and a little in memory, so the rows come at once next time and work from what was kept when
- * TMDB can't be reached. Only names, years, pictures, scores and genres are kept: no address with the key. Off the main
- * thread.
+ * user agent, nothing about the family), kept on this TV for a few hours (DayRows.expiry: today's lists three, what is
+ * new or coming four, the rest six), and a little in memory, so the rows come at once next time and work from what was
+ * kept when TMDB can't be reached; past that they are asked for again as the page is next shown. Only names, dates,
+ * pictures, scores and genres are kept: no address with the key. Off the main thread.
  */
 public final class TmdbLists {
     private TmdbLists() {}
@@ -37,15 +37,24 @@ public final class TmdbLists {
     /** At most this many pages of a list are read (20 titles each). */
     public static final int MAX_PAGES = 10;
 
-    /** One title in a list: TMDB's id, film or show, its names, year, pictures (addresses at their sizes), story, score. */
+    /**
+     * One title in a list: TMDB's id, film or show, its names, year, the day it comes out (or came: "2026-12-18", "" for
+     * none), pictures (addresses at their sizes), story, score.
+     */
     public static final class Item {
         public final int id;
         public final boolean tv;
-        public final String name, original, year, poster, backdrop, plot, rating;
+        public final String name, original, year, date, poster, backdrop, plot, rating;
         public final int[] genres;
 
         public Item(int id, boolean tv, String name, String original, String year, String poster, String backdrop, String plot,
                     String rating, int[] genres) {
+            this(id, tv, name, original, year, "", poster, backdrop, plot, rating, genres);
+        }
+
+        public Item(int id, boolean tv, String name, String original, String year, String date, String poster, String backdrop,
+                    String plot, String rating, int[] genres) {
+            this.date = date == null || !date.matches("\\d{4}-\\d{2}-\\d{2}") ? "" : date;
             this.id = id;
             this.tv = tv;
             this.name = name == null ? "" : name;
@@ -204,14 +213,15 @@ public final class TmdbLists {
         return v;
     }
 
-    /** How long a list is kept: trending today 3 hours; popular, playing, airing and this week's half a day; others two days. */
+    /**
+     * How long a list is kept: as its row's titles are (DayRows.expiry): trending today three hours; this week's, what is
+     * playing, airing, new or coming four; the rest six. A list's own (list/) and a network's name are kept longer.
+     */
     static long keepMs(String path) {
-        long hour = 3600_000L;
-        if (path.startsWith("trending/") && path.contains("/day")) return 3 * hour;
-        if (path.startsWith("trending/") || path.contains("popular") || path.contains("now_playing") || path.contains("airing_today")
-                || path.contains("on_the_air") || path.contains("upcoming") || path.contains(".desc&primary_release_date.lte")
-                || path.contains("first_air_date.desc")) return 12 * hour;
-        return 48 * hour;
+        if (path.startsWith("list/")) return 48 * 3600_000L;
+        if (path.contains("primary_release_date.lte") || path.contains("first_air_date.lte") || path.contains("primary_release_date.gte")
+                || path.contains("first_air_date.gte") || path.contains("popular")) return DayRows.expiry("{today}");
+        return DayRows.expiry(path);
     }
 
     /** Pure: whether a list's titles are shows ("tv"), films ("movie"), or say so each ("" for trending/all, a list). */
@@ -244,7 +254,7 @@ public final class TmdbLists {
             JSONArray g = r.optJSONArray("genre_ids");
             int[] genres = new int[g == null ? 0 : g.length()];
             for (int k = 0; k < genres.length; k++) genres[k] = g.optInt(k);
-            items.add(new Item(id, tv, name, r.optString(tv ? "original_name" : "original_title", "").trim(), year,
+            items.add(new Item(id, tv, name, r.optString(tv ? "original_name" : "original_title", "").trim(), year, date,
                     Tmdb.image(r.optString("poster_path", ""), "w342"), Tmdb.image(r.optString("backdrop_path", ""), "w1280"),
                     r.optString("overview", ""), Tmdb.rating(r.optDouble("vote_average", 0)), genres));
         }

@@ -114,6 +114,7 @@ final class HomeScreen extends Screen implements HomeCard.Host {
     }
 
     @Override void tick() {
+        if (editorial != null) editorial.tick();
         fill();
     }
 

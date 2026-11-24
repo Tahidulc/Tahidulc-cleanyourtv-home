@@ -89,28 +89,31 @@ public class EditorialRowsTest {
 
     // ---- the table ---------------------------------------------------------------------------------------------------
 
-    @Test public void homeHasTheOtherAppsTwentyThreeRowsInItsOrder() {
-        assertEquals(Arrays.asList("Continue Watching", "Latest Releases", "Trending Movies", "Latest TV Shows", "Because you watched {title}",
-                "We think you will like these", "Because you watched {title}", "Based on True Story", "Critically Acclaimed", "90 Minute Movies",
-                "Sci-Fi Movies: Top Picks", "Comedy Movies", "Oscar Winners: Best Picture", "Visually Pleasing", "Crazy Plot Twists",
-                "British Gangster Movies", "Cult Classics", "Survival Movies", "Nostalgia", "Revenge Movies", "Zero Gravity Watchlist",
-                "No brainers", "Thriller Movies"), titles(CategorySet.HOME));
+    @Test public void homeKeepsTheOtherAppsTwentyThreeRowsAmongItsOwn() {
+        // Which a day shows, and in what order, is DayRows' (DayRowsTest); every one of them is still in the table.
+        assertTrue(titles(CategorySet.HOME).containsAll(Arrays.asList("Continue Watching", "Latest Releases", "Trending Movies",
+                "Latest TV Shows", "Because you watched {title}", "We think you will like these", "Based on True Story", "Critically Acclaimed",
+                "90 Minute Movies", "Sci-Fi Movies: Top Picks", "Comedy Movies", "Oscar Winners: Best Picture", "Visually Pleasing",
+                "Crazy Plot Twists", "British Gangster Movies", "Cult Classics", "Survival Movies", "Nostalgia", "Revenge Movies",
+                "Zero Gravity Watchlist", "No brainers", "Thriller Movies")));
+        assertEquals("continue", CategorySet.of(CategorySet.HOME).get(0).id);
         for (CategorySet.Entry e : CategorySet.of(CategorySet.HOME)) assertEquals(CategorySet.ROW, e.kind);
     }
 
-    @Test public void moviesHasItsCarouselAndTwentyTwoRows() {
+    @Test public void moviesHasItsCarouselAndTheOtherAppsRowsAmongItsOwn() {
         List<CategorySet.Entry> all = CategorySet.of(CategorySet.MOVIES);
         assertEquals(CategorySet.HERO, all.get(0).kind);
-        assertEquals(Arrays.asList("", "Trending Movies", "Conspiracy Theories", "Crime Movies: Top Picks", "Survival Movies",
+        assertTrue(titles(CategorySet.MOVIES).containsAll(Arrays.asList("Conspiracy Theories", "Crime Movies: Top Picks", "Survival Movies",
                 "Thriller Movies: Top Picks", "Revenge Movies", "Crazy Plot Twists", "Top Rated Crime Films", "We know you'll love these",
                 "Top Bank Robbery Movies", "Laughs & Laughter", "Old But Fresh", "Watch More Than Once", "Need a Good Laugh?",
                 "Romantic Comedies", "Comedy Movies: Top Picks", "90s Classics", "Cult Classics", "Mystery Thrillers", "Vacations Gone Wrong",
-                "Sci-Fi Movies: Top Picks", "Family Favorites"), titles(CategorySet.MOVIES));
+                "Sci-Fi Movies: Top Picks", "Family Favorites", "Top 10 Films Today", "Trending This Week")));
     }
 
     @Test public void tvShowsHasItsCarouselTrendingAndAServiceRowEachButAppleAndNetflix() {
-        assertEquals(Arrays.asList("", "Trending Shows", "Latest {network} Shows", "Latest {network} Shows", "{network} Shows"),
-                titles(CategorySet.SHOWS));
+        assertEquals(CategorySet.HERO, CategorySet.of(CategorySet.SHOWS).get(0).kind);
+        assertTrue(titles(CategorySet.SHOWS).containsAll(Arrays.asList("Top 10 Shows Today", "Trending This Week", "Latest {network} Shows",
+                "{network} Shows")));
         assertEquals("latest:3186/49", entry(CategorySet.SHOWS, "network.3186").source);
         assertEquals("latest:1024", entry(CategorySet.SHOWS, "network.1024").source);
         assertEquals("network:2739", entry(CategorySet.SHOWS, "network.2739").source);

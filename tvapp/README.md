@@ -28,20 +28,32 @@ wordmark are Homefield; it carries no Sky logo or name.
   card, then to the sections, then opens the menu, and Back from the menu goes back to the TV. Home doesn't play
   anything itself.
 
-- **Home, Movies and TV Shows (Home style Editorial, as it comes):** the rows of the family's other film app, in its
-  order, from one table (engine/CategorySet: each row's id, title, source and place). Home: Continue Watching, Latest
-  Releases, Trending Movies, Latest TV Shows, Because you watched (the title watched last), We think you will like these,
-  Because you watched (the one before), then Based on True Story, Critically Acclaimed, 90 Minute Movies, Sci-Fi Movies:
-  Top Picks, Comedy Movies, Oscar Winners: Best Picture, Visually Pleasing, Crazy Plot Twists, British Gangster Movies,
-  Cult Classics, Survival Movies, Nostalgia, Revenge Movies, Zero Gravity Watchlist, No brainers and Thriller Movies.
-  Movies: a carousel, then Trending Movies and 21 themed rows (Conspiracy Theories to Family Favorites, We know you'll
-  love these among them). TV Shows: a carousel, Trending Shows, and a row for each streaming service TMDB names (HBO
-  Max's, Prime Video's and Disney+'s; the other app's rows for Apple's and Netflix's services are left out). The titles
-  come only from the family's playlists (and their own TorBox titles): TMDB's lists (trending, a genre, a keyword found by
-  its name, a list, a network's shows, the recommendations for what was watched) are matched to them by name and year
-  off the main thread (engine/MatchIndex, about 1.6 MB for 200,000 titles), a page at a time as the remote goes along; a
-  row with nothing in the playlists is left out, and without TMDB the rows are the playlists' own (the newest, the
-  categories named for a genre). One row in focus at a time, under the tab bar: the title the remote is on grows from
+- **Home, Movies and TV Shows (Home style Editorial, as it comes):** rows that change with the day ("the categories for
+  all this should be fluid and ever changing and the catalogue for these categories should always be changing and
+  updated"), picked each day by engine/DayRows from one table (engine/CategorySet: each row's id, title, source and when
+  it shows), the same all day so nothing moves while the family browses. Home: Continue Watching first; Top 10 Today,
+  New This Week (what the playlists added in the last week) and Because you watched (the title watched last), in the
+  day's order; while in season, Christmas Films (December), Halloween Frights (October), Valentine's Romance (February's
+  first fortnight) or Summer Blockbusters (21 June to August); the row for the part of the day (Easy Morning Watching
+  from 5, Afternoon Adventures from 12, Tonight's Big Films from 17, Late-Night Thrillers from 21, as the page was made:
+  it changes when the page is next come back to); a Genre of the Day and a Mood of the Day, going round all of them; and
+  a dozen of the rest, a different dozen each day (each comes up within three days): the family's other film app's rows
+  (Latest Releases, Trending Movies, Latest TV Shows, We think you will like these, Based on True Story, Critically
+  Acclaimed, Oscar Winners: Best Picture, Crazy Plot Twists, Cult Classics and the rest, all still there), Trending TV
+  Shows, Hidden Gems, Coming Soon and New in Your TorBox. Movies: a carousel, then Top 10 Films Today, Trending This
+  Week and New This Week, and its rows the same way (the other app's 21 themed rows among them). TV Shows: a carousel,
+  Top 10 Shows Today, Trending This Week and New Episodes This Week, then the same way a row for each streaming service
+  TMDB names (HBO Max's, Prime Video's and Disney+'s; never Apple's or Netflix's), Binge-Worthy, Limited Series, Crime
+  Dramas, Hidden Gem Series, New in Your Playlist and the rest. A themed row's titles turn with the day too, so it starts
+  with others tomorrow. The titles come only from the family's playlists (and their own TorBox titles): TMDB's lists
+  (trending, a genre, a keyword found by its name, a list, a network's shows, the recommendations for what was watched)
+  are matched to them by name and year off the main thread (engine/MatchIndex, about 1.6 MB for 200,000 titles), a page
+  at a time as the remote goes along; a row with nothing in the playlists is left out, and without TMDB the rows are the
+  playlists' own (the newest, the categories named for a genre). The one exception is Coming Soon: its titles may not be
+  out yet, each saying when it comes ("Coming 18 Dec"; OK plays its trailer in the TV's YouTube app). A row's titles are
+  kept a few hours (today's lists three, what is new or coming four, the rest six) and asked for again off the main
+  thread when the app comes back to the front after that, or while the page is open for the rows the remote isn't on;
+  only the day's rows are kept. One row in focus at a time, under the tab bar: the title the remote is on grows from
   its poster into a wide card (its backdrop, TMDB's logo or its name, how far it was watched and its episode), the one
   it left shrinking back as the row slides it to the left (Lite: no cross-fade of the pictures); under the row its score,
   year, genre and length, and three lines of its story; the next row dimmed under it. Down past the last row goes back

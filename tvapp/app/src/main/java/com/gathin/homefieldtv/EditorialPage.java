@@ -8,6 +8,7 @@ import android.widget.Toast;
 
 import com.gathin.homefieldtv.engine.Catalog;
 import com.gathin.homefieldtv.engine.CategorySet;
+import com.gathin.homefieldtv.engine.DayRows;
 import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.engine.MyList;
@@ -27,9 +28,16 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * The Editorial page of Home, Movies or TV Shows (Settings › Appearance › Home style: Editorial): its rows as CategorySet
- * lists them for the page, each made by Shelves and drawn by Editorial. HomeScreen and BrowseScreen hand it their
- * screen's work when Editorial is chosen.
+ * The Editorial page of Home, Movies or TV Shows (Settings › Appearance › Home style: Editorial): the day's rows as
+ * DayRows picks them from CategorySet's (which show and their order change with the day, the same all day; the row for
+ * the part of the day as the page was made), each made by Shelves and drawn by Editorial. HomeScreen and BrowseScreen hand
+ * it their screen's work when Editorial is chosen.
+ *
+ * <p>Living: as the page is shown again (the app back in front, a film over) on a new day or part of the day, its rows
+ * are picked again; a row's titles past their expiry (a few hours: DayRows.expiry) are asked for again off the main
+ * thread, and while the page is open the minute's tick does the same for the rows the remote isn't on, so the rows
+ * change under the family without anything jumping under the remote. A Coming Soon card that no playlist has yet says
+ * when it comes; OK plays its trailer in the TV's YouTube app (it has nothing else to play).
  *
  * <p>Built lazily and in pages, so the main thread never goes through the catalogue: the rows from the family's own
  * lists (Continue Watching, the newest) are made at once from the lists the catalogue keeps; a TMDB row is made off the
@@ -50,8 +58,10 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
 
     private final TvActivity tv;
     private final String page;
-    private final List<CategorySet.Entry> entries;
+    private final List<CategorySet.Entry> entries = new ArrayList<>();
     private CategorySet.Entry heroEntry;
+    /** The day (and part of it) the rows were picked for (DayRows.key). */
+    private String dayKey = "";
     private Editorial view;
     private final Handler h = new Handler(Looper.getMainLooper());
     private final Map<String, Shelves.Shelf> shelves = new HashMap<>();
@@ -67,6 +77,8 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
     private final Map<String, Tmdb.Extras> extrasKnown = new HashMap<>();
     /** The titles whose extras have been looked for (found or not): their trailers are known as far as they will be. */
     private final Set<String> looked = new HashSet<>();
+    /** Coming Soon cards' trailers, by TMDB's id. */
+    private final Map<String, List<String>> soonKnown = new HashMap<>();
     private boolean publishing, again;
     /** The trailer in the card the remote rests on. */
     private Trailer trailer;
@@ -74,12 +86,27 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
     EditorialPage(TvActivity tv, String page) {
         this.tv = tv;
         this.page = page;
-        List<CategorySet.Entry> rows = new ArrayList<>();
-        for (CategorySet.Entry e : CategorySet.of(page)) {
+        pick();
+    }
+
+    /** The day's rows picked (DayRows), the rows kept for other days let go of. */
+    private void pick() {
+        java.time.LocalDateTime now = DayRows.local(DayRows.now());
+        dayKey = DayRows.key(now);
+        entries.clear();
+        heroEntry = null;
+        Set<String> ids = new HashSet<>();
+        for (CategorySet.Entry e : DayRows.of(page, now)) {
+            ids.add(e.id);
             if (e.kind == CategorySet.HERO) heroEntry = e;
-            else rows.add(e);
+            else entries.add(e);
         }
-        entries = rows;
+        Shelves.keepOnly(page, ids);
+    }
+
+    /** Whether the day (or its part) has moved on since the rows were picked. */
+    private boolean newDay() {
+        return !DayRows.key(DayRows.local(DayRows.now())).equals(dayKey);
     }
 
     View build() {
@@ -106,6 +133,12 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
     void shown() {
         if (view == null) return;
         view.setActive(tv.tabs() == null || !tv.tabs().active());
+        if (newDay()) {
+            // Another day (or part of it): the day's rows picked again, the remote's place kept where its row still is.
+            pick();
+            reload();
+            return;
+        }
         // Continue Watching may have changed while a film played: made again (quick); old TMDB rows asked again.
         for (CategorySet.Entry e : entries) {
             if (!e.tmdb()) shelves.put(e.id, Shelves.local(tv, e));
@@ -118,15 +151,46 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
         publish();
     }
 
+    /**
+     * The minute's tick while the page is open: the rows (but the remote's) whose titles are past their expiry asked for
+     * again off the main thread, coming in as they are made.
+     */
+    void tick() {
+        if (view == null || !mayShow()) return;
+        Editorial.Row on = view.current();
+        long now = DayRows.now();
+        for (CategorySet.Entry e : entries) {
+            if (!e.tmdb() || !asked.contains(e.id) || on != null && on.id.equals(e.id)) continue;
+            Shelves.Shelf s = shelves.get(e.id);
+            if (s != null && Shelves.expired(s, now)) {
+                asked.remove(e.id);
+                request(e);
+            }
+        }
+    }
+
+    /** Whether this page's screen is the one on top, with the app in front. */
+    private boolean mayShow() {
+        Screen top = tv.top();
+        boolean mine = top instanceof HomeScreen ? ((HomeScreen) top).editorial() == this
+                : top instanceof BrowseScreen && ((BrowseScreen) top).editorial() == this;
+        return mine && tv.showing(top);
+    }
+
     void hidden() {
         h.removeCallbacks(rested);
         if (trailer != null) trailer.hidden();
     }
 
     void catalogChanged() {
+        Shelves.forget();
+        reload();
+    }
+
+    /** Every row made again (from what Shelves keeps, where it is still for this catalogue). */
+    private void reload() {
         if (trailer != null) trailer.moved();
         round++;
-        Shelves.forget();
         shelves.clear();
         made.clear();
         asked.clear();
@@ -235,7 +299,11 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
 
     private Editorial.Row row(CategorySet.Entry e, Shelves.Shelf s) {
         List<Editorial.Card> cards = new ArrayList<>(s.picks.size());
-        for (Shelves.Pick p : s.picks) if (p.title != null) cards.add(card(p));
+        for (Shelves.Pick p : s.picks) {
+            // Only titles the family can play; a Coming Soon row's titles to come, too (its title says so).
+            if (p.title != null) cards.add(card(p));
+            else if (e.soon() && p.item != null) cards.add(soonCard(p));
+        }
         Editorial.Row r = new Editorial.Row(e.id, s.title, cards, s.total());
         r.more = s.more();
         r.from = s;
@@ -257,6 +325,28 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
         }
         words(c, d, extrasKnown.get(t.key));
         return c;
+    }
+
+    /** A Coming Soon card no playlist has yet: TMDB's poster and backdrop, its score, when it comes, its genre, its story. */
+    private Editorial.Card soonCard(Shelves.Pick p) {
+        TmdbLists.Item it = p.item;
+        Editorial.Card c = new Editorial.Card(p, it.poster, it.backdrop.isEmpty() ? it.poster : it.backdrop);
+        c.name = it.name;
+        c.year = comes(it.date);
+        c.genre = it.genres.length > 0 ? TmdbLists.genre(it.genres[0]) : "";
+        c.story = it.plot;
+        return c;
+    }
+
+    /** Pure: when a title to come comes, as its card says it: "Coming 18 Dec", "Coming soon". */
+    static String comes(String date) {
+        if (date == null || !date.matches("\\d{4}-\\d{2}-\\d{2}")) return "Coming soon";
+        try {
+            java.time.LocalDate d = java.time.LocalDate.parse(date);
+            return "Coming " + d.getDayOfMonth() + " " + d.getMonth().getDisplayName(java.time.format.TextStyle.SHORT, Locale.UK);
+        } catch (RuntimeException e) {
+            return "Coming soon";
+        }
     }
 
     /** A card's words: its score, year, genre, length, story and TMDB's logo, from all that is known of it so far. */
@@ -356,12 +446,16 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
 
     /**
      * The remote rested on a card: its page's details (length, genre, age, the playlist's trailer) and TMDB's extras (its
-     * logo, its videos), read off the main thread; extras kept from before videos were are asked for again.
+     * logo, its videos), read off the main thread; extras kept from before videos were are asked for again. A Coming Soon
+     * card no playlist has: its videos, by TMDB's id.
      */
     private void rested() {
         Editorial.Card card = restingOn;
         Catalog.Title t = card == null ? null : card.title();
-        if (t == null) return;
+        if (t == null) {
+            if (card != null && card.pick.item != null) soonVideos(card);
+            return;
+        }
         if (Catalog.get(tv).cachedDetails(t) == null) {
             Catalog.get(tv).details(t, d -> {
                 if (d != null) known(t);
@@ -392,10 +486,32 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
 
     // ---- its trailer ----------------------------------------------------------------------------------------------
 
-    /** What a card's trailer is kept by: its title's key (null for none). */
+    /** What a card's trailer is kept by: its title's key, or a Coming Soon card's TMDB id (null for none). */
     private static Object trailerKey(Editorial.Card c) {
         Catalog.Title t = c.title();
-        return t == null ? null : t.key;
+        if (t != null) return t.key;
+        String k = c.pick.key();
+        return k.isEmpty() ? null : k;
+    }
+
+    /** A Coming Soon card's videos (by TMDB's id), read off the main thread once; its trailers handed on. */
+    private void soonVideos(Editorial.Card c) {
+        TmdbLists.Item it = c.pick.item;
+        String k = c.pick.key();
+        if (soonKnown.containsKey(k)) {
+            trailer.keys(k, soonKnown.get(k));
+            return;
+        }
+        Exec.io(() -> {
+            List<String> keys = Videos.trailers(Videos.of(tv, it.tv, it.id), Tmdb.language(), "");
+            Runnable done = () -> {
+                if (soonKnown.size() > 100) soonKnown.clear();
+                soonKnown.put(k, keys);
+                trailer.keys(k, keys);
+            };
+            if (Exec.inline) done.run();
+            else Exec.main(done);
+        });
     }
 
     /** A card's trailers as far as they are known now (once its extras have been looked for), handed to the trailer. */
@@ -463,7 +579,19 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
     @Override public void chosen(Editorial.Row row, Editorial.Card card) {
         Shelves.Pick p = card.pick;
         if (p.point != null && carryOn(p.point)) return;
-        if (p.title != null) tv.openTitle(p.title);
+        if (p.title != null) {
+            tv.openTitle(p.title);
+            return;
+        }
+        if (p.item == null) return;
+        // A title still to come: its trailer in the TV's YouTube app, else when it comes.
+        List<String> keys = soonKnown.get(p.key());
+        if (keys != null && !keys.isEmpty()) {
+            trailer.moved();
+            TitleScreen.trailer(tv, keys.get(0));
+        } else {
+            Toast.makeText(tv, p.item.name + ": " + comes(p.item.date).replace("Coming", "coming"), Toast.LENGTH_SHORT).show();
+        }
     }
 
     /** Continue Watching: on at once from where it was (an episode needs its series' page read; else its page). */
@@ -558,6 +686,18 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
         extrasKnown.put(t.key, x);
         looked.add(t.key);
         known(t);
+    }
+
+    /** Tests: the day's rows as picked (their ids), and the day they were picked for. */
+    List<String> previewDay() {
+        List<String> out = new ArrayList<>();
+        if (heroEntry != null) out.add(heroEntry.id);
+        for (CategorySet.Entry e : entries) out.add(e.id);
+        return out;
+    }
+
+    String previewDayKey() {
+        return dayKey;
     }
 
     /** Previews and tests: the remote on the carousel's card i (row -1) or a row's card. */

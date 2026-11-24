@@ -109,6 +109,11 @@ final class BrowseScreen extends Screen implements CineRows.Host {
         if (editorial != null) editorial.hidden();
     }
 
+    /** The minute's tick: Editorial's rows past their expiry asked for again. */
+    @Override void tick() {
+        if (editorial != null) editorial.tick();
+    }
+
     /** Home style Editorial's page (null for Classic). */
     EditorialPage editorial() {
         return editorial;

@@ -21,7 +21,9 @@ import java.util.Set;
  * (MatchIndex), so every card plays. A row with nothing in it is empty and the page leaves it out. A TMDB row is read a
  * page at a time: the first pages as it is made, the next as the remote nears its end (more()), at most
  * TmdbLists.MAX_PAGES. Rows from the family's own lists (local) are quick and can be made on the main thread; a TMDB row
- * (CategorySet.Entry.tmdb) only off it.
+ * (CategorySet.Entry.tmdb) only off it. A themed row's titles turn with the day (DayRows.turn), so the same row shows
+ * other titles first tomorrow; a Top 10 has ten at most; a Coming Soon row is the only one with titles the playlists
+ * don't have yet (a Pick with no title, only TMDB's item), never any other.
  */
 public final class Shelves {
     private Shelves() {}
@@ -32,6 +34,11 @@ public final class Shelves {
     static final int ENOUGH = 10, FIRST_PAGES = 3;
     /** How many of the titles watched lately the recommendations come from, and how many are kept. */
     static final int TASTE = 5, TASTE_KEPT = 12;
+
+    /** At most this many titles in a Top 10. */
+    static final int TOP = 10;
+    /** A themed row's titles turn among this many of its first. */
+    static final int TURN = 12;
 
     /** One card of a row: a title (with TMDB's word on it, where from a list), and where it was left. */
     public static final class Pick {
@@ -55,6 +62,12 @@ public final class Shelves {
         public String backdrop() {
             if (item != null && !item.backdrop.isEmpty()) return item.backdrop;
             return title == null ? "" : title.backdrop;
+        }
+
+        /** What it is kept by: its title's key, or (a Coming Soon card the playlists don't have) TMDB's id. */
+        public String key() {
+            if (title != null) return title.key;
+            return item == null ? "" : "tmdb:" + (item.tv ? "tv:" : "movie:") + item.id;
         }
     }
 
@@ -121,8 +134,23 @@ public final class Shelves {
         return s == null || System.currentTimeMillis() - s.at > 10 * 60_000L;
     }
 
+    /**
+     * Whether a row's titles are past their expiry (DayRows.expiry: a few hours) at a time: its lists are then asked of
+     * TMDB again (TmdbLists keeps them no longer than that) and the row made again, off the main thread.
+     */
+    public static boolean expired(Shelf s, long now) {
+        return s == null || DayRows.expired(s.at, now, s.entry.source);
+    }
+
     public static void forget() {
         KEPT.clear();
+    }
+
+    /** The rows kept for a page but those of the day (by id): the rest let go of (memory). */
+    public static void keepOnly(String page, Set<String> ids) {
+        synchronized (KEPT) {
+            KEPT.keySet().removeIf(k -> k.startsWith(page + ".") && !ids.contains(k.substring(page.length() + 1)));
+        }
     }
 
     /**
@@ -184,6 +212,27 @@ public final class Shelves {
                     streams.add(titles(got, ROW));
                     break;
                 }
+                case "fresh": {
+                    List<Catalog.Title> got = fresh(newest(cat, arg), DayRows.now());
+                    all = got;
+                    streams.add(titles(got, ROW));
+                    break;
+                }
+                case "top": {
+                    String path = resolve(c, arg, DayRows.now());
+                    if (path == null) break;
+                    tmdb(c, path, streams, paths, next, pages);
+                    // Ten, in TMDB's order, and no more pages.
+                    List<Pick> s = streams.get(streams.size() - 1);
+                    while (s.size() > TOP) s.remove(s.size() - 1);
+                    next.set(next.size() - 1, Integer.MAX_VALUE);
+                    break;
+                }
+                case "soon": {
+                    String path = resolve(c, arg, DayRows.now());
+                    if (path != null) soon(c, path, streams, paths, next, pages);
+                    break;
+                }
                 case "torbox": {
                     List<Catalog.Title> got = new ArrayList<>();
                     if (!arg.equals("tv")) got.addAll(cat.own(false));
@@ -194,7 +243,7 @@ public final class Shelves {
                     break;
                 }
                 case "tmdb": {
-                    String path = resolve(c, arg, System.currentTimeMillis());
+                    String path = resolve(c, arg, DayRows.now());
                     if (path != null) tmdb(c, path, streams, paths, next, pages);
                     break;
                 }
@@ -218,12 +267,16 @@ public final class Shelves {
                     String path = kind.equals("latest")
                             ? "discover/tv?with_networks=" + with + "&sort_by=first_air_date.desc&first_air_date.lte={today}&vote_count.gte=3"
                             : "discover/tv?with_networks=" + with + "&sort_by=popularity.desc";
-                    tmdb(c, resolve(c, path, System.currentTimeMillis()), streams, paths, next, pages);
+                    tmdb(c, resolve(c, path, DayRows.now()), streams, paths, next, pages);
                     break;
                 }
                 case "because": {
-                    List<Catalog.Title> watched = taste(c);
-                    int n = number(arg);
+                    // "0", "0:movie" or "0:tv": the Nth watched lately (of that kind).
+                    int k = arg.indexOf(':');
+                    String of = k < 0 ? "" : arg.substring(k + 1);
+                    List<Catalog.Title> watched = new ArrayList<>();
+                    for (Catalog.Title w : taste(c)) if (fits(w, of)) watched.add(w);
+                    int n = number(k < 0 ? arg : arg.substring(0, k));
                     if (n >= watched.size()) break;
                     Catalog.Title t = watched.get(n);
                     String path = recommendations(c, t);
@@ -273,6 +326,8 @@ public final class Shelves {
             }
         }
         List<Pick> picks = interleave(streams, MOST, skip);
+        // A themed row's titles turn with the day (the same all day).
+        if (DayRows.turns(e.source)) picks = new ArrayList<>(DayRows.turn(picks, DayRows.day(), TURN));
         int[] n = new int[next.size()], p = new int[pages.size()];
         for (int i = 0; i < n.length; i++) {
             n[i] = next.get(i);
@@ -290,7 +345,8 @@ public final class Shelves {
         MatchIndex index = MatchIndex.of(Catalog.get(c));
         List<Pick> picks = new ArrayList<>(s.picks);
         Set<String> seen = new HashSet<>(s.skip);
-        for (Pick p : picks) if (p.title != null) seen.add(p.title.key);
+        for (Pick p : picks) seen.add(p.key());
+        boolean soon = s.entry.soon();
         int[] next = s.next.clone();
         int added = 0;
         for (int round = 0; round < 2 && added < ENOUGH; round++) {
@@ -302,9 +358,9 @@ public final class Shelves {
                     next[i] = Integer.MAX_VALUE;
                     continue;
                 }
-                for (Pick p : matched(index, page)) {
+                for (Pick p : soon ? coming(index, page) : matched(index, page)) {
                     if (picks.size() >= MOST) break;
-                    if (seen.add(p.title.key)) {
+                    if (seen.add(p.key())) {
                         picks.add(p);
                         added++;
                     }
@@ -341,6 +397,43 @@ public final class Shelves {
         pages.add(total);
     }
 
+    /**
+     * A TMDB list of what is still to come, its first pages, as one stream: every title in it, the playlists' own where
+     * they have it already (it plays), else TMDB's alone (its card says when it comes).
+     */
+    private static void soon(Context c, String path, List<List<Pick>> streams, List<String> paths, List<Integer> next,
+                             List<Integer> pages) {
+        List<Pick> out = new ArrayList<>();
+        MatchIndex index = MatchIndex.of(Catalog.get(c));
+        Set<String> seen = new HashSet<>();
+        int page = 1, total = 1;
+        for (; page <= total && page <= 2 && out.size() < ENOUGH * 2; page++) {
+            TmdbLists.Page got = TmdbLists.page(c, path, page);
+            if (got == null) {
+                total = 0;
+                break;
+            }
+            total = got.pages;
+            for (Pick p : coming(index, got)) if (seen.add(p.key())) out.add(p);
+        }
+        streams.add(out);
+        paths.add(path);
+        next.add(page);
+        pages.add(total);
+    }
+
+    /** Pure: a page of what is still to come, every title (the playlists' own where they have it), soonest first. */
+    static List<Pick> coming(MatchIndex index, TmdbLists.Page page) {
+        List<Pick> out = new ArrayList<>();
+        for (TmdbLists.Item it : page.items) {
+            if (it.poster.isEmpty() && it.backdrop.isEmpty()) continue;
+            Catalog.Title t = index == null ? null : index.find(it.tv, it.name, it.original, it.yearNumber());
+            out.add(new Pick(t, it, null));
+        }
+        out.sort((a, b) -> a.item.date.compareTo(b.item.date));
+        return out;
+    }
+
     /** Pure: a page's titles that the playlists have, in its order (each as the playlists' title, TMDB's words on it). */
     static List<Pick> matched(MatchIndex index, TmdbLists.Page page) {
         List<Pick> out = new ArrayList<>();
@@ -367,8 +460,8 @@ public final class Shelves {
 
     /**
      * Pure (but for keywords' ids): a TMDB path with its words made real: {today} as today's date, {today-N} N days
-     * before, {a/b} the ids of the keywords named a or b ("123%7C456": either); null when none of a keyword group's names
-     * is a keyword TMDB has (the row would be something else).
+     * before, {today+N} N days on, {a/b} the ids of the keywords named a or b ("123%7C456": either); null when none of a
+     * keyword group's names is a keyword TMDB has (the row would be something else).
      */
     static String resolve(Context c, String path, long now) {
         StringBuilder b = new StringBuilder();
@@ -386,6 +479,7 @@ public final class Shelves {
             if (word.startsWith("today")) {
                 long back = 0;
                 if (word.length() > 6 && word.charAt(5) == '-') back = number(word.substring(6)) * 86_400_000L;
+                if (word.length() > 6 && word.charAt(5) == '+') back = -number(word.substring(6)) * 86_400_000L;
                 b.append(new SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(new Date(now - back)));
             } else {
                 StringBuilder ids = new StringBuilder();
@@ -455,6 +549,14 @@ public final class Shelves {
         return out;
     }
 
+    /** Pure: the titles among the newest added in the last week (by when the provider added them), in their order. */
+    static List<Catalog.Title> fresh(List<Catalog.Title> newest, long now) {
+        List<Catalog.Title> out = new ArrayList<>();
+        long since = now - 7L * 86_400_000L;
+        for (Catalog.Title t : newest) if (t.added >= since && t.added <= now + 86_400_000L) out.add(t);
+        return out;
+    }
+
     /** The playlists' newest: films', shows', or both in turn. */
     private static List<Catalog.Title> newest(Catalog cat, String kind) {
         if (kind.equals("movie")) return cat.recent(false, 120);
@@ -521,7 +623,8 @@ public final class Shelves {
             for (List<Pick> s : streams) {
                 if (i >= s.size() || out.size() >= max) continue;
                 Pick p = s.get(i);
-                if (p.title != null && seen.add(p.title.key)) out.add(p);
+                // A title of the playlists' (or TMDB's alone, from a Coming Soon list), none twice.
+                if ((p.title != null || p.item != null) && !p.key().isEmpty() && seen.add(p.key())) out.add(p);
             }
         }
         return out;
