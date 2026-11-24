@@ -23,6 +23,9 @@ final class BoardSettings {
         out.add(RowList.Row.toggle("logoonly", "Logo cover only", "The cover over the channel's logo, without the scoreboard",
                 BoardPrefs.logoOnly(c)));
         out.add(RowList.Row.item("look", "Look", BoardPrefs.style(c).label + "  ·  OK for the next"));
+        // My scoreboards (AddedSettings' choices): the family's own boards, made over a match or on the phone.
+        out.add(MoreSettings.pick(AddedSettings.MINE, "My scoreboards", AddedSettings.mineWords(c)));
+        out.add(AiSettings.row(c));
         out.add(RowList.Row.header("Alerts and pop-ups"));
         out.add(RowList.Row.toggle("drops", "Alerts beside the board", "Cards, substitutions, VAR, added time, half and full time",
                 BoardPrefs.dropsOn(c)));
@@ -36,7 +39,8 @@ final class BoardSettings {
         // More scoreboard settings (AddedSettings' page): what the scoreboard's own menu has, these for every match.
         out.add(RowList.Row.item("page:other.scoreboard.more", "More scoreboard settings", "Look, timing, pop-ups, moving and sizing it"));
         out.add(RowList.Row.note("The bar has Scoreboard on every channel, for the scoreboard's menu. Over a match, hold OK for it too: "
-                + "the look, timing, moving and sizing it and the logo cover."));
+                + "the look, My scoreboards, the scoreboard editor (colours, Generate, Ask AI), timing, moving and sizing it and the "
+                + "logo cover. Boards saved here or on the phone are in My scoreboards on both."));
     }
 
     /** A row chosen: what it sets, changed (true), or not one of the page's (false). */

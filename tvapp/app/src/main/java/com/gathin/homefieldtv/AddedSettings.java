@@ -28,7 +28,12 @@ import java.util.Map;
  *   channels.merged        Channels &amp; categories › Merged channels: each merge (OK to separate it), Separate all
  *   other.scoreboard.more  Other › Scoreboard › More scoreboard settings: the look, timing, pop-ups, moving and sizing it,
  *                          for every match (what the scoreboard's own menu sets over a match)
+ *   other.askai            Other › Ask AI (and Scoreboard's line): the family's own Anthropic API key, masked, and the
+ *                          model (AiSettings)
+ *   about.logopacks        About › Logo packs' licences: the logo catalogue's packs and their terms (LogoPacks.LICENCES)
  * </pre>
+ *
+ * And the choice of My scoreboards in use (Other › Scoreboard's My scoreboards: the look as chosen, or one of them).
  */
 final class AddedSettings implements SettingsScreen.Pages {
     private final TvActivity tv;
@@ -39,9 +44,12 @@ final class AddedSettings implements SettingsScreen.Pages {
         this.s = s;
     }
 
+    /** The logo packs' licences' page, and My scoreboards' choice. */
+    static final String LICENCES = "about.logopacks", MINE = "board.mine";
+
     @Override public boolean owns(String page) {
         return page.equals("about.problems") || page.equals("about.auto") || page.equals("channels.merged")
-                || page.equals("other.scoreboard.more");
+                || page.equals("other.scoreboard.more") || page.equals(AiSettings.PAGE) || page.equals(LICENCES);
     }
 
     @Override public String title(String page) {
@@ -50,6 +58,8 @@ final class AddedSettings implements SettingsScreen.Pages {
             case "about.auto": return "Automatic updates";
             case "channels.merged": return "Merged channels";
             case "other.scoreboard.more": return "More scoreboard settings";
+            case AiSettings.PAGE: return "Ask AI";
+            case LICENCES: return "Logo packs' licences";
             default: return "";
         }
     }
@@ -85,9 +95,32 @@ final class AddedSettings implements SettingsScreen.Pages {
             case "about.auto": auto(out); break;
             case "channels.merged": merged(out); break;
             case "other.scoreboard.more": board(out); break;
+            case AiSettings.PAGE: AiSettings.rows(tv, out); break;
+            case LICENCES: licences(out); break;
             default: break;
         }
         return out;
+    }
+
+    /** The logo catalogue's packs, each with its terms, a paragraph a note. */
+    static void licences(List<RowList.Row> out) {
+        for (String para : com.gathin.broadcast.LogoPacks.LICENCES.split("\n\n")) {
+            String t = para.trim();
+            if (t.isEmpty()) continue;
+            if (t.equals("Channel logo catalogue")) out.add(RowList.Row.header(t));
+            else out.add(RowList.Row.note(t));
+        }
+    }
+
+    // ---- My scoreboards' choice ----------------------------------------------------------------------------------------
+
+    /** The board in use, as Scoreboard's line says it. */
+    static String mineWords(Context c) {
+        String id = BoardPrefs.customId(c);
+        com.gathin.broadcast.MyBoards.Saved s = id == null ? null : MyBoardStore.get(c, id);
+        int n = MyBoardStore.all(c).size();
+        if (s != null) return s.name;
+        return n == 0 ? "None saved yet: make one over a match (hold OK, Scoreboard editor)" : "The look as chosen  ·  " + n + " saved";
     }
 
     private void problems(List<RowList.Row> out) {
@@ -195,6 +228,7 @@ final class AddedSettings implements SettingsScreen.Pages {
             return;
         }
         Context c = tv;
+        if (AiSettings.chosen(s, c, t)) return;
         switch (t) {
             case "do:clear":
                 Problems.clear();
@@ -245,6 +279,21 @@ final class AddedSettings implements SettingsScreen.Pages {
 
     @Override public SettingsScreen.Picker picker(String key) {
         switch (key) {
+            case AiSettings.MODEL:
+                return AiSettings.picker(tv);
+            case MINE: {
+                java.util.List<com.gathin.broadcast.MyBoards.Saved> all = MyBoardStore.all(tv);
+                String[] names = new String[all.size() + 1];
+                names[0] = "The look as chosen (" + BoardPrefs.style(tv).label + ")";
+                int at = 0;
+                String id = BoardPrefs.customId(tv);
+                for (int i = 0; i < all.size(); i++) {
+                    names[i + 1] = all.get(i).name;
+                    if (all.get(i).id.equals(id)) at = i + 1;
+                }
+                return new SettingsScreen.Picker("My scoreboards", names, at, "Your own boards, from the scoreboard editor over a match "
+                        + "or the phone. Make or change one over a match: hold OK, Scoreboard editor.");
+            }
             case "auto.mode":
                 return new SettingsScreen.Picker("Automatic updates", AutoUpdate.NAMES, AutoUpdate.mode(tv), AutoUpdate.ABOUT[AutoUpdate.OFF]);
             case "b.usual": {
@@ -264,6 +313,14 @@ final class AddedSettings implements SettingsScreen.Pages {
 
     @Override public void picked(String key, int index) {
         switch (key) {
+            case AiSettings.MODEL:
+                AiSettings.picked(tv, index);
+                break;
+            case MINE: {
+                java.util.List<com.gathin.broadcast.MyBoards.Saved> all = MyBoardStore.all(tv);
+                BoardPrefs.setCustom(tv, index <= 0 || index > all.size() ? null : all.get(index - 1).id);
+                break;
+            }
             case "auto.mode":
                 AutoUpdate.setMode(tv, index);
                 if (index == AutoUpdate.ON_OPEN && !AutoUpdate.address(tv).isEmpty()) AutoUpdate.check(tv, s::refresh);
@@ -277,7 +334,7 @@ final class AddedSettings implements SettingsScreen.Pages {
     }
 
     boolean ownsField(String field) {
-        return field.equals("auto.address");
+        return field.equals("auto.address") || field.equals(AiSettings.FIELD);
     }
 
     @Override public String value(String field) {
@@ -285,6 +342,10 @@ final class AddedSettings implements SettingsScreen.Pages {
     }
 
     @Override public void typed(String field, String text) {
+        if (AiSettings.FIELD.equals(field)) {
+            AiSettings.typed(s, tv, text);
+            return;
+        }
         if (!"auto.address".equals(field)) return;
         String t = text == null ? "" : text.trim();
         if (!t.isEmpty() && AutoUpdate.web(t) == null) {

@@ -70,8 +70,10 @@ import java.util.Set;
  * own logo, a cover (top right, where most broadcasters put theirs).
  *
  * <p>Where they sit: the standard places (the board top left over the broadcaster's own, the cover top right) until moved
- * for a channel; OK held over the match opens the menu (on or off, the look, timing, move and size, the line-ups, the
- * sounds). Kind to the screen: once a minute both step a pixel or two round a circle, and after five minutes without a
+ * for a channel; OK held over the match opens the menu (on or off, the look, My scoreboards, the scoreboard editor and a
+ * new scoreboard, timing, move and size, the line-ups, the sounds). One of My scoreboards in use (MyBoardStore, a
+ * BoardSpec) is drawn by the board in its base look, as the launcher's and the phone's boards draw it, the strap too;
+ * the editor (BoardEditor) sits down the right over the match, the board changing with it as it is edited. Kind to the screen: once a minute both step a pixel or two round a circle, and after five minutes without a
  * goal they dim.
  *
  * <p>All of it shows only while the channel plays full screen with nothing over it (BoardGate: the live screen says
@@ -102,6 +104,10 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
     private final LogoCover logo;
     private final Card card;
     private final Menu menu;
+    /** The scoreboard editor over the match (My scoreboards), down the right; the board shows the board being edited. */
+    final BoardEditor editor;
+    /** The custom board drawn now (null: the look as chosen): the one in use, or the editor's. */
+    private com.gathin.broadcast.BoardSpec shownCustom;
     private BroadcastView popup;
     private String popupKind = "";
     private boolean started, popupMaking, lineupsMaking;
@@ -176,10 +182,59 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         addView(card, new LayoutParams(-1, -1));
         menu = new Menu(tv);
         addView(menu, new LayoutParams(-1, -1));
+        editor = new BoardEditor(tv, new BoardEditor.Host() {
+            @Override public void showing(com.gathin.broadcast.BoardSpec live) {
+                restyle(live == null ? MyBoardStore.inUse(getContext()) : live);
+            }
+
+            @Override public com.gathin.broadcast.BoardDesigner.Brief brief() {
+                return briefNow();
+            }
+
+            @Override public void closed() {
+                restyle(MyBoardStore.inUse(getContext()));
+                update();
+            }
+        });
+        addView(editor, new LayoutParams(-1, -1));
         ColorMatrix m = new ColorMatrix();
         m.setScale(BoardClock.DIM, BoardClock.DIM, BoardClock.DIM, 1f);
         dimPaint.setColorFilter(new ColorMatrixColorFilter(m));
-        bug.style(BoardPrefs.style(tv));
+        restyle(MyBoardStore.inUse(tv));
+    }
+
+    /** What the board is drawn as: a custom board (in its base look), or null for the look as chosen. */
+    void restyle(com.gathin.broadcast.BoardSpec custom) {
+        if (custom == null) {
+            bug.custom(null);
+            bug.style(BoardPrefs.style(getContext()));
+        } else {
+            bug.custom(custom);
+        }
+        shownCustom = custom;
+        layoutAll();
+        bug.invalidate();
+    }
+
+    /** The match on the board for the editor (its clubs' colours and names, the competition), else the invented clubs. */
+    com.gathin.broadcast.BoardDesigner.Brief briefNow() {
+        com.gathin.broadcast.BoardDesigner.Brief b = new com.gathin.broadcast.BoardDesigner.Brief();
+        Game g = game;
+        if (g != null) {
+            b.home = hex(g.homeColor);
+            b.away = hex(g.awayColor);
+            b.homeName = full(g.homeFull, g.homeName);
+            b.awayName = full(g.awayFull, g.awayName);
+            b.comp = boardComp(g);
+            b.compSlug = g.slug == null ? "" : g.slug;
+        } else {
+            b.home = com.gathin.broadcast.EditorStill.HOME_COLOUR;
+            b.away = com.gathin.broadcast.EditorStill.AWAY_COLOUR;
+            b.homeName = com.gathin.broadcast.EditorStill.HOME_NAME;
+            b.awayName = com.gathin.broadcast.EditorStill.AWAY_NAME;
+            b.comp = "Northern Shield";
+        }
+        return b;
     }
 
     // ---- shown only over plain full-screen playback (BoardGate) -----------------------------------------------------
@@ -229,6 +284,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             covered = true;
             setVisibility(INVISIBLE);
             menu.close();
+            editor.close();
             endMove(true);
             if (popup != null) {
                 BroadcastView v = popup;
@@ -268,7 +324,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         summaryCatchUp = longAway;
         readSinceStart = false;
         tv.live.addListener(this);
-        bug.style(BoardPrefs.style(getContext()));
+        restyle(MyBoardStore.inUse(getContext()));
         Sfx.warm(getContext(), Sfx.SWISH, Sfx.SCORE, "goal-" + BoardPrefs.goalSound(getContext()));
         h.post(tick);
     }
@@ -281,6 +337,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         h.removeCallbacksAndMessages(null);
         if (popup != null) popup.stop();
         menu.close();
+        editor.close();
         card.away();
         endMove(false);
         hideAll();
@@ -342,6 +399,10 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         if (c != null && !finding && now >= nextFind) find(c, now);
         if (game != null && !polling && now >= nextPoll) poll();
         if (game != null && !summarising && now >= nextSummary && (game.state != Game.PRE || game.kickoff - now < 3_600_000L)) summary();
+        if (!editor.open) {
+            com.gathin.broadcast.BoardSpec want = MyBoardStore.inUse(getContext());
+            if (want != shownCustom) restyle(want);
+        }
         show(now, playing);
         // Caught up once a reading taken since coming back has been shown (what it brought was not popped up).
         if (catchingUp && readSinceStart) catchingUp = false;
@@ -1035,13 +1096,14 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         boolean strap = "strap".equals(BoardPrefs.popupStyle(c));
         BroadcastData.Match m = match(g);
         BoardBug.Style style = BoardPrefs.style(c);
+        com.gathin.broadcast.BoardSpec custom = shownCustom;
         Bitmap comp = compPic, light = bug.competitionLight();
         float[] at = strap ? boardAt() : null;
         android.content.res.AssetManager assets = c.getAssets();
         Exec.io(() -> {
             JSONObject cfg = null;
             try {
-                cfg = strap ? strapCfg(g, m, kind, score, scorer, minute, style, comp, light, at)
+                cfg = strap ? strapCfg(g, m, kind, score, scorer, minute, style, comp, light, at, custom)
                         : BroadcastData.withMark(assets, BroadcastData.kickoff(kind, m, score, scorer, minute));
             } catch (Exception | OutOfMemoryError ignored) {
                 // none, then
@@ -1084,6 +1146,13 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
      */
     static JSONObject strapCfg(Game g, BroadcastData.Match m, String kind, int[] score, String scorer, String minute, BoardBug.Style style,
                                Bitmap compLogo, Bitmap compLight, float[] at) throws org.json.JSONException {
+        return strapCfg(g, m, kind, score, scorer, minute, style, compLogo, compLight, at, null);
+    }
+
+    /** The same for one of My scoreboards in use (null: the look's own strap): Classic's strap in its colours (strap.js S.custom). */
+    static JSONObject strapCfg(Game g, BroadcastData.Match m, String kind, int[] score, String scorer, String minute, BoardBug.Style style,
+                               Bitmap compLogo, Bitmap compLight, float[] at, com.gathin.broadcast.BoardSpec custom)
+            throws org.json.JSONException {
         m.compLogo = compLogo;
         m.compLight = compLight;
         m.compName = boardComp(g);
@@ -1091,7 +1160,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         m.awayBoard = BoardBug.colour(hex(g.awayColor), hex(g.awayAlt));
         m.homeBoardName = full(g.homeFull, g.homeName);
         m.awayBoardName = full(g.awayFull, g.awayName);
-        return BroadcastData.strap(kind, m, score, scorer, minute, strapLook(style, g.slug, m.compName), at, "");
+        return BroadcastData.strap(kind, m, score, scorer, minute, strapLook(style, g.slug, m.compName), at, "", custom);
     }
 
     /** Pure: the look the strap is drawn in: the board's own, By competition's as the board resolves it for the game. */
@@ -1333,7 +1402,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         drop.setTranslationY(d[1]);
         logo.setTranslationX(d[0]);
         logo.setTranslationY(d[1]);
-        boolean dim = moving == 0 && !menu.open && BoardClock.dimmed(now - lastChange);
+        boolean dim = moving == 0 && !menu.open && !editor.open && BoardClock.dimmed(now - lastChange);
         if (dim != dimmed) {
             dimmed = dim;
             bug.setLayerType(LAYER_TYPE_HARDWARE, dim ? dimPaint : null);
@@ -1467,12 +1536,12 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
 
     /** Whether the board has the remote now: its menu is up, or it is being moved. */
     boolean takesKeys() {
-        return !covered && (moving != 0 || menu.open);
+        return !covered && (moving != 0 || menu.open || editor.open);
     }
 
     /** OK held over the match: the scoreboard's menu (true), or nothing to set (false: the live screen's own). */
     boolean okLong() {
-        if (game == null || menu.open) return false;
+        if (game == null || menu.open || editor.open) return false;
         menu.show();
         return true;
     }
@@ -1483,7 +1552,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
      * it sets is for every match.
      */
     void openMenu() {
-        if (menu.open) return;
+        if (menu.open || editor.open) return;
         menu.show();
     }
 
@@ -1499,6 +1568,10 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         if (covered) return false;
         if (moving != 0) {
             endMove(true);
+            return true;
+        }
+        if (editor.open) {
+            editor.ok();
             return true;
         }
         if (menu.open) {
@@ -1523,6 +1596,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
                 default: return false;
             }
         }
+        if (editor.open) return editor.key(code);
         return menu.open && menu.key(code);
     }
 
@@ -1530,6 +1604,10 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         if (covered) return false;
         if (moving != 0) {
             endMove(true);
+            return true;
+        }
+        if (editor.open) {
+            editor.back();
             return true;
         }
         if (menu.open) {
@@ -1704,11 +1782,41 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
 
     // ---- the menu, OK held over the match ---------------------------------------------------------------------------------
 
-    private static final int R_ON = 0, R_LOOK = 1, R_LOGO = 2, R_TIMING = 3, R_NOW = 4, R_MOVE = 5, R_SIZE = 6, R_MOVE_LOGO = 7,
-            R_LOGO_SIZE = 8, R_LINEUPS = 9, R_ALERTS = 10, R_POPUPS = 11, R_ASK = 12, R_SOUND = 13, R_RESET = 14;
-    private static final String[] ROWS = {"Scoreboard", "Look", "Logo cover", "Timing", "It's just happened", "Move the scoreboard",
-            "Scoreboard size", "Move the logo cover", "Logo cover size", "Show the line-ups", "Alerts beside the board",
-            "Kick-off and goal pop-ups", "Ask at each kick-off", "Goal sound", "Back to the standard places"};
+    static final int R_ON = 0, R_LOOK = 1, R_MINE = 2, R_EDIT = 3, R_NEW = 4, R_LOGO = 5, R_TIMING = 6, R_NOW = 7, R_MOVE = 8,
+            R_SIZE = 9, R_MOVE_LOGO = 10, R_LOGO_SIZE = 11, R_LINEUPS = 12, R_ALERTS = 13, R_POPUPS = 14, R_ASK = 15, R_SOUND = 16,
+            R_RESET = 17;
+    static final String[] ROWS = {"Scoreboard", "Look", "My scoreboards", "Scoreboard editor", "New scoreboard", "Logo cover", "Timing",
+            "It's just happened", "Move the scoreboard", "Scoreboard size", "Move the logo cover", "Logo cover size", "Show the line-ups",
+            "Alerts beside the board", "Kick-off and goal pop-ups", "Ask at each kick-off", "Goal sound", "Back to the standard places"};
+    /** The menu's rows in sight at once (it slides along the rest). */
+    static final int MENU_SHOWN = 15;
+
+    /** Pure: the first of the menu's rows in sight with the remote on row at (count rows, shown at once). */
+    static int menuFirst(int at, int count, int shown) {
+        return Math.max(0, Math.min(at - shown / 2, count - shown));
+    }
+
+    /** My scoreboards' step: the look as chosen (-1) or one of the saved boards, step on from the one in use. */
+    private void stepMine(int step) {
+        Context c = getContext();
+        java.util.List<com.gathin.broadcast.MyBoards.Saved> all = MyBoardStore.all(c);
+        String id = BoardPrefs.customId(c);
+        int i = -1;
+        for (int k = 0; k < all.size(); k++) if (all.get(k).id.equals(id)) i = k;
+        int n = Math.floorMod(i + 1 + step, all.size() + 1) - 1;
+        BoardPrefs.setCustom(c, n < 0 ? null : all.get(n).id);
+        restyle(MyBoardStore.inUse(c));
+    }
+
+    /** My scoreboards' value: the board in use, or the look. */
+    private String mineWords() {
+        Context c = getContext();
+        String id = BoardPrefs.customId(c);
+        com.gathin.broadcast.MyBoards.Saved s = id == null ? null : MyBoardStore.get(c, id);
+        int n = MyBoardStore.all(c).size();
+        if (n == 0) return "None saved yet";
+        return "‹  " + (s == null ? "The look as chosen" : s.name) + "  ›";
+    }
 
     /** The scoreboard's settings over the match: Up and Down along them, Left and Right to change one, OK to do it. */
     private final class Menu extends View {
@@ -1762,6 +1870,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             Context c = getContext();
             switch (at) {
                 case R_ON: BoardPrefs.setOn(c, !BoardPrefs.on(c)); break;
+                case R_MINE: stepMine(step); break;
                 case R_LOGO: BoardPrefs.setLogoOn(c, !BoardPrefs.logoOn(c)); break;
                 case R_ALERTS: BoardPrefs.setDropsOn(c, !BoardPrefs.dropsOn(c)); break;
                 case R_POPUPS: BoardPrefs.setPopupStyle(c, BoardPrefs.nextPopup(BoardPrefs.popupStyle(c), step)); break;
@@ -1772,7 +1881,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
                     int i = 0;
                     for (int k = 0; k < all.length; k++) if (all[k] == now) i = k;
                     BoardPrefs.setStyle(c, all[(i + step + all.length) % all.length]);
-                    bug.style(BoardPrefs.style(c));
+                    restyle(null);
                     break;
                 }
                 case R_TIMING: timing(step); break;
@@ -1811,6 +1920,15 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
                 return;
             }
             switch (at) {
+                case R_EDIT:
+                    // The board in use (or the look's own colours) in the editor, the board over the match changing with it.
+                    close();
+                    editor.show(BoardPrefs.customId(c), false);
+                    return;
+                case R_NEW:
+                    close();
+                    editor.show(null, true);
+                    return;
                 case R_NOW: {
                     int d = InStep.justHappened(c, chKey, changeSeen);
                     steady.reset();
@@ -1841,6 +1959,8 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             Context c = getContext();
             switch (row) {
                 case R_ON: return BoardPrefs.on(c) ? "On" : "Off";
+                case R_MINE: return mineWords();
+                case R_EDIT: return BoardPrefs.customId(c) == null ? "Colours, finish, Generate, Ask AI" : "Edit the one in use";
                 case R_LOGO: return BoardPrefs.logoOn(c) ? "On" : "Off";
                 case R_ALERTS: return BoardPrefs.dropsOn(c) ? "On" : "Off";
                 case R_POPUPS: return "‹  " + BoardPrefs.popupWords(BoardPrefs.popupStyle(c)) + "  ›";
@@ -1859,7 +1979,8 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
 
         @Override protected void onDraw(Canvas c) {
             float w = Ui.f(760), right = getWidth() - Ui.f(48), top = Ui.f(48), rowH = Ui.f(54);
-            r.set(right - w, top, right, top + Ui.f(150) + rowH * ROWS.length + Ui.f(70));
+            int shownRows = Math.min(ROWS.length, MENU_SHOWN), first = menuFirst(at, ROWS.length, shownRows);
+            r.set(right - w, top, right, top + Ui.f(150) + rowH * shownRows + Ui.f(70));
             c.drawRoundRect(r, Ui.f(30), Ui.f(30), panel);
             float x = r.left + Ui.f(40);
             c.drawText("Scoreboard", x, r.top + Ui.f(70), titleP);
@@ -1867,7 +1988,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             String sub = menuLine(g, finding, !readings.isEmpty());
             c.drawText(TextFit.fit(sub, subP, w - Ui.f(80)), x, r.top + Ui.f(110), subP);
             float y = r.top + Ui.f(140);
-            for (int i = 0; i < ROWS.length; i++) {
+            for (int i = first; i < first + shownRows; i++) {
                 RectF row = rowR;
                 row.set(r.left + Ui.f(20), y, r.right - Ui.f(20), y + rowH - Ui.f(6));
                 if (i == at) {
@@ -1877,9 +1998,15 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
                 float base = row.centerY() + Ui.f(10);
                 c.drawText(ROWS[i], x, base, label);
                 String v = valueOf(i);
-                if (!v.isEmpty()) c.drawText(v, row.right - Ui.f(20) - value.measureText(v), base, value);
+                if (!v.isEmpty()) {
+                    v = TextFit.fit(v, value, row.width() - Ui.f(60) - label.measureText(ROWS[i]));
+                    c.drawText(v, row.right - Ui.f(20) - value.measureText(v), base, value);
+                }
                 y += rowH;
             }
+            // More rows above or below: a small chevron where the list goes on.
+            if (first > 0) Ui.chevron(c, r.centerX(), r.top + Ui.f(130), Ui.f(16), Ui.UP, hint);
+            if (first + shownRows < ROWS.length) Ui.chevron(c, r.centerX(), y + Ui.f(2), Ui.f(16), Ui.DOWN, hint);
             String tip = "Back to close · Left and Right to change · these are for every match";
             c.drawText(tip, x, r.bottom - Ui.f(28), hint);
         }
