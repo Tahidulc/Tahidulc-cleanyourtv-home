@@ -15,6 +15,13 @@ package com.gathin.broadcast;
 public final class AddedTime {
     private AddedTime() { }
 
+    /**
+     * Added time's one red, on every look of both boards: Card's middle as it turns red, every look's clock in added time,
+     * the +N tab, the ADDED TIME pop-out's chip and the competitions' and the Lab's looks (CompBug). One colour from one
+     * place, so the board and what comes out of it are the same red (they were four reds: the family saw two on Card).
+     */
+    public static final int RED = 0xFFD7192F;
+
     /** A look keeps room for itself beside the tab: its own part at least this many of its heights (Card's more). */
     public static final float LEAST = 2f, LEAST_CARD = 2.6f;
 

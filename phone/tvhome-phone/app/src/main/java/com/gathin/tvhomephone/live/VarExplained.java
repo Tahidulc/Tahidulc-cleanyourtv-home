@@ -27,8 +27,11 @@ final class VarExplained {
 
     /** The mock-up's cyan, for the VAR chip and the WHY label (its ink is dark). */
     static final int CYAN = 0xFF3DD5F3, CYAN_INK = 0xFF0B1640, CYAN_ON_LIGHT = 0xFF0A7A96;
-    /** A check stays out until its decision, this long at most; the decision and its WHY this long. */
-    static final long CHECK_MAX_MS = 180_000L, WHY_MS = 12_000L;
+    /**
+     * A check stays out until its decision, play restarting or the data moving on past it (VarCheck), this long at most
+     * (was three minutes); the decision and its WHY this long.
+     */
+    static final long CHECK_MAX_MS = com.gathin.broadcast.VarCheck.CAP_MS, WHY_MS = 12_000L;
 
     /** The reasons the commentary or FotMob give ("": none found). */
     static final String HANDBALL = "handball", OFFSIDE = "offside", FOUL = "foul", SIMULATION = "simulation",
@@ -887,7 +890,7 @@ final class VarExplained {
         }
     };
     private static final Map<String, List<String[]>> fotmobVars = new HashMap<>(), fotmobReds = new HashMap<>();
-    private static final Map<String, Long> checkStarted = new HashMap<>(), decidedAt = new HashMap<>();
+    private static final Map<String, Long> checkStarted = new HashMap<>(), decidedAt = new HashMap<>(), checkEnded = new HashMap<>();
     private static final Set<String> fotmobSeen = new HashSet<>(), fotmobGames = new HashSet<>();
 
     /** A decision as worked out from the commentary, by its incident's key (and its game's, for callNear). */
@@ -960,11 +963,25 @@ final class VarExplained {
         return out;
     }
 
-    /** A check began for a game now (kept from its first sight), for how long it took. */
+    /** A check began for a game now (kept from its first sight, unless that one came off since), for how long it took. */
     static synchronized void checkStarted(String game, long now) {
         if (game == null) return;
-        Long was = checkStarted.get(game);
-        if (was == null || now - was > CHECK_MAX_MS) checkStarted.put(game, now);
+        Long was = checkStarted.get(game), off = checkEnded.get(game);
+        if (was == null || now - was > CHECK_MAX_MS || off != null && off >= was) checkStarted.put(game, now);
+    }
+
+    /**
+     * The check out of the board came off without its decision (play restarted, the data moved on: VarCheck): no longer
+     * under way. Its start is kept, for how long it took when its decision comes after all.
+     */
+    static synchronized void checkEnded(String game, long now) {
+        if (game != null) checkEnded.put(game, now);
+    }
+
+    /** Whether a check for the game came off without its decision lately: FotMob's flag alone does not put it out again. */
+    static synchronized boolean endedLately(String game, long now) {
+        Long at = game == null ? null : checkEnded.get(game);
+        return at != null && now - at < com.gathin.broadcast.VarCheck.AGAIN_MS;
     }
 
     /** The game's check as begun at this time (tests). */
@@ -980,8 +997,8 @@ final class VarExplained {
 
     /** Whether a check is known to be under way for the game (begun, not yet decided). */
     static synchronized boolean checking(String game, long now) {
-        Long was = game == null ? null : checkStarted.get(game);
-        return was != null && now - was <= CHECK_MAX_MS;
+        Long was = game == null ? null : checkStarted.get(game), off = game == null ? null : checkEnded.get(game);
+        return was != null && now - was <= CHECK_MAX_MS && (off == null || off < was);
     }
 
     /** Whether a decision was shown for the game within the last three minutes (one from each source is one). */

@@ -15,12 +15,18 @@ public class AddedTimeTest {
         BoardDrop.Drop d = BoardCover.addedDrop(g, "+4");
         assertEquals("ADDED TIME", d.chip);
         assertEquals("+4 minutes", d.title);
-        assertEquals(0xFFE3061B, d.colour);
+        assertEquals(com.gathin.broadcast.AddedTime.RED, d.colour);
         assertEquals("9", d.gameId);
         assertEquals(4, d.addedMins);
         assertEquals("+1 minute", BoardCover.addedDrop(g, "+1").title);
         assertNull(BoardCover.addedDrop(g, "+?"));
         assertNull(BoardCover.addedDrop(g, "+0"));
+    }
+
+    @Test public void addedTimeIsOneRedOnTheBoardAndBesideIt() {
+        // Card's middle in added time, the +N tab and the ADDED TIME pop-out: one colour from one place.
+        assertEquals(com.gathin.broadcast.AddedTime.RED, BoardBug.CARD_RED);
+        assertEquals(com.gathin.broadcast.AddedTime.RED, BoardCover.kindColour("added"));
     }
 
     @Test public void eachHalfByItsClock() {

@@ -52,6 +52,12 @@ final class FotMob {
         /** The minutes added put up in each half (FotMob's AddedTime events): {first, second, extra time's two}; 0 not yet. */
         final int[] added = new int[4];
         boolean varPending;
+        /**
+         * FotMob's status (header.status): the half it has over last and each half's length from its own times, for when
+         * the half is over on the picture (Whistle); and when it was read.
+         */
+        com.gathin.broadcast.Whistle.Status status = new com.gathin.broadcast.Whistle.Status();
+        long readAt;
         int homeTeamId, awayTeamId;
         /** Every player FotMob has rated, best first: {name, rating ("8.5"), id, home ("1"/"0")}. */
         final List<String[]> ratings = new ArrayList<>();
@@ -254,6 +260,7 @@ final class FotMob {
         try {
             Match m = parse(new JSONObject(get(BASE + "matchDetails?matchId=" + id)));
             m.id = id;
+            m.readAt = System.currentTimeMillis();
             return m;
         } catch (Exception e) {
             return null;
@@ -274,6 +281,7 @@ final class FotMob {
     static Match parse(JSONObject d) {
         Match m = new Match();
         m.varPending = d.optBoolean("hasPendingVAR");
+        m.status = com.gathin.broadcast.Whistle.fotmobStatus(d);
         JSONObject general = d.optJSONObject("general");
         if (general != null) {
             JSONObject ht = general.optJSONObject("homeTeam"), at = general.optJSONObject("awayTeam");

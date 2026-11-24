@@ -182,16 +182,17 @@ public class OnScreenTest {
         long t = 11_000_000;
         s.add(live(60, 0, 0, 2), t);
         s.add(live(61, 1, 0, 2), t + 20_000);
-        // The scores have 1-0, with no delay set; the channel's own scoreboard still shows 0-0, so 0-0 it is.
+        // The scores have 1-0, with no delay set; the channel's own scoreboard still shows 0-0, read so steadily: 0-0 it is.
         s.screenScore(0, 0, t + 21_000);
-        s.screenScore(0, 0, t + 22_000);
-        assertEquals(0, s.game(t + 22_000).homeScore);
+        s.screenScore(0, 0, t + 23_000);
+        s.screenScore(0, 0, t + 25_000);
+        assertEquals(0, s.game(t + 25_000).homeScore);
         // The channel shows the goal: so does the board, at the same read (a score the scores have had).
         s.screenScore(1, 0, t + 50_000);
         assertEquals(1, s.game(t + 50_000).homeScore);
     }
 
-    @Test public void aGoalTakenBackOrAScoreTheScoresHaveNotHadIsReadTwice() {
+    @Test public void aGoalTakenBackIsReadSteadilyAndSeveralGoalsAtOnceNever() {
         OnScreen s = new OnScreen();
         s.behind(0);
         long t = 11_500_000;
@@ -199,19 +200,21 @@ public class OnScreenTest {
         s.add(live(61, 1, 0, 2), t + 20_000);
         s.screenScore(1, 0, t + 21_000);
         assertEquals(1, s.game(t + 21_000).homeScore);
-        // Read as 0-0 once (a goal ruled out, or a misread): the board waits for a second read to agree.
+        // Read as 0-0 (a goal ruled out, or a misread): the board waits for it to read so steadily (three reads, four
+        // seconds) while the scores' latest still has the goal.
         s.screenScore(0, 0, t + 23_000);
         assertEquals(1, s.game(t + 23_000).homeScore);
         s.screenScore(0, 0, t + 25_000);
-        assertEquals(0, s.game(t + 25_000).homeScore);
-        // 2-0, which the scores haven't had: twice too.
-        s.screenScore(2, 0, t + 27_000);
+        assertEquals(1, s.game(t + 25_000).homeScore);
+        s.screenScore(0, 0, t + 27_000);
         assertEquals(0, s.game(t + 27_000).homeScore);
-        s.screenScore(2, 0, t + 29_000);
-        assertEquals(2, s.game(t + 29_000).homeScore);
+        // 2-0 from 0-0, which the scores haven't had: two goals at once from the picture alone are a misread, however
+        // often they are read.
+        for (int i = 0; i < 6; i++) s.screenScore(2, 0, t + 29_000 + i * 2000L);
+        assertEquals(0, s.game(t + 41_000).homeScore);
     }
 
-    @Test public void theChannelQuickerThanTheScoresIsBelievedWhenSeenTwice() {
+    @Test public void theChannelQuickerThanTheScoresIsBelievedWhenSeenSteadily() {
         OnScreen s = new OnScreen();
         s.behind(0);
         long t = 12_000_000;
@@ -219,9 +222,11 @@ public class OnScreenTest {
         s.screenScore(0, 1, t + 1000);
         assertEquals(0, s.game(t + 1000).awayScore);
         s.screenScore(0, 1, t + 3000);
-        assertEquals(1, s.game(t + 3000).awayScore);
+        assertEquals(0, s.game(t + 3000).awayScore);
+        s.screenScore(0, 1, t + 5000);
+        assertEquals(1, s.game(t + 5000).awayScore);
         // Its clock and the rest are the scores' read, a copy: the read itself is left alone.
-        assertEquals(30 * 60, s.game(t + 3000).clock, 0.5);
+        assertEquals(30 * 60, s.game(t + 5000).clock, 0.5);
     }
 
     @Test public void halfTimeAndFullTimeAreTheChannels() {
@@ -229,15 +234,20 @@ public class OnScreenTest {
         s.behind(0);
         long t = 13_000_000;
         s.add(live(46, 1, 1, 1), t);
-        s.screenState("HT", t + 1000);
-        assertTrue(s.game(t + 1000).halftime);
-        assertNull(s.clock(t + 1000));
+        // The channel's clock standing at 46:10 (the whistle): its HT is taken.
+        s.screenClock(46 * 60 + 10, 1, t);
+        s.screenClock(46 * 60 + 10, 1, t + 4000);
+        s.screenState("HT", t + 5000);
+        assertTrue(s.game(t + 5000).halftime);
+        assertNull(s.clock(t + 5000));
         Game end = live(90, 2, 1, 2);
         end.state = Game.POST;
         OnScreen f = new OnScreen();
         f.add(live(92, 2, 1, 2), t);
-        f.screenState("FT", t + 1000);
-        assertEquals(Game.POST, f.game(t + 1000).state);
+        f.screenClock(92 * 60 + 30, 3, t);
+        f.screenClock(92 * 60 + 30, 3, t + 4000);
+        f.screenState("FT", t + 5000);
+        assertEquals(Game.POST, f.game(t + 5000).state);
         // The scores say it's over, but the channel's clock still runs (the picture is behind): it's still on.
         OnScreen r = new OnScreen();
         r.add(end, t);

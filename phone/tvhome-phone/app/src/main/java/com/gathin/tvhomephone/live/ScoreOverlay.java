@@ -182,9 +182,17 @@ final class ScoreOverlay implements ScoreBoard.Source {
         // An intro over the picture: the ad-break screen goes for it (the next look at the break brings it back after).
         intro.introUp(() -> { if (adBreak != null && !manualAdBreak) endAdBreak(); });
         // the strap in the board's look folds into the board: where it is over the picture, on a 1920 x 1080 picture (the
-        // board itself, not its frame with the room beside and over it for what slides out)
+        // board itself, not its frame with the room beside and over it for what slides out). Placed by hand (Move and
+        // resize), the place and size set, whether the board is up or away for the pop-up: the strap folds into it there
+        // and the board comes back there, never to its own corner.
         intro.boardAt(() -> {
-            if (pfw <= 10 || pfh <= 10 || board.bug.getWidth() <= 0) return null;
+            if (pfw <= 10 || pfh <= 10) return null;
+            float[] own = handPlaced();
+            if (own != null) {
+                float k = 1920f / pfw, kh = 1080f / pfh;
+                return new float[]{(own[0] - pfx) * k, (own[1] - pfy) * kh, own[2] * k, own[3] * kh};
+            }
+            if (board.bug.getWidth() <= 0) return null;
             int[] b = new int[2], r = new int[2];
             board.bug.getLocationInWindow(b);
             root.getLocationInWindow(r);
@@ -1154,6 +1162,22 @@ final class ScoreOverlay implements ScoreBoard.Source {
     }
 
     /** This channel's own places (loaded as the channel changes; held as they are while being set). */
+    /**
+     * Where the family put the board on this channel (Move and resize), in the root's pixels {left, top, width, height}, as
+     * placeNow puts it there (its own width for its height unless one was set); null when it is not placed by hand.
+     */
+    private float[] handPlaced() {
+        BoardPlace own = mine();
+        if (own == null || !own.board() || inPip || pfw <= 0 || pfh <= 0 || root.getWidth() <= 0) return null;
+        float d = a.getResources().getDisplayMetrics().density;
+        int h = Math.max(Math.round(12 * d), Math.round(own.bh * pfh));
+        int w = own.bw > 0 ? Math.max(Math.round(20 * d), Math.round(own.bw * pfw)) : board.bug.natural(h);
+        if (w <= 0) return null;
+        float left = Math.max(0, Math.min(Math.round(pfx + own.bx * pfw), root.getWidth() - Math.min(w, root.getWidth())));
+        float top = Math.max(0, Math.min(Math.round(pfy + own.by * pfh), root.getHeight() - Math.min(h, root.getHeight())));
+        return new float[]{left, top, w, h};
+    }
+
     private BoardPlace mine() {
         Channel ch = host.current();
         String key = ch == null ? null : ch.key;
@@ -1853,7 +1877,9 @@ final class ScoreOverlay implements ScoreBoard.Source {
             lastReadAt = now;
         }
         if (r.clock < 0 && state == null) {
-            // Nothing there (an advert, a replay, the wrong part): six times running, it is looked for again.
+            // Nothing there (an advert, a replay, the wrong part, or its clock gone at the whistle: Whistle): six times
+            // running, it is looked for again.
+            if (board.channelGame()) board.screen().screenNone(at);
             if (++ocrMisses >= 6) {
                 ocrMisses = 0;
                 readBox = null;
@@ -1869,7 +1895,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
             board.confirm();
         }
         if (r.clock >= 0) s.screenClock(r.clock, r.added, at);
-        if (score != null) s.screenScore(score[0], score[1], at);
+        // The score as a score can go (a goal a side at a time; OnScreen.screenScore): "2-1" counts for more than two numbers.
+        if (score != null) s.screenScore(score[0], score[1], at, ScreenText.scoreSure(lines));
         if (state != null) s.screenState(state, at);
         ocrOkAt = now;
         long behind = s.measuredBehind();

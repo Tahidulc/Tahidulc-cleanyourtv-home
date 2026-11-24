@@ -148,6 +148,8 @@ public final class LivePlay {
     private int kept, next;
     private float[] lastSquares;
     private long lastAt = -1, goalAt = -1, runFrom = -1, awayMs, bugGoneAt = -1, bugBackAt = -1;
+    /** The channel's own scoreboard's last going and coming back, kept whatever a goal does (a VAR check asks: VarCheck). */
+    private long lastGoneAt = -1, lastBackAt = -1;
     private boolean lastWide, bugAway, checking;
     private String said = "";
 
@@ -200,8 +202,27 @@ public final class LivePlay {
         if (away == bugAway) return;
         bugAway = away;
         runFrom = -1;
-        if (away) bugGoneAt = at;
-        else bugBackAt = at;
+        if (away) {
+            bugGoneAt = at;
+            lastGoneAt = at;
+        } else {
+            bugBackAt = at;
+            lastBackAt = at;
+        }
+    }
+
+    /**
+     * How long the picture has held the main camera's wide shot now, in ms (live play, as far as a picture can tell); 0
+     * when it is not on one, the channel's scoreboard is away (a replay), or there are no pictures lately.
+     */
+    public synchronized long wideMs(long now) {
+        if (lastAt < 0 || now - lastAt > STALE_MS || !lastWide || bugAway || runFrom < 0) return 0;
+        return Math.max(0, lastAt - runFrom);
+    }
+
+    /** Whether the channel's own scoreboard went (a replay) after from and has been back BACK_MS by now. */
+    public synchronized boolean backSince(long from, long now) {
+        return !bugAway && lastGoneAt >= from && lastBackAt > lastGoneAt && now - lastBackAt >= BACK_MS;
     }
 
     /** A VAR check under way on the game (or not): what a goal brings waits for its decision and play after it. */
