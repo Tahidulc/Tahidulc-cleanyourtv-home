@@ -814,3 +814,10 @@ Rename, its playlist's name and Sort channels. Programme times, progress bars, o
 to the family's other phones and tablets with the other settings; names, logos and orders stay on each phone, as on the
 TVs. Left out as only a TV's: frame-rate matching, passthrough, tunnelled playback, the Lite animations and the remote's
 keys; and font size (the phone follows Android's own).
+
+**Homefield TV's customisation on the phone and tablet, the scoreboard editor and channel logos (5.33).** Settings has
+Appearance (Colour theme, Programme times 24/12-hour, Guide style, progress bars, Behind logos), Channels & categories (one
+row per channel with Quality, hidden channels, manage, rename and sort categories, rename, sort and move channels, change a
+channel's logo), Open on, and Reminders. The scoreboard menu and settings have My scoreboards: an editor seen live on the
+board, Generate and Ask AI (with the family's own Anthropic key, kept on the phone), synced with the TV. A channel's logo
+can come from a catalogue of logo packs or be made here (offline or with Ask AI).
