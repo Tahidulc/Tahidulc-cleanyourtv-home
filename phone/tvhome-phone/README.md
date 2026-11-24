@@ -754,3 +754,14 @@ little dimmer and what has been shown dimmer still; the chosen card keeps its wh
 tiles are as they were. Tests: the guide's picture links (and 90,000 of them staying small), the TMDB search for each
 kind of programme and the result taken, and the cards' layout (faces whole, beside the words, the shade ending before
 them).
+
+**Live TV in the 07 look, programme pictures, swipe between channels, scoreboards on time (5.30).** Live TV is no longer
+flat black: a softly lit ground from the channel playing or its logo colour, frosted panels, logo-colour channel tiles,
+and each programme's picture filling its guide card and the programme panel (faces kept clear; a programme with no
+picture of its own is looked up by title, year and channel kind, else the channel's logo on its colour). A clear
+sideways swipe in full screen goes to the next or previous channel (Settings → Live TV can turn it off, which brings back
+up/down to change channel); Recently watched is a strip above the guide and a tab in the player, with Back to the last
+channel. Scoreboards: half time and full time as soon as the half really ends, no jumps of several goals or false half
+time from a misread channel graphic, Checking VAR gone once play restarts, one stoppage-time red, the board back in the
+family's own place after a pop-up, and Move and resize scrolls. This build is signed with a new key, so it installs once
+over a removed copy rather than as an update.
