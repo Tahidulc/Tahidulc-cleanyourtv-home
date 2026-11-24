@@ -564,7 +564,8 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         if (last != null) {
             // The scores saw a kick-off (or the second half's): the card asks for OK as it happens on the screen.
             if (last.state == Game.PRE && r.state == Game.LIVE) kickoffSeen(seen, false);
-            else if (last.halftime && r.state == Game.LIVE && !r.halftime) kickoffSeen(seen, true);
+            // (Not extra time's: the end of normal time is a break too now, Whistle.atBreak, and the card sets the second half.)
+            else if (last.halftime && r.state == Game.LIVE && !r.halftime && periodOf(g) == 2) kickoffSeen(seen, true);
             if (last.home != r.home || last.away != r.away || last.state != r.state || last.halftime != r.halftime) changeSeen = seen;
         }
         // Kept, and for the whistle: its flip (half time, full time) as it came; the board puts the channel's wait on it.
