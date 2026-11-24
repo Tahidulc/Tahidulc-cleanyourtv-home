@@ -36,10 +36,10 @@ import java.util.List;
 /**
  * The frame budget of the Editorial Home, Movies and TV Shows while the remote moves, as FrameCostTest measures every
  * other 07 screen (FrameMeter, the made-up family playlist of FrameCostData with its drawn pictures, TMDB's lists made up
- * by EditorialData): the carousel along (its big cards sliding, the next peeking in), a row of posters along, Top 10's
- * numbered posters, the mood tiles, and the rows down (the page rising, the carousel going); in the Full tier and in
- * Lite. Each frame must make next to nothing on the heap, no shadow may be made while moving, and Lite draws nothing in
- * perspective.
+ * by EditorialData): along a row (the card left shrinking to its poster as the next grows into its backdrop, the row
+ * sliding), Continue Watching, the rows down (the page rising, the next row dimmed), the carousels along and from them
+ * down into the rows; in the Full tier and in Lite. Each frame must make next to nothing on the heap, no shadow may be
+ * made while moving, and Lite draws nothing in perspective and nothing in a layer.
  */
 @RunWith(RobolectricTestRunner.class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -127,6 +127,12 @@ public class EditorialFrameTest {
     @Test public void theEditorialPagesMoveWithinTheirBudget() throws Exception {
         start();
         Motion.force(false);
+        // Once along a row before anything is measured: the JVM's first calls of each drawing path make garbage.
+        leaveBar();
+        onRow(a.homeScreen().editorial(), "latest.releases");
+        warm(() -> keys(KeyEvent.KEYCODE_DPAD_RIGHT, 8), () -> keys(KeyEvent.KEYCODE_DPAD_LEFT, 8));
+        a.tabs().enter();
+        idle();
         scenarios(" (Full)");
         a.home();
         idle();
@@ -153,34 +159,31 @@ public class EditorialFrameTest {
     }
 
     private void scenarios(String tier) {
-        // Home: the carousel along, a row of posters along, Top 10, the moods, the rows down.
+        // Home: along a row (the card left shrinking to a poster as the next grows), then down the rows.
         leaveBar();
         EditorialPage home = a.homeScreen().editorial();
         assertNotNull("Home is Editorial as it comes", home);
-        home.previewFocus(-1, 0);
-        measure("Editorial Home: carousel" + tier, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_LEFT, 4);
-        onRow(home, "trending");
-        measure("Editorial Home: posters" + tier, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_LEFT, 6);
-        onRow(home, "top10.films");
-        measure("Editorial Home: Top 10" + tier, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_LEFT, 5);
-        onRow(home, "moods");
-        measure("Editorial Home: moods" + tier, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_LEFT, 4);
-        home.previewFocus(-1, 0);
-        measure("Editorial Home: carousel to rows" + tier, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_UP, 1);
-        home.previewFocus(0, 0);
+        onRow(home, "latest.releases");
+        measure("Editorial Home: a row" + tier, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_LEFT, 6);
+        onRow(home, "continue");
+        measure("Editorial Home: Continue Watching" + tier, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_LEFT, 2);
         measure("Editorial Home: rows down" + tier, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_UP, 3);
 
-        // Movies: along its posters, down its rows.
+        // Movies: its carousel along, from it down to the rows, along a row.
         a.fromHome(new BrowseScreen(a, false));
         idle();
         leaveBar();
         EditorialPage movies = ((BrowseScreen) a.top()).editorial();
         assertNotNull("Movies is Editorial as it comes", movies);
-        onRow(movies, "popular");
-        measure("Editorial Movies: posters" + tier, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_LEFT, 6);
+        movies.previewFocus(-1, 0);
+        measure("Editorial Movies: carousel" + tier, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_LEFT, 4);
+        movies.previewFocus(-1, 0);
+        measure("Editorial Movies: carousel to rows" + tier, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_UP, 1);
+        onRow(movies, "trending");
+        measure("Editorial Movies: a row" + tier, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_LEFT, 6);
         measure("Editorial Movies: rows down" + tier, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_UP, 3);
 
-        // TV Shows: its carousel, a network's row.
+        // TV Shows: its carousel, a streaming service's row.
         a.home();
         idle();
         a.fromHome(new BrowseScreen(a, true));
@@ -189,8 +192,8 @@ public class EditorialFrameTest {
         EditorialPage shows = ((BrowseScreen) a.top()).editorial();
         shows.previewFocus(-1, 0);
         measure("Editorial TV Shows: carousel" + tier, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_LEFT, 3);
-        onRow(shows, "network.49");
-        measure("Editorial TV Shows: a network" + tier, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_LEFT, 4);
+        onRow(shows, "network.3186");
+        measure("Editorial TV Shows: a service" + tier, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_LEFT, 4);
         a.home();
         idle();
     }

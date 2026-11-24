@@ -1,7 +1,5 @@
 package com.gathin.homefieldtv;
 
-import android.graphics.LinearGradient;
-import android.graphics.Shader;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.View;
@@ -17,6 +15,7 @@ import com.gathin.homefieldtv.engine.Resume;
 import com.gathin.homefieldtv.engine.Shelves;
 import com.gathin.homefieldtv.engine.Sources;
 import com.gathin.homefieldtv.engine.Tmdb;
+import com.gathin.homefieldtv.engine.TmdbLists;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -32,12 +31,13 @@ import java.util.Set;
  * screen's work when Editorial is chosen.
  *
  * <p>Built lazily and in pages, so the main thread never goes through the catalogue: the rows from the family's own
- * lists (Continue watching, the newest, My List, TorBox, the categories, the moods) are made at once from the lists the
- * catalogue keeps; a TMDB row is made off the main thread and comes in when it is ready (a row with nothing in it never
- * does), the first few as the page opens and the next ones as the remote goes down to them; a TMDB row reads its next
- * page as the remote nears its end. What was made is kept (Shelves), so the page comes back at once. OK on a card opens
- * its page (Continue watching carries on; a mood or a category opens its titles); OK held puts it on My List or takes it
- * off; Up past the carousel, or Back there, goes up to the tab bar.
+ * lists (Continue Watching, the newest) are made at once from the lists the catalogue keeps; a TMDB row is made off the
+ * main thread and comes in when it is ready (a row with nothing in it never does), the first few as the page opens and
+ * the next ones as the remote goes down to them; a TMDB row reads its next page as the remote nears its end. What was
+ * made is kept (Shelves), so the page comes back at once. The card the remote rests on has its page's details read (its
+ * length, genre and age) and TMDB's logo; the backdrops either side of it are read ahead at the size they are drawn. OK on
+ * a card opens its page (Continue Watching carries on); OK on the carousel is View Details; OK held puts it on My List or
+ * takes it off; Back, or Up past the top, goes up to the tab bar.
  */
 final class EditorialPage implements Editorial.Host {
     /** The TMDB rows asked for as the page opens, and how far past the remote's row they are asked for. */
@@ -56,16 +56,17 @@ final class EditorialPage implements Editorial.Host {
     private Shelves.Shelf heroFrom;
     /** Raised when the catalogue changes: an answer for an older one is let go. */
     private int round;
-    private Editorial.Card extrasFor, detailsFor;
-    private final Runnable extras = this::fetchExtras, details = this::fetchDetails;
-    /** TMDB's extras (the logo) of the carousel's titles, read once and kept here. */
+    private Editorial.Card restingOn;
+    private final Runnable rested = this::rested;
+    /** TMDB's extras (the logo, the age) of the titles rested on, read once and kept here. */
     private final Map<String, Tmdb.Extras> extrasKnown = new HashMap<>();
+    private boolean publishing, again;
 
     EditorialPage(TvActivity tv, String page) {
         this.tv = tv;
         this.page = page;
-        List<CategorySet.Entry> all = CategorySet.of(page), rows = new ArrayList<>();
-        for (CategorySet.Entry e : all) {
+        List<CategorySet.Entry> rows = new ArrayList<>();
+        for (CategorySet.Entry e : CategorySet.of(page)) {
             if (e.kind == CategorySet.HERO) heroEntry = e;
             else rows.add(e);
         }
@@ -90,7 +91,7 @@ final class EditorialPage implements Editorial.Host {
     void shown() {
         if (view == null) return;
         view.setActive(tv.tabs() == null || !tv.tabs().active());
-        // Continue watching and My List may have changed while a film played: made again (quick); old TMDB rows asked again.
+        // Continue Watching may have changed while a film played: made again (quick); old TMDB rows asked again.
         for (CategorySet.Entry e : entries) {
             if (!e.tmdb()) shelves.put(e.id, Shelves.local(tv, e));
             else if (asked.contains(e.id) && Shelves.stale(shelves.get(e.id))) {
@@ -103,8 +104,7 @@ final class EditorialPage implements Editorial.Host {
     }
 
     void hidden() {
-        h.removeCallbacks(extras);
-        h.removeCallbacks(details);
+        h.removeCallbacks(rested);
     }
 
     void catalogChanged() {
@@ -120,7 +120,7 @@ final class EditorialPage implements Editorial.Host {
 
     // ---- the rows ---------------------------------------------------------------------------------------------------
 
-    /** Every row as far as it can be made now: kept ones, the local ones, the carousel's local choice; TMDB's asked for. */
+    /** Every row as far as it can be made now: kept ones, the local ones, a row's local choice; TMDB's asked for. */
     private void fill() {
         if (view == null) return;
         List<CategorySet.Entry> all = new ArrayList<>(entries);
@@ -138,8 +138,9 @@ final class EditorialPage implements Editorial.Host {
                 }
                 continue;
             }
-            // The family's own lists at once; the carousel's own choice too (the newest) while TMDB's trending is read.
-            if (!e.tmdb() || e.kind == CategorySet.HERO) shelves.put(e.id, Shelves.local(tv, e));
+            // The family's own lists at once; a row's own local choice too (the newest) while TMDB's is read.
+            Shelves.Shelf local = Shelves.local(tv, e);
+            if (!e.tmdb() || !local.isEmpty()) shelves.put(e.id, local);
         }
         if (heroEntry != null) request(heroEntry);
         ahead(-1);
@@ -174,8 +175,6 @@ final class EditorialPage implements Editorial.Host {
         });
     }
 
-    private boolean publishing, again;
-
     /** The rows made (each from its shelf, made again only when its shelf is new) and given to the view in order. */
     private void publish() {
         if (view == null) return;
@@ -197,13 +196,12 @@ final class EditorialPage implements Editorial.Host {
 
     private void publishOnce() {
         List<Editorial.Row> rows = new ArrayList<>();
-        long now = System.currentTimeMillis();
         for (CategorySet.Entry e : entries) {
             Shelves.Shelf s = shelves.get(e.id);
-            if (s == null || s.isEmpty()) continue;
+            if (s == null || s.isEmpty() || s.title.contains("{")) continue;
             Editorial.Row r = made.get(e.id);
             if (r == null || r.from != s) {
-                r = row(e, s, now);
+                r = row(e, s);
                 made.put(e.id, r);
             }
             rows.add(r);
@@ -218,62 +216,51 @@ final class EditorialPage implements Editorial.Host {
         else view.note("", "");
     }
 
-    private Editorial.Row row(CategorySet.Entry e, Shelves.Shelf s, long now) {
-        int kind = e.kind;
-        if (kind == CategorySet.POSTERS && PosterArt.landscape) kind = CategorySet.WIDE;
+    private Editorial.Row row(CategorySet.Entry e, Shelves.Shelf s) {
         List<Editorial.Card> cards = new ArrayList<>(s.picks.size());
-        for (int i = 0; i < s.picks.size(); i++) cards.add(card(s.picks.get(i), kind, i, now));
-        Editorial.Row r = new Editorial.Row(e.id, s.title, kind, cards, s.total());
+        for (Shelves.Pick p : s.picks) if (p.title != null) cards.add(card(p));
+        Editorial.Row r = new Editorial.Row(e.id, s.title, cards, s.total());
         r.more = s.more();
         r.from = s;
-        if (e.source.startsWith("continue")) r.quiet = cards.size() == 1 ? "1 in progress" : cards.size() + " in progress";
         return r;
     }
 
-    /** A row's card: its picture for the row's look, its words and marks. */
-    private Editorial.Card card(Shelves.Pick p, int kind, int i, long now) {
-        if (p.mood != null) {
-            Editorial.Card c = new Editorial.Card(p, "");
-            c.name = p.mood.name;
-            c.from = p.mood.from;
-            c.to = p.mood.to;
-            c.tile = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG | android.graphics.Paint.DITHER_FLAG);
-            c.tile.setShader(new LinearGradient(0, 0, Ui.f(Editorial.TILE_W), Ui.f(Editorial.TILE_H), p.mood.from, p.mood.to,
-                    Shader.TileMode.CLAMP));
-            return c;
-        }
+    /** A row's card: its poster and backdrop, and its words under the row. */
+    private Editorial.Card card(Shelves.Pick p) {
         Catalog.Title t = p.title;
-        if (p.category != null) {
-            Catalog.Details d = Catalog.get(tv).cachedDetails(t);
-            String pic = wide(p, d);
-            Editorial.Card c = new Editorial.Card(p, pic);
-            c.name = p.category.name;
-            return c;
-        }
         Catalog.Details d = Catalog.get(tv).cachedDetails(t);
-        String pic;
-        if (kind == CategorySet.WIDE) {
-            pic = p.point != null && t.series && !p.point.picture.isEmpty() ? p.point.picture : wide(p, d);
-            if (pic.isEmpty() && p.point != null) pic = p.point.picture;
-        } else {
-            pic = p.poster();
-        }
-        Editorial.Card c = new Editorial.Card(p, pic);
+        String wide = wide(p, d);
+        if (p.point != null && t.series && !p.point.picture.isEmpty()) wide = p.point.picture;
+        Editorial.Card c = new Editorial.Card(p, p.poster(), wide);
         c.name = t.name;
         if (p.point != null) {
-            c.line = BrowseScreen.resumeLine(t.series ? p.point.subtitle : "", p.point.position, p.point.duration);
             c.progress = p.point.position > 0 ? p.point.progress() : -1f;
-        } else {
-            String year = !t.year.isEmpty() ? t.year : p.item != null ? p.item.year : "";
-            float r = Billboard.rating(!t.rating.isEmpty() ? t.rating : p.item != null ? p.item.rating : "");
-            c.line = year + (r > 0f ? (year.isEmpty() ? "" : " · ") + String.format(Locale.UK, "★ %.1f", r) : "");
-            if (c.line.isEmpty()) c.line = t.series ? "TV show" : "Film";
-            c.badge = PosterArt.badge(t.added, now).isEmpty() ? "" : "NEW";
+            String code = HomeScreen.episodeCode(p.point.subtitle);
+            if (!code.isEmpty()) c.episode = code.replace(" ", ":");
         }
-        c.quality = PosterArt.chip(t.bestPicture());
-        c.torbox = t.torbox();
-        if (kind == CategorySet.TOP10) c.rank = i + 1;
+        words(c, d, extrasKnown.get(t.key));
         return c;
+    }
+
+    /** A card's words: its score, year, genre, length, story and TMDB's logo, from all that is known of it so far. */
+    private void words(Editorial.Card c, Catalog.Details d, Tmdb.Extras x) {
+        Catalog.Title t = c.title();
+        TmdbLists.Item it = c.pick.item;
+        c.details = d;
+        c.extras = x;
+        float r = Billboard.rating(d != null && !d.rating.isEmpty() ? d.rating : !t.rating.isEmpty() ? t.rating : it != null ? it.rating : "");
+        c.score = r > 0f ? Math.round(r * 10f) + "%" : "";
+        c.year = !t.year.isEmpty() ? t.year : it != null ? it.year : "";
+        String g = d == null ? "" : Hero07.Facts.genres(d.genre, 1);
+        if (g.isEmpty() && it != null && it.genres.length > 0) g = TmdbLists.genre(it.genres[0]);
+        if (g.isEmpty()) g = PosterArt.genreOf(t.category);
+        c.genre = g;
+        if (!c.episode.isEmpty()) c.length = c.episode;
+        else if (d != null && d.minutes > 0) c.length = Ui.duration(d.minutes);
+        else if (t.series && d != null && !d.seasons.isEmpty()) c.length = d.seasons.size() == 1 ? "1 Season" : d.seasons.size() + " Seasons";
+        else c.length = "";
+        c.story = d != null && !d.plot.isEmpty() ? d.plot : !t.plot.isEmpty() ? t.plot : it != null ? it.plot : "";
+        c.logo = x == null ? "" : x.logo;
     }
 
     /** A title's wide picture: TMDB's backdrop, its page's, the playlist's, else its poster. */
@@ -293,7 +280,7 @@ final class EditorialPage implements Editorial.Host {
             Catalog.Details d = Catalog.get(tv).cachedDetails(p.title);
             String pic = wide(p, d);
             if (pic.isEmpty()) continue;
-            Editorial.Card c = new Editorial.Card(p, pic);
+            Editorial.Card c = new Editorial.Card(p, p.poster(), pic);
             c.name = p.title.name;
             heroWords(c);
             out.add(c);
@@ -301,109 +288,89 @@ final class EditorialPage implements Editorial.Host {
         return out;
     }
 
-    /** A carousel card's words: what it is, its button, My List, its story, its page's details and TMDB's logo where known. */
+    /** A carousel card's words: what it is, its facts (with its age), My List, its story, TMDB's logo where known. */
     private void heroWords(Editorial.Card c) {
         Catalog.Title t = c.title();
         Catalog.Details d = Catalog.get(tv).cachedDetails(t);
         Tmdb.Extras x = extrasKnown.get(t.key);
-        c.details = d;
-        c.extras = x;
-        c.logo = x == null ? "" : x.logo;
+        words(c, d, x);
+        c.age = x != null && !x.age.isEmpty() ? x.age : d == null ? "" : d.age.trim();
         c.kicker = t.torbox() ? (t.series ? "TV SHOW · " : "FILM · ") + Catalog.TORBOX.toUpperCase(Locale.UK) : t.series ? "TV SHOW" : "FILM";
-        String plot = d != null && !d.plot.isEmpty() ? d.plot : !t.plot.isEmpty() ? t.plot : c.pick.item != null ? c.pick.item.plot : "";
-        c.story = plot;
         c.onList = MyList.has(tv, t.key);
-        Resume.Point r = t.series ? Resume.latest(tv, t.key) : Resume.get(tv, t.key, "");
-        if (t.series) {
-            String code = r == null ? "" : HomeScreen.episodeCode(r.subtitle);
-            c.play = code.isEmpty() ? "Play" : (r.position > 0 ? "Resume " : "Play ") + code;
-        } else {
-            c.play = r != null && r.position > 0 ? "Resume" : "Play";
-        }
     }
 
     // ---- the remote moving ------------------------------------------------------------------------------------------
 
     @Override public void focused(Editorial.Row row, Editorial.Card card) {
-        h.removeCallbacks(extras);
-        h.removeCallbacks(details);
-        if (row == null) {
-            if (card == null) return;
-            view.ground(card.picture);
-            Catalog.Title t = card.title();
-            if (t != null) {
-                if (!extrasKnown.containsKey(t.key)) {
-                    Tmdb.Extras kept = Tmdb.keptExtras(tv, t);
-                    if (kept != null) extras(t, kept);
-                    else {
-                        extrasFor = card;
-                        h.postDelayed(extras, 700);
-                    }
-                }
-                if (Catalog.get(tv).cachedDetails(t) == null) {
-                    detailsFor = card;
-                    h.postDelayed(details, 450);
-                }
-            }
-            readAhead();
-            return;
+        h.removeCallbacks(rested);
+        if (card == null) return;
+        view.ground(card.wide);
+        restingOn = card;
+        if (Exec.inline) rested();
+        else h.postDelayed(rested, 450);
+        readAhead(row == null);
+        if (row != null) {
+            // The rows past the remote's, asked for now.
+            int at = -1;
+            for (int i = 0; i < entries.size(); i++) if (entries.get(i).id.equals(row.id)) at = i;
+            ahead(at);
         }
-        // The page's ground: the title's wide picture (a mood keeps the one before).
-        if (card != null && card.pick.mood == null) {
-            Shelves.Pick p = card.pick;
-            String g = p.title == null ? "" : wide(p, Catalog.get(tv).cachedDetails(p.title));
-            if (!g.isEmpty()) view.ground(g);
-        }
-        // The rows past the remote's, asked for now.
-        int at = -1;
-        for (int i = 0; i < entries.size(); i++) if (entries.get(i).id.equals(row.id)) at = i;
-        ahead(at);
     }
 
-    /** The carousel's pictures a key either side, read after what is on screen. */
-    private void readAhead() {
+    /** The backdrops a key either side of the remote's card, read after what is on screen, at the size they are drawn. */
+    private void readAhead(boolean carousel) {
         for (int along : new int[]{1, -1, 2}) {
-            Editorial.Card c = view.heroNear(along);
-            if (c == null || c.picture.isEmpty()) continue;
-            Pics.prefetch(c.picture, Ui.px(Editorial.HERO_W), Ui.px(Editorial.HERO_H), Pics.FACE);
-            if (view.getWidth() > 0) Pics.prefetch(c.picture, view.getWidth(), view.getHeight(), Pics.BLUR);
+            Editorial.Card c = carousel ? view.heroNear(along) : view.near(along);
+            if (c == null || c.wide.isEmpty()) continue;
+            if (carousel) Pics.prefetch(c.wide, Ui.px(Editorial.HERO_W), Ui.px(Editorial.HERO_H), Pics.FACE);
+            else Pics.prefetch(c.wide, Ui.px(Editorial.WIDE_W), Ui.px(Editorial.CARD_H), Pics.CROP);
+            if (view.getWidth() > 0 && along == 1) Pics.prefetch(c.wide, view.getWidth(), view.getHeight(), Pics.BLUR);
         }
     }
 
-    private void fetchExtras() {
-        Editorial.Card c = extrasFor;
-        Catalog.Title t = c == null ? null : c.title();
+    /** The remote rested on a card: its page's details (length, genre, age) and TMDB's logo, read off the main thread. */
+    private void rested() {
+        Editorial.Card card = restingOn;
+        Catalog.Title t = card == null ? null : card.title();
         if (t == null) return;
+        if (Catalog.get(tv).cachedDetails(t) == null) {
+            Catalog.get(tv).details(t, d -> {
+                if (d != null) known(t);
+            });
+        }
+        if (extrasKnown.containsKey(t.key)) return;
         Exec.io(() -> {
-            Tmdb.Extras x = Tmdb.extras(tv, t);
-            if (x != null) Exec.main(() -> extras(t, x));
+            Tmdb.Extras x = Tmdb.keptExtras(tv, t);
+            if (x == null) x = Tmdb.extras(tv, t);
+            Tmdb.Extras got = x;
+            if (got == null) return;
+            Runnable done = () -> {
+                if (extrasKnown.size() > 200) extrasKnown.clear();
+                extrasKnown.put(t.key, got);
+                known(t);
+            };
+            if (Exec.inline) done.run();
+            else Exec.main(done);
         });
     }
 
-    private void extras(Catalog.Title t, Tmdb.Extras x) {
-        if (extrasKnown.size() > 200) extrasKnown.clear();
-        extrasKnown.put(t.key, x);
+    /** More is known of a title (its details, its extras): its cards' words made again where they are shown. */
+    private void known(Catalog.Title t) {
+        if (view == null) return;
+        Catalog.Details d = Catalog.get(tv).cachedDetails(t);
         for (Editorial.Card c : heroCards) {
             if (c.title() == t) {
                 heroWords(c);
-                if (view != null) view.refresh(c);
+                view.refresh(c);
             }
         }
-    }
-
-    private void fetchDetails() {
-        Editorial.Card c = detailsFor;
-        Catalog.Title t = c == null ? null : c.title();
-        if (t == null) return;
-        Catalog.get(tv).details(t, d -> {
-            if (d == null || view == null) return;
-            for (Editorial.Card k : heroCards) {
-                if (k.title() == t) {
-                    heroWords(k);
-                    view.refresh(k);
-                }
+        for (Editorial.Row r : view.rows()) {
+            for (Editorial.Card c : r.cards) {
+                if (c.title() != t) continue;
+                words(c, d, extrasKnown.get(t.key));
+                view.refresh(c);
             }
-        });
+        }
     }
 
     @Override public void more(Editorial.Row row) {
@@ -426,59 +393,12 @@ final class EditorialPage implements Editorial.Host {
     // ---- OK -----------------------------------------------------------------------------------------------------------
 
     @Override public void chosen(Editorial.Row row, Editorial.Card card) {
-        if (card == null) {
-            // A row's "All" card: its whole list.
-            Shelves.Shelf s = row == null ? null : shelves.get(row.id);
-            if (s == null) return;
-            List<Catalog.Title> titles = s.all != null ? s.all : titlesOf(s);
-            if (!titles.isEmpty()) tv.push(new ListScreen(tv, seriesOf(titles), row.title, titles));
-            return;
-        }
         Shelves.Pick p = card.pick;
-        if (p.mood != null) {
-            openMood(p.mood);
-            return;
-        }
-        if (p.category != null) {
-            tv.push(new ListScreen(tv, page.equals(CategorySet.SHOWS), p.category.name, p.category.titles));
-            return;
-        }
         if (p.point != null && carryOn(p.point)) return;
         if (p.title != null) tv.openTitle(p.title);
     }
 
-    private static List<Catalog.Title> titlesOf(Shelves.Shelf s) {
-        List<Catalog.Title> out = new ArrayList<>();
-        for (Shelves.Pick p : s.picks) if (p.title != null && p.category == null) out.add(p.title);
-        return out;
-    }
-
-    private boolean seriesOf(List<Catalog.Title> titles) {
-        if (page.equals(CategorySet.SHOWS)) return true;
-        if (page.equals(CategorySet.MOVIES)) return false;
-        return !titles.isEmpty() && titles.get(0).series;
-    }
-
-    /** A mood's titles found (off the main thread), then their page; a word where there are none. */
-    private void openMood(CategorySet.Mood m) {
-        String kind = page.equals(CategorySet.MOVIES) ? "movie" : page.equals(CategorySet.SHOWS) ? "tv" : "all";
-        int was = round;
-        Exec.io(() -> {
-            List<Catalog.Title> titles = Shelves.mood(tv, m, kind);
-            Runnable done = () -> {
-                if (was != round || tv.isFinishing()) return;
-                if (titles.isEmpty()) {
-                    Toast.makeText(tv, "Nothing for " + m.name + " in your playlists yet", Toast.LENGTH_SHORT).show();
-                    return;
-                }
-                tv.push(new ListScreen(tv, seriesOf(titles), m.name, titles));
-            };
-            if (Exec.inline) done.run();
-            else Exec.main(done);
-        });
-    }
-
-    /** Continue watching: on at once from where it was (an episode needs its series' page read; else its page). */
+    /** Continue Watching: on at once from where it was (an episode needs its series' page read; else its page). */
     private boolean carryOn(Resume.Point p) {
         Catalog.Title t = Catalog.get(tv).title(p.title);
         if (t == null) return false;
@@ -496,21 +416,15 @@ final class EditorialPage implements Editorial.Host {
 
     @Override public void held(Editorial.Row row, Editorial.Card card) {
         Catalog.Title t = card.pick.title;
-        if (t == null || card.pick.category != null || card.pick.mood != null) {
-            chosen(row, card);
-            return;
-        }
+        if (t == null) return;
         boolean on = MyList.toggle(tv, t.key);
-        Toast.makeText(tv, on ? t.name + " added to My list" : t.name + " taken off My list", Toast.LENGTH_SHORT).show();
+        Toast.makeText(tv, on ? t.name + " added to My List" : t.name + " taken off My List", Toast.LENGTH_SHORT).show();
         for (Editorial.Card c : heroCards) {
             if (c.title() == t) {
                 heroWords(c);
                 view.refresh(c);
             }
         }
-        // My List's own row made again.
-        for (CategorySet.Entry e : entries) if (e.source.startsWith("mylist")) shelves.put(e.id, Shelves.local(tv, e));
-        publish();
     }
 
     @Override public boolean edge(int dir) {
@@ -528,7 +442,7 @@ final class EditorialPage implements Editorial.Host {
         view.setActive(false);
     }
 
-    /** Down from the tab bar: the carousel, or the first row. */
+    /** Down from the tab bar: the carousel, or the row it was on. */
     void fromTabs() {
         if (view == null) return;
         view.setActive(true);
@@ -547,9 +461,8 @@ final class EditorialPage implements Editorial.Host {
         view.okLong();
     }
 
-    /** Back: from the rows to the carousel; from there, the tab bar. */
+    /** Back: up to the tab bar, the page where it was (as the other app has it). */
     boolean back() {
-        if (view.back()) return true;
         toBar();
         return true;
     }
@@ -573,7 +486,8 @@ final class EditorialPage implements Editorial.Host {
 
     /** Previews and tests: TMDB's extras for a title as if it had answered. */
     void previewExtras(Catalog.Title t, Tmdb.Extras x) {
-        extras(t, x);
+        extrasKnown.put(t.key, x);
+        known(t);
     }
 
     /** Previews and tests: the remote on the carousel's card i (row -1) or a row's card. */
@@ -586,5 +500,10 @@ final class EditorialPage implements Editorial.Host {
         List<Editorial.Row> rows = view.rows();
         for (int i = 0; i < rows.size(); i++) if (rows.get(i).id.equals(id)) return i;
         return -1;
+    }
+
+    /** Tests: how many TMDB rows have been asked for so far. */
+    int previewAsked() {
+        return asked.size();
     }
 }

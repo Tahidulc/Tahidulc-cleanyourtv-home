@@ -81,8 +81,8 @@ final class TitlePage extends View {
         }
     }
 
-    /** The buttons' icons. */
-    static final int PLAY = 0, PLUS = 1, TICK = 2, RESTART = 3, TRAILER = 4, BIN = 5;
+    /** The buttons' icons (EPS: More episodes, LIKE: More like this, in the menu down the left). */
+    static final int PLAY = 0, PLUS = 1, TICK = 2, RESTART = 3, TRAILER = 4, BIN = 5, EPS = 6, LIKE = 7;
     /** The parts the remote moves through, top to bottom. */
     static final int BUTTONS = 0, SEASONS = 1, EPISODES = 2, CAST = 3, MORE = 4;
 
@@ -91,6 +91,12 @@ final class TitlePage extends View {
             CREDITS_TOP = 492f, BUTTONS_Y = 575f, PILLS_Y = 678f, PILL_H = 56f, EP_TOP = 730f, EP_W = 384f, EP_H = 216f,
             EP_GAP = 40f, SEASON_GAP = 44f, ART_X = 420f, ART_W = 1500f, ART_H = 844f, FACE = 140f, FACE_STEP = 200f,
             MORE_W = 196f, MORE_H = 294f, MORE_STEP = 222f, LOWER = 1080f;
+    /**
+     * The menu down the left (Home style Editorial, as the family's other film app has it): its first line's top, a
+     * line's step, height, width and corners; four lines in sight at a time; what is under it moved down by MENU_SHIFT.
+     */
+    static final float MENU_TOP = 548f, MENU_STEP = 74f, MENU_H = 62f, MENU_W = 600f, MENU_R = 18f, MENU_SHIFT = 300f;
+    static final int MENU_LINES = 4;
     /** How long the page, a row and the season pill take to glide; the colour's cross-fade. */
     static final long PAGE_MS = 520, ROW_MS = 450, PILL_MS = 450;
 
@@ -108,6 +114,9 @@ final class TitlePage extends View {
     private int resumeAt = -1;
 
     private int part = BUTTONS, buttonAt, epAt, castAt, moreAt, seasonAt;
+    /** The buttons as a menu down the left (Home style Editorial), and where the menu has slid to (design px). */
+    private boolean vertical;
+    private final Glide menuY = new Glide(ROW_MS);
     /** Whether the page has the remote (false while it is up on the tab bar: nothing lifted). */
     private boolean active = true;
     private final Glide page = new Glide(PAGE_MS), epX = new Glide(ROW_MS), castX = new Glide(ROW_MS), moreX = new Glide(ROW_MS),
@@ -126,7 +135,7 @@ final class TitlePage extends View {
     private final Hero07.Mark mark = new Hero07.Mark(64f);
     private final Hero07.Facts facts = new Hero07.Facts();
     private final TextPaint factsP, storyP, creditsP, pillP, pillInk, metaP, capP, capSub, aboutP, headP, sideHead, sideP,
-            faceName, faceRole, moreName, moreSub, upNextP, initialsP;
+            faceName, faceRole, moreName, moreSub, upNextP, initialsP, menuP, menuAfter;
     private StaticLayout story, credits, about;
     private final Paint ground = new Paint(), art = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG),
             darkLeft = new Paint(Paint.DITHER_FLAG), darkFoot = new Paint(Paint.DITHER_FLAG), white = Ui.fill(Look07.L1),
@@ -170,6 +179,9 @@ final class TitlePage extends View {
         upNextP = Type.paint(14f, Type.EXTRABOLD, Look07.INK);
         upNextP.setLetterSpacing(0.06f);
         initialsP = Type.paint(40f, Type.SEMIBOLD, Look07.L1);
+        menuP = Type.paint(26f, Type.MEDIUM, Look07.L1);
+        menuAfter = Type.paint(20f, Type.MEDIUM, Look07.INK2);
+        Shadows.prepare(Look07.SH_BUTTON, MENU_R);
         ring.setStyle(Paint.Style.STROKE);
         ground.setColor(Look07.GROUND);
         Shadows.prepare(Look07.SH_BUTTON, 35f);
@@ -234,6 +246,8 @@ final class TitlePage extends View {
             part = BUTTONS;
             page.jump(0f);
             castAt = 0;
+            buttonAt = 0;
+            menuY.jump(0f);
             castX.jump(0f);
             moreX.jump(0f);
             moreAt = 0;
@@ -437,8 +451,32 @@ final class TitlePage extends View {
 
     /** How far the page has risen for the part the remote is on. */
     private float pageTarget() {
-        if (lowerPage()) return part >= CAST ? LOWER : 0f;
-        return part == MORE ? 450f : 0f;
+        // With the menu down the left, what is under the buttons starts lower: the page rises as much more for it.
+        float shift = part == BUTTONS ? 0f : menuShift();
+        if (lowerPage()) return (part >= CAST ? LOWER : 0f) + shift;
+        return (part == MORE ? 450f : 0f) + shift;
+    }
+
+    private float menuShift() {
+        return vertical ? MENU_SHIFT : 0f;
+    }
+
+    /** The menu's first line in sight: the remote's kept second from the top (the first lines from the start). */
+    private int menuFirst() {
+        return Math.max(0, Math.min(buttons.size() - MENU_LINES, buttonAt - 1));
+    }
+
+    /** The buttons as a menu down the left (Home style Editorial), or in a line (Classic). */
+    void vertical(boolean on) {
+        vertical = on;
+        invalidate();
+    }
+
+    /** A part of the page by a menu line (More episodes, More like this): the remote there, the page risen to it. */
+    void toPart(int p) {
+        if (!hasPart(p)) return;
+        part = p;
+        settle();
     }
 
     /** An episode's place in the row (design px from its start): a season's first a little further on (its line). */
@@ -474,6 +512,30 @@ final class TitlePage extends View {
     }
 
     boolean key(int code) {
+        if (vertical && part == BUTTONS) {
+            // The menu down the left: Up and Down along it (Up past its top to the tab bar, Down past its foot on down).
+            switch (code) {
+                case KeyEvent.KEYCODE_DPAD_UP:
+                    if (buttonAt > 0) {
+                        buttonAt--;
+                        settle();
+                        return true;
+                    }
+                    return move(-1);
+                case KeyEvent.KEYCODE_DPAD_DOWN:
+                    if (buttonAt < buttons.size() - 1) {
+                        buttonAt++;
+                        settle();
+                        return true;
+                    }
+                    return move(1);
+                case KeyEvent.KEYCODE_DPAD_LEFT:
+                case KeyEvent.KEYCODE_DPAD_RIGHT:
+                    return true;
+                default:
+                    return false;
+            }
+        }
         switch (code) {
             case KeyEvent.KEYCODE_DPAD_UP:
                 return move(-1);
@@ -535,6 +597,7 @@ final class TitlePage extends View {
     /** Everything sent on its way to where the remote now is. */
     private void settle() {
         page.to(pageTarget());
+        menuY.to(menuFirst() * MENU_STEP);
         epX.to(epTarget());
         castX.to(castTarget());
         moreX.to(moreTarget());
@@ -667,6 +730,7 @@ final class TitlePage extends View {
         moving |= moreX.step();
         moving |= pillL.step();
         moving |= pillR.step();
+        moving |= menuY.step();
         moving |= wash.step();
         Object focus = !active ? null : part == EPISODES ? episode(epAt) : part == MORE && moreAt < more.size() ? more.get(moreAt)
                 : part == CAST && castAt < cast.size() ? cast.get(castAt) : null;
@@ -691,6 +755,7 @@ final class TitlePage extends View {
         // The words and buttons at the top fade as the page rises past them (never under the back line).
         int topAlpha = Math.round(255 * Math.max(0f, Math.min(1f, 1f - page.value() / 320f)));
         if (topAlpha > 0) drawTop(c, topAlpha);
+        if (vertical) c.translate(0, Ui.f(MENU_SHIFT));
         if (!seasons.isEmpty() && seasonWords.length > 1) drawSeasons(c);
         if (hasPart(EPISODES)) drawEpisodes(c);
         if (lowerPage()) {
@@ -767,6 +832,10 @@ final class TitlePage extends View {
             creditsP.setAlpha((Look07.L3 >>> 24) * a / 255);
             Ui.draw(c, credits, x, Ui.f(CREDITS_TOP + 2f));
         }
+        if (vertical) {
+            drawMenu(c, a);
+            return;
+        }
         // The buttons: the main one white (lifted 1.07 where the remote is), grey pills, round icons.
         float bx = x, cy = Ui.f(BUTTONS_Y);
         for (int i = 0; i < buttons.size(); i++) {
@@ -791,6 +860,59 @@ final class TitlePage extends View {
                 c.restore();
                 bx += bw + Ui.f(18f);
             }
+        }
+    }
+
+    /**
+     * The buttons as a menu down the left, four lines in sight (the list sliding as the remote goes down it): each its icon
+     * and its words, the remote's on a white rounded bar, lifted a little; the others plain on the page.
+     */
+    private void drawMenu(Canvas c, int a) {
+        float x = Ui.f(LEFT) - Ui.f(14f), top = Ui.f(MENU_TOP), step = Ui.f(MENU_STEP), h = Ui.f(MENU_H), w = Ui.f(MENU_W);
+        float rad = Ui.f(MENU_R), off = Ui.f(menuY.value()), last = top + (MENU_LINES - 1) * step;
+        for (int i = 0; i < buttons.size(); i++) {
+            float y = top + i * step - off;
+            // A line sliding out of the four in sight fades as it goes.
+            float k = y < top ? 1f - (top - y) / step : y > last ? 1f - (y - last) / step : 1f;
+            if (k <= 0.01f) continue;
+            int la = Math.round(a * Math.min(1f, k));
+            Button b = buttons.get(i);
+            boolean here = active && part == BUTTONS && i == buttonAt;
+            float cy = y + h / 2f;
+            c.save();
+            if (here) {
+                float g = 1f + 0.02f * Math.max(0f, Math.min(1.1f, buttonLift.of(b)));
+                c.scale(g, g, x, cy);
+                r.set(x, y, x + w, y + h);
+                Shadows.draw(c, r, rad, Look07.SH_BUTTON, la / 255f);
+                fill.setColor(Palette.alpha(Look07.L1, la));
+                c.drawRoundRect(r, rad, rad, fill);
+            }
+            int ink = here ? Look07.INK : Look07.L1;
+            Icons07.draw(c, menuIcon(b.icon), x + Ui.f(36f), cy, Ui.f(26f), Palette.alpha(ink, la));
+            menuP.setColor(ink);
+            menuP.setAlpha(la);
+            float tx = x + Ui.f(74f);
+            c.drawText(b.label, tx, Type.centred(menuP, cy), menuP);
+            if (b.main && !b.after.isEmpty()) {
+                menuAfter.setColor(here ? Look07.INK2 : Look07.L3);
+                menuAfter.setAlpha(((here ? Look07.INK2 : Look07.L3) >>> 24) * la / 255);
+                c.drawText(b.after, tx + menuP.measureText(b.label) + Ui.f(16f), Type.centred(menuAfter, cy), menuAfter);
+            }
+            c.restore();
+        }
+    }
+
+    private static int menuIcon(int icon) {
+        switch (icon) {
+            case PLAY: return Icons07.PLAY;
+            case TRAILER: return Icons07.FILM;
+            case EPS: return Icons07.LIST;
+            case PLUS: return Icons07.PLUS;
+            case TICK: return Icons07.CHECK;
+            case LIKE: return Icons07.GRID;
+            case RESTART: return Icons07.RESTART;
+            default: return Icons07.X;
         }
     }
 

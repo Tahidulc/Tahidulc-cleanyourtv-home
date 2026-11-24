@@ -1,9 +1,12 @@
 package com.gathin.homefieldtv.engine;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -13,11 +16,12 @@ import java.util.Set;
 
 /**
  * Each row of CategorySet made into its titles, from what the app already has: the playlists' films and series (and the
- * family's own TorBox titles), where the family left off, My List, and TMDB's lists (trending, popular, a network's, a
- * genre's) matched to what the playlists hold (TitleIndex), so every card plays. A row with nothing in it is empty and
- * the page leaves it out. A TMDB row is read a page at a time: the first pages as it is made, the next as the remote
- * nears its end (more()), at most TmdbLists.MAX_PAGES. Rows from the family's own lists (local) are quick and can be
- * made on the main thread; a TMDB row (CategorySet.Entry.tmdb) only off it.
+ * family's own TorBox titles), where the family left off, My List, what they watched lately, and TMDB's lists (trending,
+ * a themed discover, a list, a network's shows, a watched title's recommendations) matched to what the playlists hold
+ * (TitleIndex), so every card plays. A row with nothing in it is empty and the page leaves it out. A TMDB row is read a
+ * page at a time: the first pages as it is made, the next as the remote nears its end (more()), at most
+ * TmdbLists.MAX_PAGES. Rows from the family's own lists (local) are quick and can be made on the main thread; a TMDB row
+ * (CategorySet.Entry.tmdb) only off it.
  */
 public final class Shelves {
     private Shelves() {}
@@ -26,21 +30,19 @@ public final class Shelves {
     public static final int ROW = 40, MOST = 80;
     /** A TMDB row's first pages are read until it has this many, or FIRST_PAGES pages are read. */
     static final int ENOUGH = 10, FIRST_PAGES = 3;
+    /** How many of the titles watched lately the recommendations come from, and how many are kept. */
+    static final int TASTE = 5, TASTE_KEPT = 12;
 
-    /** One card of a row: a title (with TMDB's word on it, where from a list), where it was left, a category, a mood. */
+    /** One card of a row: a title (with TMDB's word on it, where from a list), and where it was left. */
     public static final class Pick {
         public final Catalog.Title title;
         public final TmdbLists.Item item;
         public final Resume.Point point;
-        public final Catalog.Category category;
-        public final CategorySet.Mood mood;
 
-        Pick(Catalog.Title title, TmdbLists.Item item, Resume.Point point, Catalog.Category category, CategorySet.Mood mood) {
+        Pick(Catalog.Title title, TmdbLists.Item item, Resume.Point point) {
             this.title = title;
             this.item = item;
             this.point = point;
-            this.category = category;
-            this.mood = mood;
         }
 
         /** Its poster: TMDB's where the list gave one, else the playlist's. */
@@ -54,13 +56,6 @@ public final class Shelves {
             if (item != null && !item.backdrop.isEmpty()) return item.backdrop;
             return title == null ? "" : title.backdrop;
         }
-
-        /** Its name as the card says it. */
-        public String name() {
-            if (mood != null) return mood.name;
-            if (category != null) return category.name;
-            return title == null ? "" : title.name;
-        }
     }
 
     /** A row made: its entry, its title (a network's as TMDB names it), its cards, its whole list (local rows), its pages. */
@@ -70,15 +65,17 @@ public final class Shelves {
         public final List<Pick> picks;
         /** A local row's whole list, for its "All" card (null for a TMDB row, which pages instead). */
         public final List<Catalog.Title> all;
-        /** Each TMDB part's next page to read (beyond its last: none), as made. */
+        /** Each TMDB part's path, next page to read (beyond its last: none) and its pages, as made. */
         final String[] paths;
         final int[] next, pages;
+        /** Titles never shown in it (a recommendation row's own watched ones). */
+        final Set<String> skip;
         /** When it was made (ms), and for which catalogue (its lists). */
         final long at;
         final List<Catalog.Title> madeFor;
 
         Shelf(CategorySet.Entry entry, String title, List<Pick> picks, List<Catalog.Title> all, String[] paths, int[] next,
-              int[] pages, List<Catalog.Title> madeFor) {
+              int[] pages, Set<String> skip, List<Catalog.Title> madeFor) {
             this.entry = entry;
             this.title = title == null ? "" : title;
             this.picks = Collections.unmodifiableList(picks);
@@ -86,6 +83,7 @@ public final class Shelves {
             this.paths = paths == null ? new String[0] : paths;
             this.next = next == null ? new int[0] : next;
             this.pages = pages == null ? new int[0] : pages;
+            this.skip = skip == null ? Collections.emptySet() : skip;
             this.at = System.currentTimeMillis();
             this.madeFor = madeFor;
         }
@@ -129,7 +127,7 @@ public final class Shelves {
 
     /**
      * A row made from the family's own lists only (its TMDB parts left out): quick, for the main thread. A "|" of
-     * choices takes its first local one that has anything (the hero's "new:all" while TMDB's trending is read).
+     * choices takes its first local one that has anything (the carousel's newest while TMDB's are read).
      */
     public static Shelf local(Context c, CategorySet.Entry e) {
         for (List<String> choice : CategorySet.parts(e.source)) {
@@ -158,7 +156,7 @@ public final class Shelves {
     }
 
     private static Shelf empty(Context c, CategorySet.Entry e) {
-        return new Shelf(e, e.title, new ArrayList<>(), null, null, null, null, Catalog.get(c).films());
+        return new Shelf(e, e.title, new ArrayList<>(), null, null, null, null, null, Catalog.get(c).films());
     }
 
     /** One choice of a source: its "+" parts taken in turn. */
@@ -169,7 +167,7 @@ public final class Shelves {
         List<Catalog.Title> all = null;
         List<String> paths = new ArrayList<>();
         List<Integer> next = new ArrayList<>(), pages = new ArrayList<>();
-        boolean top = e.kind == CategorySet.TOP10;
+        Set<String> skip = new HashSet<>();
         for (String part : parts) {
             int colon = part.indexOf(':');
             String kind = colon < 0 ? part : part.substring(0, colon), arg = colon < 0 ? "" : part.substring(colon + 1);
@@ -195,24 +193,58 @@ public final class Shelves {
                     streams.add(titles(got, ROW));
                     break;
                 }
-                case "categories":
-                    streams.add(categories(cat, arg.equals("tv")));
+                case "tmdb": {
+                    String path = resolve(c, arg, System.currentTimeMillis());
+                    if (path != null) tmdb(c, path, streams, paths, next, pages);
                     break;
-                case "moods":
-                    streams.add(moods(cat, arg));
+                }
+                case "list": {
+                    int tilde = arg.indexOf('~');
+                    String id = tilde < 0 ? arg : arg.substring(0, tilde), words = tilde < 0 ? "" : arg.substring(tilde + 1);
+                    TmdbLists.Page first = TmdbLists.page(c, "list/" + id, 1);
+                    // Only the list it was: one whose name no longer says so is left out.
+                    if (first == null || !first.name.toLowerCase(Locale.ROOT).contains(words.toLowerCase(Locale.ROOT))) break;
+                    tmdb(c, "list/" + id, streams, paths, next, pages);
                     break;
-                case "top10":
-                    streams.add(topTen(c, arg.equals("tv")));
-                    break;
-                case "tmdb":
-                    tmdb(c, arg, streams, paths, next, pages);
-                    break;
-                case "network": {
-                    int id = number(arg);
+                }
+                case "network":
+                case "latest": {
+                    String[] ids = arg.split("/");
+                    int id = number(ids[0]);
                     String name = id > 0 ? TmdbLists.network(c, id) : "";
-                    if (!allowedName(name)) return new Shelf(e, e.title, new ArrayList<>(), null, null, null, null, cat.films());
-                    if (title.isEmpty()) title = name;
-                    tmdb(c, "discover/tv?with_networks=" + id + "&sort_by=popularity.desc", streams, paths, next, pages);
+                    if (!allowedName(name)) return empty(c, e);
+                    title = title.replace("{network}", name);
+                    String with = String.join("%7C", ids);
+                    String path = kind.equals("latest")
+                            ? "discover/tv?with_networks=" + with + "&sort_by=first_air_date.desc&first_air_date.lte={today}&vote_count.gte=3"
+                            : "discover/tv?with_networks=" + with + "&sort_by=popularity.desc";
+                    tmdb(c, resolve(c, path, System.currentTimeMillis()), streams, paths, next, pages);
+                    break;
+                }
+                case "because": {
+                    List<Catalog.Title> watched = taste(c);
+                    int n = number(arg);
+                    if (n >= watched.size()) break;
+                    Catalog.Title t = watched.get(n);
+                    String path = recommendations(c, t);
+                    if (path == null) break;
+                    title = title.replace("{title}", t.name);
+                    for (Catalog.Title w : watched) skip.add(w.key);
+                    tmdb(c, path, streams, paths, next, pages);
+                    break;
+                }
+                case "foryou": {
+                    List<Catalog.Title> watched = taste(c);
+                    for (Catalog.Title w : watched) skip.add(w.key);
+                    int asked = 0;
+                    for (Catalog.Title t : watched) {
+                        if (asked >= TASTE) break;
+                        if (arg.equals("movie") && t.series || arg.equals("tv") && !t.series) continue;
+                        String path = recommendations(c, t);
+                        if (path == null) continue;
+                        asked++;
+                        tmdb(c, path, streams, paths, next, pages);
+                    }
                     break;
                 }
                 case "genre": {
@@ -240,14 +272,13 @@ public final class Shelves {
                     break;
             }
         }
-        List<Pick> picks = interleave(streams, top ? 10 : MOST);
-        if (top && picks.size() < 3) picks.clear();
+        List<Pick> picks = interleave(streams, MOST, skip);
         int[] n = new int[next.size()], p = new int[pages.size()];
         for (int i = 0; i < n.length; i++) {
-            n[i] = top ? Integer.MAX_VALUE : next.get(i);
+            n[i] = next.get(i);
             p[i] = pages.get(i);
         }
-        return new Shelf(e, title, picks, all, paths.toArray(new String[0]), n, p, cat.films());
+        return new Shelf(e, title, picks, all, paths.toArray(new String[0]), n, p, skip, cat.films());
     }
 
     /**
@@ -258,7 +289,7 @@ public final class Shelves {
         if (!s.more()) return s;
         TitleIndex index = TitleIndex.of(Catalog.get(c));
         List<Pick> picks = new ArrayList<>(s.picks);
-        Set<String> seen = new HashSet<>();
+        Set<String> seen = new HashSet<>(s.skip);
         for (Pick p : picks) if (p.title != null) seen.add(p.title.key);
         int[] next = s.next.clone();
         int added = 0;
@@ -280,7 +311,7 @@ public final class Shelves {
                 }
             }
         }
-        Shelf out = new Shelf(s.entry, s.title, picks, s.all, s.paths, next, s.pages, s.madeFor);
+        Shelf out = new Shelf(s.entry, s.title, picks, s.all, s.paths, next, s.pages, s.skip, s.madeFor);
         KEPT.put(s.entry.toString(), out);
         return out;
     }
@@ -315,31 +346,61 @@ public final class Shelves {
         List<Pick> out = new ArrayList<>();
         for (TmdbLists.Item it : page.items) {
             Catalog.Title t = index.find(it.tv, it.name, it.original, it.yearNumber());
-            if (t != null) out.add(new Pick(t, it, null, null, null));
+            if (t != null) out.add(new Pick(t, it, null));
         }
         return out;
     }
 
-    /**
-     * Ten in order: TMDB's trending this week, matched to the playlists (the app has no chart of its own yet; TopTen,
-     * where it comes, takes this place).
-     */
-    static List<Pick> topTen(Context c, boolean tv) {
-        List<List<Pick>> one = new ArrayList<>();
-        tmdb(c, tv ? "trending/tv/week" : "trending/movie/week", one, new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
-        List<Pick> got = one.get(0);
-        if (got.size() < 10) {
-            // A short first page or two: read on for ten.
-            TitleIndex index = TitleIndex.of(Catalog.get(c));
-            Set<String> seen = new HashSet<>();
-            for (Pick p : got) seen.add(p.title.key);
-            for (int page = FIRST_PAGES + 1; page <= 5 && got.size() < 10; page++) {
-                TmdbLists.Page more = TmdbLists.page(c, tv ? "trending/tv/week" : "trending/movie/week", page);
-                if (more == null || more.items.isEmpty()) break;
-                for (Pick p : matched(index, more)) if (seen.add(p.title.key)) got.add(p);
+    /** TMDB's recommendations' path for a title the family watched (null when TMDB doesn't know it, or can't be asked). */
+    private static String recommendations(Context c, Catalog.Title t) {
+        int year = 0;
+        if (t.year.length() >= 4) {
+            try {
+                year = Integer.parseInt(t.year.substring(0, 4));
+            } catch (NumberFormatException ignored) {
+                // no year to go by
             }
         }
-        return got.size() > 10 ? new ArrayList<>(got.subList(0, 10)) : got;
+        int id = TmdbLists.idOf(c, t.series, t.name, year);
+        return id > 0 ? (t.series ? "tv/" : "movie/") + id + "/recommendations" : null;
+    }
+
+    /**
+     * Pure (but for keywords' ids): a TMDB path with its words made real: {today} as today's date, {today-N} N days
+     * before, {a/b} the ids of the keywords named a or b ("123%7C456": either); null when none of a keyword group's names
+     * is a keyword TMDB has (the row would be something else).
+     */
+    static String resolve(Context c, String path, long now) {
+        StringBuilder b = new StringBuilder();
+        int i = 0;
+        while (i < path.length()) {
+            int open = path.indexOf('{', i);
+            if (open < 0) {
+                b.append(path, i, path.length());
+                break;
+            }
+            int close = path.indexOf('}', open);
+            if (close < 0) return null;
+            b.append(path, i, open);
+            String word = path.substring(open + 1, close);
+            if (word.startsWith("today")) {
+                long back = 0;
+                if (word.length() > 6 && word.charAt(5) == '-') back = number(word.substring(6)) * 86_400_000L;
+                b.append(new SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(new Date(now - back)));
+            } else {
+                StringBuilder ids = new StringBuilder();
+                for (String name : word.split("/")) {
+                    int id = TmdbLists.keyword(c, name);
+                    if (id <= 0) continue;
+                    if (ids.length() > 0) ids.append("%7C");
+                    ids.append(id);
+                }
+                if (ids.length() == 0) return null;
+                b.append(ids);
+            }
+            i = close + 1;
+        }
+        return b.toString();
     }
 
     private static List<Pick> going(Context c, String kind) {
@@ -349,7 +410,7 @@ public final class Shelves {
         for (Resume.Point p : Resume.all(c)) {
             Catalog.Title t = cat.title(p.title);
             if (t == null || !fits(t, kind) || !seen.add(t.key)) continue;
-            out.add(new Pick(t, null, p, null, null));
+            out.add(new Pick(t, null, p));
             if (out.size() >= ROW) break;
         }
         return out;
@@ -362,7 +423,7 @@ public final class Shelves {
         for (String k : MyList.keys(c)) {
             Catalog.Title t = cat.title(k);
             if (t == null || !fits(t, kind) || !seen.add(t.key)) continue;
-            out.add(new Pick(t, null, null, null, null));
+            out.add(new Pick(t, null, null));
             if (out.size() >= ROW) break;
         }
         return out;
@@ -370,6 +431,28 @@ public final class Shelves {
 
     private static boolean fits(Catalog.Title t, String kind) {
         return kind.isEmpty() || kind.equals("all") || kind.equals("tv") == t.series;
+    }
+
+    /**
+     * The titles the family watched lately, newest first: where they left off now, and the ones before (a film watched to
+     * its end leaves Continue watching, but stays here), kept on this TV only, TASTE_KEPT at most.
+     */
+    public static synchronized List<Catalog.Title> taste(Context c) {
+        SharedPreferences p = c.getApplicationContext().getSharedPreferences("editorial", Context.MODE_PRIVATE);
+        String had = p.getString("taste", "");
+        List<String> keys = new ArrayList<>();
+        for (Resume.Point r : Resume.all(c)) if (!r.title.isEmpty() && !keys.contains(r.title)) keys.add(r.title);
+        for (String k : had.split("\n")) if (!k.isEmpty() && !keys.contains(k)) keys.add(k);
+        while (keys.size() > TASTE_KEPT) keys.remove(keys.size() - 1);
+        String now = String.join("\n", keys);
+        if (!now.equals(had)) p.edit().putString("taste", now).apply();
+        Catalog cat = Catalog.get(c);
+        List<Catalog.Title> out = new ArrayList<>();
+        for (String k : keys) {
+            Catalog.Title t = cat.title(k);
+            if (t != null && !out.contains(t)) out.add(t);
+        }
+        return out;
     }
 
     /** The playlists' newest: films', shows', or both in turn. */
@@ -386,25 +469,7 @@ public final class Shelves {
 
     private static List<Pick> titles(List<Catalog.Title> list, int max) {
         List<Pick> out = new ArrayList<>(Math.min(max, list.size()));
-        for (int i = 0; i < list.size() && out.size() < max; i++) out.add(new Pick(list.get(i), null, null, null, null));
-        return out;
-    }
-
-    private static List<Pick> categories(Catalog cat, boolean series) {
-        List<Pick> out = new ArrayList<>();
-        for (Catalog.Category k : cat.categories(series)) {
-            if (k.titles.isEmpty() || k.name.equals(Catalog.TORBOX)) continue;
-            out.add(new Pick(k.titles.get(0), null, null, k, null));
-            if (out.size() >= ROW) break;
-        }
-        return out;
-    }
-
-    private static List<Pick> moods(Catalog cat, String kind) {
-        List<Pick> out = new ArrayList<>();
-        boolean films = !cat.films().isEmpty(), shows = !cat.series().isEmpty();
-        if (kind.equals("movie") ? !films : kind.equals("tv") ? !shows : !films && !shows) return out;
-        for (CategorySet.Mood m : CategorySet.MOODS) out.add(new Pick(null, null, null, null, m));
+        for (int i = 0; i < list.size() && out.size() < max; i++) out.add(new Pick(list.get(i), null, null));
         return out;
     }
 
@@ -446,19 +511,17 @@ public final class Shelves {
         return s.toLowerCase(Locale.ROOT).replace('|', ' ').replace('-', ' ').replace('/', ' ').replace(':', ' ');
     }
 
-    /** Pure: titles from each stream in turn (films and shows together), none twice, at most max. */
-    static List<Pick> interleave(List<List<Pick>> streams, int max) {
+    /** Pure: titles from each stream in turn (films and shows together), none twice and none of skip, at most max. */
+    static List<Pick> interleave(List<List<Pick>> streams, int max, Set<String> skip) {
         List<Pick> out = new ArrayList<>();
-        Set<String> seen = new HashSet<>();
+        Set<String> seen = new HashSet<>(skip == null ? Collections.emptySet() : skip);
         int longest = 0;
         for (List<Pick> s : streams) longest = Math.max(longest, s.size());
         for (int i = 0; i < longest && out.size() < max; i++) {
             for (List<Pick> s : streams) {
                 if (i >= s.size() || out.size() >= max) continue;
                 Pick p = s.get(i);
-                String key = p.title != null && p.category == null ? p.title.key : p.mood != null ? "mood:" + p.mood.name
-                        : p.category != null ? "cat:" + p.category.name : "";
-                if (key.isEmpty() || seen.add(key)) out.add(p);
+                if (p.title != null && seen.add(p.title.key)) out.add(p);
             }
         }
         return out;
@@ -486,36 +549,5 @@ public final class Shelves {
         } catch (NumberFormatException e) {
             return 0;
         }
-    }
-
-    /**
-     * A mood's titles (its tile opened): TMDB's popular ones of its genres matched, a few pages of each, else the
-     * playlists' categories named for it; films', shows' or both (kind "movie", "tv", "all"). Off the main thread.
-     */
-    public static List<Catalog.Title> mood(Context c, CategorySet.Mood m, String kind) {
-        String source = m.source;
-        if (kind.equals("movie")) source = only(source, "movie");
-        else if (kind.equals("tv")) source = only(source, "tv");
-        CategorySet.Entry e = new CategorySet.Entry("mood", m.name, m.name, source, 0, CategorySet.POSTERS);
-        Shelf s = make(c, e);
-        for (int i = 0; i < 3 && s.more(); i++) s = more(c, s);
-        KEPT.remove(e.toString());
-        if (s.all != null && !s.all.isEmpty() && s.picks.size() <= ROW) return s.all;
-        List<Catalog.Title> out = new ArrayList<>();
-        for (Pick p : s.picks) if (p.title != null) out.add(p.title);
-        return out;
-    }
-
-    /** Pure: a genre source with only its films' or shows' part ("genre:movie=35;tv=35;words=comedy", "tv"). */
-    static String only(String source, String kind) {
-        if (!source.startsWith("genre:")) return kind.equals("tv") && source.startsWith("tmdb:movie/") ? source.replace("tmdb:movie/", "tmdb:tv/")
-                : source;
-        StringBuilder b = new StringBuilder("genre:");
-        for (String f : source.substring(6).split(";")) {
-            if (f.startsWith("movie=") && !kind.equals("movie") || f.startsWith("tv=") && !kind.equals("tv")) continue;
-            if (b.length() > 6) b.append(';');
-            b.append(f);
-        }
-        return b.toString();
     }
 }

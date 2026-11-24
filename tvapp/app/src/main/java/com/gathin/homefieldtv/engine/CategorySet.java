@@ -1,13 +1,13 @@
 package com.gathin.homefieldtv.engine;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 /**
- * The rows of the Editorial Home, Movies and TV Shows, in one table: each row's page, its id, its title, where its titles
- * come from (its source query) and its place on the page. To reorder or rename a row, change it here; nothing else
- * needs to know. A row whose source finds nothing in the family's playlists is left out (Shelves), never shown empty.
+ * The rows of the Editorial Home, Movies and TV Shows, in one table, in the order the family's other film app shows them:
+ * each row's page, its id (the remote's place is kept by it), its title, where its titles come from (its source query)
+ * and its place on the page. To reorder or rename a row, change it here; nothing else needs to know. A row whose source
+ * finds nothing in the family's playlists is left out (Shelves), never shown empty.
  *
  * <p>A source query is one of these, or several joined by "+" (their titles taken in turn: films and shows together)
  * or by "|" (the first that finds anything: TMDB's list, else the playlists' own):
@@ -16,26 +16,29 @@ import java.util.List;
  *   mylist[:movie|:tv]       My List
  *   new:movie|tv|all         the playlists' newest (by when the provider added them)
  *   torbox:movie|tv|all      the family's own TorBox titles that no playlist has
- *   tmdb:PATH                one of TMDB's lists ("trending/all/day", "movie/popular", "tv/airing_today", "discover/movie?
- *                            with_genres=28"), matched to what the playlists hold
- *   top10:movie|tv           ten in order (TopTen where the app has one; TMDB's trending this week, matched, until then)
- *   network:ID               TMDB's shows of a network (discover/tv?with_networks=ID), the row named as TMDB names it
+ *   tmdb:PATH                one of TMDB's lists ("trending/movie/day", "movie/top_rated", "discover/movie?with_genres=35"),
+ *                            matched to what the playlists hold. In PATH, {today} is today's date, {today-365} a year ago,
+ *                            and {a/b} TMDB's keywords named a or b (their ids found by their names, kept a month)
+ *   list:ID~WORDS            a TMDB list, while its name has WORDS (a list that changed is never shown as another)
+ *   network:ID[/ID]          TMDB's shows of a network (or several), most popular first; {network} in the row's title is
+ *                            the first one's name as TMDB gives it
+ *   latest:ID[/ID]           the same, the newest first
+ *   because:N                TMDB's recommendations for the Nth title the family watched lately ({title}: its name)
+ *   foryou:all|movie|tv      TMDB's recommendations for the titles the family watched lately, together
  *   genre:movie=ID;tv=ID;words=a,b   TMDB's popular titles of a genre (films' and shows' ids; either may be left out),
  *                            matched; without TMDB, the playlists' categories whose names have one of the words
- *   moods:movie|tv|all       the mood tiles (MOODS below): each opens its titles
- *   categories:movie|tv      the playlists' own categories, as tiles that open them
  * </pre>
- * Networks are named as TMDB names them, and any whose name is Apple's or Netflix's is left out (Shelves.allowedName),
- * whatever this table says.
+ * A network TMDB names Apple's or Netflix's is left out (Shelves.allowedName), whatever this table says; the other app's
+ * rows for those two services are not in the table at all.
  */
 public final class CategorySet {
     private CategorySet() {}
 
     public static final String HOME = "home", MOVIES = "movies", SHOWS = "shows";
-    /** How a row draws: the carousel at the top, posters, wide pictures, ten with their numbers, tiles. */
-    public static final int HERO = 0, POSTERS = 1, WIDE = 2, TOP10 = 3, TILES = 4;
+    /** How a row draws: the carousel at the top, or a row of titles (the remote's grows into its wide picture). */
+    public static final int HERO = 0, ROW = 1;
 
-    /** One row: its page, its id (kept with the remote's place), its title ("" for TMDB's name), source, place, look. */
+    /** One row: its page, its id (kept with the remote's place), its title, source, place, look. */
     public static final class Entry {
         public final String page, id, title, source;
         public final int order, kind;
@@ -59,150 +62,110 @@ public final class CategorySet {
         }
     }
 
-    // TMDB's genre ids (films, then shows: TMDB's show genres join some of the films' into one, Sci-Fi & Fantasy).
-    private static final String ACTION = "genre:movie=28;tv=10759;words=action,adventure",
-            COMEDY = "genre:movie=35;tv=35;words=comedy,comedies,sitcom",
-            DRAMA = "genre:movie=18;tv=18;words=drama",
-            SCIFI = "genre:movie=878;tv=10765;words=scifi,sci-fi,science fiction,fantasy",
-            HORROR = "genre:movie=27;words=horror",
+    // Themed rows from TMDB's discover: films, the most popular first unless said.
+    private static final String FILMS = "tmdb:discover/movie?";
+    private static final String TRUE_STORY = FILMS + "with_keywords={based on true story}&sort_by=popularity.desc&vote_count.gte=100",
+            ACCLAIMED = FILMS + "sort_by=vote_average.desc&vote_count.gte=3000",
+            NINETY = FILMS + "with_runtime.gte=80&with_runtime.lte=95&sort_by=popularity.desc&vote_count.gte=300",
+            SCIFI_TOP = FILMS + "with_genres=878&sort_by=popularity.desc&vote_average.gte=6.5&vote_count.gte=500",
+            COMEDY = "genre:movie=35;words=comedy,comedies",
+            OSCARS = "list:28~best picture",
+            VISUAL = FILMS + "with_keywords={visually stunning/cinematography}&sort_by=popularity.desc&vote_count.gte=200|" + FILMS
+                    + "with_genres=14,12&sort_by=vote_average.desc&vote_count.gte=3000",
+            TWISTS = FILMS + "with_keywords={plot twist/twist ending}&sort_by=popularity.desc&vote_count.gte=200",
+            BRITISH_GANGSTERS = FILMS + "with_keywords={gangster/organized crime}&with_origin_country=GB&sort_by=popularity.desc"
+                    + "&vote_count.gte=30",
+            CULT = FILMS + "with_keywords={cult film}&sort_by=vote_count.desc",
+            SURVIVAL = FILMS + "with_keywords={survival}&sort_by=popularity.desc&vote_count.gte=200",
+            NOSTALGIA = FILMS + "primary_release_date.gte=1980-01-01&primary_release_date.lte=1999-12-31&sort_by=popularity.desc"
+                    + "&vote_count.gte=1000",
+            REVENGE = FILMS + "with_keywords={revenge}&sort_by=popularity.desc&vote_count.gte=200",
+            ZERO_GRAVITY = FILMS + "with_keywords={space travel/outer space/astronaut}&sort_by=popularity.desc&vote_count.gte=200",
+            NO_BRAINERS = FILMS + "with_genres=28%7C35&vote_average.lte=6.5&vote_count.gte=500&sort_by=popularity.desc",
             THRILLER = "genre:movie=53;words=thriller,thrillers",
-            CRIME = "genre:movie=80;tv=80;words=crime",
-            ANIMATION = "genre:movie=16;tv=16;words=animation,animated,cartoon,anime",
-            FAMILY = "genre:movie=10751;tv=10751;words=family,kids",
-            DOCUMENTARY = "genre:movie=99;tv=99;words=documentary,documentaries",
-            ROMANCE = "genre:movie=10749;words=romance,romantic",
-            MYSTERY = "genre:movie=9648;tv=9648;words=mystery";
+            CONSPIRACY = FILMS + "with_keywords={conspiracy/conspiracy theory}&sort_by=popularity.desc&vote_count.gte=100",
+            CRIME_TOP = FILMS + "with_genres=80&sort_by=popularity.desc&vote_average.gte=6.5&vote_count.gte=500",
+            THRILLER_TOP = FILMS + "with_genres=53&sort_by=popularity.desc&vote_average.gte=6.5&vote_count.gte=500",
+            CRIME_RATED = FILMS + "with_genres=80&sort_by=vote_average.desc&vote_count.gte=2000",
+            BANK_ROBBERY = FILMS + "with_keywords={bank robbery/heist}&sort_by=vote_count.desc",
+            LAUGHS = FILMS + "with_genres=35&sort_by=vote_count.desc",
+            OLD_FRESH = FILMS + "primary_release_date.lte=1995-12-31&vote_average.gte=7.5&vote_count.gte=1000&sort_by=popularity.desc",
+            MORE_THAN_ONCE = FILMS + "vote_count.gte=10000&sort_by=vote_average.desc",
+            GOOD_LAUGH = FILMS + "with_genres=35&primary_release_date.gte=2010-01-01&sort_by=popularity.desc&vote_count.gte=300",
+            ROMCOM = FILMS + "with_genres=10749,35&sort_by=popularity.desc&vote_count.gte=200",
+            COMEDY_TOP = FILMS + "with_genres=35&sort_by=popularity.desc&vote_average.gte=6.8&vote_count.gte=500",
+            NINETIES = FILMS + "primary_release_date.gte=1990-01-01&primary_release_date.lte=1999-12-31&sort_by=vote_average.desc"
+                    + "&vote_count.gte=2000",
+            MYSTERY_THRILLERS = FILMS + "with_genres=9648,53&sort_by=popularity.desc&vote_count.gte=200",
+            VACATIONS = FILMS + "with_keywords={vacation/holiday/road trip}&sort_by=popularity.desc&vote_count.gte=100",
+            FAMILY = FILMS + "with_genres=10751&sort_by=popularity.desc&vote_count.gte=500";
 
-    /**
-     * Streaming networks by TMDB's id, named as TMDB names them: HBO, Disney+, Prime Video, Max, Paramount+, Hulu, Sky
-     * Atlantic, BBC One, ITV1, Channel 4. (Netflix's and Apple's are never asked for.)
-     */
-    static final int[] NETWORKS = {49, 2739, 1024, 3186, 4330, 453, 1063, 4, 9, 26};
+    /** The networks the TV Shows rows ask for, by TMDB's id: HBO Max (with HBO), Prime Video, Disney+. */
+    static final int[] NETWORKS = {3186, 49, 1024, 2739};
 
-    /** The whole table: page, id, title, source, kind; a page's rows in the order listed (order counts in tens). */
+    /** The whole table: page, id, title, source, kind; a page's rows in the order listed. */
     private static final Object[][] TABLE = {
-            // ---- Home ----------------------------------------------------------------------------------------------
-            {HOME, "hero", "", "tmdb:trending/all/day|new:all", HERO},
-            {HOME, "continue", "Continue watching", "continue", WIDE},
-            {HOME, "top10.films", "Top 10 films", "top10:movie", TOP10},
-            {HOME, "trending", "Trending today", "tmdb:trending/all/day", POSTERS},
-            {HOME, "popular.films", "Popular films", "tmdb:movie/popular", POSTERS},
-            {HOME, "popular.shows", "Popular shows", "tmdb:tv/popular", POSTERS},
-            {HOME, "top10.shows", "Top 10 shows", "top10:tv", TOP10},
-            {HOME, "new", "New releases", "new:all", POSTERS},
-            {HOME, "top.rated", "Top rated", "tmdb:movie/top_rated+tmdb:tv/top_rated", POSTERS},
-            {HOME, "moods", "Moods", "moods:all", TILES},
-            {HOME, "torbox", Catalog.TORBOX, "torbox:all", POSTERS},
-            {HOME, "network.49", "", "network:49", POSTERS},
-            {HOME, "network.2739", "", "network:2739", POSTERS},
-            {HOME, "network.1024", "", "network:1024", POSTERS},
-            {HOME, "network.3186", "", "network:3186", POSTERS},
-            {HOME, "network.4330", "", "network:4330", POSTERS},
-            {HOME, "network.1063", "", "network:1063", POSTERS},
-            {HOME, "network.4", "", "network:4", POSTERS},
-            {HOME, "network.9", "", "network:9", POSTERS},
-            {HOME, "genre.action", "Action & adventure", ACTION, POSTERS},
-            {HOME, "genre.comedy", "Comedy", COMEDY, POSTERS},
-            {HOME, "genre.drama", "Drama", DRAMA, POSTERS},
-            {HOME, "genre.scifi", "Sci-Fi & fantasy", SCIFI, POSTERS},
-            {HOME, "genre.crime", "Crime", CRIME, POSTERS},
-            {HOME, "genre.animation", "Animation", ANIMATION, POSTERS},
-            {HOME, "genre.family", "Family", FAMILY, POSTERS},
-            {HOME, "genre.documentary", "Documentary", DOCUMENTARY, POSTERS},
+            // ---- Home: 23 rows, as the other app has them (no carousel) -------------------------------------------
+            {HOME, "continue", "Continue Watching", "continue", ROW},
+            {HOME, "latest.releases", "Latest Releases", FILMS + "sort_by=primary_release_date.desc&primary_release_date.lte={today}"
+                    + "&with_release_type=4%7C5&vote_count.gte=10|new:movie", ROW},
+            {HOME, "trending.movies", "Trending Movies", "tmdb:trending/movie/day", ROW},
+            {HOME, "latest.shows", "Latest TV Shows",
+                    "tmdb:discover/tv?sort_by=first_air_date.desc&first_air_date.lte={today}&vote_count.gte=10|new:tv", ROW},
+            {HOME, "because.0", "Because you watched {title}", "because:0", ROW},
+            {HOME, "foryou", "We think you will like these", "foryou:all", ROW},
+            {HOME, "because.1", "Because you watched {title}", "because:1", ROW},
+            {HOME, "true.story", "Based on True Story", TRUE_STORY, ROW},
+            {HOME, "acclaimed", "Critically Acclaimed", ACCLAIMED, ROW},
+            {HOME, "ninety", "90 Minute Movies", NINETY, ROW},
+            {HOME, "scifi.top", "Sci-Fi Movies: Top Picks", SCIFI_TOP, ROW},
+            {HOME, "comedy", "Comedy Movies", COMEDY, ROW},
+            {HOME, "oscars", "Oscar Winners: Best Picture", OSCARS, ROW},
+            {HOME, "visual", "Visually Pleasing", VISUAL, ROW},
+            {HOME, "twists", "Crazy Plot Twists", TWISTS, ROW},
+            {HOME, "british.gangsters", "British Gangster Movies", BRITISH_GANGSTERS, ROW},
+            {HOME, "cult", "Cult Classics", CULT, ROW},
+            {HOME, "survival", "Survival Movies", SURVIVAL, ROW},
+            {HOME, "nostalgia", "Nostalgia", NOSTALGIA, ROW},
+            {HOME, "revenge", "Revenge Movies", REVENGE, ROW},
+            {HOME, "zero.gravity", "Zero Gravity Watchlist", ZERO_GRAVITY, ROW},
+            {HOME, "no.brainers", "No brainers", NO_BRAINERS, ROW},
+            {HOME, "thriller", "Thriller Movies", THRILLER, ROW},
 
-            // ---- Movies --------------------------------------------------------------------------------------------
-            {MOVIES, "hero", "", "tmdb:trending/movie/day|new:movie", HERO},
-            {MOVIES, "continue", "Continue watching", "continue:movie", WIDE},
-            {MOVIES, "trending", "Trending", "tmdb:trending/movie/day", POSTERS},
-            {MOVIES, "top10", "Top 10 films", "top10:movie", TOP10},
-            {MOVIES, "popular", "Popular", "tmdb:movie/popular", POSTERS},
-            {MOVIES, "now.playing", "New releases", "tmdb:movie/now_playing?region=GB|new:movie", POSTERS},
-            {MOVIES, "recent", "Recently added", "new:movie", POSTERS},
-            {MOVIES, "top.rated", "Top rated", "tmdb:movie/top_rated", POSTERS},
-            {MOVIES, "upcoming", "Upcoming", "tmdb:movie/upcoming?region=GB", POSTERS},
-            {MOVIES, "moods", "Moods", "moods:movie", TILES},
-            {MOVIES, "genre.action", "Action", "genre:movie=28;words=action", POSTERS},
-            {MOVIES, "genre.comedy", "Comedy", "genre:movie=35;words=comedy,comedies", POSTERS},
-            {MOVIES, "genre.drama", "Drama", "genre:movie=18;words=drama", POSTERS},
-            {MOVIES, "genre.horror", "Horror", HORROR, POSTERS},
-            {MOVIES, "genre.scifi", "Sci-Fi", "genre:movie=878;words=scifi,sci-fi,science fiction", POSTERS},
-            {MOVIES, "genre.thriller", "Thriller", THRILLER, POSTERS},
-            {MOVIES, "genre.animation", "Animation", "genre:movie=16;words=animation,animated,cartoon,anime", POSTERS},
-            {MOVIES, "genre.family", "Family", "genre:movie=10751;words=family,kids", POSTERS},
-            {MOVIES, "genre.documentary", "Documentary", "genre:movie=99;words=documentary,documentaries", POSTERS},
-            {MOVIES, "genre.romance", "Romance", ROMANCE, POSTERS},
-            {MOVIES, "genre.crime", "Crime", "genre:movie=80;words=crime", POSTERS},
-            {MOVIES, "genre.adventure", "Adventure", "genre:movie=12;words=adventure", POSTERS},
-            {MOVIES, "genre.fantasy", "Fantasy", "genre:movie=14;words=fantasy", POSTERS},
-            {MOVIES, "genre.mystery", "Mystery", "genre:movie=9648;words=mystery", POSTERS},
-            {MOVIES, "genre.war", "War", "genre:movie=10752;words=war", POSTERS},
-            {MOVIES, "genre.history", "History", "genre:movie=36;words=history", POSTERS},
-            {MOVIES, "torbox", Catalog.TORBOX, "torbox:movie", POSTERS},
-            {MOVIES, "mylist", "My List", "mylist:movie", POSTERS},
-            {MOVIES, "categories", "Your playlists' categories", "categories:movie", TILES},
+            // ---- Movies: the carousel, then 22 rows ---------------------------------------------------------------
+            {MOVIES, "hero", "", "tmdb:movie/now_playing?region=GB|tmdb:trending/movie/week|new:movie", HERO},
+            {MOVIES, "trending", "Trending Movies", "tmdb:trending/movie/day", ROW},
+            {MOVIES, "conspiracy", "Conspiracy Theories", CONSPIRACY, ROW},
+            {MOVIES, "crime.top", "Crime Movies: Top Picks", CRIME_TOP, ROW},
+            {MOVIES, "survival", "Survival Movies", SURVIVAL, ROW},
+            {MOVIES, "thriller.top", "Thriller Movies: Top Picks", THRILLER_TOP, ROW},
+            {MOVIES, "revenge", "Revenge Movies", REVENGE, ROW},
+            {MOVIES, "twists", "Crazy Plot Twists", TWISTS, ROW},
+            {MOVIES, "crime.rated", "Top Rated Crime Films", CRIME_RATED, ROW},
+            {MOVIES, "foryou", "We know you'll love these", "foryou:movie", ROW},
+            {MOVIES, "bank.robbery", "Top Bank Robbery Movies", BANK_ROBBERY, ROW},
+            {MOVIES, "laughs", "Laughs & Laughter", LAUGHS, ROW},
+            {MOVIES, "old.fresh", "Old But Fresh", OLD_FRESH, ROW},
+            {MOVIES, "more.than.once", "Watch More Than Once", MORE_THAN_ONCE, ROW},
+            {MOVIES, "good.laugh", "Need a Good Laugh?", GOOD_LAUGH, ROW},
+            {MOVIES, "romcom", "Romantic Comedies", ROMCOM, ROW},
+            {MOVIES, "comedy.top", "Comedy Movies: Top Picks", COMEDY_TOP, ROW},
+            {MOVIES, "nineties", "90s Classics", NINETIES, ROW},
+            {MOVIES, "cult", "Cult Classics", CULT, ROW},
+            {MOVIES, "mystery.thrillers", "Mystery Thrillers", MYSTERY_THRILLERS, ROW},
+            {MOVIES, "vacations", "Vacations Gone Wrong", VACATIONS, ROW},
+            {MOVIES, "scifi.top", "Sci-Fi Movies: Top Picks", SCIFI_TOP, ROW},
+            {MOVIES, "family", "Family Favorites", FAMILY, ROW},
 
-            // ---- TV Shows ------------------------------------------------------------------------------------------
-            {SHOWS, "hero", "", "tmdb:trending/tv/day|new:tv", HERO},
-            {SHOWS, "continue", "Continue watching", "continue:tv", WIDE},
-            {SHOWS, "trending", "Trending", "tmdb:trending/tv/day", POSTERS},
-            {SHOWS, "top10", "Top 10 shows", "top10:tv", TOP10},
-            {SHOWS, "popular", "Popular", "tmdb:tv/popular", POSTERS},
-            {SHOWS, "airing.today", "Airing today", "tmdb:tv/airing_today", POSTERS},
-            {SHOWS, "on.the.air", "On the air", "tmdb:tv/on_the_air", POSTERS},
-            {SHOWS, "top.rated", "Top rated", "tmdb:tv/top_rated", POSTERS},
-            {SHOWS, "recent", "Recently added", "new:tv", POSTERS},
-            {SHOWS, "network.49", "", "network:49", POSTERS},
-            {SHOWS, "network.2739", "", "network:2739", POSTERS},
-            {SHOWS, "network.1024", "", "network:1024", POSTERS},
-            {SHOWS, "network.3186", "", "network:3186", POSTERS},
-            {SHOWS, "network.4330", "", "network:4330", POSTERS},
-            {SHOWS, "network.453", "", "network:453", POSTERS},
-            {SHOWS, "network.1063", "", "network:1063", POSTERS},
-            {SHOWS, "network.4", "", "network:4", POSTERS},
-            {SHOWS, "network.9", "", "network:9", POSTERS},
-            {SHOWS, "network.26", "", "network:26", POSTERS},
-            {SHOWS, "moods", "Moods", "moods:tv", TILES},
-            {SHOWS, "genre.drama", "Drama", "genre:tv=18;words=drama", POSTERS},
-            {SHOWS, "genre.comedy", "Comedy", "genre:tv=35;words=comedy,comedies,sitcom", POSTERS},
-            {SHOWS, "genre.crime", "Crime", "genre:tv=80;words=crime", POSTERS},
-            {SHOWS, "genre.action", "Action & adventure", "genre:tv=10759;words=action,adventure", POSTERS},
-            {SHOWS, "genre.scifi", "Sci-Fi & fantasy", "genre:tv=10765;words=scifi,sci-fi,science fiction,fantasy", POSTERS},
-            {SHOWS, "genre.mystery", "Mystery", "genre:tv=9648;words=mystery", POSTERS},
-            {SHOWS, "genre.animation", "Animation", "genre:tv=16;words=animation,animated,cartoon,anime", POSTERS},
-            {SHOWS, "genre.family", "Family", "genre:tv=10751;words=family", POSTERS},
-            {SHOWS, "genre.kids", "Kids", "genre:tv=10762;words=kids,children", POSTERS},
-            {SHOWS, "genre.documentary", "Documentary", "genre:tv=99;words=documentary,documentaries,docu", POSTERS},
-            {SHOWS, "genre.reality", "Reality", "genre:tv=10764;words=reality", POSTERS},
-            {SHOWS, "torbox", Catalog.TORBOX, "torbox:tv", POSTERS},
-            {SHOWS, "mylist", "My List", "mylist:tv", POSTERS},
-            {SHOWS, "categories", "Your playlists' categories", "categories:tv", TILES},
+            // ---- TV Shows: the carousel, Trending, then a row for each streaming service --------------------------
+            // The other app also has rows for Apple's and Netflix's services, between Trending and HBO Max's and after it:
+            // left out here, as their names and marks may not appear in Homefield.
+            {SHOWS, "hero", "", "tmdb:tv/on_the_air|tmdb:trending/tv/week|new:tv", HERO},
+            {SHOWS, "trending", "Trending Shows", "tmdb:trending/tv/day", ROW},
+            {SHOWS, "network.3186", "Latest {network} Shows", "latest:3186/49", ROW},
+            {SHOWS, "network.1024", "Latest {network} Shows", "latest:1024", ROW},
+            {SHOWS, "network.2739", "{network} Shows", "network:2739", ROW},
     };
-
-    /**
-     * The mood tiles: a name, the colours of its tile (top left, foot right) and its titles' source. On Home the tiles
-     * take films and shows; on Movies and TV Shows only theirs (a genre the other has none of simply finds none there).
-     */
-    public static final class Mood {
-        public final String name, source;
-        public final int from, to;
-
-        Mood(String name, int from, int to, String source) {
-            this.name = name;
-            this.from = from;
-            this.to = to;
-            this.source = source;
-        }
-    }
-
-    public static final List<Mood> MOODS = Collections.unmodifiableList(java.util.Arrays.asList(
-            new Mood("Film night", 0xFF7A3CFF, 0xFF2B0F6B, "tmdb:movie/top_rated"),
-            new Mood("Edge of your seat", 0xFFE5484D, 0xFF4A0D1A, "genre:movie=53;tv=80;words=thriller,crime"),
-            new Mood("Laugh out loud", 0xFFFFB547, 0xFF8A3B00, COMEDY),
-            new Mood("Feel-good", 0xFF30C48D, 0xFF0B4A3A, "genre:movie=10751;tv=10751;words=family"),
-            new Mood("Mind-bending", 0xFF2FA4FF, 0xFF0B2A6B, SCIFI),
-            new Mood("Scary", 0xFF8E8E9A, 0xFF16161C, HORROR),
-            new Mood("True stories", 0xFFD9A066, 0xFF4A2A10, DOCUMENTARY),
-            new Mood("Animated", 0xFFFF6FB5, 0xFF5A0F3D, ANIMATION)));
 
     /** A page's rows, in their order (HERO first where the page has one). */
     public static List<Entry> of(String page) {
@@ -222,10 +185,12 @@ public final class CategorySet {
         if (source == null) return false;
         for (String part : source.split("[|+]")) {
             String p = part.trim();
-            if (p.startsWith("tmdb:") || p.startsWith("top10:") || p.startsWith("network:") || p.startsWith("genre:")) return true;
+            for (String k : TMDB_KINDS) if (p.startsWith(k)) return true;
         }
         return false;
     }
+
+    private static final String[] TMDB_KINDS = {"tmdb:", "list:", "network:", "latest:", "because:", "foryou:", "genre:"};
 
     /** Pure: a source's parts: its "|" choices, each a list of "+" parts taken in turn. */
     static List<List<String>> parts(String source) {

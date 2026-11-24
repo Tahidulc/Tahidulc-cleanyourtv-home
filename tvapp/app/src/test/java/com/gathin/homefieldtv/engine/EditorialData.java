@@ -2,15 +2,14 @@ package com.gathin.homefieldtv.engine;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
- * The Editorial rows' made-up TMDB (tests and previews): every list CategorySet asks for as preview pages, each a turn
- * of the family's own invented titles (so they match the playlists) with a few titles no playlist has between them (so
- * matching is tried), and invented names for the networks. Nothing is asked of TMDB.
+ * The Editorial rows' made-up TMDB (tests and previews): every list Shelves asks for answered with a turn of the family's
+ * own invented titles (so they match the playlists), a few titles no playlist has between them (so matching is tried),
+ * a list named as the table expects, every keyword and watched title given an id, and invented names for the networks.
+ * Nothing is asked of TMDB.
  */
 public final class EditorialData {
     private EditorialData() {}
@@ -21,46 +20,14 @@ public final class EditorialData {
     public static final Map<Integer, String> NETWORKS = new HashMap<>();
 
     static {
-        String[] names = {"Harbour+", "Northline Max", "Velvet TV", "Kestrel One", "Lantern Plus", "Fieldside", "Copper Atlantic",
-                "Riverside One", "Meadow 1", "Tidal 4"};
+        String[] names = {"Northline Max", "Harbour+", "Kestrel Prime", "Velvet+"};
         for (int i = 0; i < CategorySet.NETWORKS.length; i++) NETWORKS.put(CategorySet.NETWORKS[i], names[i % names.length]);
     }
 
-    /** Every TMDB list the table asks for, from these titles (films and shows of the catalogue as loaded). */
+    /** Every TMDB list made from these titles (films and shows of the catalogue as loaded). */
     public static void load(List<Catalog.Title> films, List<Catalog.Title> shows) {
-        Map<String, TmdbLists.Page> pages = new HashMap<>();
-        Set<String> paths = new LinkedHashSet<>();
-        for (String page : new String[]{CategorySet.HOME, CategorySet.MOVIES, CategorySet.SHOWS}) {
-            for (CategorySet.Entry e : CategorySet.of(page)) paths.addAll(paths(e.source));
-        }
-        for (CategorySet.Mood m : CategorySet.MOODS) {
-            paths.addAll(paths(m.source));
-            paths.addAll(paths(Shelves.only(m.source, "tv")));
-        }
-        int turn = 0;
-        for (String path : paths) {
-            String media = TmdbLists.mediaOf(path);
-            List<TmdbLists.Item> items = new ArrayList<>();
-            List<Catalog.Title> from = new ArrayList<>();
-            if (!media.equals("tv")) from.addAll(films);
-            if (!media.equals("movie")) from.addAll(shows);
-            int n = from.size(), step = 1;
-            for (int k : new int[]{7, 5, 3}) if (gcd(k, n) == 1) {
-                step = k;
-                break;
-            }
-            for (int i = 0; i < n; i++) {
-                Catalog.Title t = from.get((i * step + turn * 3) % n);
-                if (i % 6 == 2) items.add(item(9000 + i, t.series, ELSEWHERE[i % ELSEWHERE.length], ""));
-                items.add(item(100 + i + turn * 50, t.series, t.name, t.year, t.poster, t.backdrop));
-            }
-            turn++;
-            // One page of twenty (as TMDB gives them), the rest a second page.
-            List<TmdbLists.Item> first = items.subList(0, Math.min(20, items.size()));
-            pages.put(TmdbLists.previewKey(path, 1), new TmdbLists.Page(new ArrayList<>(first), 1, items.size() > 20 ? 2 : 1));
-            if (items.size() > 20) pages.put(TmdbLists.previewKey(path, 2), new TmdbLists.Page(new ArrayList<>(items.subList(20, items.size())), 2, 2));
-        }
-        TmdbLists.preview(pages, NETWORKS);
+        List<Catalog.Title> f = new ArrayList<>(films), s = new ArrayList<>(shows);
+        TmdbLists.preview((path, page) -> page(path, page, f, s), NETWORKS);
         Shelves.forget();
     }
 
@@ -70,10 +37,50 @@ public final class EditorialData {
         Shelves.forget();
     }
 
-    /** No TMDB at all (the launcher gave no key): every TMDB list empty. */
+    /** No TMDB at all (the launcher gave no key): every TMDB list empty, no network named. */
     public static void none() {
-        TmdbLists.preview(new HashMap<>(), new HashMap<>());
+        TmdbLists.preview((path, page) -> null, new HashMap<>());
         Shelves.forget();
+    }
+
+    /** These pages exactly, by "path#page" (any other: nothing). */
+    static void pages(Map<String, TmdbLists.Page> pages, Map<Integer, String> networks) {
+        TmdbLists.preview((path, page) -> pages.get(path + "#" + page), networks);
+        Shelves.forget();
+    }
+
+    /** A list's page: a turn of the titles of its kind (by its path), with titles no playlist has between them. */
+    static TmdbLists.Page page(String path, int page, List<Catalog.Title> films, List<Catalog.Title> shows) {
+        String media = TmdbLists.mediaOf(path);
+        List<Catalog.Title> from = new ArrayList<>();
+        if (!media.equals("tv")) from.addAll(films);
+        if (!media.equals("movie") && !path.startsWith("list/")) from.addAll(shows);
+        int n = from.size();
+        if (n == 0) return new TmdbLists.Page(new ArrayList<>(), page, 1);
+        int step = 1;
+        for (int k : new int[]{7, 5, 3}) {
+            if (gcd(k, n) == 1) {
+                step = k;
+                break;
+            }
+        }
+        int turn = Math.abs(path.hashCode()) % n;
+        List<TmdbLists.Item> items = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            Catalog.Title t = from.get((i * step + turn) % n);
+            if (i % 6 == 2) items.add(item(9000 + i, t.series, ELSEWHERE[i % ELSEWHERE.length], ""));
+            items.add(item(100 + i, t.series, t.name, t.year, t.poster, t.backdrop));
+        }
+        String name = path.startsWith("list/") ? "Best Picture Winners" : "";
+        int pages = items.size() > 20 ? 2 : 1;
+        if (page > pages) return new TmdbLists.Page(new ArrayList<>(), page, pages, name);
+        List<TmdbLists.Item> part = page == 1 ? items.subList(0, Math.min(20, items.size())) : items.subList(20, items.size());
+        return new TmdbLists.Page(new ArrayList<>(part), page, pages, name);
+    }
+
+    /** Previews: TMDB's extras for a title as if it had answered: its logo (an address) and its age rating. */
+    public static Tmdb.Extras extras(String logo, String age) {
+        return new Tmdb.Extras(logo, null, null, "", age);
     }
 
     private static int gcd(int a, int b) {
@@ -85,37 +92,7 @@ public final class EditorialData {
     }
 
     static TmdbLists.Item item(int id, boolean tv, String name, String year, String poster, String backdrop) {
-        return new TmdbLists.Item(id, tv, name, name, year, poster, backdrop, "A story told in the made-up TMDB.", "7.6", new int[]{18});
-    }
-
-    /** Pure: the TMDB lists a source asks for, as Shelves asks for them. */
-    public static List<String> paths(String source) {
-        List<String> out = new ArrayList<>();
-        for (List<String> choice : CategorySet.parts(source)) {
-            for (String part : choice) {
-                int colon = part.indexOf(':');
-                String kind = colon < 0 ? part : part.substring(0, colon), arg = colon < 0 ? "" : part.substring(colon + 1);
-                switch (kind) {
-                    case "tmdb":
-                        out.add(arg);
-                        break;
-                    case "top10":
-                        out.add(arg.equals("tv") ? "trending/tv/week" : "trending/movie/week");
-                        break;
-                    case "network":
-                        out.add("discover/tv?with_networks=" + arg + "&sort_by=popularity.desc");
-                        break;
-                    case "genre":
-                        for (String f : arg.split(";")) {
-                            if (f.startsWith("movie=")) out.add("discover/movie?with_genres=" + f.substring(6) + "&sort_by=popularity.desc&vote_count.gte=100");
-                            if (f.startsWith("tv=")) out.add("discover/tv?with_genres=" + f.substring(3) + "&sort_by=popularity.desc&vote_count.gte=50");
-                        }
-                        break;
-                    default:
-                        break;
-                }
-            }
-        }
-        return out;
+        return new TmdbLists.Item(id, tv, name, name, year, poster, backdrop, "A story told in the made-up TMDB, of a harbour town and "
+                + "the family who keep its lighthouse lit through the longest winter anyone remembers.", "7.6", new int[]{tv ? 18 : 53});
     }
 }
