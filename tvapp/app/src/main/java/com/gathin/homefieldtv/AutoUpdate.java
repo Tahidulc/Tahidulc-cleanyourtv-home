@@ -90,6 +90,7 @@ final class AutoUpdate {
         if (dir == null) return "";
         try {
             StatFs s = new StatFs(dir.getPath());
+            if (s.getTotalBytes() <= 0) return "";
             return String.format(Locale.UK, "TV %.1f of %.1f GB free", s.getAvailableBytes() / 1e9, s.getTotalBytes() / 1e9);
         } catch (RuntimeException e) {
             return "";

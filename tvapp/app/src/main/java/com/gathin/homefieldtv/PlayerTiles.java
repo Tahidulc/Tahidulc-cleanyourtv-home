@@ -256,8 +256,8 @@ final class PlayerTiles extends View {
         c.drawRect(0, 0, tw, th, footShade);
         c.restore();
         c.restore();
-        // The channel's logo alone on its colour at the top left (where there is a picture).
-        if (b != null) {
+        // The channel's logo alone on its colour at the top left (over a programme's own picture, not the channel's).
+        if (b != null && !pic.startsWith(Pics.ON_COLOUR)) {
             cell.set(r.left + Ui.f(10f), r.top + Ui.f(10f), r.left + Ui.f(10f + 92f), r.top + Ui.f(10f + 56f));
             ChannelLook.cell(c, cell, Ui.f(12f), ch, 0f, 0, null, false, redraw);
         }

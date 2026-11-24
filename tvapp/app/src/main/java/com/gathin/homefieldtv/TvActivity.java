@@ -280,6 +280,8 @@ public final class TvActivity extends Activity {
         Cast.hold(this);
         Updates.resumed(this);
         AutoUpdate.opened(this, false);
+        // A reminder due now comes as a panel inside the app (ReminderScreen).
+        ReminderCard.front = new java.lang.ref.WeakReference<>(this);
         nextMinute();
         Library.get(this).ensure();
         Catalog.get(this).ensure();
@@ -307,6 +309,7 @@ public final class TvActivity extends Activity {
     @Override protected void onPause() {
         super.onPause();
         resumed = false;
+        ReminderCard.front = null;
         Cast.release();
         h.removeCallbacks(minute);
         Screen t = top();

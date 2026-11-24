@@ -64,8 +64,16 @@ final class ReminderCard {
         return Settings.canDrawOverlays(c);
     }
 
-    /** The card for a reminder now: over other apps, else the notification. */
+    /** Homefield TV while it is the app on screen (TvActivity's onResume to onPause): the panel goes inside it. */
+    static java.lang.ref.WeakReference<TvActivity> front;
+
+    /** The panel for a reminder now: inside Homefield TV when it is on screen, else over other apps, else the notification. */
     static void show(Context c, Reminders.Reminder r) {
+        TvActivity in = front == null ? null : front.get();
+        if (in != null && !in.isFinishing()) {
+            in.push(new ReminderScreen(in, r));
+            return;
+        }
         Context app = c.getApplicationContext();
         if (overApps(app)) {
             if (up != null) {

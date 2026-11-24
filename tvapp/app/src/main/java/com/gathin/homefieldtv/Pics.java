@@ -937,7 +937,10 @@ final class Pics {
      * A channel logo read sharp for a cell's box w x h: sampled down only while both its sides stay at least the box's
      * (so even after its margins are trimmed it is drawn from enough pixels), in full colour; null when it can't be.
      */
-    /** The logo (read as any picture is) on its own colour, w x h: its colour's fall, the logo in the middle at half the height. */
+    /**
+     * The logo (read as any picture is) on its own colour, w x h: its colour's fall, the logo at about half the height, in
+     * the middle, or (a wide cell or card, its words at the left) toward the right, clear of them.
+     */
     private static Bitmap onColour(String logo, int w, int h) {
         if (w < 2 || h < 2 || logo.isEmpty()) return null;
         Bitmap mark = null;
@@ -961,9 +964,10 @@ final class Pics {
         p.setShader(new android.graphics.LinearGradient(0, 0, w, h, t.rowTop, t.rowFoot, android.graphics.Shader.TileMode.CLAMP));
         c.drawRect(0, 0, w, h, p);
         if (mark != null) {
-            float k = Math.min(w * 0.42f / mark.getWidth(), h * 0.46f / mark.getHeight());
-            float mw = mark.getWidth() * k, mh = mark.getHeight() * k;
-            android.graphics.RectF dst = new android.graphics.RectF((w - mw) / 2f, (h - mh) / 2f, (w + mw) / 2f, (h + mh) / 2f);
+            boolean wide = w >= 2 * h;
+            float k = Math.min(w * (wide ? 0.24f : 0.42f) / mark.getWidth(), h * 0.46f / mark.getHeight());
+            float mw = mark.getWidth() * k, mh = mark.getHeight() * k, cx = wide ? w * 0.72f : w / 2f;
+            android.graphics.RectF dst = new android.graphics.RectF(cx - mw / 2f, (h - mh) / 2f, cx + mw / 2f, (h + mh) / 2f);
             c.drawBitmap(mark, null, dst, new android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG));
             mark.recycle();
         }
