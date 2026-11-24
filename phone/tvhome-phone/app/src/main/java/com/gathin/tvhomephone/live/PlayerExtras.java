@@ -640,8 +640,9 @@ final class PlayerExtras implements LiveAlerts.Listener {
             // Its look, and Homefield's mark over the channel's logo.
             LinearLayout looks = chipRow(c, box, R.string.live4_board_look);
             List<TextView> ls = new ArrayList<>();
+            boolean custom = ScoreBoard.customId(c) != null;
             for (OverlayBug.Style look : OverlayBug.Style.values()) {
-                TextView t = Ui.guideChip(c, look.label, ScoreBoard.style(c) == look);
+                TextView t = Ui.guideChip(c, look.label, !custom && ScoreBoard.style(c) == look);
                 t.setOnClickListener(v -> {
                     ScoreBoard.setStyle(c, look);
                     for (TextView x : ls) Ui.styleChip(c, x, x == v);
@@ -650,6 +651,31 @@ final class PlayerExtras implements LiveAlerts.Listener {
                 ls.add(t);
                 addChip(looks, t);
             }
+            // My scoreboards, their own group: each one to use now, and the editor (the board on screen changing as it is
+            // edited, given back when it closes).
+            LinearLayout mine = chipRow(c, box, R.string.live_my_boards);
+            for (com.gathin.broadcast.MyBoards.Saved sv : MyBoardStore.all(c)) {
+                TextView t = Ui.guideChip(c, sv.name, sv.id.equals(ScoreBoard.customId(c)));
+                t.setOnClickListener(v -> {
+                    ScoreBoard.setCustom(c, sv.id);
+                    for (TextView x : ls) Ui.styleChip(c, x, x == v);
+                    overlay.restyle();
+                });
+                ls.add(t);
+                addChip(mine, t);
+            }
+            action(c, box, R.drawable.live_ic_edit, a.getString(R.string.live_board_editor), () -> {
+                host.closeSheet();
+                MyBoardsRow.edit(a, ScoreBoard.customId(c), host.game(), () -> new BoardEditor.Live() {
+                    @Override public void show(com.gathin.broadcast.BoardSpec s) {
+                        overlay.previewBoard(s);
+                    }
+
+                    @Override public void done() {
+                        overlay.restyle();
+                    }
+                }, null);
+            });
             // Beside the look and size: whether what comes out of the channel's own scoreboard is covered (BugCover).
             toggle(c, box, a.getString(R.string.live_bug_pop_outs_short), ScoreBoard.coverPopOuts(c), on -> ScoreBoard.setCoverPopOuts(c, on));
             // The picture tag on the logo's cover.
