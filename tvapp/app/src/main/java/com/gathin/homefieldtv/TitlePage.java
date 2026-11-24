@@ -771,7 +771,8 @@ final class TitlePage extends View {
         c.save();
         c.translate(0, -risen);
         // The words and buttons at the top fade as the page rises past them (never under the back line).
-        int topAlpha = Math.round(255 * Math.max(0f, Math.min(1f, 1f - page.value() / 320f)));
+        // (With the menu down the left the page rises less far for the episodes: the top is gone by then all the same.)
+        int topAlpha = Math.round(255 * Math.max(0f, Math.min(1f, 1f - page.value() / (vertical ? MENU_SHIFT * 0.8f : 320f))));
         if (topAlpha > 0) drawTop(c, topAlpha);
         if (vertical) c.translate(0, Ui.f(MENU_SHIFT));
         if (!seasons.isEmpty() && seasonWords.length > 1) drawSeasons(c);
