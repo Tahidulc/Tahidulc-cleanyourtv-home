@@ -50,7 +50,7 @@ final class ReminderScreen extends Screen {
     @Override View build() {
         FrameLayout f = new FrameLayout(tv);
         face = new ReminderCard.Face(tv, r, answer);
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(Ui.px(ReminderCard.Face.W), Ui.px(ReminderCard.Face.H),
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(Ui.px(ReminderCard.Face.W), face.heightPx(),
                 Gravity.TOP | Gravity.END);
         lp.topMargin = Ui.px(56);
         lp.rightMargin = Ui.px(64);

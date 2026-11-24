@@ -215,7 +215,7 @@ final class ReminderCard {
             Looks.ready(app);
             wm = app.getSystemService(WindowManager.class);
             face = new Face(app, r, this);
-            lp = new WindowManager.LayoutParams(Ui.px(Face.W), Ui.px(Face.H), WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            lp = new WindowManager.LayoutParams(Ui.px(Face.W), face.heightPx(), WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                     PixelFormat.TRANSLUCENT);
             lp.gravity = Gravity.TOP | Gravity.END;
@@ -301,6 +301,11 @@ final class ReminderCard {
      * them, the one the remote is on white. A thin amber line along its foot runs out as its time does. Used by the window
      * over other apps (and over Homefield TV itself) and by ReminderActivity. Nothing made while it draws but its words
      * once a second.
+     *
+     * <p>Its words are never cut short (3.9, "the reminders was cut off"): the title takes up to three lines where it needs
+     * them, the message two, and the panel grows taller for them (heightPx, which its window and its places take), its buttons
+     * below them; only a title longer than three lines, or a message longer than two,
+     * ends in an ellipsis.
      */
     static final class Face extends View {
         interface Answer {
@@ -312,8 +317,14 @@ final class ReminderCard {
             void again();
         }
 
-        /** Its window (design px). */
+        /** Its window (design px): H with one line of title and one of message, taller for more of either. */
         static final float W = 800f, H = 450f;
+        /** Where its words stand (design px): the title's first baseline, the time and channel's line below its last, the
+         *  message's first baseline below that, the buttons' middle below the message's last, the panel's foot below
+         *  them; the title's room (of the width) left of the picture's faces; its lines' spacing and the message's. */
+        static final float TITLE_Y = 250f, SUB_GAP = 36f, MSG_GAP = 38f, BUTTONS_GAP = 60f, FOOT_GAP = 66f, PAD = 36f,
+                TITLE_ROOM = 0.62f, TITLE_SPACING = 0.95f, MSG_SPACING = 1.2f;
+        static final int TITLE_LINES = 3, MSG_LINES = 2;
         static final int WATCH = 0, AGAIN = 1, DISMISS = 2;
         static final String[] BUTTONS = {"Watch", "Remind again in 5 min", "Dismiss"}, KEYS = {"OK", "", "BACK"};
         private final Reminders.Reminder r;
@@ -333,7 +344,12 @@ final class ReminderCard {
         /** The button the remote is on. */
         int focus = WATCH;
         /** What the guide says of the programme (its channel, schedule and index), read once; the words cut to fit once. */
-        private String sub = "", msg = "", pic, titleFit, subFit, msgFit, name = "", countdown = "";
+        private String sub = "", msg = "", pic, subFit = "", name = "", countdown = "";
+        /** A logo not there (yet): the channel's name on its tile, in up to two lines, centred. */
+        private android.text.StaticLayout standIn;
+        /** Its words laid out for a width (once a width): the title's and the message's lines, where each stands. */
+        private android.text.StaticLayout titleL, msgL;
+        private float titleTop, subBase, msgTop, buttonsY, tall;
         private long countdownFor = -1;
         private com.gathin.homefieldtv.engine.Channel ch;
         private com.gathin.homefieldtv.engine.Guide.Schedule sched;
@@ -395,6 +411,62 @@ final class ReminderCard {
             else answer.close();
         }
 
+        /**
+         * Its words laid out for width w (screen px), once a width: the title in up to three lines in its room, the time and
+         * channel's line, the message in up to two lines across, the buttons under them; and the height they need.
+         */
+        private void lay(float w) {
+            if (w == laidW && titleL != null) return;
+            laidW = w;
+            read();
+            float pad = Ui.f(PAD), across = w - pad * 2f;
+            String title = r.title == null || r.title.isEmpty() ? "Your programme" : r.title;
+            titleL = InfoCard.lines(title, titleP, Math.round(w * TITLE_ROOM), TITLE_LINES, TITLE_SPACING);
+            msgL = InfoCard.lines(msg, msgP, Math.round(across), MSG_LINES, MSG_SPACING);
+            subFit = Ui.fit(sub, subP, across);
+            // A logo not there (yet): the channel's name on its tile, in two lines and smaller rather than cut (26 px
+            // down to 15, then cut).
+            int tile = Math.round(Ui.f(120f - 16f));
+            float full = nameP.getTextSize();
+            for (float size = 26f; ; size -= 1f) {
+                nameP.setTextSize(full * size / 26f);
+                standIn = android.text.StaticLayout.Builder.obtain(name, 0, name.length(), nameP, tile)
+                        .setAlignment(android.text.Layout.Alignment.ALIGN_CENTER).setLineSpacing(0f, 0.95f)
+                        .setIncludePad(false).setMaxLines(2).setEllipsize(android.text.TextUtils.TruncateAt.END).build();
+                if (size <= 15f || fits(standIn, tile)) break;
+            }
+            titleTop = Ui.f(TITLE_Y) - titleL.getLineBaseline(0);
+            subBase = titleTop + titleL.getLineBaseline(titleL.getLineCount() - 1) + Ui.f(SUB_GAP);
+            msgTop = subBase + Ui.f(MSG_GAP) - msgL.getLineBaseline(0);
+            buttonsY = msgTop + msgL.getLineBaseline(msgL.getLineCount() - 1) + Ui.f(BUTTONS_GAP);
+            tall = buttonsY + Ui.f(FOOT_GAP);
+        }
+
+        /** Pure enough: a laid-out block whole in its width (no line cut, none wider). */
+        private static boolean fits(android.text.StaticLayout l, int width) {
+            for (int i = 0; i < l.getLineCount(); i++) {
+                if (l.getEllipsisCount(i) > 0 || l.getLineWidth(i) > width + 0.5f) return false;
+            }
+            return true;
+        }
+
+        /** Its height (screen px) for its words at its width: Face.H, taller for more lines of title or message. */
+        int heightPx() {
+            lay(Ui.f(W));
+            return Math.round(tall);
+        }
+
+        /** How many lines its title and its message take (for the tests). */
+        int titleLines() {
+            lay(Ui.f(W));
+            return titleL.getLineCount();
+        }
+
+        int messageLines() {
+            lay(Ui.f(W));
+            return msgL.getLineCount();
+        }
+
         /** The programme's line, what it is about and its picture, from the guide where the app has it (once). */
         private void read() {
             if (read) return;
@@ -448,12 +520,9 @@ final class ReminderCard {
         @Override protected void onDraw(Canvas c) {
             read();
             if (pic == null && index >= 0) pic = ProgrammePictures.peek(ch, sched, index);
-            float w = getWidth(), h = getHeight(), pad = Ui.f(36f);
+            float w = getWidth(), h = getHeight(), pad = Ui.f(PAD);
             if (w <= 0 || h <= 0) return;
-            if (w != laidW) {
-                laidW = w;
-                titleFit = null;
-            }
+            lay(w);
             c.save();
             c.clipPath(clip);
             // The programme's picture filling it; else the channel's logo large on its own colour (never blank).
@@ -495,25 +564,18 @@ final class ReminderCard {
             c.drawRoundRect(rect, ph / 2f, ph / 2f, fill);
             c.drawText(countdown, rect.centerX() - pillP.measureText(countdown) / 2f, Type.centred(pillP, rect.centerY()), pillP);
 
-            // The channel's logo on its tile, the title, its time and channel, the message.
-            float room = w * 0.62f;
+            // The channel's logo on its tile, the title (more lines where it needs them), its time and channel, the message.
             float ly = Ui.f(118f), lw = Ui.f(120f), lh = Ui.f(74f);
             rect.set(pad, ly, pad + lw, ly + lh);
             if (!Logos.draw(c, r.logo, rect, redraw)) {
-                String n = Ui.fit(name, nameP, lw - Ui.f(16f));
-                c.drawText(n, rect.centerX() - nameP.measureText(n) / 2f, Type.centred(nameP, rect.centerY()), nameP);
+                Ui.draw(c, standIn, rect.centerX() - standIn.getWidth() / 2f, rect.centerY() - standIn.getHeight() / 2f);
             }
-            if (titleFit == null) {
-                titleFit = Ui.fit(r.title, titleP, room);
-                subFit = Ui.fit(sub, subP, room);
-                msgFit = Ui.fit(msg, msgP, w - pad * 2f);
-            }
-            c.drawText(titleFit, pad, Ui.f(250f), titleP);
-            c.drawText(subFit, pad, Ui.f(286f), subP);
-            c.drawText(msgFit, pad, Ui.f(324f), msgP);
+            Ui.draw(c, titleL, pad, titleTop);
+            c.drawText(subFit, pad, subBase, subP);
+            Ui.draw(c, msgL, pad, msgTop);
 
-            // The buttons: Watch (OK), Remind again in 5 min, Dismiss (BACK).
-            float cy = Ui.f(384f), bx = pad;
+            // The buttons under the words: Watch (OK), Remind again in 5 min, Dismiss (BACK).
+            float cy = buttonsY, bx = pad;
             for (int i = 0; i < BUTTONS.length; i++) bx += button(c, bx, cy, KEYS[i], BUTTONS[i], i == focus) + Ui.f(14f);
 
             // Its time running out, along its foot.

@@ -40,7 +40,7 @@ public final class ReminderActivity extends Activity implements ReminderCard.Fac
         ReminderCard.Looks.ready(this);
         FrameLayout root = new FrameLayout(this);
         ReminderCard.Face face = new ReminderCard.Face(this, r, this);
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(Ui.px(ReminderCard.Face.W), Ui.px(ReminderCard.Face.H),
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(Ui.px(ReminderCard.Face.W), face.heightPx(),
                 Gravity.TOP | Gravity.END);
         lp.topMargin = Ui.px(56);
         lp.rightMargin = Ui.px(64);
