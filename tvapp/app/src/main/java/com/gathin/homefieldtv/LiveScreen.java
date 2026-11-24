@@ -908,25 +908,17 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
 
     private final class Panels extends View {
         private final InfoCard card;
-        /** The mini guide at the top right while the card is at the foot (07c), its rows' pictures once it rests. */
-        private final MiniGuide mini;
-        private final Frost frost = new Frost(Look07.MAT_DARK);
+        private final Frost frost = new Frost(Look07.MAT_DARK), box = new Frost(Look07.MAT_DARK);
         private final TextPaint titleP = Type.paint(36f, Type.BOLD, Look07.L1), lineP = Type.clock(20f, Type.MEDIUM, Look07.L2);
         private final TextPaint descP = Type.paint(Type.BODY, Type.REGULAR, Look07.L2), nameP = Type.paint(19f, Type.SEMIBOLD, Look07.L2);
+        private final TextPaint typedP = Type.paint(22f, Type.SEMIBOLD, Look07.L2), typedNumP = Type.clock(30f, Type.BOLD, Look07.L1);
         private final RectF r = new RectF();
         private String descKey = "";
         private StaticLayout descTitle, descText;
-        private boolean settled;
-        private Channel settledOn;
-        private final Runnable rest = () -> {
-            settled = true;
-            invalidate();
-        };
 
         Panels(Context c) {
             super(c);
             card = new InfoCard(this);
-            mini = new MiniGuide(this);
         }
 
         @Override protected void onDraw(Canvas c) {
@@ -934,8 +926,9 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
             long now = System.currentTimeMillis();
             boolean moving = false;
             if (mode == BANNER) {
-                // The card for the channel shown (CH+ and CH−: another one), the mini guide round it, the keys' hints, and
-                // which channel is playing.
+                // The information panel alone, for the channel shown (CH+ and CH−: another one): no Change channel panel
+                // beside it and no box saying which channel is playing (3.6: the family's "get rid of the right next
+                // channel panel"; and no channel numbers).
                 Channel ch = peek != null ? peek : playing;
                 // Its pop: risen from below the foot, a little smaller, as it comes; dropping away as it goes.
                 boolean popping = pop.step();
@@ -952,16 +945,8 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
                 moving = card.draw(c, InfoCard.FOOT_Y, ch, now, false, ch == playing ? keptChips() : null);
                 c.restoreToCount(saved);
                 moving |= popping;
-                if (ch != settledOn) {
-                    settledOn = ch;
-                    settled = Exec.inline;
-                    removeCallbacks(rest);
-                    postDelayed(rest, ProgrammePictures.REST_MS);
-                }
-                moving |= mini.draw(c, ch, playing, settled);
                 // No key hints over the card (the family: "I don't want the overlay, channel list, options buttons"):
                 // OK, Left and MENU still do what they did.
-                if (digits.isEmpty() && playing != null) mini.watching(c, "Watching", Words.number(Library.get(getContext()).number(playing)));
             } else if (mode == OVERLAY || mode == BAR && barWithCard) {
                 moving = card.draw(c, InfoCard.TOP_Y, playing, now, false, keptChips());
             } else if (mode == DESC && playing != null) {
@@ -1007,7 +992,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
         /** The number being typed in the box at the top right ("Channel 10-"), and the channel it is so far under it. */
         private void drawDigits(Canvas c) {
             String d = digits.length() >= 3 ? digits : (digits + "---").substring(0, 3);
-            mini.watching(c, "Channel", d);
+            typedBox(c, "Channel", d);
             int n;
             try {
                 n = Integer.parseInt(digits);
@@ -1017,9 +1002,22 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
             Channel ch = Library.get(getContext()).numbered(n);
             if (ch == null) return;
             String name = Ui.fit(ChannelEdits.name(ch), nameP, Ui.f(320f));
-            c.drawText(name, Ui.f(1920f - MiniGuide.RIGHT - 4f) - nameP.measureText(name), Ui.f(148f), nameP);
+            c.drawText(name, Ui.f(1920f - TYPED_RIGHT - 4f) - nameP.measureText(name), Ui.f(148f), nameP);
+        }
+
+        /** The frosted box at the top right while a number is typed: "Channel" and the digits so far ("10-"). */
+        private void typedBox(Canvas c, String label, String number) {
+            float lw = typedP.measureText(label), nw = typedNumP.measureText(number);
+            float w = Ui.f(22f) + lw + Ui.f(12f) + nw + Ui.f(22f), right = Ui.f(1920f - TYPED_RIGHT), top = Ui.f(54f), h = Ui.f(64f);
+            r.set(right - w, top, right, top + h);
+            box.draw(c, r, Ui.f(18f), 1f);
+            c.drawText(label, r.left + Ui.f(22f), Type.centred(typedP, r.centerY()), typedP);
+            c.drawText(number, r.left + Ui.f(22f) + lw + Ui.f(12f), Type.centred(typedNumP, r.centerY()), typedNumP);
         }
     }
+
+    /** The typed number's box: its right edge's margin (design px). */
+    static final float TYPED_RIGHT = 70f;
 
     // ---- the live screen's rows (Settings → Remote → Up and Down: the rows, as Homefield TV came) ------------------------
 

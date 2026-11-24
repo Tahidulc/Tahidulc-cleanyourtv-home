@@ -60,7 +60,7 @@ public class PanelsLogosTest {
     @Test public void aProgrammesPictureTakesUpItsWholeCellWithItsFacesWhole() {
         float a = 16f / 9f;
         float[] out = new float[PicFill.SIZE];
-        // The guide's cells (84 high) from a sliver to the window's width, the mini guide's, the info card.
+        // The guide's cells (84 high) from a sliver to the window's width, a short row's programme, the info card.
         float[][] cells = {{60, 84}, {150, 84}, {300, 84}, {450, 84}, {600, 84}, {900, 84}, {1340, 84}, {362, 88}, {1824, 322}, {400, 225}};
         for (float[] box : new float[][]{TWO, GROUP}) {
             for (float[] cell : cells) {
@@ -88,10 +88,10 @@ public class PanelsLogosTest {
         assertEquals(PicFill.AMBIENT, out[PicFill.KIND], 0f);
         float mid = (out[PicFill.FL] + out[PicFill.FR]) / 2f;
         assertEquals((PicFill.room(1340, 84, false) + 1f) / 2f * 1340, mid, 30f);
-        // The mini guide's programme (its words take more of it): its faces past them, at its right.
+        // A short row's programme (its words take more of it): its faces past them, at its right.
         PicFill.layout(a, TWO, 362, 88, false, out);
         assertTrue("past the words: " + out[PicFill.FL], out[PicFill.FL] >= 0.58f * 362);
-        assertFacesWhole("mini", out, 362, 88);
+        assertFacesWhole("short row", out, 362, 88);
         assertTrue("its left edge feathered into the blur", out[PicFill.FEATHER_L] > 10f);
         // A tile as tall as the picture's shape: covering, the faces in view.
         PicFill.layout(a, TWO, 400, 225, false, out);

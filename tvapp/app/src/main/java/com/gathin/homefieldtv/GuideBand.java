@@ -20,9 +20,9 @@ import com.gathin.homefieldtv.prefs.ChannelEdits;
 
 /**
  * The top of the TV guide in the 07 look (the approved stills 05c and 06c), under the tab bar: the preview at the left,
- * 586 x 330 rounded 30 with its deep shadow (the live picture goes over it, its corners and its "playing" pill drawn over
- * the picture by GuideScreen's frame; black while it tunes), and to its right, on a frosted panel of its own (Frost,
- * 1130 x 330, rounded 34), the programme the remote is on:
+ * 586 x 330 rounded 30 with its deep shadow (the live picture goes over it, clean: only its corners and a hairline
+ * drawn round it by GuideScreen's frame, no words on it; black while it tunes), and to its right, on a frosted panel of
+ * its own (Frost, 1130 x 330, rounded 34), the programme the remote is on:
  *
  * <pre>
  *   the kicker      the amber star for a favourite channel, then the playlist and the group ("Home  •  UK Sport"), 17 px

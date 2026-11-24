@@ -10,7 +10,6 @@ import android.graphics.Shader;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.KeyEvent;
-import android.text.TextPaint;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
@@ -1079,21 +1078,18 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
 
     /**
      * The preview's frame, over the live picture (its surface can't be rounded): its corners filled with the page's ground
-     * as it lies there (the blurred picture under its dim), a hairline round it, and its pill at the foot ("▶ 102 Riverside
-     * · playing"); with a menu's scrim over the guide, the scrim over the preview too. Placed with the live picture.
+     * as it lies there (the blurred picture under its dim) and a hairline round it; nothing over the picture itself (3.6:
+     * the family's "get rid of the playing text box", the "102 Riverside · playing" pill there before). With a menu's scrim
+     * over the guide, the scrim over the preview too. Placed with the live picture.
      */
     private final class PreviewFrame extends View {
         private final Rect at = new Rect();
         private boolean placed, dimmed;
         private final Path corners = new Path();
-        private final RectF r = new RectF(), pill = new RectF();
+        private final RectF r = new RectF();
         private final Paint base = new Paint(Paint.ANTI_ALIAS_FLAG), pic = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG),
-                dim = new Paint(Paint.ANTI_ALIAS_FLAG), ring = new Paint(Paint.ANTI_ALIAS_FLAG), fill = new Paint(Paint.ANTI_ALIAS_FLAG),
-                scrim = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final TextPaint tagP = Type.paint(17f, Type.SEMIBOLD, Look07.L1);
+                dim = new Paint(Paint.ANTI_ALIAS_FLAG), ring = new Paint(Paint.ANTI_ALIAS_FLAG), scrim = new Paint(Paint.ANTI_ALIAS_FLAG);
         private int dimFor = -1;
-        private String tagKey = "", tagText = "", tagFit = "";
-        private float tagFor = -1f;
 
         PreviewFrame(android.content.Context c) {
             super(c);
@@ -1138,36 +1134,10 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
             ring.setStrokeWidth(sw);
             ring.setColor(0x24FFFFFF);
             c.drawRoundRect(r.left + sw / 2f, r.top + sw / 2f, r.right - sw / 2f, r.bottom - sw / 2f, rad, rad, ring);
-            drawPill(c);
             if (dimmed) {
                 scrim.setColor(Look07.SCRIM);
                 c.drawRect(r, scrim);
             }
-        }
-
-        /** "▶ 102 Riverside · playing": glass, 40 high, 16 in from the preview's foot and left. */
-        private void drawPill(Canvas c) {
-            Channel ch = tv.live.channel();
-            if (ch == null) return;
-            boolean behind = tv.live.behind();
-            String key = ch.key + (behind ? "|b" : "|l");
-            float room = r.width() - Ui.f(32f + 34f + 24f);
-            if (!key.equals(tagKey) || room != tagFor) {
-                tagKey = key;
-                tagFor = room;
-                int n = Library.get(tv).number(ch);
-                tagText = (com.gathin.homefieldtv.prefs.Look.numbers && n > 0 ? n + " " : "") + ChannelEdits.name(ch)
-                        + (behind ? " · catch-up" : " · playing");
-                tagFit = Ui.fit(tagText, tagP, room);
-            }
-            float hh = Ui.f(40f), x = r.left + Ui.f(16f), cy = r.bottom - Ui.f(16f) - hh / 2f;
-            String t = tagFit;
-            pill.set(x, cy - hh / 2f, x + Ui.f(6f + 28f + 10f + 14f) + tagP.measureText(t), cy + hh / 2f);
-            Frost.glass(c, pill, hh / 2f, 1f);
-            fill.setColor(Look07.L1);
-            c.drawCircle(x + Ui.f(6f + 14f), cy, Ui.f(14f), fill);
-            Icons07.draw(c, Icons07.PLAY, x + Ui.f(6f + 15f), cy, Ui.f(14f), Look07.INK);
-            c.drawText(t, x + Ui.f(6f + 28f + 10f), Type.centred(tagP, cy), tagP);
         }
     }
 }
