@@ -198,6 +198,26 @@ public class SettingsParityTest {
         assertNull(ChannelEdits.State.first(names, Collections.singletonList("x:7")));
     }
 
+    // ---- reminders ------------------------------------------------------------------------------------------------
+
+    @Test public void remindersToComeSoonestFirstGoneAndCancelledLeftOut() throws Exception {
+        long now = 1_800_000_000_000L;
+        List<org.json.JSONObject> items = Arrays.asList(
+                new org.json.JSONObject().put("key", "show:Harbour One:2").put("data", new org.json.JSONObject().put("title", "Quiz night")
+                        .put("at", now + 7_200_000L).put("channel", "Harbour One")),
+                new org.json.JSONObject().put("key", "game:77").put("data", new org.json.JSONObject().put("title", "Harbourside v Millbrook")
+                        .put("at", now + 600_000L)),
+                new org.json.JSONObject().put("key", "show:Old:1").put("data", new org.json.JSONObject().put("title", "Yesterday's")
+                        .put("at", now - 86_400_000L)),
+                new org.json.JSONObject().put("key", "show:Gone:3").put("deleted", true).put("data", new org.json.JSONObject()));
+        List<Reminders.Kept> l = Reminders.upcoming(items, now);
+        assertEquals(2, l.size());
+        assertEquals("game:77", l.get(0).key);
+        assertEquals("Quiz night", l.get(1).title);
+        assertEquals("Harbour One", l.get(1).channel);
+        assertEquals("show:Harbour One:5", Reminders.key("Harbour One", 5));
+    }
+
     // ---- the categories' own order --------------------------------------------------------------------------------
 
     @Test public void categoriesInTheFamilysOrderThenTheRest() {

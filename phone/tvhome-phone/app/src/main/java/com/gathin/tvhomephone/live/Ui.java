@@ -247,6 +247,9 @@ final class Ui {
     /** A channel's logo: its playlist's own, else Sky's for its name (a 4K channel's is its channel's); null if none. */
     static String logo(Channel ch) {
         if (ch == null) return null;
-        return !ch.logo.isEmpty() ? ch.logo : com.gathin.tvhomephone.sports.ChannelLogos.sky(ch.name);
+        if (!ch.logo.isEmpty()) return ch.logo;
+        // By the playlist's name (the family's own may say nothing Sky knows), else the one it shows.
+        String sky = com.gathin.tvhomephone.sports.ChannelLogos.sky(ch.playlistName);
+        return sky != null ? sky : com.gathin.tvhomephone.sports.ChannelLogos.sky(ch.name);
     }
 }

@@ -93,4 +93,10 @@
     <string name="ps_cat_move">Move</string>
     <string name="ps_cat_playlist_calls">the playlist calls it %1$s</string>
     <string name="ps_cat_options">Options for %1$s</string>
+
+    <string name="ps_reminders_title">Reminders</string>
+    <string name="ps_reminders_body">The programmes and games you asked to be reminded of, here or on the family\'s other devices, soonest first. Cancel takes one off everywhere.</string>
+    <string name="ps_reminders_none">None yet. In Live TV\'s guide, open a programme to come and tap Remind me.</string>
+    <string name="ps_reminders_cancel">Cancel</string>
+    <string name="ps_reminders_cancel_named">Cancel the reminder for %1$s</string>
 </resources>
