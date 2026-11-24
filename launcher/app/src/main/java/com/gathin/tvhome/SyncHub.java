@@ -40,8 +40,8 @@ final class SyncHub {
     private SyncHub() { }
 
     static final String MYLIST = "mylist", RATING = "rating", FILMNIGHT = "filmnight", MUTE = "mute", REMINDER = "reminder",
-            CLUBS = "clubs";
-    private static final Set<String> TYPES = new HashSet<>(Arrays.asList(MYLIST, RATING, FILMNIGHT, MUTE, REMINDER, CLUBS));
+            CLUBS = "clubs", MYBOARD = com.gathin.broadcast.MyBoards.TYPE;
+    private static final Set<String> TYPES = new HashSet<>(Arrays.asList(MYLIST, RATING, FILMNIGHT, MUTE, REMINDER, CLUBS, MYBOARD));
     static {
         TYPES.addAll(SyncRules.RELAYED);
     }
@@ -190,6 +190,13 @@ final class SyncHub {
         Map<String, Object> clubs = new LinkedHashMap<>();
         clubs.put("teams", new ArrayList<>(Arrays.asList(starredClubs(c))));
         out.put(CLUBS_ID, clubs);
+        // My scoreboards: each saved board's data as it is kept (its JSON), under the name a relayed item's has.
+        for (Map.Entry<String, ?> e : MyBoardStore.raw(c).entrySet()) {
+            if (!(e.getValue() instanceof String) || !com.gathin.broadcast.MyBoards.validId(e.getKey())) continue;
+            Map<String, Object> d = new LinkedHashMap<>();
+            d.put(RAW, e.getValue());
+            out.put(SyncRules.id(MYBOARD, e.getKey()), d);
+        }
         // The relayed kinds as they came (the phones' playlists, favourites, resume points and settings).
         for (Map.Entry<String, ?> e : relay(c).getAll().entrySet()) {
             if (!(e.getValue() instanceof String)) continue;
@@ -447,6 +454,13 @@ final class SyncHub {
                 Reminders.putSynced(c, key, d.optString("title"), at, d.optString("channel", ""), d.optString("logo", ""),
                         d.optString("kind", ""));
                 return true;
+            }
+            case MYBOARD: {
+                // One of My scoreboards, from a phone or another TV: read safely (a bad spec is a safe board), else let go.
+                if (deleted) return MyBoardStore.delete(c, key, false);
+                com.gathin.broadcast.MyBoards.Saved s = com.gathin.broadcast.MyBoards.read(key, d);
+                if (s == null || d.toString().length() > SyncRules.RELAY_BYTES) return false;
+                return MyBoardStore.save(c, s, false);
             }
             case CLUBS: {
                 if (!"starred".equals(key)) return false;

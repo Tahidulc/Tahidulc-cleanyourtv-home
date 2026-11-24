@@ -917,7 +917,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
 
     /** The look or the logo's cover changed in Options. */
     void restyle() {
-        board.bug.style(ScoreBoard.style(a));
+        ScoreBoard.dress(board.bug, a);
         cover.look(lookHere());
         place();
         if (started && lookHere() != LogoCover.Look.OFF) {

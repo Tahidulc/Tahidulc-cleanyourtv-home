@@ -1148,7 +1148,7 @@ final class InfoTile {
             // (ScreenTime): the same everywhere in the player. As high as asked, or lower to fit the width in one row.
             Context ctx = c;
             OverlayBug bug = new OverlayBug(ctx);
-            bug.style(ScoreBoard.style(ctx));
+            ScoreBoard.dress(bug, ctx);
             int h = dp(hDp);
             if (maxWidth > 0) h = Math.min(h, Math.round(maxWidth / 9.4f));
             ScreenTime.bind(bug, g);

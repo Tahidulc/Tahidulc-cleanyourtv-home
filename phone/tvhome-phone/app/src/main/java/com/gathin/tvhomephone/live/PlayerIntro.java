@@ -167,7 +167,7 @@ final class PlayerIntro {
         String dark = com.gathin.tvhomephone.sports.Competitions.logo(g), light = com.gathin.tvhomephone.sports.Competitions.lightLogo(g.slug);
         m.compLogo = dark == null ? null : com.gathin.tvhomephone.sports.LiveGames.picture(c, dark, px);
         m.compLight = light == null ? null : com.gathin.tvhomephone.sports.LiveGames.picture(c, light, px);
-        JSONObject o = BroadcastData.strap(kind, m, score, scorer, minute, strapLook(c, g), board, "");
+        JSONObject o = BroadcastData.strap(kind, m, score, scorer, minute, strapLook(c, g), board, "", ScoreBoard.custom(c));
         o.put("boardFont", "sans");
         return o;
     }

@@ -195,6 +195,48 @@
     },
   };
 
+  // -- A custom board (the family's own, the apps' BoardSpec): Classic's strap and board in its colours, corners,
+  // border, finish and lettering, folding into it as Classic's does --------------------------------------------------------
+  const CU = C.custom && typeof C.custom === 'object' ? C.custom : null;
+  const cuCol = (v, d) => (typeof v === 'string' && /^(#[0-9a-f]{6}|rgba\([0-9., ]+\))$/i.test(v) ? v : d);
+  S.custom = {
+    fonts: CU && CU.font ? [(CU.weight || 800) + " 40px '" + CU.font + "'"] : [],
+    build() {
+      const c = CU || {};
+      const panel = cuCol(c.panel, '#0B1640'), foot = cuCol(c.panelFoot, panel), compBg = cuCol(c.comp, '#070C26');
+      const score = 'linear-gradient(' + cuCol(c.score, '#2443B4') + ',' + cuCol(c.scoreFoot, '#142A78') + ')';
+      const clock = cuCol(c.clock, '#050816'), ink = cuCol(c.ink, '#E6E9F2'), sInk = cuCol(c.scoreInk, '#FFFFFF');
+      const cInk = cuCol(c.clockInk, '#E6E9F2'), dim = cuCol(c.dim, '#c9d3ff'), accent = cuCol(c.accent, '#F5C518');
+      const rad = Math.max(0, Math.min(0.5, +c.radius || 0));
+      const bw = +c.border > 0 ? Math.max(1, Math.round(H * Math.min(0.1, +c.border))) : 0;
+      const ring = bw ? 'box-shadow:inset 0 0 0 ' + bw + 'px ' + cuCol(c.borderColour, 'rgba(255,255,255,.55)') + ';' : '';
+      const face = c.font ? "font-family:'" + String(c.font).replace(/[^A-Za-z ]/g, '') + "',Outfit,sans-serif;" : '';
+      const sideBg = (home) => (c.club ? 'background:' + (home ? M.hc : M.ac) + ';' : '');
+      const strip = (home) => (c.strips ? '<i style="width:10px;height:100%;flex:none;background:' + (home ? M.hc : M.ac) + '"></i>' : '');
+      const line = c.accentLine ? '<i style="position:absolute;left:0;right:0;bottom:0;height:6px;background:' + accent + '"></i>' : '';
+      const gloss = c.sheen ? '<i style="position:absolute;inset:0 0 52% 0;background:linear-gradient(rgba(255,255,255,.18),rgba(255,255,255,0))"></i>' : '';
+      const r = Math.round(H * rad * 0.5);
+      $('strap').innerHTML = '<div class="row" style="width:' + W + 'px;height:' + H + 'px;background:linear-gradient(' + panel + ',' + foot + ');' + face + 'color:' + ink + ';border-radius:' + r + 'px ' + r + 'px 0 0;overflow:hidden;position:relative;' + ring + '">' + gloss +
+        '<div style="width:' + H + 'px;height:100%;flex:none;display:grid;place-items:center;background:' + compBg + '">' + comp(86) + '</div>' +
+        '<div class="row fitrow" style="flex:1;height:100%;gap:20px;padding-right:24px;min-width:0;' + sideBg(true) + '">' + strip(true) + crest(true, 84) + '<span class="nm" style="font-size:44px">' + M.home + '</span></div>' +
+        '<div style="width:236px;height:100%;flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;background:' + score + ';color:' + sInk + '">' +
+        '<span class="lab" style="font-size:16px;color:' + dim + '">' + MO.label + '</span><span class="num" style="font-size:62px;line-height:1">' + MO.score[0] + ' – ' + MO.score[1] + '</span></div>' +
+        '<div class="row fitrow" style="flex:1;height:100%;gap:20px;justify-content:flex-end;padding-left:24px;min-width:0;' + sideBg(false) + '"><span class="nm" style="font-size:44px">' + M.away + '</span>' + crest(false, 84) + strip(false) + '</div>' +
+        '<div class="row num sslot" style="width:150px;height:100%;flex:none;justify-content:center;font-size:34px;background:' + clock + ';color:' + cInk + '">00:00</div>' + line +
+        '<i id="sedge" style="position:absolute;top:0;bottom:0;width:4px;background:#fff;box-shadow:0 0 18px 4px rgba(255,255,255,.7)"></i>' +
+        '<i id="ssheen" style="position:absolute;top:0;bottom:0;width:180px;background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,.16),rgba(255,255,255,0));transform:skewX(-20deg)"></i></div>';
+      $('subline').innerHTML = subHTML(compBg, ink, 'grad', compBg);
+      $('board').innerHTML = blockBoard({ bg: 'linear-gradient(' + panel + ',' + foot + ')', comp: compBg, score: score, clock: clock, ink: ink, scoreInk: sInk, clockInk: cInk,
+        strips: !!c.strips, sideBg: c.club ? [M.hc, M.ac] : null }) +
+        '<i id="bedge" style="position:absolute;top:0;bottom:0;width:3px;background:#fff;box-shadow:0 0 12px 3px rgba(255,255,255,.7)"></i>' + SHEEN;
+      if (face) { $('board').style.cssText += ';' + face; }
+      if (bw) $('board').firstElementChild.style.boxShadow = 'inset 0 0 0 ' + Math.max(1, Math.round(BH * Math.min(0.1, +c.border))) + 'px ' + cuCol(c.borderColour, 'rgba(255,255,255,.55)');
+      placeBoard(Math.round(BH * rad));
+      sheenAt = OUT1 + 0.5;
+    },
+    render(t) { S.classic.render(t); },
+  };
+
   // -- Glass: smoked glass, a pill that becomes the board ------------------------------------------------------------------
   S.glass = {
     build() {

@@ -594,17 +594,46 @@ final class BoardCover {
         setStyle(c, all[(style(c).ordinal() + 1) % all.length]);
     }
 
-    /** A look chosen: the board drawn in it at once where it is up (no coming in again). */
+    /** A look chosen: the board drawn in it at once where it is up (no coming in again); a custom board let go. */
     static void setStyle(Context c, BoardBug.Style s) {
-        prefs(c).edit().putString("style", s.name()).apply();
+        prefs(c).edit().putString("style", s.name()).remove("custom").apply();
         // The tennis, boxing or UFC board up takes the look too.
         SportCover.restyle(c);
         if (bug != null && !adjusting) {
+            bug.custom(null);
             bug.style(s);
             layout(c);
         } else {
             restyle();
         }
+    }
+
+    /** The family's own board in use (My scoreboards: its id), or null for the look as chosen. */
+    static String customId(Context c) {
+        return prefs(c).getString("custom", null);
+    }
+
+    /** The custom board in use (MyBoardStore), or null. */
+    static com.gathin.broadcast.BoardSpec custom(Context c) {
+        return MyBoardStore.inUse(c);
+    }
+
+    /**
+     * One of My scoreboards in use (its id), drawn at once where the board is up; null lets it go (back to the look as
+     * chosen). The editor's preview: the same, with the spec as it stands (custom(c, spec)).
+     */
+    static void setCustom(Context c, String id) {
+        if (id == null || id.isEmpty()) prefs(c).edit().remove("custom").apply();
+        else prefs(c).edit().putString("custom", id).apply();
+        showCustom(c, custom(c));
+    }
+
+    /** A spec drawn on the board where it is up (the editor's live look; null: the board as chosen again). */
+    static void showCustom(Context c, com.gathin.broadcast.BoardSpec spec) {
+        if (bug == null || adjusting) return;
+        if (spec == null) bug.style(style(c));
+        bug.custom(spec);
+        layout(c);
     }
 
     /** The look step looks along: on (step 1) or back (-1). */
@@ -2854,6 +2883,7 @@ final class BoardCover {
         edge = Math.max(2, Math.round(2f * sw / 1920f));
         bug = new BoardBug(c);
         bug.style(style(c));
+        bug.custom(custom(c));
         bug.inset(edge);
         stats = new BoardStats(c);
         drop = new BoardDrop(c);

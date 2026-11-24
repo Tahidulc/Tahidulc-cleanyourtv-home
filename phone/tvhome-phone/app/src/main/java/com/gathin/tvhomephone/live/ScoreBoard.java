@@ -167,7 +167,26 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     /** Its look (OverlayBug.Style). */
     static OverlayBug.Style style(Context c) { return OverlayBug.Style.of(prefs(c).getString("style", "CLASSIC")); }
 
-    static void setStyle(Context c, OverlayBug.Style s) { prefs(c).edit().putString("style", s.name()).apply(); }
+    /** A look chosen: one of the boards' own (any custom board of the family's let go). */
+    static void setStyle(Context c, OverlayBug.Style s) { prefs(c).edit().putString("style", s.name()).remove("custom").apply(); }
+
+    /** The family's own board in use (My scoreboards: its id), or null for the look as chosen. */
+    static String customId(Context c) { return prefs(c).getString("custom", null); }
+
+    /** One of My scoreboards in use (its id; the look stays as it was, for when it is let go), or null to let it go. */
+    static void setCustom(Context c, String id) {
+        if (id == null || id.isEmpty()) prefs(c).edit().remove("custom").apply();
+        else prefs(c).edit().putString("custom", id).apply();
+    }
+
+    /** The custom board in use, or null. */
+    static com.gathin.broadcast.BoardSpec custom(Context c) { return MyBoardStore.inUse(c); }
+
+    /** A board shown in the look in use: the chosen look, and the family's own board over it when one is in use. */
+    static void dress(OverlayBug bug, Context c) {
+        bug.style(style(c));
+        bug.custom(custom(c));
+    }
 
     /** The channel's logo covered with Homefield's, and how (LogoCover.Look; Badge until chosen). */
     static LogoCover.Look logoCover(Context c) { return LogoCover.Look.of(prefs(c).getString("logo", "BADGE")); }
@@ -545,7 +564,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         under = new BoardUnder(ctx);
         view.addView(under, new FrameLayout.LayoutParams(Math.round(200 * d), Math.round(20 * d)));
         bug = new OverlayBug(ctx);
-        bug.style(style(ctx));
+        dress(bug, ctx);
         bug.setVisibility(View.GONE);
         bug.setOnClickListener(v -> src.tapped());
         bug.setOnLongClickListener(v -> {
@@ -692,7 +711,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     }
 
     void start() {
-        bug.style(style(c));
+        dress(bug, c);
         if (running) return;
         running = true;
         LiveAlerts.addListener(this);
