@@ -340,7 +340,8 @@ final class F1Tower {
         band.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{RED, RED_DEEP}));
         mark = new ImageView(c);
         mark.setScaleType(ImageView.ScaleType.FIT_START);
-        band.addView(mark, new LinearLayout.LayoutParams(px(74), px(20)));
+        // Larger than it was (74 by 20), as the family asked (F1Mark).
+        band.addView(mark, new LinearLayout.LayoutParams(px(112), px(28)));
         label = text(c, "", 18, 0xFFFFFFFF, ScoreCard.outfit(c, 800));
         label.setLetterSpacing(0.08f);
         label.setGravity(Gravity.END);

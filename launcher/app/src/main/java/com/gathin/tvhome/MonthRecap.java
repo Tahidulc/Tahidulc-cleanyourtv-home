@@ -297,6 +297,8 @@ final class MonthRecap {
             p.setShader(new android.graphics.LinearGradient(0, 0, b.getWidth() / 2f, 0, 0x00000000, 0xFF000000, android.graphics.Shader.TileMode.CLAMP));
             p.setXfermode(new android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_IN));
             cv.drawRect(0, 0, b.getWidth(), b.getHeight(), p);
+            // The picture as read is let go at once (made for this alone): only its faded copy is kept.
+            b.recycle();
             return out;
         } catch (OutOfMemoryError | RuntimeException e) {
             return b;

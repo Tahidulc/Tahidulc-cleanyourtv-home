@@ -102,7 +102,17 @@ final class Recap {
         int[] pos = YourShows.position(e);
         boolean finished = e.progress() >= 0.95f;
         IO.execute(() -> {
-            Object[] got = read(h, t, pos[0], pos[1], finished);
+            // Opened again (or closed) before this one was read: nothing fetched for it.
+            if (shown != r) return;
+            Object[] got;
+            try {
+                got = read(h, t, pos[0], pos[1], finished, () -> shown == r);
+            } catch (OutOfMemoryError | RuntimeException x) {
+                // No room for it: the caches let go of half of what they hold, and the series plays on without the recap.
+                ByteLru.trimAll(0.5f);
+                MAIN.post(() -> { if (shown == r) { r.hide(); play.run(); } });
+                return;
+            }
             MAIN.post(() -> { if (shown == r) r.build(t, e, got, play); });
         });
     }
@@ -120,13 +130,15 @@ final class Recap {
      * {details, backdrop, logo, seen [{label, name, overview, still, finale}], who [{name, character, face, in the
      * season before}], next {label, name, still, runtime} or null, the season the faces are from, the last season seen}.
      */
-    private static Object[] read(HomeV2 h, PagesV2.Title t, int s, int e, boolean finished) {
+    private static Object[] read(HomeV2 h, PagesV2.Title t, int s, int e, boolean finished, java.util.function.BooleanSupplier open) {
         Context c = h.a;
         String key = h.tmdbKey;
         JSONObject d = YourShows.details(key, t.id);
         Bitmap back = null, logo = null;
-        if (d != null && !d.optString("backdrop_path").isEmpty() && !"null".equals(d.optString("backdrop_path"))) {
-            back = ScoresTicker.cachedLogo(c, "https://image.tmdb.org/t/p/w1280" + d.optString("backdrop_path"), h.px(1920));
+        // Each picture at the size it is shown (the backdrop at TMDB's 1280, behind a deep shade), the small photos in 16-bit
+        // colour, and none at all once the recap has closed or been opened again.
+        if (open.getAsBoolean() && d != null && !d.optString("backdrop_path").isEmpty() && !"null".equals(d.optString("backdrop_path"))) {
+            back = ScoresTicker.cachedPicture(c, "https://image.tmdb.org/t/p/w1280" + d.optString("backdrop_path"), h.px(1280), false);
         }
         try {
             JSONArray logos = new JSONObject(HomeV2.get("https://api.themoviedb.org/3/tv/" + t.id + "/images?include_image_language=en,null&api_key=" + key))
@@ -134,8 +146,13 @@ final class Recap {
             for (int i = 0; logos != null && i < logos.length(); i++) {
                 JSONObject l = logos.optJSONObject(i);
                 if (!"en".equals(l.optString("iso_639_1")) || !l.optString("file_path").endsWith(".png")) continue;
-                logo = ScoresTicker.cachedLogo(c, "https://image.tmdb.org/t/p/w500" + l.optString("file_path"), h.px(460));
-                if (logo != null) logo = HomeV2.trim(logo);
+                if (!open.getAsBoolean()) break;
+                logo = ScoresTicker.cachedPicture(c, "https://image.tmdb.org/t/p/w500" + l.optString("file_path"), h.px(560), false);
+                if (logo != null) {
+                    Bitmap cut = HomeV2.trim(logo);
+                    if (cut != logo) logo.recycle();
+                    logo = cut;
+                }
                 break;
             }
         } catch (Exception ignored) {
@@ -166,8 +183,8 @@ final class Recap {
             String still = ep.optString("still_path", "");
             Integer end = lastOf.get(ep.optInt("season_number"));
             seen.add(new Object[]{"S" + ep.optInt("season_number") + " E" + ep.optInt("episode_number"), ep.optString("name"),
-                    ep.optString("overview"), still.isEmpty() || "null".equals(still) ? null
-                    : ScoresTicker.cachedLogo(c, "https://image.tmdb.org/t/p/w780" + still, h.px(400)),
+                    ep.optString("overview"), still.isEmpty() || "null".equals(still) || !open.getAsBoolean() ? null
+                    : ScoresTicker.cachedPicture(c, "https://image.tmdb.org/t/p/w780" + still, h.px(352), true),
                     end != null && end == ep.optInt("episode_number") && end > 1});
         }
         // The next one: the one under way, or the one after the last seen.
@@ -183,7 +200,8 @@ final class Recap {
         if (next != null) {
             String still = next.optString("still_path", "");
             up = new Object[]{"S" + next.optInt("season_number") + " E" + next.optInt("episode_number"), next.optString("name"),
-                    still.isEmpty() || "null".equals(still) ? null : ScoresTicker.cachedLogo(c, "https://image.tmdb.org/t/p/w780" + still, h.px(560)),
+                    still.isEmpty() || "null".equals(still) || !open.getAsBoolean() ? null
+                            : ScoresTicker.cachedPicture(c, "https://image.tmdb.org/t/p/w780" + still, h.px(560), true),
                     next.optInt("runtime")};
         }
         // Who's who: in the new season when one is next (each face marked when they were in the one seen), else in
@@ -202,8 +220,9 @@ final class Recap {
             JSONArray roles = p.optJSONArray("roles");
             String character = roles != null && roles.length() > 0 ? roles.optJSONObject(0).optString("character") : "";
             String photo = p.optString("profile_path", "");
-            who.add(new Object[]{p.optString("name"), character, photo.isEmpty() || "null".equals(photo) ? null
-                    : ScoresTicker.cachedLogo(c, "https://image.tmdb.org/t/p/w185" + photo, h.px(120)), before.contains(p.optInt("id"))});
+            // A face fills a 104 circle from a portrait: 104 across, so about 160 down.
+            who.add(new Object[]{p.optString("name"), character, photo.isEmpty() || "null".equals(photo) || !open.getAsBoolean() ? null
+                    : ScoresTicker.cachedPicture(c, "https://image.tmdb.org/t/p/w185" + photo, h.px(160), true), before.contains(p.optInt("id"))});
         }
         return new Object[]{d, back, logo, seen, who, up, whoS, lastS};
     }

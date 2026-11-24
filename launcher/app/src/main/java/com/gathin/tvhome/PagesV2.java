@@ -4433,8 +4433,10 @@ final class PagesV2 {
             }
             android.text.SpannableStringBuilder sb = new android.text.SpannableStringBuilder("  ");
             android.graphics.drawable.BitmapDrawable d = new android.graphics.drawable.BitmapDrawable(h.a.getResources(), bm);
-            int hgt = px(26), w = Math.min(px(120), Math.round(hgt * bm.getWidth() / (float) Math.max(1, bm.getHeight())));
-            if (w == px(120)) hgt = Math.round(w * bm.getHeight() / (float) Math.max(1, bm.getWidth()));
+            // F1's wide mark a little taller than the leagues' (F1Mark), and as wide as that needs.
+            boolean f1 = F1Mark.is(url);
+            int most = px(f1 ? 140 : 120), hgt = px(f1 ? 30 : 26), w = Math.min(most, Math.round(hgt * bm.getWidth() / (float) Math.max(1, bm.getHeight())));
+            if (w == most) hgt = Math.round(w * bm.getHeight() / (float) Math.max(1, bm.getWidth()));
             d.setBounds(0, 0, w, hgt);
             sb.setSpan(new MidSpan(d), 0, 2, 0);
             if (!after.isEmpty()) sb.append("  ").append(after);
