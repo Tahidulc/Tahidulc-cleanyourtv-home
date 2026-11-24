@@ -260,6 +260,12 @@ public final class Catalog {
         public final int minutes;
         /** A series' seasons in order, each with its episodes; empty for a film. */
         public final List<Season> seasons;
+        /**
+         * Its TMDB id and IMDb id ("tt0111161") as the provider's page (or TMDB) gives them, 0 and "" when not given: what
+         * the player's subtitles are looked for by on OpenSubtitles (a series' for its episodes).
+         */
+        public int tmdb;
+        public String imdb = "";
 
         Details(String plot, String genre, String cast, String director, String released, String backdrop, String poster,
                 String trailer, String rating, String age, int minutes, List<Season> seasons) {
@@ -1364,11 +1370,20 @@ public final class Catalog {
         int mins = secs > 0 ? Math.round(secs / 60f) : minutes(i.optString("duration"));
         if (mins == 0) mins = Library.number(i.optString("episode_run_time"));
         String poster = first(i.optString("movie_image"), i.optString("cover_big"), t == null ? "" : t.poster);
-        return new Details(first(i.optString("plot"), i.optString("description")), i.optString("genre"),
+        Details d = new Details(first(i.optString("plot"), i.optString("description")), i.optString("genre"),
                 first(i.optString("cast"), i.optString("actors")), i.optString("director"),
                 first(i.optString("releasedate"), i.optString("release_date"), t == null ? "" : t.year), backdrop(i),
                 poster, i.optString("youtube_trailer"), first(i.optString("rating"), t == null ? "" : t.rating),
                 first(i.optString("mpaa_rating"), i.optString("age")), mins, null);
+        ids(d, i);
+        return d;
+    }
+
+    /** Pure: the TMDB and IMDb ids a provider's page gives ("tmdb_id" or "tmdb", "imdb_id" or "imdb"), kept on d. */
+    static void ids(Details d, JSONObject i) {
+        d.tmdb = Library.number(first(i.optString("tmdb_id"), i.optString("tmdb")));
+        String imdb = first(i.optString("imdb_id"), i.optString("imdb")).trim();
+        d.imdb = imdb.matches("(tt)?\\d{5,10}") ? imdb : "";
     }
 
     /** get_series_info's answer (pure, for the tests): its seasons and episodes, in order. */
@@ -1426,11 +1441,13 @@ public final class Catalog {
         }
         eps.sort((a, b) -> a.season != b.season ? Integer.compare(a.season, b.season) : Integer.compare(a.number, b.number));
         int run = Library.number(i.optString("episode_run_time"));
-        return new Details(first(i.optString("plot"), t == null ? "" : t.plot), i.optString("genre"), i.optString("cast"),
+        Details d = new Details(first(i.optString("plot"), t == null ? "" : t.plot), i.optString("genre"), i.optString("cast"),
                 i.optString("director"), first(i.optString("releaseDate"), i.optString("release_date"), t == null ? "" : t.year),
                 first(backdrop(i), t == null ? "" : t.backdrop), first(i.optString("cover"), t == null ? "" : t.poster),
                 i.optString("youtube_trailer"), first(i.optString("rating"), t == null ? "" : t.rating), "", run,
                 seasons(eps, names));
+        ids(d, i);
+        return d;
     }
 
     /** Pure: episodes put into their seasons (each "Series N"). */
@@ -1449,8 +1466,11 @@ public final class Catalog {
         if (d != null) for (Season s : d.seasons) names.put(s.number, s.name);
         List<Season> seasons = seasons(all, names);
         if (d == null) return plainDetails(t, seasons);
-        return new Details(d.plot, d.genre, d.cast, d.director, d.released, d.backdrop, d.poster, d.trailer, d.rating, d.age, d.minutes,
-                seasons);
+        Details out = new Details(d.plot, d.genre, d.cast, d.director, d.released, d.backdrop, d.poster, d.trailer, d.rating, d.age,
+                d.minutes, seasons);
+        out.tmdb = d.tmdb;
+        out.imdb = d.imdb;
+        return out;
     }
 
     private static List<Season> seasons(List<Episode> eps, Map<Integer, String> names) {

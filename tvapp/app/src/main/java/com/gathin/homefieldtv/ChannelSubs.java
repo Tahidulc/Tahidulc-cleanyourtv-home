@@ -64,6 +64,13 @@ final class ChannelSubs extends View {
         invalidate();
     }
 
+    /** The words' colour, in place of the look's (a film's subtitles: Settings › Other › Subtitles › Colour). */
+    void setColour(int argb) {
+        if (fill.getColor() == argb) return;
+        fill.setColor(argb);
+        invalidate();
+    }
+
     /** Where the picture is on the screen. */
     void setFrame(int x, int y, int w, int h) {
         if (frame.left == x && frame.top == y && frame.width() == w && frame.height() == h) return;
@@ -113,12 +120,21 @@ final class ChannelSubs extends View {
         int w = lineWidth();
         if (top.length() > 0) {
             topFill = layout(top, fill, w);
-            if (look != CaptionView.LOOK_BOX) topStroke = layout(top.toString(), stroke, w);
+            if (look != CaptionView.LOOK_BOX) topStroke = layout(outline(top), stroke, w);
         }
         if (foot.length() > 0) {
             footFill = layout(foot, fill, w);
-            if (look != CaptionView.LOOK_BOX) footStroke = layout(foot.toString(), stroke, w);
+            if (look != CaptionView.LOOK_BOX) footStroke = layout(outline(foot), stroke, w);
         }
+    }
+
+    /** The words for their outline: their italics and bold kept (so it follows them), their colours taken off. */
+    private static CharSequence outline(SpannableStringBuilder words) {
+        if (words.getSpans(0, words.length(), android.text.style.CharacterStyle.class).length == 0) return words.toString();
+        SpannableStringBuilder b = new SpannableStringBuilder(words);
+        for (Object s : b.getSpans(0, b.length(), android.text.style.ForegroundColorSpan.class)) b.removeSpan(s);
+        for (Object s : b.getSpans(0, b.length(), android.text.style.BackgroundColorSpan.class)) b.removeSpan(s);
+        return b;
     }
 
     private static StaticLayout layout(CharSequence t, TextPaint p, int w) {

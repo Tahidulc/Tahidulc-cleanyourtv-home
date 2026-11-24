@@ -281,9 +281,25 @@ public final class Tmdb {
         String backdrop = image(j.optString("backdrop_path", ""), "w1280"), poster = image(j.optString("poster_path", ""), "w342");
         String plot = j.optString("overview", "");
         String rated = rating(j.optDouble("vote_average", 0));
-        return new Catalog.Details(plot.isEmpty() ? t.plot : plot, String.join(", ", genres), String.join(", ", cast), director,
+        Catalog.Details d = new Catalog.Details(plot.isEmpty() ? t.plot : plot, String.join(", ", genres), String.join(", ", cast), director,
                 j.optString(tv ? "first_air_date" : "release_date", t.year), backdrop.isEmpty() ? t.backdrop : backdrop,
                 poster.isEmpty() ? t.poster : poster, trailer, rated.isEmpty() ? t.rating : rated, "", minutes, seasons);
+        // Its ids, for the player's subtitles (OpenSubtitles looks them up by either).
+        d.tmdb = j.optInt("id", 0);
+        JSONObject ext = j.optJSONObject("external_ids");
+        String imdb = j.optString("imdb_id", ext == null ? "" : ext.optString("imdb_id", ""));
+        d.imdb = imdb == null || "null".equals(imdb) ? "" : imdb;
+        return d;
+    }
+
+    /**
+     * A title's TMDB id for the player's subtitles: kept from before, else asked of TMDB now with the launcher's key (as
+     * the posters are); 0 when TMDB has none or can't be asked. Off the main thread.
+     */
+    public static int idOf(Context c, Catalog.Title t) {
+        if (t == null) return 0;
+        Match m = find(c, t.series, t.name, yearOf(t.year));
+        return m == null ? 0 : Math.max(0, m.id);
     }
 
     /**

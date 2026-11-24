@@ -283,11 +283,13 @@ final class SettingsScreen extends Screen implements SettingsPanel.Host, Keyboar
         if (page.startsWith(PICK)) {
             return added.picker(p) != null ? added : extra.picker(p) != null ? extra : edits.picker(p) != null ? edits : more;
         }
+        if (SubtitleSettings.ownsPage(p)) return SubtitleSettings.of(this, tv);
         return added.owns(p) ? added : extra.owns(p) ? extra : edits.owns(p) ? edits : more;
     }
 
     /** Who keeps what is typed in a field. */
     private Pages fieldOwner(String field) {
+        if (SubtitleSettings.ownsField(field)) return SubtitleSettings.of(this, tv);
         return added.ownsField(field) ? added : edits.ownsField(field) ? edits : extra.ownsField(field) ? extra : more;
     }
 

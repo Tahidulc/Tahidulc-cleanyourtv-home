@@ -153,6 +153,7 @@ final class MoreSettings implements SettingsScreen.Pages {
                 // channel plays full screen: BoardMenu), as on the launcher over TiviMate; no page of their own here.
                 // Ask AI's key and model (AiSettings, AddedSettings' page): the scoreboard editor's and Change logo's.
                 out.add(AiSettings.row(tv));
+                out.add(SubtitleSettings.row(tv));
                 break;
             case "other.search":
                 out.add(tog("history", "Show search history", "", OtherPrefs.showHistory(tv)));
