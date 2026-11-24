@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 
 import com.gathin.homefieldtv.engine.Channel;
+import com.gathin.homefieldtv.engine.Versions;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -20,6 +21,9 @@ import java.util.Set;
  * be locked too. Once the PIN is right, everything locked stays open until Homefield TV is left (or four hours, at
  * most). Without a PIN nothing is locked. The PIN is kept only as a salted hash; five wrong tries in a row wait 30
  * seconds before the next. Kept on this TV (and in its backups).
+ *
+ * <p>One row per channel (ChannelEdits.merging): a lock on any of a channel's quality versions locks the channel, and
+ * Lock this channel (or Block channel) locks and unlocks every version.
  */
 public final class Parental {
     private Parental() {}
@@ -186,10 +190,37 @@ public final class Parental {
         Shown.changed();
     }
 
-    /** Whether a channel is locked: a PIN is set and the channel, or its category, is locked. */
+    /** Whether a channel is locked: a PIN is set and the channel (one of its versions), or its category, is locked. */
     public static boolean locked(Context c, Channel ch) {
         if (ch == null || !hasPin(c)) return false;
-        return lockedChannels(c).contains(ch.key) || lockedGroups(c).contains(ch.group);
+        return lockedHere(c, ch) || lockedGroups(c).contains(ch.group);
+    }
+
+    /** Whether the channel itself is locked (Lock this channel): it, or (one row per channel) any of its versions. */
+    public static boolean lockedHere(Context c, Channel ch) {
+        if (ch == null) return false;
+        Set<String> k = lockedChannels(c);
+        if (k.contains(ch.key)) return true;
+        Versions v = Versions.of(ch);
+        if (v == null || k.isEmpty()) return false;
+        for (Channel o : v.all) if (k.contains(o.key)) return true;
+        return false;
+    }
+
+    /** Lock this channel, or unlock it: with every one of its versions (one row per channel). */
+    public static synchronized void lockChannel(Context c, Channel ch, boolean on) {
+        if (ch == null) return;
+        Set<String> s = new HashSet<>(lockedChannels(c));
+        Versions v = Versions.of(ch);
+        if (on) s.add(ch.key);
+        else s.remove(ch.key);
+        if (v != null) for (Channel o : v.all) {
+            if (on) s.add(o.key);
+            else s.remove(o.key);
+        }
+        prefs(c).edit().putStringSet(CHANNELS, s).apply();
+        channels = Collections.unmodifiableSet(s);
+        Shown.changed();
     }
 
     /** Whether a channel needs the PIN before it plays now. */

@@ -21,8 +21,8 @@ import java.util.List;
 /**
  * Settings' panel in the 07 look (the approved still 28): over the screen it was opened from, dimmed by the scrim, one
  * frosted panel (Frost, mat; 954 x 1008 from (930, 36), rounded 48) in two panes: the sections down its left (Homefield's
- * mark and "Settings", then General, Playlists, EPG, Appearance, Playback, Remote control, Parental controls, Other and
- * About, each with its icon, the amber dot on About while an update waits), and beside them the page chosen: where it is
+ * mark and "Settings", then General, Playlists, EPG, Appearance, Channels &amp; categories, Playback, Remote control,
+ * Parental controls, Other and About, each with its icon, the amber dot on About while an update waits), and beside them the page chosen: where it is
  * ("Appearance ›"), its name (34 px), a line about it, and its rows (RowList: the remote's white and lifted). While the
  * remote is on the sections, the page beside them is the section it is on; OK or Right goes into it, Left or Back comes
  * back. A sub-page slides in over its page as RightPanel's do. Appearance › Logos shows the family's own channels' logos
@@ -42,8 +42,8 @@ final class SettingsPanel extends FrameLayout implements RowList.Host {
             PAGE_X = X + SECTIONS_W + 26f, PAGE_W = W - SECTIONS_W - 52f, PAGE_TOP = 176f, SLIDE = 22f, PAGE_SLIDE = 96f;
     static final long OPEN_MS = 130, CLOSE_MS = 100, PAGE_MS = 140, BACK_MS = 135;
     /** Each section's icon, in SettingsScreen.SECTIONS' order. */
-    private static final int[] ICONS = {Icons07.COG, Icons07.LIST, Icons07.GRID, Icons07.STAR, Icons07.PLAY, Icons07.OK, Icons07.LOCK,
-            Icons07.MENU, Icons07.HOME};
+    private static final int[] ICONS = {Icons07.COG, Icons07.LIST, Icons07.GRID, Icons07.STAR, Icons07.TV, Icons07.PLAY, Icons07.OK,
+            Icons07.LOCK, Icons07.MENU, Icons07.HOME};
 
     interface Host {
         void chosen(SettingsPanel panel, RowList.Row row);

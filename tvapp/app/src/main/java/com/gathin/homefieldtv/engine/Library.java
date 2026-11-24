@@ -50,6 +50,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * groups), and the lists the screens show (Lists: Settings → Categories and Parental control applied, with each
  * channel's place in them and the channels by number) are made off the main thread, again whenever what is hidden or
  * locked changes. The screens read them at once (Lineup) and are told (the listeners) when new ones are in.
+ *
+ * <p>One row per channel (Settings › Channels &amp; categories, on as it comes): a channel's quality versions in its
+ * category (Versions) are one channel in every list, shown as its best version the family didn't hide (row()), its
+ * others its Quality choice (versions()). What is kept by a channel's key follows the channel: a favourite on any
+ * version is the channel's, the recent channels, the last one, History and reminders find its row (byKey), and a version
+ * without the guide shows another version's programmes (schedule()).
  */
 public final class Library {
     public static final String ALL = "", FAVOURITES = "★";
@@ -302,6 +308,7 @@ public final class Library {
      * the first listed that needs no PIN; null when there is none. At once.
      */
     public Channel playable(Channel want) {
+        want = row(want);
         if (want != null && Shown.listed(app, want) && !Parental.blocks(app, want)) return want;
         Lists l = lists();
         Channel c = l.first < 0 ? null : l.all.get(l.first);
@@ -316,13 +323,63 @@ public final class Library {
         return k < 0 ? null : l.all.get((int) l.numbers[k]);
     }
 
+    /**
+     * The channel kept under a key (a favourite, the last one, History, a reminder), as the lists show it: one row per
+     * channel, a quality version's key finds its channel's row; null when the playlists don't have it. At once.
+     */
     public Channel byKey(String key) {
+        Channel c = exact(key);
+        return c == null ? null : row(c);
+    }
+
+    /** The channel with this very key (one quality version of a channel), or null. At once. */
+    public Channel exact(String key) {
         Lists.Index ix = current.index;
         int i = key == null ? -1 : ix.byKey.get(key);
         return i < 0 || i >= ix.channels.size() ? null : ix.channels.get(i);
     }
 
-    public Guide.Schedule schedule(String key) { return guide.get(key); }
+    /**
+     * The row a channel is shown as: itself, or (one row per channel) its best quality version the family didn't hide. At
+     * once (the lists made last).
+     */
+    public Channel row(Channel c) {
+        if (c == null) return null;
+        Lists l = lists();
+        if (!l.merged || c.versions == null) return c;
+        Channel r = l.row(l.index.find(c));
+        return r == null ? c : r;
+    }
+
+    /**
+     * A channel's versions to play, best first (4K, FHD, HD, then a name saying none, then SD; ties in the playlist's
+     * order): one row per channel, its quality versions the family didn't hide; else the channel alone. At once.
+     */
+    public List<Channel> versions(Channel c) {
+        if (c == null) return Collections.emptyList();
+        Versions v = Versions.of(c);
+        if (v == null) return Collections.singletonList(c);
+        List<Channel> out = new ArrayList<>(v.all.length);
+        for (Channel o : v.all) if (!ChannelEdits.hidden(o.key)) out.add(o);
+        if (out.isEmpty()) out.add(c);
+        return Collections.unmodifiableList(out);
+    }
+
+    /** A channel's guide: its own; one row per channel, else one of its versions' (best first). At once. */
+    public Guide.Schedule schedule(String key) {
+        Map<String, Guide.Schedule> g = guide;
+        Guide.Schedule s = g.get(key);
+        if (s != null || key == null || !ChannelEdits.merging()) return s;
+        Lists.Index ix = current.index;
+        int i = ix.byKey.get(key);
+        int[] vs = i < 0 ? null : ix.versionsAt[i];
+        if (vs == null) return null;
+        for (int m : vs) {
+            s = g.get(ix.channels.get(m).key);
+            if (s != null) return s;
+        }
+        return null;
+    }
 
     /** The channel's place in the list (0 first), or -1. */
     public int position(String key) {
@@ -347,9 +404,9 @@ public final class Library {
             if (q.isEmpty()) return fav;
             List<Channel> out = new ArrayList<>();
             for (Channel c : fav) {
-                // Its playlist's name, or the family's own for it.
+                // Its playlist's name, or the family's own for it (or a channel's name without its quality).
                 if (Names.plain(c.name).toLowerCase(Locale.ROOT).contains(q)
-                        || ChannelEdits.renamed(c) && Names.plain(ChannelEdits.name(c)).toLowerCase(Locale.ROOT).contains(q)) out.add(c);
+                        || Names.plain(ChannelEdits.name(c)).toLowerCase(Locale.ROOT).contains(q)) out.add(c);
             }
             return out;
         }
@@ -368,11 +425,14 @@ public final class Library {
         Lists l = lists();
         Lists.Index ix = l.index;
         List<Channel> out = new ArrayList<>();
+        // One row per channel: any version's name finds the channel's row, once.
+        Set<String> seen = l.merged ? new HashSet<>() : null;
         for (int i = 0; i < ix.channels.size() && out.size() < max; i++) {
             // By its playlist's name, or by the name the family gave it.
             if (l.at[i] < 0 || !ix.lower[i].contains(q) && !l.renamedHas(i, q)) continue;
-            Channel c = ix.channels.get(i);
-            if (group == null || group.equals(c.group)) out.add(c);
+            Channel c = seen != null ? ix.channels.get(l.rowOf[i]) : ix.channels.get(i);
+            if (group != null && !group.equals(c.group)) continue;
+            if (seen == null || seen.add(c.key)) out.add(c);
         }
         return out;
     }
@@ -432,9 +492,10 @@ public final class Library {
             if (k < favourites) {
                 int e = ix.byKey.get(f.keys.get(k));
                 if (e < 0) continue;
-                c = ix.channels.get(e);
+                // One row per channel: a favourite version is its channel's row.
+                c = l.row(e);
                 // A favourite the family hid (Hide channel) is off Home as off every list.
-                if (l.filter != null && l.filter.edits.hidden(c.key)) continue;
+                if (l.filter != null && l.filter.edits.hiddenOf(c)) continue;
                 if (!seen.add(c.key)) continue;
             } else {
                 c = l.all.get(k - favourites);
@@ -487,8 +548,15 @@ public final class Library {
         return picks().keys;
     }
 
+    /** Whether a channel is a favourite: it, or (one row per channel) any of its quality versions. */
     public boolean isFavourite(Channel c) {
-        return c != null && picks().set.contains(c.key);
+        if (c == null) return false;
+        Set<String> set = picks().set;
+        if (set.contains(c.key)) return true;
+        Versions v = Versions.of(c);
+        if (v == null || set.isEmpty()) return false;
+        for (Channel o : v.all) if (set.contains(o.key)) return true;
+        return false;
     }
 
     /** The favourites' channels the lists keep (not locked away), made again only when either changes. */
@@ -498,20 +566,31 @@ public final class Library {
         Kept k = kept;
         if (k.picks == p && k.lists == l) return k.channels;
         List<Channel> out = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
         for (String key : p.keys) {
+            // A favourite version is its channel's row (one row per channel), once.
             Channel c = byKey(key);
-            if (c != null && l.filter != null && l.filter.kept(c)) out.add(c);
+            if (c != null && l.filter != null && l.filter.kept(c) && seen.add(c.key)) out.add(c);
         }
         k = new Kept(p, l, Collections.unmodifiableList(out));
         kept = k;
         return k.channels;
     }
 
-    /** A channel added to the favourites, or taken off them; true when it is one now. */
+    /**
+     * A channel added to the favourites, or taken off them; true when it is one now. One row per channel: taken off, every
+     * one of its versions is.
+     */
     public boolean toggleFavourite(Channel c) {
         Set<String> f = new LinkedHashSet<>(favourites());
-        boolean now = !f.remove(c.key);
-        if (now) f.add(c.key);
+        boolean now = !isFavourite(c);
+        if (now) {
+            f.add(c.key);
+        } else {
+            f.remove(c.key);
+            Versions v = Versions.of(c);
+            if (v != null) for (Channel o : v.all) f.remove(o.key);
+        }
         prefs().edit().putString("favourites", new JSONArray(f).toString()).apply();
         changed();
         com.gathin.homefieldtv.sync.TvSync.changed();
@@ -521,7 +600,16 @@ public final class Library {
     /** The favourites in a new order (Move channel in Favourites: TiviMate's Manage Favorites); any others kept after. */
     public void orderFavourites(List<String> keys) {
         Set<String> f = new LinkedHashSet<>();
-        for (String k : keys) if (picks().set.contains(k)) f.add(k);
+        Set<String> had = picks().set;
+        for (String k : keys) {
+            if (had.contains(k)) {
+                f.add(k);
+                continue;
+            }
+            // A row whose favourite is kept under one of its versions (one row per channel).
+            Versions v = Versions.of(exact(k));
+            if (v != null) for (Channel o : v.all) if (had.contains(o.key)) f.add(o.key);
+        }
         f.addAll(favourites());
         prefs().edit().putString("favourites", new JSONArray(f).toString()).apply();
         changed();
@@ -560,9 +648,13 @@ public final class Library {
     public List<Channel> recent(Channel playing) {
         List<Channel> out = new ArrayList<>();
         Lists l = lists();
+        // One row per channel: a version watched is its channel's row, once, and never the one playing.
+        Channel now = row(playing);
+        Set<String> seen = new HashSet<>();
+        if (now != null) seen.add(now.key);
         for (String k : RecentChannels.shown(recentPicks().keys, playing == null ? null : playing.key)) {
             Channel c = byKey(k);
-            if (c != null && l.filter != null && l.filter.kept(c)) out.add(c);
+            if (c != null && l.filter != null && l.filter.kept(c) && seen.add(c.key)) out.add(c);
         }
         return out;
     }

@@ -12,6 +12,7 @@ import android.view.View;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.OptIn;
@@ -36,6 +37,7 @@ import com.gathin.homefieldtv.engine.History;
 import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.engine.Names;
 import com.gathin.homefieldtv.engine.Streams;
+import com.gathin.homefieldtv.engine.Versions;
 import com.gathin.homefieldtv.prefs.Abr;
 import com.gathin.homefieldtv.prefs.Adaptive;
 import com.gathin.homefieldtv.prefs.Afr;
@@ -43,6 +45,7 @@ import com.gathin.homefieldtv.prefs.Ladder;
 import com.gathin.homefieldtv.prefs.Picture;
 import com.gathin.homefieldtv.prefs.PlayerPrefs;
 import com.gathin.homefieldtv.prefs.PlayerSetup;
+import com.gathin.homefieldtv.prefs.QualityPicks;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -68,6 +71,11 @@ import java.util.Set;
  *
  * <p>Subtitles over the full-screen picture (LiveSubs): the channel's own from the player's cues, or automatic ones made
  * on the TV from a copy of the sound taken in the player's sound chain (TAP).
+ *
+ * <p>One row per channel (Settings › Channels &amp; categories): a channel's quality versions are its Ladder at once
+ * (Library.versions), its best first (4K, FHD, HD, SD) or the one picked by hand (QualityPicks, the Quality choice): one
+ * that doesn't start or keeps stalling falls back to the next with a small note ("Playing ITV 1 HD: FHD wasn't
+ * answering"), within the tries above; Picture quality's Adaptive still steps inside what was chosen (never above it).
  */
 @OptIn(markerClass = UnstableApi.class)
 final class LiveTv {
@@ -151,6 +159,12 @@ final class LiveTv {
     private int ladderAsked;
     /** A step between the channel's versions under way: the channel stays on screen, its last picture held, no spinner. */
     private boolean stepping;
+    /** A version to start on this once (played by its own key: a reminder's, the phone's), not kept as the one picked. */
+    private Channel startOn;
+    /** The stream that last reached the picture (a version that never has falls back to the next). */
+    private Channel playedStream;
+    /** The last note on a version fallen back to ("Playing ITV 1 HD: FHD wasn't answering"), for the tests. */
+    String lastNote = "";
     private long steppedAt;
     /** The buffer, a second apart (oldest first), while it plays: a steady drain steps down before the picture freezes. */
     private final long[] buffered = new long[5];
@@ -260,7 +274,9 @@ final class LiveTv {
         fpsStream = stream;
         precise = rate;
         fps = FpsMeter.chip(rate);
-        if (arc == null && !inWindow && cur != null && fps > 0) FrameRates.put(app, cur.key, fps);
+        // Kept by the stream's own key: a channel's FHD and its SD each have theirs.
+        Channel s = stream();
+        if (arc == null && !inWindow && s != null && fps > 0) FrameRates.put(app, s.key, fps);
         frameRate();
         tell();
     }
@@ -272,7 +288,10 @@ final class LiveTv {
     int fps() {
         if (Exec.inline) return cur == null ? 0 : FpsMeter.chip(previewFps);
         if (fps > 0 && fpsStream == meter.stream()) return fps;
-        return cur != null && arc == null && !inWindow ? FrameRates.of(app, cur.key) : 0;
+        if (cur == null || arc != null || inWindow) return 0;
+        Channel s = stream();
+        int f = s == null ? 0 : FrameRates.of(app, s.key);
+        return f > 0 ? f : FrameRates.of(app, cur);
     }
 
     /** The picture placed again (its shape changed in the player's menu). */
@@ -444,11 +463,50 @@ final class LiveTv {
         return ladder != null ? ladder.stream() : cur;
     }
 
+    /**
+     * The version of the channel playing that plays now (its Ladder's), or null when nothing plays live; for the Quality
+     * choice's tick.
+     */
+    Channel version() {
+        if (cur == null || arc != null) return null;
+        return ladder != null ? ladder.base() : cur;
+    }
+
+    /** Whether the channel playing is the one picked by hand for its quality (not its best, automatically). */
+    boolean pickedByHand() {
+        return cur != null && QualityPicks.pickedKey(app, cur) != null;
+    }
+
+    /**
+     * The Quality choice made for the channel playing (QualityPicks already says which): its versions chosen again at
+     * once and the one chosen opened, the last picture held meanwhile, as a step between versions is.
+     */
+    void repick() {
+        if (cur == null || arc != null || inWindow) return;
+        versions(cur);
+        if (Exec.inline) {
+            tell();
+            return;
+        }
+        hlsRefused = false;
+        asHls = Streams.looksHls(stream().url);
+        if (player == null) ensure();
+        step();
+        tell();
+    }
+
     /** A channel played live; the same channel already playing live carries on (behind live, it goes back to live). */
     void play(Channel c) {
         if (c == null) return;
+        // One row per channel: one of a channel's versions plays as its channel's row, starting on that version.
+        Channel row = Library.get(app).row(c);
+        if (row != null && row != c && !row.key.equals(c.key)) {
+            startOn = c;
+            c = row;
+        }
         boolean same = cur != null && cur.key.equals(c.key);
         if (same && arc == null && player != null && state != FAILED) {
+            startOn = null;
             cur = c;
             if (inWindow || held) {
                 // Moved back in the stream's own window: to its live edge.
@@ -783,7 +841,18 @@ final class LiveTv {
         bufferedN = 0;
         steppedAt = SystemClock.elapsedRealtime();
         ladder = Ladder.single(c);
-        if (Exec.inline) return;
+        playedStream = null;
+        // One row per channel: its quality versions, known at once; its best first, or the one picked by hand.
+        Channel once = startOn;
+        startOn = null;
+        List<Channel> vs = Library.get(app).versions(c);
+        if (vs.size() > 1) {
+            ++ladderAsked;
+            Channel pick = once != null && vs.contains(once) ? once : QualityPicks.of(app, c, vs);
+            ladder = pick != null ? Ladder.picked(vs, pick) : Ladder.of(vs, vs.get(0), PlayerPrefs.quality(app));
+            return;
+        }
+        if (Exec.inline || Versions.of(c) != null) return;
         final int asked = ++ladderAsked;
         final Set<String> favourites = new HashSet<>(Library.get(app).favourites());
         Exec.io(() -> {
@@ -872,20 +941,27 @@ final class LiveTv {
         long now = System.currentTimeMillis(), longest = stallSince > 0 ? now - stallSince : 0;
         stallSince = 0;
         long[] recent = Arrays.copyOfRange(stalls, stalls.length - stallCount, stalls.length);
-        if (adaptive() && Abr.struggling(recent, recent.length, now, longest)) down();
+        if (adaptive() && Abr.struggling(recent, recent.length, now, longest)) down(true);
     }
 
     /** Still stalled after 5 s: down a step now rather than wait. */
     private void stallStep() {
-        if (stallSince > 0 && adaptive()) down();
+        if (stallSince > 0 && adaptive()) down(true);
     }
 
     private void down() {
+        down(false);
+    }
+
+    /** A step down; stalling: one row per channel, with the small note of the version it falls back to. */
+    private void down(boolean stalling) {
         if (ladder == null || !ladder.canDown()) return;
         boolean wasTry = upTriedAt > 0 && System.currentTimeMillis() - upTriedAt < Abr.TRY_HOLDS_MS;
         if (wasTry) failedUps++;
         upTriedAt = 0;
+        Channel was = ladder.base();
         ladder.down();
+        if (stalling) fellBack(was);
         stallCount = 0;
         hlsRefused = false;
         asHls = Streams.looksHls(stream().url);
@@ -945,20 +1021,48 @@ final class LiveTv {
                 return;
             }
             if (ladder.canDown()) {
+                Channel was = ladder.base();
                 ladder.down();
                 retries = 0;
                 hlsRefused = false;
                 asHls = Streams.looksHls(stream().url);
                 set(RETRYING);
                 prepare();
+                fellBack(was);
                 h.removeCallbacks(upCheck);
                 h.postDelayed(upCheck, Abr.upAfter(failedUps));
                 return;
             }
+        } else if (fallsBack(ladder != null && ladder.canDown() && Versions.of(cur) != null, playedStream == stream(), retries)) {
+            // A fixed quality, one row per channel: a version that never started falls back to the next one too.
+            Channel was = ladder.base();
+            ladder.down();
+            retries = 0;
+            hlsRefused = false;
+            asHls = Streams.looksHls(stream().url);
+            set(RETRYING);
+            prepare();
+            fellBack(was);
+            return;
         }
         int tries = PlayerPrefs.retries(app);
         if (tries < 0 || retries < tries) reconnect();
         else set(FAILED);
+    }
+
+    /**
+     * Pure: whether a fixed quality's dropped stream falls back to the channel's next version: it has one, it never
+     * started, and it was tried again quickly as often as Adaptive tries it.
+     */
+    static boolean fallsBack(boolean hasNext, boolean played, int retries) {
+        return hasNext && !played && retries >= Abr.QUICK_TRIES;
+    }
+
+    /** The small note: the version it plays now, and the one that didn't answer. */
+    private void fellBack(Channel was) {
+        if (ladder == null || Versions.of(cur) == null) return;
+        lastNote = Ladder.fellBack(was, ladder.base());
+        if (!lastNote.isEmpty() && !Exec.inline) Toast.makeText(app, lastNote, Toast.LENGTH_LONG).show();
     }
 
     /** This channel back on its MPEG-TS address (the HLS form didn't play); the playlist's HLS skipped a while too if so. */
@@ -1068,6 +1172,7 @@ final class LiveTv {
                 h.postDelayed(steady, STEADY_MS);
                 bufferingSince = 0;
                 everReady = true;
+                playedStream = stream();
                 stepDone();
                 if (stallSince > 0) stallEnded();
                 if (arc != null) {

@@ -18,6 +18,7 @@ import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.engine.LogoPack;
 import com.gathin.homefieldtv.engine.Resume;
+import com.gathin.homefieldtv.engine.Versions;
 import com.gathin.homefieldtv.prefs.Categories;
 import com.gathin.homefieldtv.prefs.ChannelEdits;
 import com.gathin.homefieldtv.prefs.RemoteKeys;
@@ -136,6 +137,50 @@ public class BigPlaylistTest {
         System.out.println(b);
         Exec.inline = false;
         if (app != null) BigPlaylist.unload(app);
+    }
+
+    /**
+     * One row per channel at the largest: the 50,000 channels each in three qualities (FHD, HD, SD), one row each. Their
+     * versions are found as the index is made (off the main thread); every key the screens press stays at once.
+     */
+    @Test public void fiftyThousandChannelsInThreeQualitiesAreOneRowEach() throws Exception {
+        Exec.inline = true;
+        app = RuntimeEnvironment.getApplication();
+        BigPlaylist.load(app);
+        Library lib = Library.get(app);
+        List<Channel> three = BigPlaylist.inQualities();
+        long t0 = realNanos();
+        lib.useForPreview(three, BigPlaylist.guide(three, System.currentTimeMillis()));
+        times.put("load: 50,000 channels, each in three qualities", new double[]{(realNanos() - t0) / 1e6, 0});
+        onMain.put("load: 50,000 channels, each in three qualities", false);
+        List<Channel> every = lib.every();
+        time("Versions.group: every channel's versions found (each load)", false, 3, null, () -> Versions.group(every), null);
+        time("Library: the index made, three qualities each (each load)", false, 3, null, () -> BigPlaylist.index(every), null);
+        time("Library: the lists made, one row per channel", false, 3, null, () -> BigPlaylist.lists(app, every), null);
+        time("Library: search \"lantern\", one row per channel", false, 5, null, () -> lib.search("lantern", 8), null);
+        int rows = lib.all().size();
+        assertTrue("rows: " + rows, rows > 16_000 && rows < 18_000);
+
+        Exec.inline = false;
+        // An SD version in a category shown (the last categories are hidden by the made-up family).
+        Channel last = lib.all().get(rows - 1), sd = every.get(30_002);
+        time("Library.step from the last row (three qualities each)", 5, () -> lib.step(last, 1));
+        time("Library.numbered(an SD version's number: its row)", 5, () -> assertNotNull(lib.numbered(29_997)));
+        time("Library.lineup().indexOf(an SD version: its row)", 5, () -> assertTrue(lib.lineup().indexOf(sd) >= 0));
+        time("Library.row + versions (the Quality choice)", 5, () -> lib.versions(lib.row(sd)));
+        time("Library.all(), once a merged channel is hidden or shown", true, 3,
+                () -> ChannelEdits.setHidden(app, lib.row(sd), !ChannelEdits.hidden(lib.row(sd))), lib::all, BigPlaylistTest::settle);
+        ChannelEdits.setHidden(app, lib.row(sd), false);
+        time("Library.all(), once One row per channel is turned off or on", true, 2,
+                () -> ChannelEdits.setMerging(app, !ChannelEdits.merging(app)), lib::all, BigPlaylistTest::settle);
+        ChannelEdits.setMerging(app, true);
+        settle();
+        app.getSharedPreferences("channel_edits", Context.MODE_PRIVATE).edit().clear().commit();
+        ChannelEdits.forget();
+        for (Map.Entry<String, double[]> e : times.entrySet()) {
+            if (!Boolean.TRUE.equals(onMain.get(e.getKey()))) continue;
+            assertTrue(e.getKey() + " kept the main thread " + e.getValue()[1] + " ms", e.getValue()[1] < LIMIT_MS);
+        }
     }
 
     @Test public void fiftyThousandChannelsKeepTheMainThreadFree() throws Exception {

@@ -22,6 +22,7 @@ import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.prefs.Parental;
 import com.gathin.homefieldtv.prefs.PlayerPrefs;
 import com.gathin.homefieldtv.prefs.ChannelEdits;
+import com.gathin.homefieldtv.prefs.QualityPicks;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -38,8 +39,9 @@ import java.util.Locale;
  *
  * <p>The picture and sound buttons open their picker (PickerCard), the bar going while it is up:
  * <pre>
- *   Video tracks       the picture's quality, as Settings → Player → Picture quality: Adaptive, 4K, 1080p, 720p, SD,
- *                      Data saver
+ *   Video tracks       a channel in several qualities (one row per channel): its Quality first, Best then each version
+ *                      by its own name, the one playing ticked (OK plays it, kept for the channel); then the picture's
+ *                      quality, as Settings → Player → Picture quality: Adaptive, 4K, 1080p, 720p, SD, Data saver
  *   Audio tracks       Off, or one of the stream's sound tracks ("English, Stereo")
  *   Audio offset       ‹ 0 ms › (50 ms a press, this channel's), Reset, Apply to all channels
  *   Closed captions    the subtitles: Off, From the channel, Automatic; a line on what the channel sends; their look
@@ -360,10 +362,25 @@ final class PlayerBar extends FrameLayout implements PickerCard.Host {
         switch (it) {
             case VIDEO: {
                 title = "Video tracks";
+                // The channel's Quality, as its card in the guide has it: Best, then each version, the one playing ticked.
+                List<Channel> vs = Library.get(c).versions(ch);
+                if (ch != null && vs.size() > 1) {
+                    Channel pick = QualityPicks.of(c, ch, vs), now = tv.live.version();
+                    if (now == null) now = pick != null ? pick : vs.get(0);
+                    rows.add(RowList.Row.header("Quality"));
+                    rows.add(RowList.Row.item(GuideActions.Q_BEST, "Best", pick == null ? "In use: the best version that answers"
+                            : "Back to the best version that answers"));
+                    for (Channel v : vs) {
+                        if (v == now) focusRow = rows.size();
+                        rows.add(RowList.Row.radio(GuideActions.Q_VERSION + v.key, v.name, v == now));
+                    }
+                    rows.add(RowList.Row.header("Picture quality"));
+                }
                 int q = PlayerPrefs.quality(c);
+                boolean chosen = !rows.isEmpty();
                 for (int i = 0; i < PlayerPrefs.QUALITY_CHOICES.length; i++) {
                     boolean on = PlayerPrefs.QUALITY_CHOICES[i] == q;
-                    if (on) focusRow = rows.size();
+                    if (on && !chosen) focusRow = rows.size();
                     rows.add(RowList.Row.radio(PlayerPrefs.QUALITY_CHOICES[i], PlayerPrefs.QUALITY_NAMES[i], on));
                 }
                 break;
@@ -426,7 +443,7 @@ final class PlayerBar extends FrameLayout implements PickerCard.Host {
                 title = "Channel options";
                 if (host.canStartOver()) rows.add(RowList.Row.item(START_OVER, "Watch from the start", "The programme on now, from its beginning"));
                 if (ch != null && Parental.hasPin(c)) {
-                    boolean locked = Parental.lockedChannels(c).contains(ch.key);
+                    boolean locked = Parental.lockedHere(c, ch);
                     rows.add(RowList.Row.item(LOCK, locked ? "Unlock this channel" : "Lock this channel",
                             locked ? "It plays again without the PIN" : "The PIN is asked before it plays"));
                 }
@@ -449,6 +466,11 @@ final class PlayerBar extends FrameLayout implements PickerCard.Host {
         Object tag = row.tag;
         switch (pickerFor) {
             case VIDEO:
+                if (tag instanceof String) {
+                    // The channel's Quality: kept, and played on at once.
+                    if (!GuideActions.chooseQuality(tv, ch, (String) tag) && ch != null) tv.live.play(ch);
+                    break;
+                }
                 PlayerPrefs.setQuality(c, (Integer) tag);
                 tv.live.requality();
                 break;
@@ -507,13 +529,13 @@ final class PlayerBar extends FrameLayout implements PickerCard.Host {
     /** Lock this channel, or unlock it (after the PIN), as OK held's menu did. */
     private void lock(Channel ch) {
         Context c = getContext();
-        if (Parental.lockedChannels(c).contains(ch.key)) {
+        if (Parental.lockedHere(c, ch)) {
             PinScreen.check(tv, "Unlock " + ChannelEdits.name(ch), () -> {
-                Parental.lockChannel(tv, ch.key, false);
+                Parental.lockChannel(tv, ch, false);
                 android.widget.Toast.makeText(tv, ChannelEdits.name(ch) + " unlocked", android.widget.Toast.LENGTH_SHORT).show();
             });
         } else {
-            Parental.lockChannel(tv, ch.key, true);
+            Parental.lockChannel(tv, ch, true);
             android.widget.Toast.makeText(tv, ChannelEdits.name(ch) + " locked: the PIN is asked before it plays", android.widget.Toast.LENGTH_SHORT).show();
         }
     }

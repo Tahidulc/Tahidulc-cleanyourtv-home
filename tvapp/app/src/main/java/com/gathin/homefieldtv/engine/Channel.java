@@ -29,6 +29,12 @@ public final class Channel {
      * drops (Playback). Empty with one playlist.
      */
     public final java.util.List<Channel> alternates = new java.util.ArrayList<>(0);
+    /**
+     * The same channel in its other qualities in this playlist's category (FHD, HD, SD), with this one, best first, and
+     * the channel's name without its quality tags (Versions): worked out once a load (Lists.Index); null for a channel
+     * in one version. The lists show them as one only while the setting says so (Versions.of).
+     */
+    public volatile Versions versions;
 
     public Channel(String key, String name, String group, String logo, String url, String tvgId, String userAgent,
                    String referrer, int number) {

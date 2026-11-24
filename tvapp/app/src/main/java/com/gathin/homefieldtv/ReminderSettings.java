@@ -22,7 +22,8 @@ final class ReminderSettings {
         out.add(RowList.Row.header("Reminders set"));
         if (list.isEmpty()) out.add(RowList.Row.note("None yet. In the TV guide, hold OK on a programme to come, then Remind me."));
         for (Reminders.Reminder r : list) {
-            out.add(RowList.Row.item("rem:" + r.id(), r.title, Ui.day(r.start, now) + " " + LiveText.hm(r.start) + "  ·  " + r.channel
+            out.add(RowList.Row.item("rem:" + r.id(), r.title, Ui.day(r.start, now) + " " + LiveText.hm(r.start) + "  ·  "
+                    + ReminderCard.channelName(tv, r)
                     + "  ·  OK to cancel it"));
         }
     }

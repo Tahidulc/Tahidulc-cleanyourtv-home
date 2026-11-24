@@ -33,6 +33,8 @@ import java.util.Locale;
  *   Row.divider()                      a hairline rule between groups of lines (21 high)
  *   Row.stepper(tag, value)            a value with a round button each side (the player's audio offset): ‹ and ›,
  *                                      Left and Right move between them (side 0 and 1), OK presses the one lit
+ *   Row.channel(tag, ch, title, value) an item with the channel's logo (Logos, 96 x 56) before its words (Settings ›
+ *                                      Channels &amp; categories › Rename channels)
  * </pre>
  *
  * Rows can be greyed (enabled = false: the fourth label, OK does nothing) and carry the amber dot after their title
@@ -52,6 +54,8 @@ final class RowList extends View {
     static final float ROW_1 = 84f, ROW_2 = 96f, TITLE_LINE = 30f, VALUE_LINE = 24f, HEADER_H = 58f, ICON_H = 72f,
             DIVIDER_H = 21f, INSET = 12f, TEXT_X = 34f, ICON_TEXT_X = 84f;
     static final float SWITCH_W = 64f, SWITCH_H = 38f, SWITCH_RIGHT = 34f, RADIO_X = 56f, RADIO_D = 34f, RADIO_TEXT_X = 92f;
+    /** A channel row's logo (Row.channel) and the gap after it. */
+    static final float LOGO_W = 96f, LOGO_H = 56f, LOGO_GAP = 18f;
     static final long SCROLL_MS = 150, FLASH_MS = 180;
     /** A stepper's row (its buttons at its top, the gap under them) and its buttons. */
     static final float STEPPER_H = 110f, STEP_W = 70f, STEP_H = 70f;
@@ -77,6 +81,8 @@ final class RowList extends View {
         int swatch;
         /** A stepper's button the remote is on: 0 the left one (‹), 1 the right (›). */
         int side;
+        /** A channel's logo before an item's words (Row.channel), else null. */
+        com.gathin.homefieldtv.engine.Channel channel;
         // Laid out for the list's width (setRows / refresh).
         StaticLayout titleL, valueL;
         float height;
@@ -103,6 +109,13 @@ final class RowList extends View {
 
         static Row item(Object tag, String title, String value) {
             return new Row(ITEM, tag, title, value);
+        }
+
+        /** An item with a channel's logo before its words. */
+        static Row channel(Object tag, com.gathin.homefieldtv.engine.Channel ch, String title, String value) {
+            Row r = new Row(ITEM, tag, title, value);
+            r.channel = ch;
+            return r;
         }
 
         static Row toggle(Object tag, String title, String value, boolean on) {
@@ -188,7 +201,9 @@ final class RowList extends View {
     private final TextPaint headingP = Type.paint(Type.TITLE, Type.BOLD, Look07.L1);
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), ring = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint iconLine = new Paint(Paint.ANTI_ALIAS_FLAG), iconFill = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final RectF r = new RectF();
+    private final RectF r = new RectF(), logoBox = new RectF();
+    /** A channel row's logo come in: drawn again. */
+    private final Runnable redraw = this::invalidate;
 
     RowList(Context c) {
         super(c);
@@ -302,7 +317,8 @@ final class RowList extends View {
                     break;
                 }
                 default: {
-                    float room = w - TEXT_X * 2 - (row.toggle != null ? SWITCH_W + 20f : 0f) - (row.dot ? 30f : 0f);
+                    float room = w - TEXT_X * 2 - (row.toggle != null ? SWITCH_W + 20f : 0f) - (row.dot ? 30f : 0f)
+                            - (row.channel != null ? LOGO_W + LOGO_GAP : 0f);
                     row.titleL = Ui.layout(row.title, titleP, Ui.px(room), 2);
                     row.valueL = row.value.isEmpty() ? null : Ui.layout(row.value, valueP, Ui.px(room), 2);
                     int tl = row.titleL.getLineCount(), vl = row.valueL == null ? 0 : row.valueL.getLineCount();
@@ -522,6 +538,12 @@ final class RowList extends View {
         valueP.setColor(quiet);
         float block = row.titleL.getHeight() + (row.valueL == null ? 0 : Ui.f(3) + row.valueL.getHeight());
         float ty = cy - block / 2f, tx = left + Ui.f(TEXT_X);
+        if (row.channel != null) {
+            // The channel's logo on its tile before its words (Logos: the empty tile while it is read).
+            logoBox.set(tx, cy - Ui.f(LOGO_H) / 2f, tx + Ui.f(LOGO_W), cy + Ui.f(LOGO_H) / 2f);
+            if (!Logos.draw(c, row.channel, logoBox, redraw)) Logos.empty(c, logoBox);
+            tx += Ui.f(LOGO_W + LOGO_GAP);
+        }
         Ui.draw(c, row.titleL, tx, ty);
         if (row.dot) {
             float dx = tx + row.titleL.getLineWidth(0) + Ui.f(16);

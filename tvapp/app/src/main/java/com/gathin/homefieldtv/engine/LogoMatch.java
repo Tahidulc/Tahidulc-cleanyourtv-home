@@ -433,9 +433,18 @@ public final class LogoMatch {
         for (String[] a : aliases) ALIASES.put(a[0], a[1]);
     }
 
+    /** Pure: the name a key's alias is ("itv" → "itv1", "c4" → "channel4"), or null. */
+    static String alias(String key) {
+        return ALIASES.get(key);
+    }
+
     /** Pure: a channel's name (and its group) made comparable. */
     static Name name(String channel, String group) {
-        String s = Names.plain(channel == null ? "" : channel).toLowerCase(Locale.ROOT);
+        return plainName(Names.plain(channel == null ? "" : channel).toLowerCase(Locale.ROOT), group);
+    }
+
+    /** Pure: the same for a name already made plain and lower case (Names.plain: the lists have it for every channel). */
+    static Name plainName(String s, String group) {
         List<String> raw = new ArrayList<>();
         List<Boolean> hard = new ArrayList<>();
         tokens(s, raw, hard);

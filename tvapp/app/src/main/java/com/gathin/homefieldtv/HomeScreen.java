@@ -125,10 +125,14 @@ final class HomeScreen extends Screen implements HomeCard.Host {
         List<HomeCard.Card> onNow = new ArrayList<>(), sport = new ArrayList<>(), favs = new ArrayList<>();
         for (Channel c : on.channels) if (onNow.size() < MAX) onNow.add(channelCard(lib, c, now, onName));
         for (Channel c : on.sport) if (sport.size() < MAX) sport.add(channelCard(lib, c, now, "Sport on now"));
+        java.util.Set<String> favSeen = new java.util.HashSet<>();
         for (String k : lib.favourites()) {
+            // A favourite version is its channel's row, once (one row per channel).
             Channel c = lib.byKey(k);
             // Not one the family hid (Hide channel): off Home as off every list.
-            if (c != null && !ChannelEdits.hidden(c.key) && favs.size() < MAX) favs.add(channelCard(lib, c, now, "Favourites"));
+            if (c != null && !ChannelEdits.hidden(c.key) && favSeen.add(c.key) && favs.size() < MAX) {
+                favs.add(channelCard(lib, c, now, "Favourites"));
+            }
         }
         if (!onNow.isEmpty()) list.add(new HomeCard.Section(onName, ON_NOW, onNow));
 
