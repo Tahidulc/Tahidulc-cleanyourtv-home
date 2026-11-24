@@ -18,9 +18,9 @@ import com.gathin.tvhomephone.R;
 import com.google.android.material.button.MaterialButton;
 
 /**
- * The selected programme, as the guide shows it above the grid: its title, when, the channel, what it's about, how far
- * in it is when it's on, and what to do: Watch when it's on, Remind me when it's still to come, the favourite's star.
- * Compact on phones held upright (two lines of description, one button); fuller beside the preview and in a sheet.
+ * The selected programme, as the guide shows it under the picture: its title, when, the channel, what it's about (all of
+ * it), how far in it is when it's on, Remind me when it's still to come, and the favourite's star beside the guide. No
+ * Watch button: a tap on the programme in the guide plays it (the family's ask, 24 Nov, to give the description room).
  * In the TV section's 07 look (TvLook): Inter, the title semibold in white, the rest in softer greys, a white line for
  * how far in, Watch as a white pill and the rest as glass. Behind it the programme's own picture, as Homefield TV's panel
  * has it (Art): upright, filling the rounded panel with its faces whole and clear on the right, the words down the left
@@ -48,7 +48,9 @@ final class Details extends LinearLayout {
     /** The logo's box: on a tile in its own colour, black, or nothing behind it (LogoTiles). */
     private final FrameLayout logoBox;
     private final ProgressBar progress;
-    private final MaterialButton watch, remind, star;
+    private final MaterialButton remind, star;
+    /** The row with Remind me (upright: gone when there's nothing to remind; the programme itself plays on a tap). */
+    private final LinearLayout buttonRow;
     private Actions actions;
     private Channel ch;
     private Guide.Schedule s;
@@ -98,16 +100,11 @@ final class Details extends LinearLayout {
         progress.setMax(1000);
         TvLook.line(progress);
         desc = TvLook.text(c, "", compact ? 13 : 13.5f, TvLook.L2, false);
+        // The whole description (the family's ask, 24 Nov): no Watch button taking its room, nothing cut short.
         desc.setMaxLines(descLines);
-        // Upright phones: the panel keeps one height whatever is picked, so the grid under it doesn't jump.
-        if (compact) desc.setMinLines(descLines);
-        desc.setEllipsize(TextUtils.TruncateAt.END);
+        if (descLines < 50) desc.setEllipsize(TextUtils.TruncateAt.END);
         desc.setLineSpacing(0, 1.1f);
 
-        watch = button(c, R.string.live_watch, R.drawable.live_ic_play, true);
-        watch.setOnClickListener(v -> {
-            if (ch != null && actions != null) actions.watch(ch);
-        });
         remind = button(c, R.string.live_remind, R.drawable.live_ic_bell, false);
         remind.setOnClickListener(v -> toggleReminder());
         star = button(c, R.string.live_favourite, R.drawable.live_ic_star_outline, false);
@@ -135,10 +132,8 @@ final class Details extends LinearLayout {
             dp.topMargin = Ui.dp(c, 6);
             texts.addView(desc, dp);
             LinearLayout buttons = new LinearLayout(c);
+            buttonRow = buttons;
             buttons.setGravity(Gravity.CENTER_VERTICAL);
-            LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(-2, Ui.dp(c, 44));
-            bp.rightMargin = Ui.dp(c, 8);
-            buttons.addView(watch, bp);
             buttons.addView(remind, new LinearLayout.LayoutParams(-2, Ui.dp(c, 44)));
             LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(-1, -2);
             bl.topMargin = Ui.dp(c, 10);
@@ -173,10 +168,8 @@ final class Details extends LinearLayout {
             dp.topMargin = Ui.dp(c, 10);
             addView(desc, dp);
             LinearLayout buttons = new LinearLayout(c);
+            buttonRow = buttons;
             buttons.setGravity(Gravity.CENTER_VERTICAL);
-            LinearLayout.LayoutParams b1 = new LinearLayout.LayoutParams(-2, Ui.dp(c, 48));
-            b1.rightMargin = Ui.dp(c, 8);
-            buttons.addView(watch, b1);
             LinearLayout.LayoutParams b2 = new LinearLayout.LayoutParams(-2, Ui.dp(c, 48));
             b2.rightMargin = Ui.dp(c, 8);
             buttons.addView(remind, b2);
@@ -253,8 +246,8 @@ final class Details extends LinearLayout {
             when.setVisibility(compact || !g.isEmpty() ? View.VISIBLE : View.GONE);
             progress.setVisibility(compact ? View.INVISIBLE : View.GONE);
             desc.setText(R.string.live_no_guide_body);
-            watch.setVisibility(View.VISIBLE);
             remind.setVisibility(View.GONE);
+            if (compact) buttonRow.setVisibility(View.GONE);
             return;
         }
         long a = s.start[i], b = s.stop[i];
@@ -273,10 +266,9 @@ final class Details extends LinearLayout {
         String d = s.desc == null ? "" : s.desc[i];
         desc.setText(d);
         if (d.isEmpty() && !compact) desc.setText(R.string.live_no_description);
-        // On now or over: Watch (the channel). Still to come: Remind me (and Watch the channel beside it, when wide).
-        watch.setVisibility(ahead && compact ? View.GONE : View.VISIBLE);
-        watch.setText(ahead ? R.string.live_watch_channel : R.string.live_watch);
+        // No Watch button (a tap on the programme in the guide plays it); still to come: Remind me.
         remind.setVisibility(ahead ? View.VISIBLE : View.GONE);
+        if (compact) buttonRow.setVisibility(ahead ? View.VISIBLE : View.GONE);
         if (ahead) {
             boolean set = Reminders.has(c, ch, a);
             remind.setText(set ? R.string.live_reminded : R.string.live_remind);

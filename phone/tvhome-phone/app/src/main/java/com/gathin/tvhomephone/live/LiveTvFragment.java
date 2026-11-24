@@ -241,13 +241,9 @@ public class LiveTvFragment extends Fragment {
             toolbar.addView(stripRow, 1, new LinearLayout.LayoutParams(0, Ui.dp(c, 52), 1f));
             ((LinearLayout.LayoutParams) toolbar.getChildAt(0).getLayoutParams()).weight = 0;
             toolbar.getChildAt(0).getLayoutParams().width = -2;
-        } else {
-            head.addView(stripRow, new LinearLayout.LayoutParams(-1, Ui.dp(c, 60)));
-            // Recently watched over the details (it folds away with them).
-            LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-1, -2);
-            rp.topMargin = Ui.dp(c, 8);
-            head.addView(recents, rp);
         }
+        // Upright, the order (the family's, 24 Nov): the picture, the programme's details under it, Recently watched
+        // under those, then Your channels; all of it folds away together (added after the details, below).
 
         // The categories on the side: the bar at the guide's top (always in sight, the guide, the list or Sport under it)
         // with the button that slides the panel in; docked beside the guide on a tablet on its side with the room.
@@ -261,11 +257,12 @@ public class LiveTvFragment extends Fragment {
         body = new FrameLayout(c);
         Details.Actions actions = actions();
         if (mode == COMPACT) {
-            details = new Details(c, lib, true, 2);
+            details = new Details(c, lib, true, Integer.MAX_VALUE);
             // A rounded panel with the programme's picture, a little in from the edges as the picture above it.
             LinearLayout.LayoutParams dp = new LinearLayout.LayoutParams(-1, -2);
             dp.setMargins(Ui.dp(c, 12), Ui.dp(c, 6), Ui.dp(c, 12), Ui.dp(c, 6));
             head.addView(details, dp);
+            headTail(c, head);
         } else if (mode == TOP) {
             band = new LinearLayout(c);
             // A panel of tinted glass, rounded, a little in from the edges (07's mat).
@@ -275,11 +272,12 @@ public class LiveTvFragment extends Fragment {
             // The picture about half the tablet's width (288 to 420dp), 16:9, the details beside it.
             int iw = Math.min(Ui.dp(c, 420), Math.max(Ui.dp(c, 288), getResources().getDisplayMetrics().widthPixels / 2 - Ui.dp(c, 12)));
             band.addView(inline, new LinearLayout.LayoutParams(iw, iw * 9 / 16));
-            details = new Details(c, lib, false, 4);
+            details = new Details(c, lib, false, Integer.MAX_VALUE);
             band.addView(details, new LinearLayout.LayoutParams(0, -2, 1f));
             LinearLayout.LayoutParams bandP = new LinearLayout.LayoutParams(-1, -2);
             bandP.setMargins(Ui.dp(c, 12), Ui.dp(c, 6), Ui.dp(c, 12), Ui.dp(c, 8));
             head.addView(band, bandP);
+            headTail(c, head);
         } else {
             LinearLayout content = new LinearLayout(c);
             LinearLayout main = new LinearLayout(c);
@@ -313,19 +311,14 @@ public class LiveTvFragment extends Fragment {
             sideScroll = ds;
             LinearLayout under = new LinearLayout(c);
             under.setOrientation(LinearLayout.VERTICAL);
-            details = new Details(c, lib, false, tablet ? 8 : 5);
+            details = new Details(c, lib, false, Integer.MAX_VALUE);
             details.setPadding(Ui.dp(c, 4), Ui.dp(c, 12), Ui.dp(c, 4), Ui.dp(c, 12));
             under.addView(details, new LinearLayout.LayoutParams(-1, -2));
-            // Recently watched in smaller cards, to the pane's edges: on a phone right under the picture (the pane is
-            // short), on a tablet under the details.
+            // Recently watched in smaller cards, to the pane's edges, under the details (phone and tablet alike).
             LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-1, -2);
             rp.leftMargin = rp.rightMargin = -pad;
             rp.bottomMargin = Ui.dp(c, 8);
-            if (tablet) under.addView(recents, rp);
-            else {
-                rp.topMargin = Ui.dp(c, 10);
-                under.addView(recents, 0, rp);
-            }
+            under.addView(recents, rp);
             ds.addView(under, new FrameLayout.LayoutParams(-1, -2));
             side.addView(ds, new LinearLayout.LayoutParams(-1, 0, 1f));
             LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(sw - gap, -1);
@@ -382,6 +375,14 @@ public class LiveTvFragment extends Fragment {
             cats.fit(left, top, bottom);
         });
         return frame;
+    }
+
+    /** Upright, under the programme's details: Recently watched, then Your channels (both fold away with them). */
+    private void headTail(Context c, LinearLayout head) {
+        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-1, -2);
+        rp.topMargin = Ui.dp(c, 2);
+        head.addView(recents, rp);
+        head.addView(stripRow, new LinearLayout.LayoutParams(-1, Ui.dp(c, 60)));
     }
 
     /** A tablet's pane beside the guide on its side (the picture and the details), and the least the guide keeps. */

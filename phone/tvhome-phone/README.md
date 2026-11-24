@@ -765,3 +765,9 @@ channel. Scoreboards: half time and full time as soon as the half really ends, n
 time from a misread channel graphic, Checking VAR gone once play restarts, one stoppage-time red, the board back in the
 family's own place after a pop-up, and Move and resize scrolls. This build is signed with a new key, so it installs once
 over a removed copy rather than as an update.
+
+**The programme under the picture, all of its description, Recently watched under it (5.31).** On a phone or tablet held
+upright, Live TV now goes: the picture, the programme's details straight under it, Recently watched under those, then
+Your channels and the guide. The details have no Watch button (a tap on a programme that's on now in the guide plays it),
+so the whole description shows; Remind me stays for one still to come. On its side the pane is the same: the picture, the
+details, then Recently watched.
