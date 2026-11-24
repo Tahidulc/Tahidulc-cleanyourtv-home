@@ -23,7 +23,7 @@ import java.util.List;
 /**
  * My scoreboards as their own group beside the built-in looks: each saved board drawn as it looks (tap to use it, hold
  * for Edit, Rename, Duplicate and Delete), a tick on the one in use, and New scoreboard for the editor. In the
- * scoreboard settings as tiles and in the player's scoreboard menu as a row; and the Ask AI settings (the family's key,
+ * scoreboard's own menu (a tap on the board: BoardMenus) beside its looks, with the Ask AI settings (the family's key,
  * masked; the model; Send key to the TVs).
  */
 final class MyBoardsRow {
@@ -72,25 +72,6 @@ final class MyBoardsRow {
         fill[0].run();
         row.setTag(fill[0]);
         return row;
-    }
-
-    /** The tiles in a row that scrolls, with its heading and a line on how it works; what draws them again. */
-    static Runnable addTo(Activity a, LinearLayout col, Game game, LiveFor liveFor, Runnable used) {
-        Context c = a;
-        TextView h = Ui.text(c, "MY SCOREBOARDS", 12, Ui.SOFT, true);
-        h.setLetterSpacing(0.1f);
-        h.setPadding(0, Ui.dp(c, 16), 0, Ui.dp(c, 4));
-        col.addView(h);
-        col.addView(Ui.text(c, "Your own boards, on every phone and TV. Tap one to use it, hold it to edit, rename, copy or delete.",
-                13, Ui.DIM, false));
-        HorizontalScrollView hs = new HorizontalScrollView(c);
-        hs.setHorizontalScrollBarEnabled(false);
-        LinearLayout tiles = tiles(a, game, liveFor, used);
-        hs.addView(tiles);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-        lp.topMargin = Ui.dp(c, 6);
-        col.addView(hs, lp);
-        return (Runnable) tiles.getTag();
     }
 
     static void edit(Activity a, String id, Game game, LiveFor liveFor, Runnable after) {

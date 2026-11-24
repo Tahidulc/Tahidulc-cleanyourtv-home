@@ -31,8 +31,9 @@ import java.util.Locale;
  * The full screen's newer parts, kept apart from PlayerActivity: the rewind's replay bar (back and on 10 s, the bar to
  * drag along what was kept, Back to live), the line saying an alert waits for the stream, the banner for a goal in
  * another game (Switch), the touch lock, the scores box in the small window, the cover while the channel plays on a TV
- * (Continue on phone), and their options: the picture's quality, the source, alerts matching the stream, the rewind,
- * night sound, the touch lock and Watch on TV.
+ * (Continue on phone), and their options: the picture's quality, the source, the rewind, night sound, the touch lock and
+ * Watch on TV. The scoreboard and the channel logo have one entry each there, opening their own menus (the same a tap on
+ * either opens: BoardMenus), where their options and the alerts' timing are now.
  */
 final class PlayerExtras implements LiveAlerts.Listener {
     /** What the full screen tells these parts. */
@@ -499,6 +500,11 @@ final class PlayerExtras implements LiveAlerts.Listener {
         return match != null;
     }
 
+    /** Back: the scoreboard's or the logo's menu put away if one is open (true). */
+    boolean closeMenu() {
+        return overlay != null && overlay.closeMenu();
+    }
+
     /** Move and resize closed if it was open (kept as placed); whether it was. */
     boolean endAdjust() {
         if (overlay == null || !overlay.editing()) return false;
@@ -562,171 +568,19 @@ final class PlayerExtras implements LiveAlerts.Listener {
             pb.requality(false);
         });
 
-        // Alerts as the stream shows the game.
-        LinearLayout al = chipRow(c, box, R.string.live3_alerts);
-        Channel st = host.current();
-        String key = st == null ? "" : st.key;
-        TextView value = Ui.guideChip(c, LiveAlerts.delay(c, key) + " s behind", false);
-        TextView minus = Ui.guideChip(c, "− 5 s", false), plus = Ui.guideChip(c, "+ 5 s", false);
-        minus.setOnClickListener(v -> {
-            LiveAlerts.setDelay(c, key, LiveAlerts.delay(c, key) - 5);
-            value.setText(LiveAlerts.delay(c, key) + " s behind");
-            if (overlay != null) overlay.delayChanged();
-        });
-        plus.setOnClickListener(v -> {
-            LiveAlerts.setDelay(c, key, LiveAlerts.delay(c, key) + 5);
-            value.setText(LiveAlerts.delay(c, key) + " s behind");
-            if (overlay != null) overlay.delayChanged();
-        });
-        addChip(al, minus);
-        addChip(al, value);
-        addChip(al, plus);
-        TextView just = Ui.guideChip(c, a.getString(R.string.live3_just_happened), false);
-        just.setOnClickListener(v -> {
-            int d = LiveAlerts.justHappened(c);
-            if (d < 0) Toast.makeText(c, R.string.live3_just_happened_none, Toast.LENGTH_LONG).show();
-            else value.setText(d + " s behind");
-            if (overlay != null) overlay.delayChanged();
-        });
-        // On a line of its own: the one to find at a glance as the goal goes in.
-        LinearLayout justRow = new LinearLayout(c);
-        justRow.setPadding(0, Ui.dp(c, 8), 0, 0);
-        justRow.addView(just, new LinearLayout.LayoutParams(-2, -2));
-        box.addView(justRow);
-        note(c, box, "Tap “It's just happened” as you see a goal, a card or the kick-off: this channel's alerts then wait until your stream shows them.");
-        toggle(c, box, a.getString(R.string.live3_hold), LiveAlerts.holding(c), on -> LiveAlerts.setHolding(c, on));
-
-        // The scoreboard over the picture: on, over the channel's own, which alerts drop from it, over other apps.
+        // The scoreboard and the channel logo: each one's own menu, the same as a tap on it opens (everything about it
+        // is there: its look, its timing and this channel's alerts, its pop-ups, its place and size, this channel's own).
         if (overlay != null) {
             chipRow(c, box, R.string.live4_board);
-            toggle(c, box, a.getString(R.string.live4_board_on), overlay.on(), overlay::set);
-            handOptions(c, box);
-            channelOptions(c, box);
-            // Moved and sized by hand: the scoreboard and the mark over the logo, dragged into place on the picture.
-            action(c, box, R.drawable.live_ic_fullscreen, a.getString(R.string.live6_adjust), () -> {
+            action(c, box, R.drawable.live_ic_stats, a.getString(R.string.live_menu_board), () -> {
                 host.closeSheet();
-                overlay.adjust();
+                overlay.boardMenu();
             });
-            // The size, kept for the channel playing (its own from then on).
-            LinearLayout sizes = chipRow(c, box, overlay.channelKnown() ? R.string.live50_size_here : R.string.live6_size);
-            List<TextView> ss = new ArrayList<>();
-            for (int i = 0; i < ScoreBoard.SIZES.length; i++) {
-                float k = ScoreBoard.SIZES[i];
-                TextView t = Ui.guideChip(c, ScoreBoard.SIZE_NAMES[i], Math.abs(overlay.sizeHere() - k) < 0.01f);
-                t.setOnClickListener(v -> {
-                    overlay.setHere("size", Float.toString(k));
-                    for (TextView x : ss) Ui.styleChip(c, x, x == v);
-                });
-                ss.add(t);
-                addChip(sizes, t);
-            }
-            toggle(c, box, a.getString(R.string.live6_still), ScoreBoard.still(c), on -> ScoreBoard.setStill(c, on));
-            toggle(c, box, a.getString(R.string.live4_board_cover), ScoreBoard.cover(c), on -> {
-                ScoreBoard.setCover(c, on);
-                overlay.game(host.game());
-            });
-            LinearLayout drops = chipRow(c, box, R.string.live4_board_alerts);
-            String[][] groups = {{ScoreBoard.FOOTBALL, a.getString(R.string.live4_alerts_football)},
-                    {ScoreBoard.SPORT, a.getString(R.string.live4_alerts_sport)}, {ScoreBoard.NEWS, a.getString(R.string.live4_alerts_news)}};
-            for (String[] g : groups) {
-                TextView t = Ui.guideChip(c, g[1], ScoreBoard.shows(c, g[0]));
-                t.setOnClickListener(v -> {
-                    boolean now = !ScoreBoard.shows(c, g[0]);
-                    ScoreBoard.setShows(c, g[0], now);
-                    Ui.styleChip(c, t, now);
-                });
-                addChip(drops, t);
-            }
-            // Its look, and Homefield's mark over the channel's logo.
-            LinearLayout looks = chipRow(c, box, R.string.live4_board_look);
-            List<TextView> ls = new ArrayList<>();
-            boolean custom = ScoreBoard.customId(c) != null;
-            for (OverlayBug.Style look : OverlayBug.Style.values()) {
-                TextView t = Ui.guideChip(c, look.label, !custom && ScoreBoard.style(c) == look);
-                t.setOnClickListener(v -> {
-                    ScoreBoard.setStyle(c, look);
-                    for (TextView x : ls) Ui.styleChip(c, x, x == v);
-                    overlay.restyle();
-                });
-                ls.add(t);
-                addChip(looks, t);
-            }
-            // My scoreboards, their own group: each one to use now, and the editor (the board on screen changing as it is
-            // edited, given back when it closes).
-            LinearLayout mine = chipRow(c, box, R.string.live_my_boards);
-            for (com.gathin.broadcast.MyBoards.Saved sv : MyBoardStore.all(c)) {
-                TextView t = Ui.guideChip(c, sv.name, sv.id.equals(ScoreBoard.customId(c)));
-                t.setOnClickListener(v -> {
-                    ScoreBoard.setCustom(c, sv.id);
-                    for (TextView x : ls) Ui.styleChip(c, x, x == v);
-                    overlay.restyle();
-                });
-                ls.add(t);
-                addChip(mine, t);
-            }
-            action(c, box, R.drawable.live_ic_edit, a.getString(R.string.live_board_editor), () -> {
+            action(c, box, R.drawable.live_ic_tv, a.getString(R.string.live_menu_logo), () -> {
                 host.closeSheet();
-                MyBoardsRow.edit(a, ScoreBoard.customId(c), host.game(), () -> new BoardEditor.Live() {
-                    @Override public void show(com.gathin.broadcast.BoardSpec s) {
-                        overlay.previewBoard(s);
-                    }
-
-                    @Override public void done() {
-                        overlay.restyle();
-                    }
-                }, null);
+                overlay.logoMenu();
             });
-            // The channel's own logo: one from the logo packs, or one made here.
-            if (host.current() != null) {
-                action(c, box, R.drawable.live_ic_edit, a.getString(R.string.live_logo_pick), () -> {
-                    host.closeSheet();
-                    LogoPicker.open(a, host.current());
-                });
-            }
-            // Beside the look and size: whether what comes out of the channel's own scoreboard is covered (BugCover).
-            toggle(c, box, a.getString(R.string.live_bug_pop_outs_short), ScoreBoard.coverPopOuts(c), on -> ScoreBoard.setCoverPopOuts(c, on));
-            // The picture tag on the logo's cover.
-            LinearLayout tags = chipRow(c, box, R.string.live20_logo_tag);
-            List<TextView> tg = new ArrayList<>();
-            for (ChannelMark.Tag tag : ChannelMark.Tag.values()) {
-                TextView t = Ui.guideChip(c, tag == ChannelMark.Tag.AUTO ? "Auto" : tag.label, overlay.tagHere() == tag);
-                t.setOnClickListener(v -> {
-                    overlay.setHere("tag", tag.name());
-                    for (TextView x : tg) Ui.styleChip(c, x, x == v);
-                });
-                tg.add(t);
-                addChip(tags, t);
-            }
-            toggle(c, box, a.getString(R.string.live24_logo_live), overlay.liveHere(), on -> overlay.setHere("live", on ? "1" : "0"));
-            toggle(c, box, a.getString(R.string.live21_logo_comp), overlay.compHere(), on -> overlay.setHere("comp", on ? "1" : "0"));
-            // See-through (the channel's own logo hidden, the picture carried over it) and a general channel's name.
-            toggle(c, box, a.getString(R.string.live50_see_through), overlay.seeThroughHere(), on -> overlay.setHere("see_through", on ? "1" : "0"));
-            // What it is doing over this channel now: learning its logo, taken out, or on its plate (a solid logo).
-            String seeing = overlay.seeThroughStatus();
-            if (seeing != null) note(c, box, seeing);
-            toggle(c, box, a.getString(R.string.live50_name_only), overlay.nameOnlyHere(), on -> overlay.setHere("name_only", on ? "1" : "0"));
-            // The ad-break screen at the adverts (the build-up, half time, after the game): on or off, one to see now, and
-            // one as at half time (the quiz, fun facts and prayer times).
-            toggle(c, box, a.getString(R.string.live58_ad_break), ScoreBoard.adBreak(c), on -> ScoreBoard.setAdBreak(c, on));
-            action(c, box, R.drawable.live_ic_play, a.getString(R.string.live58_ad_break_try), () -> {
-                host.closeSheet();
-                overlay.tryAdBreak();
-            });
-            action(c, box, R.drawable.live_ic_play, a.getString(R.string.live63_ad_break_half), () -> {
-                host.closeSheet();
-                overlay.tryAdBreak(true);
-            });
-            toggle(c, box, a.getString(R.string.live5_burn), BurnGuard.on(c), on -> BurnGuard.setOn(c, on));
-            toggle(c, box, a.getString(R.string.live4_read), ScoreBoard.reads(c), on -> {
-                ScoreBoard.setReads(c, on);
-                overlay.game(host.game());
-            });
-            overlay.options(c, box, host::closeSheet);
-            action(c, box, R.drawable.live_ic_pip, a.getString(FloatService.on(c) ? R.string.live4_float_stop : R.string.live4_float_start), () -> {
-                host.closeSheet();
-                FloatService.toggle(a);
-            });
-            note(c, box, a.getString(R.string.live4_board_note));
+            note(c, box, a.getString(R.string.live_menu_note));
         }
 
         // The rewind.
@@ -785,119 +639,6 @@ final class PlayerExtras implements LiveAlerts.Listener {
 
     private interface Flip {
         void set(boolean on);
-    }
-
-    /**
-     * Up by hand: the scoreboard and the mark over the logo over the picture now, whatever is found on the channel:
-     * off, the channel's own game, one of today's games (read off the main thread), or the mark alone.
-     */
-    private void handOptions(Context c, LinearLayout box) {
-        LinearLayout row = chipRow(c, box, R.string.live49_hand);
-        List<TextView> all = new ArrayList<>();
-        boolean on = overlay.handOn();
-        String id = on ? ScoreBoard.handGame(c) : null;
-        TextView off = Ui.guideChip(c, a.getString(R.string.live49_hand_off), !on);
-        TextView own = Ui.guideChip(c, a.getString(R.string.live49_hand_channel), on && "".equals(id));
-        TextView only = Ui.guideChip(c, a.getString(R.string.live49_hand_logo), on && ScoreBoard.NO_GAME.equals(id));
-        off.setOnClickListener(v -> {
-            overlay.handOff();
-            for (TextView x : all) Ui.styleChip(c, x, x == v);
-        });
-        own.setOnClickListener(v -> {
-            overlay.hand(null, false);
-            for (TextView x : all) Ui.styleChip(c, x, x == v);
-        });
-        only.setOnClickListener(v -> {
-            overlay.hand(null, true);
-            for (TextView x : all) Ui.styleChip(c, x, x == v);
-        });
-        all.add(off);
-        all.add(own);
-        all.add(only);
-        addChip(row, off);
-        addChip(row, own);
-        addChip(row, only);
-        // Today's games not over (live first), put in before "The logo only" once read.
-        App.io.execute(() -> {
-            List<Game> games = new ArrayList<>();
-            try {
-                for (Game g : com.gathin.tvhomephone.sports.OnAir.today(60_000L)) {
-                    if (g != null && g.id != null && g.state != Game.POST && games.size() < 16) games.add(g);
-                }
-            } catch (RuntimeException ignored) {
-                // the chips as they are
-            }
-            games.sort((x, y) -> x.state != y.state ? (x.state == Game.LIVE ? -1 : y.state == Game.LIVE ? 1 : 0) : Long.compare(x.kickoff, y.kickoff));
-            App.main.post(() -> {
-                if (row.getParent() == null) return;
-                for (Game g : games) {
-                    TextView t = Ui.guideChip(c, g.home + " v " + g.away + (g.state == Game.LIVE ? " · live" : ""), on && g.id.equals(id));
-                    t.setOnClickListener(v -> {
-                        overlay.hand(g, false);
-                        for (TextView x : all) Ui.styleChip(c, x, x == v);
-                    });
-                    all.add(t);
-                    LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
-                    lp.rightMargin = Ui.dp(c, 8);
-                    row.addView(t, row.indexOfChild(only), lp);
-                }
-            });
-        });
-        note(c, box, a.getString(R.string.live49_hand_note));
-    }
-
-    /** This channel's own: as the rest, always up, or never; and its own logo look and style, else the general ones. */
-    private void channelOptions(Context c, LinearLayout box) {
-        Channel ch = host.current();
-        if (ch == null || ch.key == null) return;
-        String key = ch.key;
-        LinearLayout modes = chipRow(c, box, R.string.live49_channel);
-        List<TextView> ms = new ArrayList<>();
-        String[][] choices = {{ChannelOverlays.SAME, a.getString(R.string.live49_channel_same)},
-                {ChannelOverlays.ALWAYS, a.getString(R.string.live49_channel_always)}, {ChannelOverlays.NEVER, a.getString(R.string.live49_channel_never)}};
-        for (String[] m : choices) {
-            TextView t = Ui.guideChip(c, m[1], ChannelOverlays.mode(c, key).equals(m[0]));
-            t.setOnClickListener(v -> {
-                ChannelOverlays.setMode(c, key, m[0]);
-                for (TextView x : ms) Ui.styleChip(c, x, x == v);
-                overlay.channelChanged();
-            });
-            ms.add(t);
-            addChip(modes, t);
-        }
-        LinearLayout looks = chipRow(c, box, R.string.live49_channel_logo);
-        List<TextView> ls = new ArrayList<>();
-        LogoCover.Look own = ChannelOverlays.look(c, key);
-        TextView same = Ui.guideChip(c, a.getString(R.string.live49_channel_logo_same, ScoreBoard.logoCover(c).label), own == null);
-        same.setOnClickListener(v -> {
-            overlay.setLookFromOptions(null);
-            for (TextView x : ls) Ui.styleChip(c, x, x == v);
-        });
-        ls.add(same);
-        addChip(looks, same);
-        for (LogoCover.Look lk : LogoCover.Look.values()) {
-            TextView t = Ui.guideChip(c, lk.label, own == lk);
-            t.setOnClickListener(v -> {
-                overlay.setLookFromOptions(lk);
-                for (TextView x : ls) Ui.styleChip(c, x, x == v);
-            });
-            ls.add(t);
-            addChip(looks, t);
-        }
-        // The Whitebrook Road style on this channel (for the look of that name).
-        LinearLayout styles = chipRow(c, box, R.string.live50_style_here);
-        List<TextView> sts = new ArrayList<>();
-        for (int i = 0; i < BrandStyles.COUNT; i++) {
-            int n = i;
-            TextView t = Ui.guideChip(c, (i + 1) + ". " + BrandStyles.name(i), overlay.styleHere() == i);
-            t.setOnClickListener(v -> {
-                overlay.setStyleHere(n);
-                for (TextView x : sts) Ui.styleChip(c, x, x == v);
-            });
-            sts.add(t);
-            addChip(styles, t);
-        }
-        note(c, box, a.getString(R.string.live49_channel_note, ch.name == null ? "this channel" : ch.name));
     }
 
     static LinearLayout chipRow(Context c, LinearLayout box, int label) {

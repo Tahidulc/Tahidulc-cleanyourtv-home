@@ -9,9 +9,12 @@ import com.gathin.tvhomephone.R;
 import com.google.android.material.materialswitch.MaterialSwitch;
 
 /**
- * Settings' "Scoreboard while you watch": the scoreboard over matches (Automatic, Ask as it always was, or Off:
- * OverMatches), over the channel's own, which alerts drop from it, over other apps, and how far behind the other apps'
- * pictures run.
+ * Settings' "Scoreboard while you watch": a pointer now. Everything about the scoreboard and the channel logo (over
+ * matches, the looks, My scoreboards and Ask AI's key, the timing, the pop-ups, the sounds, the ad-break screen, the
+ * logo's looks and what is on it, their places and sizes, each channel's own, over other apps) is in their own pop-up
+ * menus over the picture, as the family asked ("have all the options for it in the pop up menu when I click on the
+ * scoreboard and channel logo": BoardMenus), so it isn't in two places. Its rows' makings stay here for the rest of
+ * Settings (the intros) and the scoreboard editor.
  */
 public final class BoardSettings {
     private BoardSettings() {}
@@ -20,294 +23,14 @@ public final class BoardSettings {
         void set(boolean on);
     }
 
+    /** The heading, its line, and where the options are now. */
     public static void add(Activity a, LinearLayout col) {
         Context c = a;
         col.addView(com.gathin.tvhomephone.sports.Ui.heading(c, c.getString(R.string.live4_settings_title), c.getColor(R.color.text_soft)));
         col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live4_settings_line), 13, c.getColor(R.color.text_dim), false));
-        // Scoreboard over matches: Automatic (it finds the match on the channel itself), Ask (as it always was) or Off (no
-        // scoreboard on the picture; the player's options switch it back on).
-        styles(c, col, c.getString(R.string.live36_over_matches), new String[]{OverMatches.AUTO, OverMatches.ASK, OverMatches.OFF},
-                new String[]{c.getString(R.string.live36_over_auto), c.getString(R.string.live36_over_ask), c.getString(R.string.live36_over_off)},
-                OverMatches.mode(c), m -> OverMatches.setMode(c, m));
-        col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live36_over_line), 13, c.getColor(R.color.text_dim), false));
-        row(c, col, c.getString(R.string.live4_board_cover), ScoreBoard.cover(c), on -> ScoreBoard.setCover(c, on));
-        row(c, col, c.getString(R.string.live6_still), ScoreBoard.still(c), on -> ScoreBoard.setStill(c, on));
-        col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live6_still_line), 13, c.getColor(R.color.text_dim), false));
-        row(c, col, c.getString(R.string.live4_read), ScoreBoard.reads(c), on -> ScoreBoard.setReads(c, on));
-        row(c, col, c.getString(R.string.live58_ad_break), ScoreBoard.adBreak(c), on -> ScoreBoard.setAdBreak(c, on));
-        col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live58_ad_break_line), 13, c.getColor(R.color.text_dim), false));
-        row(c, col, c.getString(R.string.live5_burn), BurnGuard.on(c), on -> BurnGuard.setOn(c, on));
-        col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live5_burn_line), 13, c.getColor(R.color.text_dim), false));
-        col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live4_read_line), 13, c.getColor(R.color.text_dim), false));
-
-        // Its look: each drawn as it would be, tap one.
-        col.addView(sub(c, c.getString(R.string.live4_board_look)));
-        android.widget.HorizontalScrollView hs = new android.widget.HorizontalScrollView(c);
-        hs.setHorizontalScrollBarEnabled(false);
-        LinearLayout styles = new LinearLayout(c);
-        hs.addView(styles);
-        java.util.List<android.view.View> frames = new java.util.ArrayList<>();
-        Runnable[] mine = new Runnable[1];
-        for (OverlayBug.Style st : OverlayBug.Style.values()) {
-            LinearLayout one = choice(c, st.label, ScoreBoard.style(c) == st);
-            OverlayBug b = new OverlayBug(c);
-            b.style(st);
-            b.set(st == OverlayBug.Style.KITS ? kitsSample() : sample());
-            if (st == OverlayBug.Style.KITS) PhoneKits.preview(a, b, Ui.dp(c, Math.round(30 * st.tall)));
-            LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(-2, Ui.dp(c, Math.round(30 * st.tall)));
-            one.addView(b, 0, bp);
-            one.setOnClickListener(v -> {
-                ScoreBoard.setStyle(c, st);
-                for (android.view.View f : frames) f.setSelected(f == v);
-                if (mine[0] != null) mine[0].run();
-            });
-            frames.add(one);
-            styles.addView(one, spaced(c));
-        }
-        col.addView(hs, new LinearLayout.LayoutParams(-1, -2));
-        // The family's own boards, their own group beside the looks (the editor, Generate, Ask AI), and Ask AI's key.
-        mine[0] = MyBoardsRow.addTo(a, col, null, null, () -> {
-            for (android.view.View f : frames) f.setSelected(false);
-        });
-        if (ScoreBoard.customId(c) != null) for (android.view.View f : frames) f.setSelected(false);
-        MyBoardsRow.aiSettings(a, col);
-
-        // Tennis, boxing and UFC: their board in the look chosen, tried here for a few seconds with one moment.
-        col.addView(sub(c, c.getString(R.string.live81_try_title)));
-        col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live81_try_line), 13, c.getColor(R.color.text_dim), false));
-        android.widget.FrameLayout stage = new android.widget.FrameLayout(c);
-        stage.setBackground(Ui.round(c, 0xFF2F4A33, 12));
-        stage.setVisibility(android.view.View.GONE);
-        SportView pv = new SportView(c);
-        stage.addView(pv, new android.widget.FrameLayout.LayoutParams(-2, -2, android.view.Gravity.CENTER));
-        LinearLayout tries = new LinearLayout(c);
-        tries.setPadding(0, Ui.dp(c, 6), 0, Ui.dp(c, 6));
-        int[] sports = {com.gathin.broadcast.SportBoard.TENNIS, com.gathin.broadcast.SportBoard.BOXING, com.gathin.broadcast.SportBoard.UFC};
-        int[] labels = {R.string.live81_try_tennis, R.string.live81_try_boxing, R.string.live81_try_ufc};
-        for (int i = 0; i < sports.length; i++) {
-            int sp = sports[i];
-            TextView t = Ui.chip(c, c.getString(labels[i]), false);
-            t.setOnClickListener(v -> SportOverlay.tryIt(c, stage, pv, sp, Ui.dp(c, 30)));
-            tries.addView(t, spaced(c));
-        }
-        android.widget.HorizontalScrollView tryRow = new android.widget.HorizontalScrollView(c);
-        tryRow.setHorizontalScrollBarEnabled(false);
-        tryRow.addView(tries);
-        col.addView(tryRow, new LinearLayout.LayoutParams(-1, -2));
-        col.addView(stage, new LinearLayout.LayoutParams(-1, Ui.dp(c, 130)));
-
-        // The channel's logo: Homefield's mark over it, each way drawn, tap one.
-        col.addView(sub(c, c.getString(R.string.live4_logo)));
-        col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live4_logo_line), 13, c.getColor(R.color.text_dim), false));
-        android.widget.HorizontalScrollView hl = new android.widget.HorizontalScrollView(c);
-        hl.setHorizontalScrollBarEnabled(false);
-        LinearLayout logos = new LinearLayout(c);
-        hl.addView(logos);
-        java.util.List<android.view.View> lframes = new java.util.ArrayList<>();
-        for (LogoCover.Look lk : LogoCover.Look.values()) {
-            LinearLayout one = choice(c, lk.label, ScoreBoard.logoCover(c) == lk);
-            android.view.View pic;
-            if (lk == LogoCover.Look.OFF) {
-                TextView t = Ui.text(c, "SPORTS", 13, 0xFFFFFFFF, true);
-                t.setGravity(android.view.Gravity.CENTER);
-                t.setLetterSpacing(0.1f);
-                t.setBackground(Ui.round(c, 0x33FFFFFF, 6));
-                pic = t;
-            } else {
-                LogoCover lc = new LogoCover(c);
-                lc.look(lk);
-                // The channel and Broadcast looks with the picture tag chosen (a UHD channel's on Auto) and LIVE.
-                ChannelMark.Tag tg = ScoreBoard.logoTag(c);
-                lc.tag(tg == ChannelMark.Tag.AUTO ? "UHD" : tg.shown);
-                lc.live(true);
-                pic = lc;
-            }
-            boolean tall = lk.channel() || lk.broadcast() || lk == LogoCover.Look.COMPETITION || lk.own();
-            if (pic instanceof LogoCover && lk.own()) {
-                ((LogoCover) pic).style(ScoreBoard.logoStyle(c));
-                ((LogoCover) pic).what("premier league");
-                ((LogoCover) pic).nameOnly(ScoreBoard.logoNameOnly(c));
-                // Event: a channel's own name on it, as the family's picture has it.
-                ((LogoCover) pic).sub("main event");
-            }
-            if (lk == LogoCover.Look.COMPETITION && pic instanceof LogoCover) ((LogoCover) pic).competition(null, "Premier League");
-            one.addView(pic, 0, new LinearLayout.LayoutParams(Ui.dp(c, tall ? 112 : 104), Ui.dp(c, tall ? 52 : 36)));
-            one.setOnClickListener(v -> {
-                ScoreBoard.setLogoCover(c, lk);
-                for (android.view.View f : lframes) f.setSelected(f == v);
-            });
-            lframes.add(one);
-            logos.addView(one, spaced(c));
-        }
-        col.addView(hl, new LinearLayout.LayoutParams(-1, -2));
-        // Its extras: Up next, prayer time, the clock and the weather, the stream's marks (LogoExtras), each on its own.
-        col.addView(sub(c, c.getString(R.string.live83_extras)));
-        row(c, col, c.getString(R.string.live83_next), LogoExtras.on(c, "next"), on -> LogoExtras.setOn(c, "next", on));
-        row(c, col, c.getString(R.string.live83_prayer), LogoExtras.on(c, "prayer"), on -> LogoExtras.setOn(c, "prayer", on));
-        row(c, col, c.getString(R.string.live83_clock), LogoExtras.on(c, "clock"), on -> LogoExtras.setOn(c, "clock", on));
-        row(c, col, c.getString(R.string.live83_marks), LogoExtras.on(c, "marks"), on -> LogoExtras.setOn(c, "marks", on));
-        col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live83_line), 13, c.getColor(R.color.text_dim), false));
-        // The picture tag on it: Auto (from the channel's name), none, or one set.
-        col.addView(sub(c, c.getString(R.string.live20_logo_tag)));
-        col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live20_logo_tag_line), 13, c.getColor(R.color.text_dim), false));
-        android.widget.HorizontalScrollView ht = new android.widget.HorizontalScrollView(c);
-        ht.setHorizontalScrollBarEnabled(false);
-        LinearLayout tagRow = new LinearLayout(c);
-        ht.addView(tagRow);
-        java.util.List<android.view.View> tframes = new java.util.ArrayList<>();
-        for (ChannelMark.Tag tg : ChannelMark.Tag.values()) {
-            LinearLayout one = choice(c, tg == ChannelMark.Tag.AUTO ? "Auto" : tg.label, ScoreBoard.logoTag(c) == tg);
-            one.setOnClickListener(v -> {
-                ScoreBoard.setLogoTag(c, tg);
-                for (android.view.View f : tframes) f.setSelected(f == v);
-            });
-            tframes.add(one);
-            tagRow.addView(one, spaced(c));
-        }
-        col.addView(ht, new LinearLayout.LayoutParams(-1, -2));
-        // The 54 Whitebrook Road styles, each drawn as it would be: tap one.
-        col.addView(sub(c, c.getString(R.string.live28_styles)));
-        col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live28_styles_line), 13, c.getColor(R.color.text_dim), false));
-        android.widget.HorizontalScrollView hb = new android.widget.HorizontalScrollView(c);
-        hb.setHorizontalScrollBarEnabled(false);
-        LinearLayout brandRow = new LinearLayout(c);
-        hb.addView(brandRow);
-        java.util.List<android.view.View> bframes = new java.util.ArrayList<>();
-        for (int i = 0; i < BrandStyles.COUNT; i++) {
-            final int n = i;
-            LinearLayout one = choice(c, (i + 1) + ". " + BrandStyles.name(i), ScoreBoard.logoStyle(c) == i);
-            LogoCover lc = new LogoCover(c);
-            lc.look(LogoCover.Look.STYLES);
-            lc.style(i);
-            lc.nameOnly(ScoreBoard.logoNameOnly(c));
-            lc.tag("HD");
-            one.addView(lc, 0, new LinearLayout.LayoutParams(Ui.dp(c, 124), Ui.dp(c, 44)));
-            one.setOnClickListener(v -> {
-                ScoreBoard.setLogoStyle(c, n);
-                LogoCover.Look now = ScoreBoard.logoCover(c);
-                if (!now.own() || now.event()) ScoreBoard.setLogoCover(c, LogoCover.Look.STYLES);
-                for (android.view.View f : bframes) f.setSelected(f == v);
-            });
-            bframes.add(one);
-            brandRow.addView(one, spaced(c));
-        }
-        col.addView(hb, new LinearLayout.LayoutParams(-1, -2));
-        // What the Sports wordmark says is on: from the game, or one chosen.
-        col.addView(sub(c, c.getString(R.string.live28_what)));
-        android.widget.HorizontalScrollView hw = new android.widget.HorizontalScrollView(c);
-        hw.setHorizontalScrollBarEnabled(false);
-        LinearLayout whatRow = new LinearLayout(c);
-        hw.addView(whatRow);
-        java.util.List<android.view.View> wframes = new java.util.ArrayList<>();
-        for (String w : SportsMark.WHATS) {
-            LinearLayout one = choice(c, SportsMark.label(w), ScoreBoard.logoWhat(c).equals(w));
-            one.setOnClickListener(v -> {
-                ScoreBoard.setLogoWhat(c, w);
-                for (android.view.View f : wframes) f.setSelected(f == v);
-            });
-            wframes.add(one);
-            whatRow.addView(one, spaced(c));
-        }
-        col.addView(hw, new LinearLayout.LayoutParams(-1, -2));
-        row(c, col, c.getString(R.string.live28_name_only), ScoreBoard.logoNameOnly(c), on -> ScoreBoard.setLogoNameOnly(c, on));
-        row(c, col, c.getString(R.string.live28_see_through), ScoreBoard.logoSeeThrough(c), on -> ScoreBoard.setLogoSeeThrough(c, on));
-        row(c, col, c.getString(R.string.live28_lineups), ScoreBoard.lineupsOn(c), on -> ScoreBoard.setLineupsOn(c, on));
-        // The kick-off pop-up and the line-ups before kick-off: each in one of two styles, or off.
-        styles(c, col, c.getString(R.string.live33_classic_popup), new String[]{"strap", "classic", "off"},
-                new String[]{c.getString(R.string.live35_style_strap), c.getString(R.string.live35_style_classic), c.getString(R.string.live35_style_off)},
-                PlayerIntro.popupStyle(c), st -> PlayerIntro.setPopupStyle(c, st));
-        styles(c, col, c.getString(R.string.live33_classic_lineups), new String[]{"classic", "stadium", "studio", "off"},
-                new String[]{c.getString(R.string.live35_style_beam), c.getString(R.string.live35_style_stadium),
-                        c.getString(R.string.live_style_studio), c.getString(R.string.live35_style_off)},
-                PlayerIntro.lineupsStyle(c), st -> PlayerIntro.setLineupsStyle(c, st));
-        row(c, col, c.getString(R.string.live_added_stays), ScoreBoard.addedStays(c), on -> ScoreBoard.setAddedStays(c, on));
-        row(c, col, c.getString(R.string.live_sponsor), ScoreBoard.sponsored(c), on -> ScoreBoard.setSponsored(c, on));
-        row(c, col, c.getString(R.string.live_shot_map), ScoreBoard.shotMap(c), on -> ScoreBoard.setShotMap(c, on));
-        row(c, col, c.getString(R.string.live_referee), ScoreBoard.referee(c), on -> ScoreBoard.setReferee(c, on));
-        row(c, col, c.getString(R.string.live_penalty), ScoreBoard.penaltyCard(c), on -> ScoreBoard.setPenaltyCard(c, on));
-        row(c, col, c.getString(R.string.live_goal_shirt), PhoneKits.goalShirtOn(c), on -> PhoneKits.setGoalShirtOn(c, on));
-        row(c, col, c.getString(R.string.live34_swish), PlayerIntro.swishOn(c), on -> PlayerIntro.setSwishOn(c, on));
-        row(c, col, c.getString(R.string.live69_score_swish), PlayerIntro.scoreSwishOn(c), on -> PlayerIntro.setScoreSwishOn(c, on));
-        row(c, col, c.getString(R.string.live68_logo_away), ScoreBoard.logoAway(c), on -> ScoreBoard.setLogoAway(c, on));
-        row(c, col, c.getString(R.string.live_var_explained), ScoreBoard.varExplained(c), on -> ScoreBoard.setVarExplained(c, on));
-        row(c, col, c.getString(R.string.live_bug_replays), ScoreBoard.awayInReplays(c), on -> ScoreBoard.setAwayInReplays(c, on));
-        row(c, col, c.getString(R.string.live_bug_pop_outs), ScoreBoard.coverPopOuts(c), on -> ScoreBoard.setCoverPopOuts(c, on));
-        styles(c, col, c.getString(R.string.live35_goal_sound), com.gathin.broadcast.Sfx.GOALS, com.gathin.broadcast.Sfx.GOAL_NAMES,
-                PlayerIntro.goalSound(c), key -> PlayerIntro.setGoalSound(c, key));
-        row(c, col, c.getString(R.string.live21_logo_comp), ScoreBoard.logoComp(c), on -> ScoreBoard.setLogoComp(c, on));
-        row(c, col, c.getString(R.string.live24_logo_live), ScoreBoard.logoLive(c), on -> ScoreBoard.setLogoLive(c, on));
-        row(c, col, c.getString(R.string.live26_fotmob), ScoreBoard.fotmobOn(c), on -> ScoreBoard.setFotmobOn(c, on));
-        row(c, col, c.getString(R.string.live26_subs), ScoreBoard.subsOn(c), on -> ScoreBoard.setSubsOn(c, on));
-        row(c, col, c.getString(R.string.live69_pens), ScoreBoard.pensOn(c), on -> ScoreBoard.setPensOn(c, on));
-        row(c, col, c.getString(R.string.live69_milestones), ScoreBoard.milestonesOn(c), on -> ScoreBoard.setMilestonesOn(c, on));
-        col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live69_milestones_line), 13, c.getColor(R.color.text_dim), false));
-        // The stats beside the board: a switch for each (the Scoreboard Lab's with the board's own, as the TV's), all on at first.
-        col.addView(sub(c, c.getString(R.string.lab_stats_title)));
-        col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.lab_stats_line), 13, c.getColor(R.color.text_dim), false));
-        for (int i = 0; i < BoardLab.KEYS.length; i++) {
-            String key = BoardLab.KEYS[i];
-            row(c, col, c.getString(BoardLab.NAMES[i]), ScoreBoard.statOn(c, key), on -> ScoreBoard.setStatOn(c, key, on));
-        }
-        row(c, col, c.getString(R.string.live4_alerts_football), ScoreBoard.shows(c, ScoreBoard.FOOTBALL), on -> ScoreBoard.setShows(c, ScoreBoard.FOOTBALL, on));
-        row(c, col, c.getString(R.string.live4_alerts_sport), ScoreBoard.shows(c, ScoreBoard.SPORT), on -> ScoreBoard.setShows(c, ScoreBoard.SPORT, on));
-        row(c, col, c.getString(R.string.live4_alerts_news), ScoreBoard.shows(c, ScoreBoard.NEWS), on -> ScoreBoard.setShows(c, ScoreBoard.NEWS, on));
-        MaterialSwitch over = row(c, col, c.getString(R.string.live4_float_start), FloatService.on(c), on -> {
-            if (on != FloatService.on(c)) FloatService.toggle(a);
-        });
-        // Back on the screen from Android's permission page: the switch says what is so.
-        over.addOnAttachStateChangeListener(new android.view.View.OnAttachStateChangeListener() {
-            @Override public void onViewAttachedToWindow(android.view.View v) {
-                over.setChecked(FloatService.on(c));
-            }
-
-            @Override public void onViewDetachedFromWindow(android.view.View v) {}
-        });
-
-        LinearLayout delay = com.gathin.tvhomephone.sports.Ui.row(c);
-        delay.setPadding(0, Ui.dp(c, 6), 0, Ui.dp(c, 6));
-        delay.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live4_other_delay), 15, c.getColor(R.color.text), false),
-                com.gathin.tvhomephone.sports.Ui.weight(1));
-        TextView value = Ui.guideChip(c, c.getString(R.string.live4_seconds, ScoreBoard.otherDelay(c)), false);
-        TextView minus = Ui.guideChip(c, "− 5", false), plus = Ui.guideChip(c, "+ 5", false);
-        minus.setOnClickListener(v -> {
-            ScoreBoard.setOtherDelay(c, ScoreBoard.otherDelay(c) - 5);
-            value.setText(c.getString(R.string.live4_seconds, ScoreBoard.otherDelay(c)));
-        });
-        plus.setOnClickListener(v -> {
-            ScoreBoard.setOtherDelay(c, ScoreBoard.otherDelay(c) + 5);
-            value.setText(c.getString(R.string.live4_seconds, ScoreBoard.otherDelay(c)));
-        });
-        for (TextView t : new TextView[]{minus, value, plus}) {
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
-            lp.leftMargin = Ui.dp(c, 6);
-            delay.addView(t, lp);
-        }
-        col.addView(delay);
-    }
-
-    /** A made-up game for the looks' pictures. */
-    /** The 3D kits look's tile: the made-up Arsenal v Newcastle whose kits it draws (PhoneKits.sample). */
-    private static OverlayBug.Look kitsSample() {
-        com.gathin.tvhomephone.sports.Game g = PhoneKits.sample();
-        OverlayBug.Look l = sample();
-        l.home = g.home;
-        l.away = g.away;
-        l.homeColour = OverlayBug.colour(g.homeColor, g.homeAlt);
-        l.awayColour = OverlayBug.colour(g.awayColor, g.awayAlt);
-        return l;
-    }
-
-    private static OverlayBug.Look sample() {
-        OverlayBug.Look l = new OverlayBug.Look();
-        l.home = "HOM";
-        l.away = "AWY";
-        l.score = "2–1";
-        l.clock = "67:23";
-        l.live = true;
-        l.tag = "LIVE";
-        l.homeColour = 0xFFE0213A;
-        l.awayColour = 0xFF3D8BFF;
-        return l;
+        TextView where = com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live_menu_settings), 15, c.getColor(R.color.text), false);
+        where.setPadding(0, Ui.dp(c, 10), 0, Ui.dp(c, 6));
+        col.addView(where);
     }
 
     private static TextView sub(Context c, String s) {
@@ -317,7 +40,6 @@ public final class BoardSettings {
         return t;
     }
 
-    /** One choice: its picture (added first) over its name, ringed when chosen. */
     /** A heading and a row of choices, one picked (keys[i] shown as words[i]). */
     static void styles(Context c, LinearLayout col, String title, String[] keys, String[] words, String now,
                                java.util.function.Consumer<String> set) {

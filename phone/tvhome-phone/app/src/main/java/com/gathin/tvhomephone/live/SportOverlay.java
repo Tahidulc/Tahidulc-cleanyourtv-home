@@ -8,7 +8,6 @@ import android.os.Looper;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.FrameLayout;
-import android.widget.PopupMenu;
 
 import com.gathin.broadcast.Sfx;
 import com.gathin.broadcast.SportBoard;
@@ -39,8 +38,9 @@ import java.util.Map;
  *
  * <p>It opens out with the football board's swish, its tab (the event, the round) rolls down for its first twenty
  * seconds, between rounds and at the end; a tennis game won plays the score swish, a set, the match and a fight's winner
- * sweep across it with the family's goal sound, a new round with the swish alone. Tap it for Bell now, Next match or
- * Hide; tap twice for Move and resize; hold and drag it, as the football board. Gone when the programme or the channel
+ * sweep across it with the family's goal sound, a new round with the swish alone. Tap it for the scoreboard's menu
+ * (Bell now, Next match and Hide at its top); tap twice for Move and resize; hold and drag it, as the football board.
+ * Gone when the programme or the channel
  * changes, and ten minutes after the event is over.
  */
 final class SportOverlay {
@@ -656,23 +656,26 @@ final class SportOverlay {
         return view.getVisibility() == View.VISIBLE;
     }
 
-    // ---- the tap's menu ---------------------------------------------------------------------------------------------
+    // ---- its buttons in the scoreboard's menu (a tap on it) ---------------------------------------------------------
 
-    /** Tapped: Bell now (boxing), Next match (tennis, more than one on), Hide. */
-    void menu() {
-        PopupMenu m = new PopupMenu(a, view);
-        if (sport == SportBoard.BOXING) m.getMenu().add(0, 1, 0, R.string.live81_bell);
-        if (sport == SportBoard.TENNIS && live(boards) > 1) m.getMenu().add(0, 2, 1, R.string.live81_next);
-        m.getMenu().add(0, 3, 2, R.string.live81_hide);
-        m.setOnMenuItemClickListener(item -> {
-            switch (item.getItemId()) {
-                case 1: bell(); break;
-                case 2: next(); break;
-                default: hidden = key; hide(); break;
-            }
-            return true;
-        });
-        m.show();
+    /** Bell now, while a fight's board is up. */
+    boolean canBell() {
+        return showing() && sport == SportBoard.BOXING;
+    }
+
+    /** Next match, while tennis is up with more than one match on. */
+    boolean canNext() {
+        return showing() && sport == SportBoard.TENNIS && live(boards) > 1;
+    }
+
+    void nextMatch() {
+        next();
+    }
+
+    /** Hide: away for the rest of this programme. */
+    void hideHere() {
+        hidden = key;
+        hide();
     }
 
     private static int live(List<SportBoard> bs) {

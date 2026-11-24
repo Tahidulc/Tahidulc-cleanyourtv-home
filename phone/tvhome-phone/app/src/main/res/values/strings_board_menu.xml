@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The scoreboard's and the channel logo's pop-up menus (OverlayMenu, BoardMenus). -->
+<resources>
+    <string name="live_menu_board">Scoreboard: its look, timing, pop-ups, place and size</string>
+    <string name="live_menu_logo">Channel logo: its look, what is on it, place and size</string>
+    <string name="live_menu_note">The same menus open when you tap the scoreboard or the logo on the picture. Tap either twice to move and resize it, or hold it to drag it.</string>
+    <string name="live_menu_jump">Go to %1$s</string>
+    <string name="live_menu_settings">Everything about the scoreboard and the channel logo is in their own menus now: while you watch, tap the scoreboard or the logo on the picture (or Options ⋯, Scoreboard). Tap either twice to move and resize it, or hold it to drag it.</string>
+</resources>

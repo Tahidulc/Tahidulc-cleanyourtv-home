@@ -280,7 +280,8 @@ public class PlayerActivity extends AppCompatActivity {
             @Override public void handleOnBackPressed() {
                 // The match centre first, then the touch lock holds, then out.
                 // Moving the scoreboard first (Back keeps where it was put), then the match centre, then the touch
-                // lock holds, then out.
+                // lock holds, then out. The scoreboard's or the logo's menu before all of them.
+                if (extras.closeMenu()) return;
                 if (extras.endAdjust()) return;
                 // A card picked on the ad-break screen: let go first.
                 if (extras.adBreakBack()) return;

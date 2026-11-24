@@ -9,14 +9,12 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * The player's "Move and resize" panel, along the foot while the scoreboard and Homefield's mark over the channel's
- * logo are dragged into place: each one on or off, its size (smaller and bigger), its height alone and its width alone, its look; the
- * channel's score pop-ups covered or not (BugCover); the board's timing against the channel (read off the channel's own
- * clock, or put later or sooner by hand); keeping them still, and Reset (back to where Homefield puts them) or Done.
+ * logo are dragged into place: each one on or off, its size (smaller and bigger), its height alone and its width alone;
+ * keeping them still, and Reset (back to where Homefield puts them) or Done. Their looks, the timing and the rest are
+ * in the board's and the logo's own menus now (a tap on either: BoardMenus), so they aren't here twice.
  *
  * <p>Its settings scroll (upright, on its side, on a tablet), the card never taller than a share of the screen so the
  * board and the logo stay in sight to drag; Keep them still, Reset and Done stay at its foot, always in reach.
@@ -33,8 +31,6 @@ final class AdjustPanel {
 
         void boardWidth(float k);
 
-        void boardStyle(OverlayBug.Style s);
-
         void logoShown(boolean on);
 
         void logoSize(float k);
@@ -42,11 +38,6 @@ final class AdjustPanel {
         void logoHeight(float k);
 
         void logoWidth(float k);
-
-        void logoLook(LogoCover.Look l);
-
-        /** The board's clock and score put later (seconds above 0) or sooner; the timing line as it is now. */
-        String later(int seconds);
 
         void still(boolean on);
 
@@ -116,8 +107,7 @@ final class AdjustPanel {
         }
     }
 
-    static View build(Context c, Actions a, OverlayBug.Style style, LogoCover.Look look, boolean still, boolean boardOn,
-            String timing) {
+    static View build(Context c, Actions a, LogoCover.Look look, boolean still, boolean boardOn) {
         Card frame = new Card(c);
         // Everything but the foot goes in the scroll (row() adds to it).
         LinearLayout card = frame.body;
@@ -133,7 +123,8 @@ final class AdjustPanel {
 
         TextView title = Ui.text(c, "Move and resize", 16, Ui.TEXT, true);
         card.addView(title);
-        TextView line = Ui.text(c, "Drag the scoreboard and the logo where you want them. Kept for this channel.", 12, Ui.DIM, false);
+        TextView line = Ui.text(c, "Drag the scoreboard and the logo where you want them. Kept for this channel. "
+                + "Their looks, timing and the rest: tap either one for its menu.", 12, Ui.DIM, false);
         line.setPadding(0, Ui.dp(c, 2), 0, Ui.dp(c, 4));
         card.addView(line);
 
@@ -149,18 +140,8 @@ final class AdjustPanel {
         board.addView(label(c, "Width"));
         board.addView(step(c, "−", "Scoreboard narrower", () -> a.boardWidth(1 / STEP)));
         board.addView(step(c, "+", "Scoreboard wider", () -> a.boardWidth(STEP)));
-        List<TextView> styles = new ArrayList<>();
-        for (OverlayBug.Style s : OverlayBug.Style.values()) {
-            TextView t = Ui.guideChip(c, s.label, s == style);
-            t.setOnClickListener(v -> {
-                for (TextView x : styles) Ui.styleChip(c, x, x == v);
-                a.boardStyle(s);
-            });
-            styles.add(t);
-            chip(board, t);
-        }
 
-        // The mark over the channel's logo: on or off, its size, its height alone, then its look.
+        // The mark over the channel's logo: on or off, its size, its height alone, its width alone.
         LinearLayout logo = row(c, card, "Logo");
         TextView logoSwitch = onOff(c, "Logo cover", look != LogoCover.Look.OFF, a::logoShown);
         logo.addView(logoSwitch);
@@ -173,52 +154,6 @@ final class AdjustPanel {
         logo.addView(label(c, "Width"));
         logo.addView(step(c, "−", "Logo narrower", () -> a.logoWidth(1 / STEP)));
         logo.addView(step(c, "+", "Logo wider", () -> a.logoWidth(STEP)));
-        // Its look, each one drawn as it would stand over the picture (on a pitch's green), the one on now ringed: tap one
-        // to put it on (the cover on too, if it was off).
-        LinearLayout lookRow = row(c, card, "Look");
-        List<View> looks = new ArrayList<>();
-        for (LogoCover.Look l : LogoCover.Look.values()) {
-            // Off is the switch's.
-            if (l == LogoCover.Look.OFF) continue;
-            View one = lookPicture(c, l, l == look);
-            one.setOnClickListener(v -> {
-                for (View x : looks) x.setSelected(x == v);
-                a.logoLook(l);
-                if (!"✓ On".contentEquals(logoSwitch.getText())) logoSwitch.performClick();
-            });
-            looks.add(one);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
-            lp.rightMargin = Ui.dp(c, 8);
-            lookRow.addView(one, lp);
-        }
-
-        // Whether what comes out of the channel's own scoreboard is covered, beside the board's look and size (BugCover).
-        LinearLayout pops = row(c, card, "Pop-ups");
-        String popWords = c.getString(com.gathin.tvhomephone.R.string.live_bug_pop_outs_short);
-        boolean[] popOn = {ScoreBoard.coverPopOuts(c)};
-        TextView pop = Ui.guideChip(c, (popOn[0] ? "✓ " : "") + popWords, popOn[0]);
-        pop.setContentDescription(popWords + (popOn[0] ? " on" : " off"));
-        pop.setOnClickListener(v -> {
-            popOn[0] = !popOn[0];
-            ScoreBoard.setCoverPopOuts(c, popOn[0]);
-            pop.setText((popOn[0] ? "✓ " : "") + popWords);
-            pop.setContentDescription(popWords + (popOn[0] ? " on" : " off"));
-            Ui.styleChip(c, pop, popOn[0]);
-        });
-        pops.addView(pop);
-
-        // The board's timing against the channel's own scoreboard.
-        LinearLayout time = row(c, card, "Timing");
-        TextView said = Ui.text(c, timing, 12, Ui.DIM, false);
-        said.setPadding(0, 0, Ui.dp(c, 10), 0);
-        time.addView(said);
-        for (int secs : new int[]{-5, -1, 1, 5}) {
-            String words = (secs > 0 ? "+" : "−") + Math.abs(secs) + " s";
-            TextView t = Ui.guideChip(c, words, false);
-            t.setContentDescription(secs > 0 ? "Clock and score " + secs + " seconds later" : "Clock and score " + -secs + " seconds sooner");
-            t.setOnClickListener(v -> said.setText(a.later(secs)));
-            chip(time, t);
-        }
 
         // Keep them still; Reset; Done.
         LinearLayout foot = new LinearLayout(c);
@@ -305,55 +240,5 @@ final class AdjustPanel {
         lp.rightMargin = Ui.dp(c, 8);
         t.setLayoutParams(lp);
         return t;
-    }
-
-    private static void chip(LinearLayout row, TextView t) {
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
-        lp.rightMargin = Ui.dp(row.getContext(), 8);
-        row.addView(t, lp);
-    }
-
-    /**
-     * One look as a picture: the cover in it on a stand-in for the picture (a pitch's green), as Settings has them, with
-     * the picture tag, the style, the sport and the name as chosen there, and its name under it; ringed when chosen.
-     */
-    private static View lookPicture(Context c, LogoCover.Look l, boolean on) {
-        LinearLayout one = new LinearLayout(c);
-        one.setOrientation(LinearLayout.VERTICAL);
-        one.setGravity(Gravity.CENTER_HORIZONTAL);
-        int p = Ui.dp(c, 6);
-        one.setPadding(p, p, p, Ui.dp(c, 5));
-        android.graphics.drawable.StateListDrawable bg = new android.graphics.drawable.StateListDrawable();
-        bg.addState(new int[]{android.R.attr.state_selected}, Ui.ring(c, 0x1FFFFFFF, 0xFFFFFFFF, 2, 12));
-        bg.addState(new int[]{}, Ui.round(c, 0x14FFFFFF, 12));
-        one.setBackground(bg);
-        one.setSelected(on);
-        one.setContentDescription(l.label);
-        android.widget.FrameLayout stage = new android.widget.FrameLayout(c);
-        GradientDrawable pitch = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xFF2F7A35, 0xFF4C9A4A, 0xFF2A6A2F});
-        pitch.setCornerRadius(Ui.dp(c, 8));
-        stage.setBackground(pitch);
-        LogoCover lc = new LogoCover(c);
-        lc.look(l);
-        ChannelMark.Tag tg = ScoreBoard.logoTag(c);
-        lc.tag(tg == ChannelMark.Tag.AUTO ? "UHD" : tg.shown);
-        lc.live(false);
-        if (l.own()) {
-            lc.style(ScoreBoard.logoStyle(c));
-            lc.what("premier league");
-            lc.nameOnly(ScoreBoard.logoNameOnly(c));
-            lc.sub("main event");
-        }
-        if (l == LogoCover.Look.COMPETITION) lc.competition(null, "Premier League");
-        boolean tall = l.channel() || l.broadcast() || l == LogoCover.Look.COMPETITION || l.own();
-        stage.addView(lc, new android.widget.FrameLayout.LayoutParams(Ui.dp(c, 96), Ui.dp(c, tall ? 44 : 32), Gravity.CENTER));
-        one.addView(stage, new LinearLayout.LayoutParams(Ui.dp(c, 112), Ui.dp(c, 58)));
-        TextView name = Ui.text(c, l.label, 11, 0xFFFFFFFF, false);
-        name.setSingleLine(true);
-        name.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        name.setGravity(Gravity.CENTER);
-        name.setPadding(0, Ui.dp(c, 5), 0, 0);
-        one.addView(name, new LinearLayout.LayoutParams(Ui.dp(c, 112), -2));
-        return one;
     }
 }

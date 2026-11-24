@@ -14,7 +14,6 @@ import android.view.Gravity;
 import android.view.View;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
-import android.widget.TextView;
 import android.widget.Toast;
 
 import com.gathin.tvhomephone.App;
@@ -28,9 +27,13 @@ import java.util.function.IntConsumer;
  * The scoreboard over the player's picture (ScoreBoard), with its alerts. On a game it covers the channel's own
  * scoreboard where one is found (BugFinder on the picture's frames, FrameSampler), at its size; elsewhere it sits top
  * left of the picture. Its clock is the screen's: the channel's delay (LiveAlerts, set by "It's just happened" or
- * its chips) and, once the channel's own clock has been seen to turn a minute, that moment to the second. Tap it for
- * the match centre; hold it (or the mark over the logo) to move and size them by hand (Move and resize: kept for the
- * channel, BoardPlace).
+ * its chips) and, once the channel's own clock has been seen to turn a minute, that moment to the second.
+ *
+ * <p>Tap the board for its pop-up menu, the logo's cover for the logo's (OverlayMenu, BoardMenus: the family asked for
+ * "all the options for it in the pop up menu when I click on the scoreboard and channel logo"): the match centre is
+ * the first button on the board's. Hold either to drag it (kept for the channel, BoardPlace); tap either twice for Move
+ * and resize. The tennis, boxing and UFC board the same (its Bell now, Next match and Hide are in the board's menu). The
+ * screen reader's click opens the menus, its long press Move and resize; in the small window nothing opens.
  */
 final class ScoreOverlay implements ScoreBoard.Source {
     /** What the player tells it. */
@@ -200,11 +203,14 @@ final class ScoreOverlay implements ScoreBoard.Source {
             return new float[]{(b[0] - r[0] - pfx) * k, (b[1] - r[1] - pfy) * kh, board.bug.getWidth() * k, board.bug.getHeight() * kh};
         });
         cover.setVisibility(View.GONE);
-        // Held: dragged where the finger goes. Tapped twice: Move and resize. (The screen reader's long press: the same.)
+        // Tapped: the logo's menu. Held: dragged where the finger goes. Tapped twice: Move and resize. (The screen
+        // reader's click: the menu; its long press: Move and resize.)
+        cover.setOnClickListener(v -> logoMenu());
         cover.setOnLongClickListener(v -> {
             adjust();
             return true;
         });
+        spoken(cover, "Open the channel logo's menu");
         // Just over the picture and its touch layer (found, not counted: Gestures.over), so it can be held and tapped
         // twice; the tile, the buttons and the sheets stay over them.
         root.addView(cover, Gestures.over(root, 1), new FrameLayout.LayoutParams(0, 0, Gravity.TOP | Gravity.START));
@@ -263,6 +269,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
         board.changed = guard::poke;
         handles(board.bug, true);
         handles(cover, false);
+        spoken(board.bug, "Open the scoreboard's menu");
         sport = new SportOverlay(a, new SportOverlay.Host() {
             @Override public boolean free() {
                 return started && !inPip && !editing && wanted() && !boardHidden() && !intro.showing()
@@ -288,6 +295,11 @@ final class ScoreOverlay implements ScoreBoard.Source {
         // Just over the football board (they sit in the same place, never up together but for a followed game's).
         root.addView(sport.view, root.indexOfChild(board.view) + 1, new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START));
         sportHandles(sport.view);
+        sport.view.setOnLongClickListener(v -> {
+            adjust();
+            return true;
+        });
+        spoken(sport.view, "Open the scoreboard's menu");
         extras = new LogoExtras(a, cover, new LogoExtras.Host() {
             @Override public boolean ready() {
                 return started && !inPip && !editing && !logoAwayNow && !intro.showing() && cover.getVisibility() == View.VISIBLE;
@@ -627,6 +639,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
 
     /** The channel's game from its tile (null: another channel, or none). */
     void game(Game g) {
+        // Another channel: a menu open for the one before put away (its rows were that channel's).
+        if (menu != null && !java.util.Objects.equals(menuKey, chKey())) closeMenu();
         String id = g == null || g.id == null ? "" : g.id;
         if (id.equals(gameId) && g != null) return;
         // Another channel (or game) while places were being set: those are kept for the one they were set on.
@@ -675,6 +689,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
     }
 
     void pip(boolean in) {
+        // The small window: no menu over it (and none opens there).
+        if (in) closeMenu();
         if (in && editing) endAdjust(true);
         if (in) intro.stop();
         if (in) endAdBreak();
@@ -965,8 +981,9 @@ final class ScoreOverlay implements ScoreBoard.Source {
         return own && ch != null ? LiveAlerts.delay(a, ch.key) * 1000L : 0;
     }
 
+    /** The board tapped (or the screen reader's click on it): its menu, with the match centre first. */
     @Override public void tapped() {
-        if (host.game() != null) host.openMatch();
+        boardMenu();
     }
 
     @Override public void held() {
@@ -1214,6 +1231,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
         if (editing || !started || inPip || !wanted()) return;
         Channel ch = host.current();
         if (ch == null) return;
+        closeMenu();
         host.hideControls();
         mine();
         editing = true;
@@ -1274,35 +1292,9 @@ final class ScoreOverlay implements ScoreBoard.Source {
                 place();
             }
 
-            @Override public String later(int seconds) {
-                Channel ch = host.current();
-                if (ch != null) {
-                    LiveAlerts.setDelay(a, ch.key, LiveAlerts.delay(a, ch.key) + seconds);
-                    board.behind();
-                }
-                return timingWords();
-            }
-
-            @Override public void boardStyle(OverlayBug.Style st) {
-                ScoreBoard.setStyle(a, st);
-                restyle();
-            }
-
             @Override public void logoSize(float k) {
                 if (mine.logo()) mine.sizeLogo(k);
                 place();
-            }
-
-            @Override public void logoLook(LogoCover.Look l) {
-                setLookHere(l);
-                if (l != LogoCover.Look.OFF && !mine.logo()) {
-                    mine.lw = 0.13f;
-                    mine.lh = 0.075f;
-                    mine.lx = 0;
-                    mine.moveLogo(1 - 0.035f - mine.lw, 0.05f);
-                }
-                restyle();
-                outline(true);
             }
 
             @Override public void still(boolean on) {
@@ -1319,7 +1311,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
             @Override public void done() {
                 endAdjust(true);
             }
-        }, ScoreBoard.style(a), lookHere(), ScoreBoard.still(a), ScoreBoard.boardShown(a), timingWords());
+        }, lookHere(), ScoreBoard.still(a), ScoreBoard.boardShown(a));
         int side = Math.round(12 * d);
         FrameLayout.LayoutParams pp = new FrameLayout.LayoutParams(wide ? Math.min(Math.round(600 * d), Math.round(root.getWidth() * 0.72f)) : -1, -2,
                 Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
@@ -1332,10 +1324,10 @@ final class ScoreOverlay implements ScoreBoard.Source {
     }
 
     /**
-     * Move and resize's timing line: read off the channel's own clock (the board then has its clock and score to the
+     * The board's menu's timing line: read off the channel's own clock (the board then has its clock and score to the
      * second, whatever is set by hand), or seen turning a minute, else how long it is held back behind the scores.
      */
-    private String timingWords() {
+    String timingWords() {
         Channel ch = host.current();
         int held = ch == null ? 0 : LiveAlerts.delay(a, ch.key);
         if (reading()) return "Matched to the channel's clock";
@@ -1392,8 +1384,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
 
     /**
      * Outside Move and resize, the board's (and the mark's) touches: held, it is picked up and follows the finger
-     * until let go, then kept there for this channel; tapped twice, Move and resize opens for its size, height, look
-     * and timing; tapped once, the board's tap (its game's match centre).
+     * until let go, then kept there for this channel; tapped twice, Move and resize opens for its size and height;
+     * tapped once, its click: the board's menu (the match centre first) or the logo's.
      */
     @SuppressLint("ClickableViewAccessibility")
     private void handles(View v, boolean isBoard) {
@@ -1405,7 +1397,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
             }
 
             @Override public boolean onSingleTapConfirmed(MotionEvent e) {
-                if (isBoard) v.performClick();
+                v.performClick();
                 return true;
             }
 
@@ -1454,14 +1446,15 @@ final class ScoreOverlay implements ScoreBoard.Source {
     }
 
     /**
-     * The tennis, boxing or UFC board's touches, as the football board's: a tap for its menu (Bell now, Next match,
-     * Hide), two for Move and resize, held to drag it (the football board's place moves with it: they share it).
+     * The tennis, boxing or UFC board's touches, as the football board's: a tap for the scoreboard's menu (its Bell now,
+     * Next match and Hide at the top), two for Move and resize, held to drag it (the football board's place moves with
+     * it: they share it).
      */
     @SuppressLint("ClickableViewAccessibility")
     private void sportHandles(View v) {
         float[] start = new float[4];
         boolean[] held = {false};
-        v.setOnClickListener(x -> sport.menu());
+        v.setOnClickListener(x -> boardMenu());
         GestureDetector g = new GestureDetector(a, new GestureDetector.SimpleOnGestureListener() {
             @Override public boolean onDown(MotionEvent e) {
                 return true;
@@ -2348,10 +2341,156 @@ final class ScoreOverlay implements ScoreBoard.Source {
         else tryAdBreak(true);
     }
 
-    // ---- the options -------------------------------------------------------------------------------------------------
+    // ---- the board's and the logo's menus (a tap on either: OverlayMenu, BoardMenus) ----------------------------------
 
-    /** Its rows in the player's options: on, over the channel's own, the alerts, over other apps; how it keeps time. */
-    void options(Context c, LinearLayout box, Runnable closeSheet) {
+    /** The menu open now (the board's or the logo's), and the channel it was opened on. */
+    private OverlayMenu menu;
+    private String menuKey;
+
+    /** The scoreboard's menu: a tap on it (the tennis or boxing board's too), the options' Scoreboard, the screen reader. */
+    void boardMenu() {
+        openMenu(OverlayMenu.BOARD);
+    }
+
+    /** The channel logo's menu: a tap on its cover, the options' Channel logo, the screen reader. */
+    void logoMenu() {
+        openMenu(OverlayMenu.LOGO);
+    }
+
+    /** Which menu is open (OverlayMenu.BOARD, LOGO), 0 for none. */
+    int menuOpen() {
+        return menu != null && menu.open() ? menu.which : 0;
+    }
+
+    /** The menu put away if one is open (Back); whether it was. */
+    boolean closeMenu() {
+        OverlayMenu m = menu;
+        if (m == null || !m.open()) return false;
+        m.close();
+        return true;
+    }
+
+    /** Never in the small window, nor while Move and resize is open. */
+    private void openMenu(int which) {
+        if (inPip || editing || a.isFinishing()) return;
+        if (menu != null) menu.close();
+        host.hideControls();
+        Channel ch = host.current();
+        Game g = game();
+        String sub = which == OverlayMenu.BOARD && g != null ? g.home + " " + g.score() + " " + g.away
+                + (ch != null && ch.name != null ? " · " + ch.name : "") : ch == null ? null : ch.name;
+        OverlayMenu m = new OverlayMenu(a, root, which, which == OverlayMenu.BOARD ? "Scoreboard" : "Channel logo", sub,
+                () -> which == OverlayMenu.BOARD ? boardRect() : onRoot(cover), new OverlayMenu.Host() {
+            @Override public boolean tappedAt(float x, float y) {
+                int on = hit(x, y);
+                if (on == 0) return false;
+                OverlayMenu now = menu;
+                if (now != null && now.which == on) now.close();
+                else openMenu(on);
+                return true;
+            }
+
+            @Override public void closed(OverlayMenu gone) {
+                if (menu == gone) menu = null;
+            }
+        });
+        menu = m;
+        menuKey = chKey();
+        m.fill(x -> {
+            if (which == OverlayMenu.BOARD) BoardMenus.board(a, this, x);
+            else BoardMenus.logo(a, this, x);
+        });
+        m.show(insetLeft, insetTop);
+        guard.poke();
+    }
+
+    /** What is at (x, y) on the player: the board (or the tennis board), the logo's cover, else 0. */
+    private int hit(float x, float y) {
+        android.graphics.Rect b = boardRect(), l = onRoot(cover);
+        if (b != null && b.contains(Math.round(x), Math.round(y))) return OverlayMenu.BOARD;
+        if (l != null && l.contains(Math.round(x), Math.round(y))) return OverlayMenu.LOGO;
+        return 0;
+    }
+
+    /** The board's place on the player (the tennis, boxing or UFC board's while it is the one up); null when neither shows. */
+    private android.graphics.Rect boardRect() {
+        android.graphics.Rect s = sport.showing() ? onRoot(sport.view) : null;
+        return s != null ? s : onRoot(board.bug);
+    }
+
+    /** A view's place on the player, null when it isn't up. */
+    private android.graphics.Rect onRoot(View v) {
+        if (v.getVisibility() != View.VISIBLE || v.getWidth() <= 0 || !v.isShown()) return null;
+        int[] p = new int[2], r = new int[2];
+        v.getLocationInWindow(p);
+        root.getLocationInWindow(r);
+        return new android.graphics.Rect(p[0] - r[0], p[1] - r[1], p[0] - r[0] + v.getWidth(), p[1] - r[1] + v.getHeight());
+    }
+
+    /** The screen reader's words for a view's click (its long press: Move and resize). */
+    private static void spoken(View v, String click) {
+        androidx.core.view.ViewCompat.replaceAccessibilityAction(v, androidx.core.view.accessibility.AccessibilityNodeInfoCompat
+                .AccessibilityActionCompat.ACTION_CLICK, click, null);
+        androidx.core.view.ViewCompat.replaceAccessibilityAction(v, androidx.core.view.accessibility.AccessibilityNodeInfoCompat
+                .AccessibilityActionCompat.ACTION_LONG_CLICK, "Move and resize", null);
+    }
+
+    // What the menus read and change (BoardMenus): the board and the logo changed over the picture at once.
+
+    String channelKey() {
+        return chKey();
+    }
+
+    String channelName() {
+        Channel ch = host.current();
+        return ch == null ? null : ch.name;
+    }
+
+    void openMatchCentre() {
+        if (host.game() != null) host.openMatch();
+    }
+
+    boolean sportUp() {
+        return sport.showing();
+    }
+
+    boolean sportBell() {
+        return sport.canBell();
+    }
+
+    boolean sportNext() {
+        return sport.canNext();
+    }
+
+    void sportBellNow() {
+        sport.bell();
+    }
+
+    void sportNextMatch() {
+        sport.nextMatch();
+    }
+
+    void sportHide() {
+        sport.hideHere();
+    }
+
+    /** The board itself shown or not (its clock and score going on unseen; the logo's cover stays). */
+    void setBoardShown(boolean on) {
+        ScoreBoard.setBoardShown(a, on);
+        board.hidden(boardHidden());
+        place();
+    }
+
+    /** The board's clock and score put later (seconds above 0) or sooner on this channel. */
+    void later(int seconds) {
+        String key = chKey();
+        if (key == null) return;
+        LiveAlerts.setDelay(a, key, LiveAlerts.delay(a, key) + seconds);
+        board.behind();
+    }
+
+    /** How the board keeps time now (the scoreboard menu's first section): off, read, matched, found, or held back. */
+    String statusWords(Context c) {
         String state = !ScoreBoard.on(c) ? c.getString(R.string.live4_board_state_off)
                 : reading() ? c.getString(R.string.live4_board_state_reading)
                 : matched() ? c.getString(R.string.live4_board_state_matched)
@@ -2363,8 +2502,139 @@ final class ScoreOverlay implements ScoreBoard.Source {
         } else if (ScoreBoard.reads(c) && board.football()) {
             state += "\n" + c.getString(R.string.live5_not_read);
         }
-        TextView t = Ui.text(c, state, 12, Ui.DIM, false);
-        t.setPadding(0, Ui.dp(c, 4), 0, 0);
-        box.addView(t);
+        return state;
+    }
+
+    /** Pure: the nearest of the named sizes (ScoreBoard.SIZES) to k. */
+    static int sizeIndex(float k) {
+        int best = 0;
+        for (int i = 1; i < ScoreBoard.SIZES.length; i++) {
+            if (Math.abs(ScoreBoard.SIZES[i] - k) < Math.abs(ScoreBoard.SIZES[best] - k)) best = i;
+        }
+        return best;
+    }
+
+    /** The board's Size in its menu: by hand when it was put somewhere by hand, else this channel's named size. */
+    String boardSizeWords() {
+        return mine().board() ? "By hand" : ScoreBoard.SIZE_NAMES[sizeIndex(sizeHere())];
+    }
+
+    /** One step bigger (dir above 0) or smaller: placed by hand, its own height; else the next of the named sizes. */
+    void boardSize(int dir) {
+        if (mine().board()) {
+            mine.sizeBoard(dir > 0 ? AdjustPanel.STEP : 1 / AdjustPanel.STEP);
+            keepMine();
+            return;
+        }
+        int i = Math.max(0, Math.min(ScoreBoard.SIZES.length - 1, sizeIndex(sizeHere()) + (dir > 0 ? 1 : -1)));
+        setHere("size", Float.toString(ScoreBoard.SIZES[i]));
+    }
+
+    /** Its height alone, a step: picked up by hand from where it is. */
+    void boardHeight(int dir) {
+        if (!pickUp(true)) return;
+        mine.heightBoard(dir > 0 ? AdjustPanel.STEP : 1 / AdjustPanel.STEP, board.bug.getWidth() > 0 ? board.bug.ownWidth() / pfw : 0.3f);
+        keepMine();
+    }
+
+    void boardWidth(int dir) {
+        if (!pickUp(true)) return;
+        mine.widthBoard(dir > 0 ? AdjustPanel.STEP : 1 / AdjustPanel.STEP, board.bug.getWidth() > 0 ? board.bug.ownWidth() / pfw : 0.3f);
+        keepMine();
+    }
+
+    void logoSize(int dir) {
+        if (!pickUp(false)) return;
+        mine.sizeLogo(dir > 0 ? AdjustPanel.STEP : 1 / AdjustPanel.STEP);
+        keepMine();
+    }
+
+    void logoHeight(int dir) {
+        if (!pickUp(false)) return;
+        mine.heightLogo(dir > 0 ? AdjustPanel.STEP : 1 / AdjustPanel.STEP);
+        keepMine();
+    }
+
+    void logoWidth(int dir) {
+        if (!pickUp(false)) return;
+        mine.widthLogo(dir > 0 ? AdjustPanel.STEP : 1 / AdjustPanel.STEP);
+        keepMine();
+    }
+
+    /** The board (or the logo) given a place of its own from where it is, to size by hand; false before the picture is laid out. */
+    private boolean pickUp(boolean isBoard) {
+        if (pfw <= 1 || pfh <= 1 || host.current() == null) return false;
+        mine();
+        if (isBoard) boardFromHere();
+        else logoFromHere();
+        return true;
+    }
+
+    /** This channel's places kept, and the board and the logo put there. */
+    private void keepMine() {
+        if (mineKey != null) BoardPlace.put(a, mineKey, mine);
+        board.bug.post(this::place);
+        place();
+        guard.poke();
+    }
+
+    /** Reset: the board back where Homefield puts it on this channel (the logo's place as it is). */
+    void resetBoardPlace() {
+        mine();
+        mine.bx = -1;
+        mine.bw = 0;
+        mine.bh = 0;
+        ChannelOverlays.setOpt(a, chKey(), "sport_hand", null);
+        keepMine();
+    }
+
+    /** Reset: the logo's cover back over the channel's logo (the board's place as it is). */
+    void resetLogoPlace() {
+        mine();
+        mine.lx = -1;
+        keepMine();
+    }
+
+    /** The logo's cover on or off on this channel (on: the look it last had). */
+    void setLogoOn(boolean on) {
+        setLookHere(on ? ScoreBoard.lastLogo(a) : LogoCover.Look.OFF);
+        restyle();
+    }
+
+    /** This channel's own look for the logo, null for every channel's. */
+    LogoCover.Look lookOwn() {
+        return ChannelOverlays.look(a, chKey());
+    }
+
+    /** The look on this channel made every channel's (each channel's own look let go here). */
+    void lookEverywhere() {
+        LogoCover.Look l = lookHere();
+        ScoreBoard.setLogoCover(a, l);
+        ChannelOverlays.setLook(a, chKey(), null);
+        restyle();
+    }
+
+    /** Whether the logo's cover is on the picture now. */
+    boolean coverShowing() {
+        return cover.getVisibility() == View.VISIBLE;
+    }
+
+    // Tests: the views a finger taps, and the menu open.
+
+    View boardView() {
+        return board.bug;
+    }
+
+    View coverView() {
+        return cover;
+    }
+
+    View sportView() {
+        return sport.view;
+    }
+
+    OverlayMenu menu() {
+        return menu;
     }
 }
+
