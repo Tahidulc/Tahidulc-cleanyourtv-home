@@ -39,8 +39,10 @@ import java.util.Set;
 
 /**
  * The sports hub in 07 (the approved mock-ups 15, 16 and 17), a page under the tab bar (its Sports tab): its title with
- * the sections' pills beside it (TODAY | TABLES | FORMULA 1) and a line under them, over the blurred picture of what the
- * remote is on.
+ * the sections' pills beside it (LIVE | TODAY | TOMORROW | YESTERDAY | TABLES | F1 &amp; MORE) and a line under them, over
+ * the blurred picture of what the remote is on. Live: what is on now ("No football is live right now. Today's games are
+ * under Today."); Tomorrow and Yesterday: the football in the competitions followed on that day ("No football tomorrow in
+ * the competitions followed."), each as Today lists its games.
  *
  * <p>Today: the games and events in every sport the apps follow, live first, then later today, then those just
  * finished, under their sections' capitals with a count; a row each, washed at its ends in the two sides' colours (the
@@ -67,8 +69,9 @@ import java.util.Set;
 final class SportsScreen extends Screen {
     private static final long REFRESH_MS = 30_000L, REST_MS = 300L;
     /** The sections. */
-    static final int TODAY = 0, TABLES = 1, FORMULA = 2;
-    static final String[] SECTIONS = {"TODAY", "TABLES", "FORMULA 1"}, SECTION_NAMES = {"Today", "Tables", "Formula 1"};
+    static final int LIVE = 0, TODAY = 1, TOMORROW = 2, YESTERDAY = 3, TABLES = 4, FORMULA = 5;
+    static final String[] SECTIONS = {"LIVE", "TODAY", "TOMORROW", "YESTERDAY", "TABLES", "F1 & MORE"},
+            SECTION_NAMES = {"Live", "Today", "Tomorrow", "Yesterday", "Tables", "F1 & more"};
     /** Where the remote is: the pills, today's games, a game's two clubs, the leagues, a table, the drivers. */
     static final int PILLS = 1, LIST = 2, SIDES = 3, LEAGUES = 4, TABLE = 5, DRIVERS = 6;
 
@@ -76,8 +79,11 @@ final class SportsScreen extends Screen {
     int zone = LIST;
     int section = TODAY;
     /** The pill the remote is on (while on the pills). */
-    int pill;
-    private List<SportsData.Item> items = new ArrayList<>();
+    int pill = TODAY;
+    /** The games the section shows (Live, Today, Tomorrow, Yesterday); today's every game; the other days' as read. */
+    private List<SportsData.Item> items = new ArrayList<>(), today = new ArrayList<>();
+    private final Map<Integer, List<SportsData.Item>> days = new HashMap<>();
+    private final Set<Integer> dayAsking = new HashSet<>();
     int focus;
     /** On a game's clubs: 0 the home side, 1 the away side. */
     int side;
@@ -105,7 +111,8 @@ final class SportsScreen extends Screen {
 
     /** For previews: the hub drawn with these, the remote on the first. */
     void preview(List<SportsData.Item> list, Map<String, List<Matching.Row>> rows) {
-        items = new ArrayList<>(list);
+        today = new ArrayList<>(list);
+        items = listFor(section);
         channels.clear();
         channels.putAll(rows);
         loading = false;
@@ -202,7 +209,8 @@ final class SportsScreen extends Screen {
             List<SportsData.Item> got = SportsData.load(20_000L);
             Exec.main(() -> {
                 String was = focus < items.size() ? items.get(focus).key : "";
-                items = new ArrayList<>(got);
+                today = new ArrayList<>(got);
+                items = listFor(section);
                 loading = false;
                 focus = 0;
                 for (int i = 0; i < items.size(); i++) if (items.get(i).key.equals(was)) focus = i;
@@ -332,7 +340,61 @@ final class SportsScreen extends Screen {
         pill = s;
         if (s == TABLES) askTable();
         if (s == FORMULA) askF1();
+        if (s == TOMORROW || s == YESTERDAY) askDay(s);
+        if (listSection(s)) {
+            items = listFor(s);
+            focus = 0;
+            if (zone == SIDES) zone = LIST;
+            if (hub != null) hub.laidOut();
+            askChannelsSoon();
+        }
         restSoon();
+    }
+
+    /** Whether a section lists games (Live, Today, Tomorrow, Yesterday). */
+    static boolean listSection(int s) {
+        return s == LIVE || s == TODAY || s == TOMORROW || s == YESTERDAY;
+    }
+
+    /** The games a section shows now. */
+    private List<SportsData.Item> listFor(int s) {
+        if (s == LIVE) return SportsData.liveOf(today);
+        if (s == TOMORROW || s == YESTERDAY) {
+            List<SportsData.Item> l = days.get(s);
+            return l == null ? new ArrayList<>() : new ArrayList<>(l);
+        }
+        return new ArrayList<>(today);
+    }
+
+    /** Tomorrow's or yesterday's football, read once (off the main thread). */
+    private void askDay(int s) {
+        if (days.containsKey(s) || dayAsking.contains(s) || Exec.inline) return;
+        dayAsking.add(s);
+        Exec.io(() -> {
+            List<SportsData.Item> got = SportsData.footballOn(s == TOMORROW ? 1 : -1, 10 * 60_000L);
+            Exec.main(() -> {
+                dayAsking.remove(s);
+                days.put(s, got);
+                if (section == s) choose(s);
+            });
+        });
+    }
+
+    /** Pure: the line under the title for a section of games: still being read, none, or what they are. */
+    static String listWords(int s, boolean reading, boolean none, String todayWords) {
+        switch (s) {
+            case LIVE:
+                return reading ? "Today's matches come up here once they are read"
+                        : none ? "No football is live right now. Today's games are under Today." : "Live now";
+            case TOMORROW:
+                return reading ? "Finding tomorrow's games…" : none ? "No football tomorrow in the competitions followed." : "Tomorrow's matches";
+            case YESTERDAY:
+                return reading ? "Finding yesterday's games…" : none ? "No football yesterday in the competitions followed."
+                        : "Yesterday's matches";
+            default:
+                return reading ? "Today's matches come up here once they are read"
+                        : none ? "No football today in the competitions followed." : todayWords;
+        }
     }
 
     // ---- the remote -------------------------------------------------------------------------------------------------
@@ -819,7 +881,7 @@ final class SportsScreen extends Screen {
         /** The page's picture behind, for what the remote rests on (never each frame). */
         void backdrop() {
             String url = "";
-            if (section == TODAY) {
+            if (listSection(section)) {
                 SportsData.Item it = chosen();
                 if (it != null) {
                     url = programme(it);
@@ -874,7 +936,8 @@ final class SportsScreen extends Screen {
                 todayMinute = minute;
                 todayWords = "Live now and today · " + Ui.clock(System.currentTimeMillis());
             }
-            subtitle(c, loading ? "Finding today's games…" : items.isEmpty() ? "Nothing on today" : todayWords);
+            boolean reading = section == TOMORROW || section == YESTERDAY ? !days.containsKey(section) : loading;
+            subtitle(c, listWords(section, reading, items.isEmpty(), todayWords));
             SportsData.Item on = !onBar && (zone == LIST || zone == SIDES) ? chosen() : null;
             boolean moving = rowLift.step(on);
             if (items.isEmpty() || rowY.length != items.size()) return moving;

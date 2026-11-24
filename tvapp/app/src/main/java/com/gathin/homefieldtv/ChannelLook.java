@@ -68,6 +68,8 @@ final class ChannelLook {
 
     /** The cell's colours for a channel: its logo's (the slate's while it is read), or null when nothing is behind it. */
     static Logos.Tint tint(Channel ch) {
+        Logos.Tint fixed = Logos.fixedTint();
+        if (fixed != null) return fixed;
         if (Logos.behind() != Logos.COLOUR) return null;
         Logos.Tint t = ch == null ? null : Logos.tint(LogoPack.url(ch));
         return t == null ? Logos.Tint.WAITING : t;
@@ -132,7 +134,7 @@ final class ChannelLook {
         float rad = radius * (r.height() / Math.max(1f, cell.height()));
         int behind = Logos.behind();
         float sw = Math.max(1f, Ui.f(1f));
-        if (behind == Logos.COLOUR) {
+        if (behind == Logos.COLOUR || Logos.fixed()) {
             Logos.Tint t = tint(ch);
             boolean slate = t.neutral;
             // Under it: its soft shadow, deep and with a white glow as it lifts.

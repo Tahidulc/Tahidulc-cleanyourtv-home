@@ -24,9 +24,12 @@ import java.util.List;
  * The foot of the player's OK overlay, as the family's TiviMate draws it: over the playback scrim (black rising from y
  * 700 to about 90 % at the foot), the seek line across (80 to 1839 at y 777–782: the accent up to where the programme
  * is, grey after, the white knob at the join) and under it the row of tiles (240 x 178 from (82, 813), 254 apart): TV
- * guide, History, then the channels last watched (logo, name, what's on in the light accent, its bar at the tile's foot).
- * The tile the remote is on is a shade lighter with a 2 px light-accent edge, and the row slides so it stays in the first
- * place; under the row, on a channel, its programme's times and title with its playlist at the right, else a chevron.
+ * guide, History, then the channels last watched, in the 07 look (3.4): each channel's tile its programme's own picture
+ * filling it (Pics.FILL, its faces whole; asked for once the row rests), else its logo's own colour, with the channel's
+ * logo alone on its colour at its top left (ChannelLook), the programme's title over a shade at its foot and how far
+ * through it is along it. The tile the remote is on lifts toward you (Lift07) with a white ring, and the row slides so it
+ * stays in the first place; under the row, on a channel, its programme's times and title with its playlist at the right,
+ * else a chevron.
  *
  * <pre>
  *   set(recent, at)            the channels for the row (the one playing left out), the remote on tile at
@@ -70,8 +73,17 @@ final class PlayerTiles extends View {
     private final TextPaint labelP = Type.paint(32f, Type.REGULAR, Palette.TEXT1), nameP = Type.paint(Type.ROW, Type.REGULAR, Palette.TEXT1);
     private final TextPaint onP = Type.paint(Type.SMALL, Type.REGULAR, Palette.ACCENT_LIGHT), lineP = Type.paint(32f, Type.REGULAR, Palette.TEXT1);
     private final TextPaint whereP = Type.paint(32f, Type.REGULAR, Palette.TEXT2), logoP = Type.paint(Type.ROW, Type.MEDIUM, Palette.TEXT1);
-    private final RectF r = new RectF();
+    private final RectF r = new RectF(), cell = new RectF();
     private float scrimFor = -1f;
+    /** 07: the remote's tile lifting, the tiles' rounded clip and their foot's shade (made once a size). */
+    private final Lift07 lift = new Lift07();
+    private final android.graphics.Path clip = new android.graphics.Path();
+    private final Paint footShade = new Paint(), ring = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final TextPaint progP = Type.paint(21f, Type.SEMIBOLD, Look07.L1);
+    private float shadeFor = -1f;
+    private static final Object GUIDE_TILE = new Object(), HISTORY_TILE = new Object();
+    /** 07's lift: how much bigger the remote's tile is. */
+    static final float LIFT = 1.06f;
     private String whereKey = "", whereText = "";
     private final Runnable redraw = this::invalidate;
 
@@ -79,6 +91,7 @@ final class PlayerTiles extends View {
         super(c);
         this.host = host;
         edge.setStyle(Paint.Style.STROKE);
+        ring.setStyle(Paint.Style.STROKE);
         iconLine.setStyle(Paint.Style.STROKE);
         iconLine.setStrokeCap(Paint.Cap.ROUND);
         iconLine.setStrokeJoin(Paint.Join.ROUND);
@@ -140,9 +153,14 @@ final class PlayerTiles extends View {
         c.drawRect(0, Ui.f(SCRIM_Y), w, hh, scrim);
         boolean moving = scroll.step();
         float sc = scroll.value();
+        moving |= lift.step(peek ? null : itemAt(focus));
+        if (shadeFor != Ui.f(TILE_H)) {
+            shadeFor = Ui.f(TILE_H);
+            footShade.setShader(new LinearGradient(0, Ui.f(TILE_H) * 0.35f, 0, Ui.f(TILE_H), 0x00000000, 0xE6000000, Shader.TileMode.CLAMP));
+        }
         if (names == null) {
             names = new TextFit(nameP, 64);
-            titles = new TextFit(onP, 64);
+            titles = new TextFit(progP, 64);
             lines = new TextFit(lineP, 64);
             logos = new TextFit(logoP, 32);
         }
@@ -156,7 +174,7 @@ final class PlayerTiles extends View {
             float x = TILE_X + k * PITCH - sc;
             if (x > 1920f) break;
             if (x + TILE_W < 0f) continue;
-            drawTile(c, k, Ui.f(x), Ui.f(TILE_Y), k == focus && !peek, now, lib);
+            drawTile(c, k, Ui.f(x), Ui.f(TILE_Y), k == focus && !peek, now, lib, moving);
         }
         // Under the row: the programme on the tile's channel, else a chevron saying the bar is below.
         Channel ch = channelAt(focus);
@@ -189,46 +207,79 @@ final class PlayerTiles extends View {
         if (moving) postInvalidateOnAnimation();
     }
 
-    private void drawTile(Canvas c, int k, float x, float y, boolean lit, long now, Library lib) {
-        float tw = Ui.f(TILE_W), th = Ui.f(TILE_H), rad = Ui.f(10f);
-        r.set(x, y, x + tw, y + th);
-        tile.setColor(Palette.PLAYBACK);
-        c.drawRoundRect(r, rad, rad, tile);
-        if (lit) {
-            tile.setColor(0x0DFFFFFF);
-            c.drawRoundRect(r, rad, rad, tile);
-            edge.setColor(Palette.ACCENT_LIGHT);
-            edge.setStrokeWidth(Math.max(1f, Ui.f(2f)));
-            r.inset(-Ui.f(1f), -Ui.f(1f));
-            c.drawRoundRect(r, rad + Ui.f(1f), rad + Ui.f(1f), edge);
-            r.inset(Ui.f(1f), Ui.f(1f));
-        }
+    /** What tile k is for the lift: its channel, or the TV guide's or History's own. */
+    private Object itemAt(int k) {
+        return k == GUIDE ? GUIDE_TILE : k == HISTORY ? HISTORY_TILE : channelAt(k);
+    }
+
+    private void drawTile(Canvas c, int k, float x, float y, boolean lit, long now, Library lib, boolean moving) {
+        float tw = Ui.f(TILE_W), th = Ui.f(TILE_H), rad = Ui.f(Look07.R_CARD);
+        float up = lift.of(itemAt(k)), g = (LIFT - 1f) * Math.max(0f, up);
+        r.set(x - tw * g / 2f, y - th * g / 2f, x + tw + tw * g / 2f, y + th + th * g / 2f);
         Channel ch = channelAt(k);
         if (ch == null) {
-            // TV guide, History: an icon over its name.
+            // TV guide, History: on glass, an icon over its name.
+            tile.setColor(lit ? 0x40FFFFFF : 0x1FFFFFFF);
+            c.drawRoundRect(r, rad, rad, tile);
             iconLine.setColor(Palette.TEXT1);
             iconLine.setStrokeWidth(Math.max(1f, Ui.f(4f)));
             iconFill.setColor(Palette.TEXT1);
-            Dark.icon(c, k == GUIDE ? Dark.SHEET : Dark.HISTORY, x + tw / 2f, y + Ui.f(68f), Ui.f(60f), iconLine, iconFill);
+            Dark.icon(c, k == GUIDE ? Dark.SHEET : Dark.HISTORY, r.centerX(), r.top + r.height() * 0.38f, Ui.f(60f), iconLine, iconFill);
             String t = k == GUIDE ? "TV guide" : "History";
             labelP.setColor(Palette.TEXT1);
-            c.drawText(t, x + (tw - labelP.measureText(t)) / 2f, y + Ui.f(147f), labelP);
+            c.drawText(t, r.centerX() - labelP.measureText(t) / 2f, r.top + r.height() * 0.83f, labelP);
+            ringAround(c, rad, up);
             return;
         }
-        r.set(x + tw / 2f - Ui.f(66f), y + Ui.f(12f), x + tw / 2f + Ui.f(66f), y + Ui.f(90f));
-        if (!Logos.draw(c, ch, r, redraw)) {
-            logoP.setColor(Palette.TEXT1);
-            float nw = Math.min(logos.width(ChannelEdits.name(ch)), tw - Ui.f(32));
-            logos.line(c, ChannelEdits.name(ch), x + (tw - nw) / 2f, y + Ui.f(60f), tw - Ui.f(32));
-        }
-        nameP.setColor(Palette.TEXT1);
-        names.line(c, ChannelEdits.name(ch), x + Ui.f(16f), y + Ui.f(127f), tw - Ui.f(32));
         Guide.Schedule s = lib.schedule(ch.key);
         int i = s == null ? -1 : s.at(now);
-        if (i >= 0) {
-            onP.setColor(Palette.ACCENT_LIGHT);
-            titles.line(c, s.title[i], x + Ui.f(16f), y + Ui.f(162f), tw - Ui.f(32));
-            Bars.thin(c, x + Ui.f(16f), y + th - Ui.f(4f), tw - Ui.f(32f), Ui.f(4f), LiveText.progress(now, s.start[i], s.stop[i]));
+        // The programme's picture filling the tile (asked for once the row rests), else the logo's own colour.
+        String pic = i < 0 ? "" : moving ? ProgrammePictures.peek(ch, s, i) : ProgrammePictures.get(getContext(), ch, s, i, redraw);
+        Bitmap b = pic == null || pic.isEmpty() ? null : Pics.get(pic, Math.round(tw), Math.round(th), Pics.FILL, redraw);
+        c.save();
+        clip.reset();
+        clip.addRoundRect(r, rad, rad, android.graphics.Path.Direction.CW);
+        c.clipPath(clip);
+        int base = ChannelLook.colour(ch);
+        tile.setColor(base == 0 ? 0xFF1E2430 : base | 0xFF000000);
+        c.drawRect(r, tile);
+        if (b != null) {
+            c.drawBitmap(b, null, r, bmp);
+        } else {
+            // No picture: the logo large in the middle of its colour (never blank).
+            cell.set(r.left + r.width() * 0.2f, r.top + r.height() * 0.16f, r.right - r.width() * 0.2f, r.top + r.height() * 0.62f);
+            Logos.drawCell(c, com.gathin.homefieldtv.engine.LogoPack.url(ch), cell, redraw);
         }
+        c.save();
+        c.translate(r.left, r.top);
+        c.scale(r.width() / tw, r.height() / th);
+        c.drawRect(0, 0, tw, th, footShade);
+        c.restore();
+        c.restore();
+        // The channel's logo alone on its colour at the top left (over a programme's own picture, not the channel's).
+        if (b != null && !pic.startsWith(Pics.ON_COLOUR)) {
+            cell.set(r.left + Ui.f(10f), r.top + Ui.f(10f), r.left + Ui.f(10f + 92f), r.top + Ui.f(10f + 56f));
+            ChannelLook.cell(c, cell, Ui.f(12f), ch, 0f, 0, null, false, redraw);
+        }
+        // The programme's title and how far through it is, at the foot.
+        if (i >= 0) {
+            progP.setColor(Look07.L1);
+            titles.line(c, s.title[i], r.left + Ui.f(14f), r.bottom - Ui.f(22f), r.width() - Ui.f(28f));
+            Bars.thin(c, r.left + Ui.f(14f), r.bottom - Ui.f(9f), r.width() - Ui.f(28f), Ui.f(4f), LiveText.progress(now, s.start[i], s.stop[i]));
+        } else {
+            nameP.setColor(Palette.TEXT1);
+            names.line(c, ChannelEdits.name(ch), r.left + Ui.f(14f), r.bottom - Ui.f(18f), r.width() - Ui.f(28f));
+        }
+        ringAround(c, rad, up);
+    }
+
+    /** 07's focus: a white ring just outside the lifted tile, as it lifts. */
+    private void ringAround(Canvas c, float rad, float up) {
+        if (up <= 0.01f) return;
+        float rw = Ui.f(3f), out = rw / 2f;
+        cell.set(r.left - out, r.top - out, r.right + out, r.bottom + out);
+        ring.setStrokeWidth(rw);
+        ring.setColor(Palette.alpha(Look07.L1, Math.round(255 * Math.min(1f, up))));
+        c.drawRoundRect(cell, rad + out, rad + out, ring);
     }
 }

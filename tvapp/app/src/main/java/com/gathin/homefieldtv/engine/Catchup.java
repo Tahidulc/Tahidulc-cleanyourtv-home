@@ -125,6 +125,14 @@ public final class Catchup {
      * else one of its quality versions' (best first) or theirs; null for none.
      */
     public static Channel source(Channel c) {
+        Channel s = ownSource(c);
+        if (s != null || c == null || !com.gathin.homefieldtv.prefs.Merges.any()) return s;
+        // None of its own: one merged into it by hand stands in (Merges).
+        for (Channel m : com.gathin.homefieldtv.prefs.Merges.standIns(c)) if ((s = ownSource(m)) != null) return s;
+        return null;
+    }
+
+    private static Channel ownSource(Channel c) {
         if (c == null) return null;
         Channel s = own(c);
         if (s != null) return s;

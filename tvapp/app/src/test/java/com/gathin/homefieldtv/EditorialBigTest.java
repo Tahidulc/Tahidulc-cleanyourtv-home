@@ -15,7 +15,7 @@ import com.gathin.homefieldtv.engine.CategorySet;
 import com.gathin.homefieldtv.engine.EditorialData;
 import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Shelves;
-import com.gathin.homefieldtv.engine.TitleIndex;
+import com.gathin.homefieldtv.engine.MatchIndex;
 import com.gathin.homefieldtv.prefs.HomeStyle;
 
 import org.junit.After;
@@ -120,8 +120,8 @@ public class EditorialBigTest {
         EditorialData.load(cat.films().subList(0, 300), cat.series().subList(0, 150));
 
         // ---- off the main thread ----------------------------------------------------------------------------------
-        time("TitleIndex: every film's and series' name (each catalogue)", false, 3,
-                () -> TitleIndex.of(cat.films().subList(0, cat.films().size() - 1), cat.series()), null);
+        time("MatchIndex: every film's and series' name (each catalogue)", false, 3,
+                () -> MatchIndex.of(cat.films().subList(0, cat.films().size() - 1), cat.series()), null);
         CategorySet.Entry trending = CategorySet.of(CategorySet.HOME).get(2);
         time("Shelves.make: Trending Movies matched to the playlists", false, 5, () -> Shelves.make(app, trending), null);
 

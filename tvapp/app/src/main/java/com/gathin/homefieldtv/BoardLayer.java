@@ -296,9 +296,38 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
     private final Runnable tick = new Runnable() {
         @Override public void run() {
             if (!started) return;
-            update();
+            // A reading that comes back wrong never closes the app: noted (If something goes wrong), and the board goes on.
+            try {
+                update();
+            } catch (RuntimeException e) {
+                Exec.trouble(e);
+            }
             h.postDelayed(this, 1000L);
         }
+    };
+
+    /**
+     * The board's drawing (the bug, the cover, what slides out, the cards): an error in any of it is noted and the board
+     * put away until its next reading, never the app closed. Nothing is made here.
+     */
+    @Override protected void dispatchDraw(Canvas c) {
+        int saved = c.getSaveCount();
+        try {
+            super.dispatchDraw(c);
+        } catch (RuntimeException e) {
+            c.restoreToCount(saved);
+            Exec.trouble(e);
+            drawFailed = true;
+            h.post(drawAway);
+        }
+    }
+
+    /** The board's drawing failed: away until the channel changes or the board comes back. */
+    private boolean drawFailed;
+    private final Runnable drawAway = () -> {
+        if (!drawFailed) return;
+        drawFailed = false;
+        hideAll();
     };
 
     private void update() {
@@ -350,7 +379,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             Game g = null;
             try {
                 g = Matching.gameOn(lib, c, now, relevant(SportsData.football(5 * 60_000L), now));
-            } catch (RuntimeException ignored) {
+            } catch (RuntimeException | OutOfMemoryError ignored) {
                 // nothing found this time
             }
             Game got = g;
@@ -435,7 +464,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
                         break;
                     }
                 }
-            } catch (RuntimeException ignored) {
+            } catch (RuntimeException | OutOfMemoryError ignored) {
                 // read again next time
             }
             Game got = fresh;
@@ -475,7 +504,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             Espn.Summary s = null;
             try {
                 s = Espn.summary(g0.slug, g0.id, 30_000L);
-            } catch (RuntimeException ignored) {
+            } catch (RuntimeException | OutOfMemoryError ignored) {
                 // read again next time
             }
             Espn.Summary got = s;
@@ -774,7 +803,9 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         Game g = game;
         // Only over plain full-screen playback: covered, all of it away at once (BoardGate); the game is still followed.
         boolean clear = gate(now);
-        if (g == null || !playing || !BoardPrefs.on(c) && moving == 0) {
+        // Logo cover only: the cover over the channel's logo while the match is on, no scoreboard, nothing popping up.
+        boolean only = BoardPrefs.logoOnly(c);
+        if (g == null || !playing || !BoardPrefs.on(c) && !only && moving == 0) {
             if (moving == 0) {
                 boardUp(false);
                 logoUp(false);
@@ -822,12 +853,12 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             l.stoppage = BoardClock.inAddedTime(l.clock, r.detail);
             if (!l.added.isEmpty()) addedOut(BoardClock.periodOf(l.clock, r.detail), l.added);
         }
-        moments(r, screenNow, now, l.score);
+        if (!only) moments(r, screenNow, now, l.score);
         pending.release(g.id, picture);
         if (r != null && r.state != Game.PRE) {
             if (shownScore != null && !shownScore.equals(l.score)) {
                 int side = BoardClock.goalSide(shownScore, l.score);
-                if (side > 0 && !staleSinceStop(now)) goalNow(side, l.score, r, now);
+                if (side > 0 && !staleSinceStop(now) && !only) goalNow(side, l.score, r, now);
             }
             shownScore = l.score;
         }
@@ -843,8 +874,8 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         boolean want = moving == 1 || (phase == BoardClock.PRE || phase == BoardClock.UP) && !awayForPopup && !lineupsOn && !strapOver;
         if (awayForPopup) swishBack = true;
         layoutAll();
-        boardUp(want && clear);
-        logoUp(clear && (moving == 2 || phase != BoardClock.AWAY && BoardPrefs.logoOn(c)));
+        boardUp(want && clear && (!only || moving == 1));
+        logoUp(clear && (moving == 2 || phase != BoardClock.AWAY && (BoardPrefs.logoOn(c) || only)));
         logo.live = l.live;
         logo.invalidate();
         guard(now);
@@ -1012,7 +1043,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             try {
                 cfg = strap ? strapCfg(g, m, kind, score, scorer, minute, style, comp, light, at)
                         : BroadcastData.withMark(assets, BroadcastData.kickoff(kind, m, score, scorer, minute));
-            } catch (Exception ignored) {
+            } catch (Exception | OutOfMemoryError ignored) {
                 // none, then
             }
             JSONObject got = cfg;
@@ -1097,7 +1128,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             JSONObject cfg = null;
             try {
                 cfg = BroadcastData.lineups(m, FotMob.detailsFor(g), cache);
-            } catch (Exception ignored) {
+            } catch (Exception | OutOfMemoryError ignored) {
                 // asked again in a minute
             }
             JSONObject got = cfg;
@@ -1111,7 +1142,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
                         shown.add(key);
                         drop(d);
                     } else if (asked) {
-                        card.note("No line-ups yet", "They come about an hour before kick-off");
+                        card.note("No line-ups yet", "The line-ups come about an hour before kick-off.");
                     }
                     return;
                 }
@@ -1446,6 +1477,23 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         return true;
     }
 
+    /**
+     * The bar's Scoreboard, on every channel: the scoreboard's menu, for the match on this channel when there is one ("No
+     * match on this channel now", "Reading the match" while it is looked for, "Reading the scores" until they come); what
+     * it sets is for every match.
+     */
+    void openMenu() {
+        if (menu.open) return;
+        menu.show();
+    }
+
+    /** Pure: the menu's line under its title, for a game (null: none found) and whether it is being looked for / read. */
+    static String menuLine(Game g, boolean finding, boolean read) {
+        if (g == null) return finding ? "Reading the match" : "No match on this channel now";
+        if (!read) return "Reading the scores";
+        return full(g.homeName, g.home) + " v " + full(g.awayName, g.away);
+    }
+
     boolean ok() {
         // Covered (a panel over the picture): the remote is the live screen's.
         if (covered) return false;
@@ -1511,12 +1559,21 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
     // ---- the cover over the channel's logo ---------------------------------------------------------------------------------
 
     /** A plate in the board's own look over where the channel's logo is, the channel's own mark on it, LIVE under it. */
+    /** The cover's logo is read at most this many pixels across (it is never drawn much larger on a 1080p picture). */
+    static final int LOGO_MAX = 320;
+
+    /** Pure: a size rounded up to a step of 16 pixels (at least 16). */
+    static int step16(float px) {
+        return Math.max(16, (int) Math.ceil(px / 16f) * 16);
+    }
+
     private final class LogoCover extends View {
         boolean live, ringed;
         private final Paint ground = new Paint(Paint.ANTI_ALIAS_FLAG), ring = new Paint(Paint.ANTI_ALIAS_FLAG),
                 bmp = new Paint(Paint.FILTER_BITMAP_FLAG), pill = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final TextPaint name = new TextPaint(Paint.ANTI_ALIAS_FLAG), tag = new TextPaint(Paint.ANTI_ALIAS_FLAG);
         private final RectF r = new RectF();
+        private final Runnable again = this::invalidate;
 
         LogoCover(Context c) {
             super(c);
@@ -1539,10 +1596,16 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             Channel c = ch;
             String url = c == null ? null : LogoPack.url(c);
             int bw = Math.max(1, Math.round(w - 4 * e - w * 0.16f)), bh = Math.max(1, Math.round(hh - 4 * e - tagH - hh * 0.12f));
-            Bitmap b = Pics.get(url, bw, bh, Pics.FIT, this::invalidate);
+            // Read at most LOGO_MAX across and in steps of 16 (a cover made bigger a press at a time reads its logo once, not
+            // at every size), then drawn to the size it is.
+            float k = Math.min(1f, (float) LOGO_MAX / Math.max(bw, bh));
+            Bitmap b = Pics.get(url, step16(bw * k), step16(bh * k), Pics.FIT, again);
             float midY = (hh - tagH) / 2f;
             if (b != null) {
-                cv.drawBitmap(b, (w - b.getWidth()) / 2f, midY - b.getHeight() / 2f, bmp);
+                float s = Math.min((float) bw / b.getWidth(), (float) bh / b.getHeight());
+                float dw = b.getWidth() * s, dh = b.getHeight() * s;
+                r.set((w - dw) / 2f, midY - dh / 2f, (w + dw) / 2f, midY + dh / 2f);
+                cv.drawBitmap(b, null, r, bmp);
             } else if (c != null) {
                 name.setColor(look.ink);
                 name.setTextSize(Math.min(hh * 0.3f, w * 0.16f));
@@ -1741,6 +1804,12 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
 
         void ok() {
             Context c = getContext();
+            // What needs the match itself, with none on this channel now.
+            if (game == null && (at == R_NOW || at == R_MOVE || at == R_MOVE_LOGO || at == R_LINEUPS)) {
+                close();
+                card.note("No match on this channel now", "The match on this channel, when there is one");
+                return;
+            }
             switch (at) {
                 case R_NOW: {
                     int d = InStep.justHappened(c, chKey, changeSeen);
@@ -1795,7 +1864,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             float x = r.left + Ui.f(40);
             c.drawText("Scoreboard", x, r.top + Ui.f(70), titleP);
             Game g = game;
-            String sub = g == null ? "" : full(g.homeName, g.home) + " v " + full(g.awayName, g.away);
+            String sub = menuLine(g, finding, !readings.isEmpty());
             c.drawText(TextFit.fit(sub, subP, w - Ui.f(80)), x, r.top + Ui.f(110), subP);
             float y = r.top + Ui.f(140);
             for (int i = 0; i < ROWS.length; i++) {
@@ -1811,7 +1880,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
                 if (!v.isEmpty()) c.drawText(v, row.right - Ui.f(20) - value.measureText(v), base, value);
                 y += rowH;
             }
-            String tip = "Back to close · Left and Right to change";
+            String tip = "Back to close · Left and Right to change · these are for every match";
             c.drawText(tip, x, r.bottom - Ui.f(28), hint);
         }
     }

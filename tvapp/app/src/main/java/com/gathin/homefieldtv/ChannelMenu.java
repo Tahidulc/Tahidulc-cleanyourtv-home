@@ -7,6 +7,7 @@ import com.gathin.homefieldtv.engine.Catchup;
 import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.prefs.ChannelEdits;
+import com.gathin.homefieldtv.prefs.Merges;
 import com.gathin.homefieldtv.prefs.Parental;
 
 import java.util.List;
@@ -25,6 +26,9 @@ import java.util.List;
  *   Change logo                       the new logos found for it, the best first, or the playlist's (LogoScreen)
  *   Move channel                      TiviMate's Manage positions: the row lifts, Up and Down move it, OK puts it down,
  *                                     Back leaves it (the guide's own: MoveMode)
+ *   Merge with                        Homefield's: another channel chosen (MergeScreen) to join this one to: it leaves the
+ *                                     lists, and plays when the other one drops (Merges)
+ *   Separate merged channels          on a channel others were merged into: they are back in the lists
  *   Catch-up                          Homefield's: the channel's archive by day, where the provider keeps one
  * </pre>
  *
@@ -35,7 +39,8 @@ import java.util.List;
 final class ChannelMenu {
     private ChannelMenu() {}
 
-    static final String HIDE = "ch.hide", RENAME = "ch.rename", UNNAME = "ch.unname", LOGO = "ch.logo", MOVE = "ch.move";
+    static final String HIDE = "ch.hide", RENAME = "ch.rename", UNNAME = "ch.unname", LOGO = "ch.logo", MOVE = "ch.move",
+            MERGE = "ch.merge", SPLIT = "ch.split";
 
     /** The channel's lines; movable: the list on screen can take Move channel (not Recently watched, nor the archive). */
     static void items(Context c, Channel ch, boolean archiveLink, boolean movable, List<GuideMenu.Item> out) {
@@ -49,6 +54,9 @@ final class ChannelMenu {
         if (ChannelEdits.renamed(ch)) out.add(GuideMenu.Item.item(UNNAME, "Restore channel name").value(ChannelEdits.playlistName(ch)));
         out.add(GuideMenu.Item.item(LOGO, "Change logo").value(logoWords(ch)));
         if (movable) out.add(GuideMenu.Item.item(MOVE, "Move channel"));
+        out.add(GuideMenu.Item.item(MERGE, "Merge with"));
+        int in = Merges.keysInto(ch).size();
+        if (in > 0) out.add(GuideMenu.Item.item(SPLIT, "Separate merged channels").value(in == 1 ? "1 channel" : in + " channels"));
         if (archiveLink && Catchup.source(ch) != null) out.add(GuideMenu.Item.item(GuideActions.ARCHIVE, "Catch-up"));
     }
 
@@ -83,6 +91,15 @@ final class ChannelMenu {
             case LOGO:
                 tv.push(new LogoScreen(tv, c));
                 break;
+            case MERGE:
+                tv.push(new MergeScreen(tv, c));
+                break;
+            case SPLIT: {
+                int n = Merges.separateFrom(tv, c);
+                Toast.makeText(tv, (n == 1 ? "1 channel separated from " : n + " channels separated from ") + ChannelEdits.name(c),
+                        Toast.LENGTH_SHORT).show();
+                break;
+            }
             default:
                 break;
         }

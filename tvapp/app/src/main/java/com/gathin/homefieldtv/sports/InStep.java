@@ -63,6 +63,16 @@ public final class InStep {
         prefs(c).edit().putInt("d." + channelKey, s).putInt("d.last", s).apply();
     }
 
+    /** How far behind a channel not lined up yet is taken to be (the last set on any channel), seconds. */
+    public static int usual(Context c) {
+        return prefs(c).getInt("d.last", DEFAULT_S);
+    }
+
+    /** Settings › More scoreboard settings: that for every channel not lined up yet. */
+    public static void setUsual(Context c, int seconds) {
+        prefs(c).edit().putInt("d.last", clamp(seconds)).apply();
+    }
+
     /** The delay moved by seconds (Sooner −5, Later +5); the new delay. */
     public static int nudge(Context c, String channelKey, int seconds) {
         int s = clamp(delay(c, channelKey) + seconds);

@@ -65,6 +65,25 @@ public final class SportsData {
         return out;
     }
 
+    /**
+     * Football on another day (-1 yesterday, 1 tomorrow) in the competitions followed (Espn.LEAGUES), by kick-off. Off the
+     * main thread.
+     */
+    public static List<Item> footballOn(int days, long freshMs) {
+        List<Item> out = new ArrayList<>();
+        LocalDate day = LocalDate.now(ZoneId.systemDefault()).plusDays(days);
+        for (String[] l : Espn.LEAGUES) for (Game g : Espn.scoreboard(l[0], day, freshMs)) out.add(item(g));
+        out.sort((a, b) -> Long.compare(a.start, b.start));
+        return out;
+    }
+
+    /** Pure: the games live now, in order. */
+    public static List<Item> liveOf(List<Item> all) {
+        List<Item> out = new ArrayList<>();
+        for (Item it : all) if (it.live) out.add(it);
+        return out;
+    }
+
     /** A football game's state as read at, kept on its Line (the hub and the scoreboard hold it back the same way). */
     public static void note(Game g, long at) {
         if (g == null || g.id == null) return;

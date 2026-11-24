@@ -55,7 +55,16 @@ final class Logos {
     private Logos() {}
 
     static final int COLOUR = 0, NONE = 1, BLACK = 2;
-    static final String[] NAMES = {"Logo's colour", "None", "Black tile"};
+    /**
+     * Settings › Appearance › Logos › Logo box colour: after Logo's colour, None and Black tile, a colour of the family's
+     * choosing for every box (FIXED: its deep middle; the box falls from a touch lighter at its top to a touch deeper at
+     * its foot, as a logo's own does); a logo too dark for it gets the soft glow None gives a faint one (LogoHalo).
+     */
+    static final String[] NAMES = {"Logo's colour", "None", "Black tile", "Forest green", "Midnight blue", "Slate grey", "Deep red",
+            "Plum", "Teal", "Charcoal"};
+    static final int[] FIXED = {0, 0, 0, 0xFF1E5631, 0xFF1B2A57, 0xFF46505E, 0xFF6E1A22, 0xFF4E2552, 0xFF135B5E, 0xFF26292E};
+    static final String ABOUT = "The box behind each channel's logo in the TV guide. Logo's colour: each logo on a box of its own colour. "
+            + "None: the logo alone. Or a colour of your choosing for every box; a logo too dark for it gets a soft glow.";
     static final String KEY = "logo_behind_07";
 
     /** How much of its tile (or box) a logo fills (LogoTile's), and the tile's corners as a share of its height. */
@@ -137,12 +146,33 @@ final class Logos {
     }
 
     private static int clamp(int b) {
-        return b == NONE || b == BLACK ? b : COLOUR;
+        return b >= 0 && b < NAMES.length ? b : COLOUR;
     }
 
-    /** The picture's mode for the setting in use. */
+    /** Whether every box is one colour of the family's choosing. */
+    static boolean fixed() {
+        return behind > BLACK;
+    }
+
+    private static Tint fixedTint;
+    private static int fixedFor = -1;
+
+    /** The chosen colour's box, its fall and its cell (null unless a fixed colour is chosen). */
+    static Tint fixedTint() {
+        int b = behind;
+        if (b <= BLACK) return null;
+        if (fixedFor != b) {
+            int c = FIXED[b];
+            fixedTint = new Tint(new int[]{Theme.mix(c, 0xFFFFFFFF, 0.10f) | 0xFF000000, Theme.mix(c, 0xFF000000, 0.18f) | 0xFF000000,
+                    Theme.mix(c, 0xFFFFFFFF, 0.06f) | 0xFF000000, Theme.mix(c, 0xFF000000, 0.22f) | 0xFF000000});
+            fixedFor = b;
+        }
+        return fixedTint;
+    }
+
+    /** The picture's mode for the setting in use (a fixed colour: the logo bare, with its glow when too dark). */
     static int mode() {
-        return behind == BLACK ? Pics.TILE : behind == NONE ? Pics.LOGO : Pics.TINT;
+        return behind == BLACK ? Pics.TILE : behind == NONE || fixed() ? Pics.LOGO : Pics.TINT;
     }
 
     /** The tile's colour (its middle) of a logo already read, or 0 before. */
@@ -178,6 +208,8 @@ final class Logos {
     static boolean draw(Canvas c, String url, RectF box, Runnable redraw, int alpha) {
         int w = Math.round(box.width()), h = Math.round(box.height());
         if (w < 2 || h < 2 || alpha <= 0) return false;
+        // A colour of the family's choosing: its box, then the logo bare over it.
+        if (fixed()) empty(c, box, alpha);
         Bitmap b = url == null || url.isEmpty() ? null : Pics.get(url, w, h, mode(), redraw);
         if (b == null) {
             empty(c, box, alpha);
@@ -197,6 +229,12 @@ final class Logos {
     static void empty(Canvas c, RectF box, int alpha) {
         if (behind == NONE) return;
         float r = box.height() * RADIUS;
+        Tint fx = fixedTint();
+        if (fx != null) {
+            FILL.setColor(Palette.alpha(fx.tile, alpha));
+            c.drawRoundRect(box, r, r, FILL);
+            return;
+        }
         if (behind == BLACK) {
             FILL.setColor(Palette.alpha(LogoTile.GROUND, alpha));
             c.drawRoundRect(box, r, r, FILL);
@@ -311,7 +349,7 @@ final class Logos {
 
     /** The cell logo's picture for the setting in use (Pics.CELL_COLOUR, CELL_NONE or CELL_BLACK). */
     static int cellMode() {
-        return behind == BLACK ? Pics.CELL_BLACK : behind == NONE ? Pics.CELL_NONE : Pics.CELL_COLOUR;
+        return behind == BLACK ? Pics.CELL_BLACK : behind == NONE || fixed() ? Pics.CELL_NONE : Pics.CELL_COLOUR;
     }
 
     /**

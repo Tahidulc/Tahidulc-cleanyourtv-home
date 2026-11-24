@@ -187,10 +187,47 @@ public final class Tmdb {
         return kept(c, "s|" + id + "|" + number, "tv/" + id + "/season/" + number);
     }
 
+    /**
+     * What is most watched this week, films or TV shows (TMDB's trending lists, two pages), kept six hours: each
+     * {name, year, poster, backdrop, rating}, in TMDB's order; empty when TMDB can't be asked and nothing is kept.
+     */
+    public static List<String[]> trending(Context c, boolean tv) {
+        List<String[]> out = new ArrayList<>();
+        for (int page = 1; page <= 2; page++) {
+            JSONObject j = kept(c, "trend|" + (tv ? "tv" : "movie") + "|" + page, "trending/" + (tv ? "tv" : "movie") + "/week?page=" + page,
+                    TREND_MS);
+            out.addAll(trendingOf(j, tv));
+        }
+        return out;
+    }
+
+    static final long TREND_MS = 6 * 3600_000L;
+
+    /** Pure: a trending page's titles, {name, year, poster, backdrop, rating}. */
+    static List<String[]> trendingOf(JSONObject j, boolean tv) {
+        List<String[]> out = new ArrayList<>();
+        JSONArray rs = j == null ? null : j.optJSONArray("results");
+        for (int i = 0; rs != null && i < rs.length(); i++) {
+            JSONObject r = rs.optJSONObject(i);
+            if (r == null) continue;
+            String name = r.optString(tv ? "name" : "title", "");
+            if (name.isEmpty()) continue;
+            String date = r.optString(tv ? "first_air_date" : "release_date", "");
+            String y = date.length() >= 4 && date.substring(0, 4).matches("\\d{4}") ? date.substring(0, 4) : "";
+            out.add(new String[]{name, y, image(r.optString("poster_path", ""), "w342"), image(r.optString("backdrop_path", ""), "w1280"),
+                    rating(r.optDouble("vote_average", 0))});
+        }
+        return out;
+    }
+
     private static JSONObject kept(Context c, String name, String path) {
+        return kept(c, name, path, KEEP_MS);
+    }
+
+    private static JSONObject kept(Context c, String name, String path, long freshMs) {
         File f = file(c, name);
         JSONObject had = read(f);
-        if (had != null && System.currentTimeMillis() - had.optLong("_at") < KEEP_MS) return had;
+        if (had != null && System.currentTimeMillis() - had.optLong("_at") < freshMs) return had;
         String k = key(c);
         if (k == null) return had;
         try {
@@ -483,11 +520,7 @@ public final class Tmdb {
             }
             if (code >= 400) throw new IOException("TMDB said no (" + code + ")");
             try (InputStream in = h.getInputStream()) {
-                java.io.ByteArrayOutputStream b = new java.io.ByteArrayOutputStream();
-                byte[] buf = new byte[16384];
-                int n;
-                while ((n = in.read(buf)) > 0) b.write(buf, 0, n);
-                return new JSONObject(new String(b.toByteArray(), StandardCharsets.UTF_8));
+                return new JSONObject(Bounded.text(in, h.getContentLengthLong(), 4 << 20));
             } catch (IOException e) {
                 throw new IOException("TMDB's answer was cut short");
             }

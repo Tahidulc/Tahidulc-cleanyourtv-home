@@ -434,7 +434,14 @@ final class Pics {
         InputStream open() throws IOException;
     }
 
+    /**
+     * A channel's own picture (ProgrammePictures, for a programme nothing was found for): ON_COLOUR and its logo's address,
+     * drawn as the logo on its own colour at the size asked, so no programme is blank.
+     */
+    static final String ON_COLOUR = "on-colour:";
+
     private static Bitmap load(Key k) {
+        if (k.url.startsWith(ON_COLOUR)) return onColour(k.url.substring(ON_COLOUR.length()), k.w, k.h);
         Source src = source(k.url);
         if (src == null) return null;
         loads++;
@@ -508,7 +515,9 @@ final class Pics {
         }
         Paint p = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
         if (!fit && (mode == FACE || mode == FACE_MID || mode == ART || mode == PANEL)) {
-            // A programme's picture: its faces found once (kept by its address), the crop round them, whole.
+            // A programme's picture: its own black bars cropped away, its faces found once (kept by its address), the crop
+            // round them, whole.
+            src = trimmed(src);
             float[] box = facesOf(url, src);
             float sw = src.getWidth(), sh = src.getHeight(), bias = mode == FACE_MID ? 0.5f : FACE_BIAS;
             android.graphics.RectF win = new android.graphics.RectF();
@@ -844,6 +853,9 @@ final class Pics {
             src = BitmapFactory.decodeStream(s, null, d);
         }
         if (src == null) return null;
+        // Its own black bars (pillarbox, letterbox, a border) and a pixel or two of its edge cropped away first: never a
+        // dark line through a cell (the faces are found in what is left).
+        src = trimmed(src);
         float[] f = facesOf(url, src);
         float sw = src.getWidth(), sh = src.getHeight();
         float[] lay = new float[PicFill.SIZE];
@@ -891,10 +903,43 @@ final class Pics {
             c.drawBitmap(sheet, 0, 0, p);
             sheet.recycle();
         } else {
+            // Covering: over its own colour, so a part-pixel at an edge never comes out black.
+            c.drawColor(ambientColour(src));
             c.drawBitmap(src, m, p);
         }
         src.recycle();
         return out;
+    }
+
+    /** The bars are looked for on a copy at most this many pixels across. */
+    static final int LOOK_BARS = 320;
+
+    /** A programme's picture with its own black bars and a pixel or two of its edge cropped away (Pillarbox). */
+    static Bitmap trimmed(Bitmap src) {
+        int w = src.getWidth(), h = src.getHeight();
+        // Looked at small (at most LOOK_BARS across: a few hundred kilobytes, never the whole picture's pixels), the crop
+        // taken back to the picture's size rounded outward.
+        float s = Math.min(1f, LOOK_BARS / (float) Math.max(w, h));
+        int lw = Math.max(1, Math.round(w * s)), lh = Math.max(1, Math.round(h * s));
+        Bitmap look = s < 1f ? Bitmap.createScaledBitmap(src, lw, lh, false) : src;
+        int[] px = new int[lw * lh];
+        look.getPixels(px, 0, lw, 0, 0, lw, lh);
+        if (look != src) look.recycle();
+        int[] small = Pillarbox.crop(px, lw, lh), cut = new int[4];
+        for (int i = 0; i < 4; i++) {
+            boolean bar = small[i] > Math.min(Pillarbox.INSET, Math.min(lw, lh) / 16);
+            cut[i] = bar ? (int) Math.ceil((small[i] + 1) / s) : Math.min(Pillarbox.INSET, Math.min(w, h) / 16);
+        }
+        int cw = w - cut[0] - cut[2], ch = h - cut[1] - cut[3];
+        if (cut[0] + cut[1] + cut[2] + cut[3] == 0 || cw < 8 || ch < 8) return src;
+        Bitmap out = Bitmap.createBitmap(src, cut[0], cut[1], cw, ch);
+        if (out != src) src.recycle();
+        return out;
+    }
+
+    /** Tests: a picture read now on this thread as a screen would have it (w x h, mode), or null. */
+    static Bitmap readNow(String url, int w, int h, int mode) {
+        return load(probe(url, w, h, mode).copy());
     }
 
     /** Lite's ambient ground: the picture's own colour (its average, quietened as the blurred ground is). */
@@ -924,6 +969,43 @@ final class Pics {
         g.setPixels(px, 0, gw, 0, 0, gw, gh);
         c.drawBitmap(g, null, new android.graphics.RectF(0, 0, w, h), p);
         g.recycle();
+    }
+
+    /**
+     * The logo (read as any picture is) on its own colour, w x h: its colour's fall, the logo at about half the height, in
+     * the middle, or (a wide cell or card, its words at the left) toward the right, clear of them.
+     */
+    private static Bitmap onColour(String logo, int w, int h) {
+        if (w < 2 || h < 2 || logo.isEmpty()) return null;
+        Bitmap mark = null;
+        Source src = source(logo);
+        if (src != null) {
+            try {
+                BitmapFactory.Options o = new BitmapFactory.Options();
+                o.inJustDecodeBounds = true;
+                try (InputStream s = src.open()) {
+                    BitmapFactory.decodeStream(s, null, o);
+                }
+                if (o.outWidth > 0 && o.outHeight > 0) mark = sharp(src, o, Math.max(1, w / 2), Math.max(1, h / 2));
+            } catch (IOException e) {
+                mark = null;
+            }
+        }
+        Logos.Tint t = mark == null ? Logos.Tint.WAITING : Logos.colours(logo, mark);
+        Bitmap out = Bitmap.createBitmap(w, h, Bitmap.Config.RGB_565);
+        android.graphics.Canvas c = new android.graphics.Canvas(out);
+        android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.DITHER_FLAG);
+        p.setShader(new android.graphics.LinearGradient(0, 0, w, h, t.rowTop, t.rowFoot, android.graphics.Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, w, h, p);
+        if (mark != null) {
+            boolean wide = w >= 2 * h;
+            float k = Math.min(w * (wide ? 0.24f : 0.42f) / mark.getWidth(), h * 0.46f / mark.getHeight());
+            float mw = mark.getWidth() * k, mh = mark.getHeight() * k, cx = wide ? w * 0.72f : w / 2f;
+            android.graphics.RectF dst = new android.graphics.RectF(cx - mw / 2f, (h - mh) / 2f, cx + mw / 2f, (h + mh) / 2f);
+            c.drawBitmap(mark, null, dst, new android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG));
+            mark.recycle();
+        }
+        return out;
     }
 
     /**

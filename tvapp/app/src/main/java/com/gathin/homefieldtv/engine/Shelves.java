@@ -18,7 +18,7 @@ import java.util.Set;
  * Each row of CategorySet made into its titles, from what the app already has: the playlists' films and series (and the
  * family's own TorBox titles), where the family left off, My List, what they watched lately, and TMDB's lists (trending,
  * a themed discover, a list, a network's shows, a watched title's recommendations) matched to what the playlists hold
- * (TitleIndex), so every card plays. A row with nothing in it is empty and the page leaves it out. A TMDB row is read a
+ * (MatchIndex), so every card plays. A row with nothing in it is empty and the page leaves it out. A TMDB row is read a
  * page at a time: the first pages as it is made, the next as the remote nears its end (more()), at most
  * TmdbLists.MAX_PAGES. Rows from the family's own lists (local) are quick and can be made on the main thread; a TMDB row
  * (CategorySet.Entry.tmdb) only off it.
@@ -287,7 +287,7 @@ public final class Shelves {
      */
     public static Shelf more(Context c, Shelf s) {
         if (!s.more()) return s;
-        TitleIndex index = TitleIndex.of(Catalog.get(c));
+        MatchIndex index = MatchIndex.of(Catalog.get(c));
         List<Pick> picks = new ArrayList<>(s.picks);
         Set<String> seen = new HashSet<>(s.skip);
         for (Pick p : picks) if (p.title != null) seen.add(p.title.key);
@@ -322,7 +322,7 @@ public final class Shelves {
     private static void tmdb(Context c, String path, List<List<Pick>> streams, List<String> paths, List<Integer> next,
                              List<Integer> pages) {
         List<Pick> out = new ArrayList<>();
-        TitleIndex index = null;
+        MatchIndex index = null;
         int page = 1, total = 1;
         Set<String> seen = new HashSet<>();
         for (; page <= total && page <= FIRST_PAGES && out.size() < ENOUGH; page++) {
@@ -332,7 +332,7 @@ public final class Shelves {
                 break;
             }
             total = got.pages;
-            if (index == null) index = TitleIndex.of(Catalog.get(c));
+            if (index == null) index = MatchIndex.of(Catalog.get(c));
             for (Pick p : matched(index, got)) if (seen.add(p.title.key)) out.add(p);
         }
         streams.add(out);
@@ -342,7 +342,7 @@ public final class Shelves {
     }
 
     /** Pure: a page's titles that the playlists have, in its order (each as the playlists' title, TMDB's words on it). */
-    static List<Pick> matched(TitleIndex index, TmdbLists.Page page) {
+    static List<Pick> matched(MatchIndex index, TmdbLists.Page page) {
         List<Pick> out = new ArrayList<>();
         for (TmdbLists.Item it : page.items) {
             Catalog.Title t = index.find(it.tv, it.name, it.original, it.yearNumber());

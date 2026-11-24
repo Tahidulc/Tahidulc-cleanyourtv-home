@@ -39,7 +39,7 @@ wordmark are Homefield; it carries no Sky logo or name.
   Max's, Prime Video's and Disney+'s; the other app's rows for Apple's and Netflix's services are left out). The titles
   come only from the family's playlists (and their own TorBox titles): TMDB's lists (trending, a genre, a keyword found by
   its name, a list, a network's shows, the recommendations for what was watched) are matched to them by name and year
-  off the main thread (engine/TitleIndex, about 1.6 MB for 200,000 titles), a page at a time as the remote goes along; a
+  off the main thread (engine/MatchIndex, about 1.6 MB for 200,000 titles), a page at a time as the remote goes along; a
   row with nothing in the playlists is left out, and without TMDB the rows are the playlists' own (the newest, the
   categories named for a genre). One row in focus at a time, under the tab bar: the title the remote is on grows from
   its poster into a wide card (its backdrop, TMDB's logo or its name, how far it was watched and its episode), the one
@@ -55,8 +55,10 @@ wordmark are Homefield; it carries no Sky logo or name.
   remote is on: its title, a star for a favourite channel, its times ("10:00 — 11:00") with a bar and the minutes left
   for one on now ("16 min"), the picture's frames a second for the channel playing ("50 FPS", or as last seen on a
   channel watched before), the playlist and the group at the right, and all it says about it; behind the words, across
-  the panel's right-hand part, the programme's picture (Sky's public UK guide, else the channel's logo on a ground
-  tinted by its own colour), faded into the panel from the left and the foot, cross-fading to the next programme's as
+  the panel's right-hand part, the programme's picture (Sky's public UK guide; where it has none, searched wider: TMDB
+  by the programme's title tidied, the year or series its description gives and the channel's kind, off the main thread
+  and a search at most every second or so; else the channel's logo on its own colour, so no programme is blank: the
+  same in the guide's cells, the info card, the mini guide and the reminder's panel), faded into the panel from the left and the foot, cross-fading to the next programme's as
   the remote moves (Left, Right, Up, Down), the pictures either side read ahead. Under it the date and the clock in the light
   accent, the times every half hour and a dot at the time now; then a row a channel, 88 high: its cell the channel's
   logo alone (no number, no tile round it and no name), as large as the cell allows with the same room all round and its
@@ -64,7 +66,9 @@ wordmark are Homefield; it carries no Sky logo or name.
   on the plain row; Black tile, a black cell), its marks small and quiet in the cell's right-hand corner (▶ on the
   channel in the preview, the favourite's star, the archive's mark on one whose provider keeps an archive, HD); its
   programmes' cells each filled by the programme's own picture whatever their width, its faces whole (a cell too wide
-  for that has the picture blurred behind and sharp where the faces are; one the times cut shows the faces), with a soft
+  for that has the picture blurred behind and sharp where the faces are, the sharp picture feathered into it at both
+  its edges; one the times cut shows the faces; a picture's own black bars, pillarbox or letterbox, and a pixel or two
+  of its edge cropped before it is laid out, so no dark line runs through a cell), with a soft
   shade only under the title and times and a light fade under the line of how far through, the part already shown
   dimmer, the remote's cell lifted with a white ring (a programme with no picture in a plain cell); a bell on a
   programme with a reminder. The channel's number is still said by the guide for accessibility, and still typed to go
@@ -91,7 +95,8 @@ wordmark are Homefield; it carries no Sky logo or name.
   and found by search with its old one too; Restore channel name), Change logo (the new logos found
   for it, the best first, each on its tile with its country and kind, and the playlist's own; the one chosen kept for
   that channel), Move channel (TiviMate's Manage positions: its row lifts in its group, or among the favourites, Up and
-  Down move it, OK puts it down and the group keeps that order, Sort channels then Manual; Back leaves it) and Catch-up.
+  Down move it, OK puts it down and the group keeps that order, Sort channels then Manual; Back leaves it), Merge with
+  (below) and Catch-up.
   Play/pause shows the description, Stop adds the channel to the favourites or takes it off, Back held goes back to the
   player and MENU held opens Search; the number keys go to a channel. Back comes back to the programmes on now, then
   opens the groups, then the drawer, then leaves the guide.
@@ -113,6 +118,15 @@ wordmark are Homefield; it carries no Sky logo or name.
   channel, Rename channel and Change logo on it go on every version; a version hidden by itself before is only left out
   of its Quality. Settings, Channels & categories (or Appearance, TV guide), One row per channel (merge qualities): on
   as it comes; off, every version is a row of its own again.
+- **Merged channels:** Merge with, on a channel's hold-OK card in the guide, opens a panel at the right ("Choose another
+  channel to merge it with"): the channels it most likely is first (the same name, then its category, then a name sharing
+  its first word), Up and Down to the channel to keep, OK merges ("BBC One HD merged into BBC One"). The channel merged
+  leaves every list (as a hidden one does) and stands in for the one kept: its stream plays when that one's drops (after
+  the kept channel's own qualities and copies), and its guide and catch-up are the kept channel's when it has none of its
+  own. One row per channel makes a channel's qualities one row first; a merge joins whole rows, so the two never fight.
+  A channel merged away can't take a merge, nor can a channel join one of its own versions ("That channel can't take a
+  merge"). Separate merged channels on the kept channel's card, or Settings, Channels &amp; categories, Merged channels
+  (each merge, OK to separate it; Separate all), bring them back.
 - **Channel logos:** the new logos (Settings, Appearance, Logos: New logos (Homefield), as it comes, or the playlist's
   own) are the tv-logo project's free logos for dark grounds (github.com/tv-logo/tv-logos, free for personal use: here
   for the family's own viewing only; no logo is in the app or this repository). The TV asks GitHub for the list of the
@@ -130,8 +144,11 @@ wordmark are Homefield; it carries no Sky logo or name.
   the programme's picture (Sky's public UK guide, else the channel's logo) over a card with its day, times and what it is
   about. Right goes to the days and Left back; OK plays a programme already shown from the archive, watches the one on
   now, or opens the small menu for one to come; OK held opens the whole menu.
-- **Live TV:** full screen, the picture alone. A channel changed to brings up the info card at the foot for the channel banner's
-  seconds (Settings, Player; 6 as it comes), and INFO brings it up too: a card in the playback panel's colour with the
+- **Live TV:** full screen, the picture alone. A channel changed to (Up, Down, CH+, CH−) brings up the info card at the
+  foot: it pops up from the screen's foot (rising and growing to its size with 07's springy ease, moved and scaled as it
+  is drawn: the Lite tier's too), stays for Settings, Live TV, Information panel stays for (3, 5 as it comes, 8, 10 or 15
+  seconds, or until Back; each further press starting it again) and drops back down; no key hints over it (OK, Left and
+  MENU still bring up the overlay, the channel list and the bar). INFO brings it up too: a card in the playback panel's colour with the
   channel's logo alone (as the guide's cells have it: no number or name, which talk-back says), the programme's title,
   the date and the clock, its times with a bar and the minutes left, the playlist and the group, chips for the picture and the sound as the player has them (FHD, 50 FPS, STEREO; the
   frames a second as the stream says them, else counted from the frames it shows over a few seconds and taken to the
@@ -144,8 +161,9 @@ wordmark are Homefield; it carries no Sky logo or name.
   (OK then changes to it); Up and Down change channel (Settings, Remote can make them bring up the live screen's rows of
   channels instead, as Homefield TV came); Right goes back to the channel watched last; the number keys go to a channel,
   the number in a box at the top right. OK brings up the overlay: the card at the top, a line across the foot for how
-  far through the programme is, and a row of tiles under it (TV guide, History, then the channels last watched, each with
-  what's on and how far through); Down from the tiles brings up the bar. OK held, or MENU, brings up the bar alone: round
+  far through the programme is, and a row of tiles under it (TV guide, History, then the channels last watched in 07:
+  each tile its programme's picture filling it, the channel's logo alone on its colour at its top left, the title and
+  how far through along its foot, the remote's tile lifting with a white ring); Down from the tiles brings up the bar. OK held, or MENU, brings up the bar alone: round
   buttons along the foot, each with its label (Search, Channels list, History, Movies, TV shows, Recordings, My list,
   then Video tracks, Audio tracks, Audio offset, Closed captions, Display mode and Sleep timer labelled with what they are
   set to, then Add to favourites, Scoreboard over a match, Channel options, Settings and Exit). Each of the picture's and
@@ -182,10 +200,13 @@ wordmark are Homefield; it carries no Sky logo or name.
   the app's own storage, its progress where the words go. The sound is heard on the TV, by a copy taken in the
   player's sound chain; nothing heard leaves the TV. A channel's own tracks stay off while nothing shows them.
 - **Reminders:** in the guide, OK (or OK held) on a programme to come gives Remind (Cancel reminder once one is set), and
-  a bell on its cell and "Reminder set" by its times. A minute before it starts, a card comes up at the top right over
-  whatever is on the TV, other apps too: the channel's logo on its tile, "Starts in 1 min" (then "Starting now"), the
-  title, the channel and its time, and what the keys do. It takes the remote after a second and a half; OK opens Homefield
-  TV on the channel, Back puts it away, any other key lets it go, and it goes by itself after about 20 seconds. Over
+  a bell on its cell and "Reminder set" by its times. A minute before it starts, a panel comes up at the top right over
+  whatever is on the TV, other apps too, 800 by 450 in the 07 look: the programme's own picture filling it (its faces
+  whole, clear of the words; the channel's logo on its colour where it has none), Homefield's mark with a bell and
+  "Reminder", the countdown in an amber pill ("Starts in 2:45", then "Starting now"), the channel's logo on its tile, the
+  title, its time and channel, the message ("Your reminder: … starts at 20:00 on …") and three buttons: Watch (OK), Remind
+  again in 5 min, Dismiss (Back); Left and Right go between them. It takes the remote after a second and a half; any
+  other key lets it go, and it goes by itself after about 30 seconds (an amber line along its foot runs out). Over
   other apps where Android lets Homefield TV (Display over other apps, asked for once, when the first reminder is set,
   with a way to Android's page); otherwise a notification that asks to come up as the same card. Its alarm is exact
   where Android allows it and never wakes the TV: a TV that is off stays off, and a card is shown only up to a few
@@ -202,11 +223,18 @@ wordmark are Homefield; it carries no Sky logo or name.
   brings up the row of tiles in the buttons' place, Up takes them away. Left and Right (and the rewind and fast forward
   keys) move it 10 seconds a press, more as they are held (30 seconds, a minute, three minutes), and the archive is asked
   for from there a moment after the remote rests; play/pause pauses. Up and Down change channel, live; CH+ and CH−
-  bring up a channel's card; OK held or MENU the player's bar. Back closes the overlay, then goes to the TV guide. It
+  bring up a channel's card; OK held or MENU the player's bar. The bar you can move: OK brings the overlay up with the
+  remote on the seek line itself (its knob larger with a white ring), and Left or Right from the plain picture goes
+  straight there; Left and Right then move a spot along it (Skip steps a press, then faster as the key is held), a white
+  bubble over the knob saying where (the time in the programme, and the clock then), OK jumps there, Back leaves it where
+  the picture is, Down goes to the buttons and Up back. Back closes the overlay, then goes to the TV guide. It
   goes on into the next programme when one ends, and is live again at the live edge. The archive's address is made on the TV from the
   channel's own, and like it is never shown or written out. Channels with no archive don't offer any of it.
 - **Sports:** Sports is a page under the tab bar (its Sports tab), in 07's look over the blurred picture of what the
-  remote is on: its title with its three sections as pills beside it (Up from the top of a list goes to them, Left and
+  remote is on: its title with its sections as pills beside it (Live, Today, Tomorrow, Yesterday, Tables, F1 &amp; more;
+  Live what is on now, "No football is live right now. Today's games are under Today." when nothing is; Tomorrow and
+  Yesterday the football in the competitions followed that day, "No football tomorrow in the competitions followed."
+  when there is none) (Up from the top of a list goes to them, Left and
   Right or OK pick one, Down comes back, Up again goes to the tab bar; Back at a section's root goes to the tab bar
   too). Today lists today's live and coming games (football, NFL, NBA, tennis, UFC, F1) under LIVE NOW, LATER and
   FINISHED with their counts, a row each washed at its ends in its two sides' colours (the away side's second colour
@@ -367,8 +395,10 @@ wordmark are Homefield; it carries no Sky logo or name.
   Each row has its value under its name, a switch at the right where it is on or off, and section names are in the
   accent; a choice opens its list with the one in use ticked; a field is typed on a keyboard over a sheet risen from
   the foot, a password only ever as dots.
-  General: starting when the TV starts; the screen it starts on (Home, Live TV with the last channel, the TV guide,
-  Movies or TV shows); Back up data (settings, playlists, favourites, recent channels, reminders and My list saved to a
+  General: starting when the TV starts; Start on: Last channel as it comes (the channel watched last plays full screen
+  with its card as Homefield TV opens, also when it is opened again from the TV's Home or come back to after a while,
+  not only when it starts afresh; never a locked channel, a programme from catch-up or a film), Home, the TV guide,
+  Movies or TV shows (when it starts afresh); Back up data (settings, playlists, favourites, recent channels, reminders and My list saved to a
   file on the TV and in Downloads; never the TorBox key, and nothing sent over the network) and Restore data (this TV's
   backup or a file picked); Sync (Sync now and when it last synced, and a switch for each kind: playlists, favourites
   and recents, Continue watching, settings, passed on by the launcher on this TV to the family's phones, tablets and
@@ -386,8 +416,9 @@ wordmark are Homefield; it carries no Sky logo or name.
   able to have its own; One row per channel; channel numbers, the guide's rows, progress bars; Hidden channels and
   Manage categories, as in Channels & categories); Player (the clock, 24-hour as it comes, 12-hour or off; how long the
   panels stay; live TV's channel tiles); Categories (how they are sorted); Logos (Logos priority: New logos (Homefield) as it comes,
-  or Playlist's logos; Refresh logos, with how many logos the list has and from when; and the logos on black tiles,
-  each trimmed and set in the middle with a dark one turned light, or as they come); Font size; Color theme: a primary
+  or Playlist's logos; Refresh logos, with how many logos the list has and from when; and Logo box colour: Logo's
+  colour as it comes, None, Black tile, or one colour of the family's choosing for every box (Forest green, Midnight
+  blue, Slate grey, Deep red, Plum, Teal, Charcoal; a logo too dark for it gets a soft glow)); Font size; Color theme: a primary
   colour (Indigo as it comes, Blue, Deep purple, Purple, Teal, Green,
   Red, Brown, Blue grey, Grey or Black) with an accent (Blue as it comes, Red, Pink, Purple, Indigo, Cyan, Teal, Green,
   Lime, Yellow, Amber, Orange or Deep orange), each a disc, the pair in use ticked and named ("Indigo • Blue"); OK keeps
@@ -408,7 +439,7 @@ wordmark are Homefield; it carries no Sky logo or name.
   moved, renamed and its Sort channels; hidden categories stay hidden when the playlists are read again); Rename
   channels (the channels renamed, then each category's channels with their logos, the playlist's name under one the
   family renamed; OK types a new name, nothing typed gives the playlist's back, kept when the playlists are read again);
-  and Channels sorting.
+  Merged channels (each merge made in the guide, OK to separate it, Separate all); and Channels sorting.
   Playback: the buffer for live TV and for films, the decoders, matching the TV's frame rate and tunnelled playback;
   Picture: one Picture quality (Adaptive, which stays on the channel picked and uses its own copies as seamless quality
   levels, or a fixed 4K, 1080p, 720p, SD or Data saver) and the picture's shape for channels and for films (Normal,
@@ -424,9 +455,21 @@ wordmark are Homefield; it carries no Sky logo or name.
   (channels locked from Channel options on the player's bar), locked channels shown or hidden, and Settings locked too.
   Other: Search (Show search history, Show favorite channels first), Reminders (the ones set, soonest first, OK
   cancelling one, and whether their card may pop up over other apps), Recording (minutes before a programme starts and
-  after it ends), VOD (Autoplay next episode) and Scoreboard.
-  About: the version, and Updates: Check for updates (it also looks quietly as the app starts) and when it last
-  looked; when a newer Homefield TV has been put on this TV (update.json and the APK in the app's own folder,
+  after it ends), VOD (Autoplay next episode; Skip steps: 5, 10 as it comes, 15, 20 or 30 seconds or a minute a press of
+  Left or Right in a film, an episode or catch-up) and Scoreboard (with Logo cover only: the cover over the channel's
+  logo without the scoreboard; and More scoreboard settings: the look, timing for a channel not lined up yet, the
+  pop-ups, the goal sound and Back to the standard places on every channel, for every match). The player's bar has
+  Scoreboard on every channel, for the scoreboard's menu ("No match on this channel now", "Reading the match", "Reading
+  the scores" until there is one). The film player's Picture and sound has Sound (The film's sound, as it comes, or a
+  track) and Subtitles (Off, or the copy's own; "This copy has no subtitles of its own").
+  About: the version; If something goes wrong (the last problem noted and the ones before it, each with when and where
+  in the app's own code: "Crash in …", "Out of memory in …", "Froze for 7 s in …", "Trouble in the background (the app
+  carried on)"; Clear these notes; take a photo of them first to send; after a crash, out of memory or a freeze, "Homefield
+  TV had a problem last time. Settings › About has a note of it." once as the app starts); and Updates: Check for
+  updates (it also looks quietly as the app starts) and when it last looked; Automatic updates (Off as it comes: updates
+  only from a computer; or Every time it opens: the Update address, an update.json in the same form with where its APK
+  is, looked at as the app opens, the APK streamed to the update folder and checked as below, handed to Android at once
+  where it lets Homefield TV install; what stood in the way in the family's words, and how much room the TV has); when a newer Homefield TV has been put on this TV (update.json and the APK in the app's own folder,
   files/update/), its name, what's new and Update now. The APK is checked first (its size, its SHA-256, that it is
   Homefield TV, newer, and signed with the same key), then handed to Android's installer, which asks before it updates;
   the first time, Android asks to let Homefield TV install apps. A dot on Settings shows one is waiting, and What's new
@@ -449,8 +492,19 @@ again (the tab bar's strip, Settings' panel, a side menu's rows), and a page fad
 second layer; the window's own ground isn't drawn under an opaque page or a full-screen channel. Every animation runs
 on the display's clock, so a frame missed skips ahead rather than slowing down.
 
-The memory log (Android/data/com.gathin.homefieldtv/files/memlog.txt) has, after each minute's memory line, a line of
-the frame times of each screen used that minute (Android's own measure of every frame drawn):
+Kept open: an error on any thread but the main one (out of memory too) is noted and carried on through, the pictures
+not on screen and the guide beyond the next hours let go when memory runs out; the main thread is watched, a freeze of
+four seconds or more noted with where it was; the scoreboard's tick and drawing are guarded (a bad reading puts the board
+away, never closes the app). Answers from the scores, TorBox and TMDB are read whole only up to a limit, sized at once; an
+M3U's films and episodes go straight to their file as the playlist is read (an episode's are read from there when its
+series' page opens); the catalogue's titles keep their id in their key and are looked up and searched from plain arrays,
+and a refresh keeps every title whose row hasn't changed, so the family's 200,000 films and series are held once
+(TheFamilysSizeTest: under 96 MB of the JVM's heap with 27,000 channels and a guide of 90,000 programmes, all under
+120). A while into a channel full screen, half the pictures the screens under it hold are let go.
+
+The memory log (Android/data/com.gathin.homefieldtv/files/memlog.txt) has headroom= (how much more the Java heap may take)
+and problems= (out of memory, freezes and trouble in the background since the app started) on each minute's memory line,
+and after it a line of the frame times of each screen used that minute (Android's own measure of every frame drawn):
 
 ```
 2026-11-18 20:31 frames motion=auto-lite Home n=812 p50=11.2 p95=19.8 over20=3.1% gpu95=9.0 | Guide n=140 p50=13.0 p95=22.4 over20=7.9% gpu95=12.1

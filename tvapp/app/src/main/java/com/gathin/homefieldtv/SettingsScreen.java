@@ -111,6 +111,8 @@ final class SettingsScreen extends Screen implements SettingsPanel.Host, Keyboar
     private MoreSettings more;
     private ExtraSettings extra;
     private EditSettings edits;
+    /** 3.4's pages: If something goes wrong, Automatic updates, Merged channels, More scoreboard settings. */
+    private AddedSettings added;
     /** The pages open, the sections first. */
     private final List<String> pages = new ArrayList<>();
     private boolean editing;
@@ -154,6 +156,7 @@ final class SettingsScreen extends Screen implements SettingsPanel.Host, Keyboar
         more = new MoreSettings(tv, this);
         extra = new ExtraSettings(tv, this);
         edits = new EditSettings(tv, this);
+        added = new AddedSettings(tv, this);
         return f;
     }
 
@@ -277,13 +280,15 @@ final class SettingsScreen extends Screen implements SettingsPanel.Host, Keyboar
 
     private Pages owner(String page) {
         String p = page.startsWith(PICK) ? page.substring(PICK.length()) : page;
-        if (page.startsWith(PICK)) return extra.picker(p) != null ? extra : edits.picker(p) != null ? edits : more;
-        return extra.owns(p) ? extra : edits.owns(p) ? edits : more;
+        if (page.startsWith(PICK)) {
+            return added.picker(p) != null ? added : extra.picker(p) != null ? extra : edits.picker(p) != null ? edits : more;
+        }
+        return added.owns(p) ? added : extra.owns(p) ? extra : edits.owns(p) ? edits : more;
     }
 
     /** Who keeps what is typed in a field. */
     private Pages fieldOwner(String field) {
-        return edits.ownsField(field) ? edits : extra.ownsField(field) ? extra : more;
+        return added.ownsField(field) ? added : edits.ownsField(field) ? edits : extra.ownsField(field) ? extra : more;
     }
 
     String title(String page) {

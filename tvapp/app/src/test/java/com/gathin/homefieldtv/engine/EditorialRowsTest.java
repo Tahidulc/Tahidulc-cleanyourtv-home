@@ -313,18 +313,18 @@ public class EditorialRowsTest {
     // ---- the name index --------------------------------------------------------------------------------------------------
 
     @Test public void namesAreFoundAsTmdbWritesThem() {
-        assertEquals("longharbour", TitleIndex.squash("The Long Harbour", false));
-        assertEquals("saltandstarlight", TitleIndex.squash("Salt & Starlight", false));
-        assertEquals("amelie", TitleIndex.squash("Amélie", false));
-        assertEquals("theatre", TitleIndex.squash("Theatre", false));
-        assertEquals("officeus", TitleIndex.squash("The Office (US)", false));
-        assertEquals("office", TitleIndex.squash("The Office (US)", true));
-        assertEquals("500dayssummer", TitleIndex.squash("(500) Days: Summer", true));
-        assertEquals("dontlookup", TitleIndex.squash("Don't Look Up", false));
-        assertEquals(TitleIndex.hash("Salt and Starlight", false), TitleIndex.hash("SALT & STARLIGHT!", false));
-        assertEquals(0, TitleIndex.hash("—", false));
+        assertEquals("longharbour", MatchIndex.squash("The Long Harbour", false));
+        assertEquals("saltandstarlight", MatchIndex.squash("Salt & Starlight", false));
+        assertEquals("amelie", MatchIndex.squash("Amélie", false));
+        assertEquals("theatre", MatchIndex.squash("Theatre", false));
+        assertEquals("officeus", MatchIndex.squash("The Office (US)", false));
+        assertEquals("office", MatchIndex.squash("The Office (US)", true));
+        assertEquals("500dayssummer", MatchIndex.squash("(500) Days: Summer", true));
+        assertEquals("dontlookup", MatchIndex.squash("Don't Look Up", false));
+        assertEquals(MatchIndex.hash("Salt and Starlight", false), MatchIndex.hash("SALT & STARLIGHT!", false));
+        assertEquals(0, MatchIndex.hash("—", false));
 
-        TitleIndex index = TitleIndex.of(Catalog.get(c));
+        MatchIndex index = MatchIndex.of(Catalog.get(c));
         assertEquals("Salt & Starlight", index.find(false, "Salt and Starlight", "", 2023).name);
         // A year either side, not two.
         assertNotNull(index.find(false, "Ember Road", "", 2019));
@@ -335,7 +335,7 @@ public class EditorialRowsTest {
         // Films and shows apart.
         assertNull(index.find(true, "Ember Road", "", 0));
         assertNull(index.find(false, "Nowhere At All", "", 0));
-        assertSame(index, TitleIndex.of(Catalog.get(c)));
+        assertSame(index, MatchIndex.of(Catalog.get(c)));
     }
 
     @Test public void twoHundredThousandTitlesAreIndexedSmallAndQuickly() {
@@ -350,9 +350,9 @@ public class EditorialRowsTest {
                     "2020"));
         }
         long t0 = System.nanoTime();
-        TitleIndex index = TitleIndex.of(films, shows);
+        MatchIndex index = MatchIndex.of(films, shows);
         double ms = (System.nanoTime() - t0) / 1e6;
-        System.out.println("TitleIndex: 200,000 titles indexed in " + Math.round(ms) + " ms (JVM), " + index.size() + " keys");
+        System.out.println("MatchIndex: 200,000 titles indexed in " + Math.round(ms) + " ms (JVM), " + index.size() + " keys");
         assertTrue("indexed in " + ms + " ms", ms < 4000);
         // At most two longs a title (a name with brackets: also without them).
         assertTrue(index.size() <= 2 * 200_000);

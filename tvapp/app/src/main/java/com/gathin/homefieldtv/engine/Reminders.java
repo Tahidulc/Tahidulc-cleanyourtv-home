@@ -27,17 +27,37 @@ public final class Reminders {
     public static final long LATE_MS = 3 * 60_000L;
     private static final String PREFS = "reminders", KEY = "list";
 
+    /** Remind again in 5 min (the reminder's panel). */
+    public static final long AGAIN_MS = 5 * 60_000L;
+
     public static final class Reminder {
         public final String key, channel, logo, title;
         public final long start, end;
+        /** Remind again: when its card comes again (0: a minute before the start, as set). */
+        public final long again;
 
         public Reminder(String key, String channel, String logo, String title, long start, long end) {
+            this(key, channel, logo, title, start, end, 0L);
+        }
+
+        public Reminder(String key, String channel, String logo, String title, long start, long end, long again) {
             this.key = key == null ? "" : key;
             this.channel = channel == null ? "" : channel;
             this.logo = logo == null ? "" : logo;
             this.title = title == null ? "" : title;
             this.start = start;
             this.end = end;
+            this.again = Math.max(0L, again);
+        }
+
+        /** The same reminder, its card coming again at at. */
+        public Reminder againAt(long at) {
+            return new Reminder(key, channel, logo, title, start, end, at);
+        }
+
+        /** The last moment its card is still shown. */
+        long lastMoment() {
+            return Math.max(start + LATE_MS, again + LATE_MS);
         }
 
         public String id() {
@@ -46,7 +66,7 @@ public final class Reminders {
 
         /** When its card is due. */
         public long cardAt() {
-            return start - AHEAD_MS;
+            return again > 0 ? again : start - AHEAD_MS;
         }
     }
 
@@ -178,14 +198,14 @@ public final class Reminders {
     /** Pure: the ones still worth keeping at now (a card not yet past its last moment), soonest first. */
     public static List<Reminder> prune(List<Reminder> in, long now) {
         List<Reminder> out = new ArrayList<>();
-        for (Reminder r : in) if (now < r.start + LATE_MS && now < Math.max(r.end, r.start + LATE_MS)) out.add(r);
+        for (Reminder r : in) if (now < r.lastMoment() && now < Math.max(r.end, r.lastMoment())) out.add(r);
         return sort(out);
     }
 
     /** Pure: those whose card is due at now. */
     public static List<Reminder> due(List<Reminder> in, long now) {
         List<Reminder> out = new ArrayList<>();
-        for (Reminder r : in) if (r.cardAt() <= now && now < r.start + LATE_MS) out.add(r);
+        for (Reminder r : in) if (r.cardAt() <= now && now < r.lastMoment()) out.add(r);
         return sort(out);
     }
 
@@ -207,8 +227,10 @@ public final class Reminders {
         JSONArray a = new JSONArray();
         try {
             for (Reminder r : list) {
-                a.put(new JSONObject().put("key", r.key).put("channel", r.channel).put("logo", r.logo).put("title", r.title)
-                        .put("start", r.start).put("end", r.end));
+                JSONObject o = new JSONObject().put("key", r.key).put("channel", r.channel).put("logo", r.logo).put("title", r.title)
+                        .put("start", r.start).put("end", r.end);
+                if (r.again > 0) o.put("again", r.again);
+                a.put(o);
             }
         } catch (JSONException ignored) {
             // the values are plain strings and numbers
@@ -229,7 +251,7 @@ public final class Reminders {
                 long start = o.optLong("start", 0L);
                 if (key.isEmpty() || start <= 0) continue;
                 out.add(new Reminder(key, o.optString("channel", ""), o.optString("logo", ""), o.optString("title", ""), start,
-                        o.optLong("end", start)));
+                        o.optLong("end", start), o.optLong("again", 0L)));
             }
         } catch (JSONException e) {
             return new ArrayList<>();

@@ -399,6 +399,24 @@ public final class PlayerPrefs {
         return "p0";
     }
 
+    // ---- the information panel --------------------------------------------------------------------------------------
+
+    /**
+     * Settings › Live TV › Information panel stays for: how long the channel's card stays after Up, Down, CH+ or CH−
+     * brought it up (each further press starting it again), then it drops away; 0: until Back is pressed. 5 as it comes.
+     */
+    public static final int[] INFO_SECONDS = {3, 5, 8, 10, 15, 0};
+    public static final String[] INFO_NAMES = {"3 seconds", "5 seconds", "8 seconds", "10 seconds", "15 seconds", "Until I press Back"};
+
+    public static int infoSeconds(Context c) {
+        int s = prefs(c).getInt("info_stay", 5);
+        return indexOf(INFO_SECONDS, s) == 0 && s != INFO_SECONDS[0] ? 5 : s;
+    }
+
+    public static void setInfoSeconds(Context c, int s) {
+        prefs(c).edit().putInt("info_stay", s).apply();
+    }
+
     // ---- the channel banner ---------------------------------------------------------------------------------------
 
     public static final int[] BANNER_SECONDS = {0, 3, 6, 10};

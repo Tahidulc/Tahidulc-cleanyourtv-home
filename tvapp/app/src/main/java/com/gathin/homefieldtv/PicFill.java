@@ -46,6 +46,12 @@ final class PicFill {
     static final float WIDE = 2.2f;
     /** The sharp picture's feathered edge: this share of its width, at most this many times the cell's height. */
     static final float FEATHER = 0.26f, FEATHER_MAX = 0.9f;
+    /**
+     * Both edges feathered at least this share of the cell's height (at least FEATHER_MIN_PX) wherever the sharp picture
+     * ends inside the cell: never a hard edge (the family's dark line partway along a wide cell), even where its faces
+     * come close to it.
+     */
+    static final float FEATHER_MIN = 0.16f, FEATHER_MIN_PX = 6f;
 
     /** True for Faces' stand-in box (no face found): then there are no faces to keep whole. */
     static boolean none(float[] box) {
@@ -116,9 +122,9 @@ final class PicFill {
         out[X] = x;
         out[Y] = top(ks, h, ft, fb, fcy, my);
         faces(out, ks, fl, fr, ft, fb);
-        float pw = a * ks, f = Math.min(FEATHER * pw, FEATHER_MAX * h);
-        out[FEATHER_L] = x > 0.5f ? Math.max(0f, Math.min(f, out[FL] - x - 2f)) : 0f;
-        out[FEATHER_R] = x + pw < w - 0.5f ? Math.max(0f, Math.min(f, x + pw - out[FR] - 2f)) : 0f;
+        float pw = a * ks, f = Math.min(FEATHER * pw, FEATHER_MAX * h), least = Math.min(f, Math.max(FEATHER_MIN_PX, FEATHER_MIN * h));
+        out[FEATHER_L] = x > 0.5f ? Math.max(least, Math.min(f, out[FL] - x - 2f)) : 0f;
+        out[FEATHER_R] = x + pw < w - 0.5f ? Math.max(least, Math.min(f, x + pw - out[FR] - 2f)) : 0f;
     }
 
     /** Pure: the share of a cell w x h its words take at its left (the info card's: CARD_ROOM). */

@@ -307,9 +307,12 @@ public class ClubPagesTest {
         press(KeyEvent.KEYCODE_DPAD_RIGHT);
         assertEquals(SportsScreen.LIST, hub.zone);
         press(KeyEvent.KEYCODE_DPAD_UP);
-        // Up from the top of the list: the pills; Right picks Tables, Down goes to its leagues.
+        // Up from the top of the list: the pills; Right past Tomorrow and Yesterday picks Tables, Down goes to its leagues.
         press(KeyEvent.KEYCODE_DPAD_UP);
         assertEquals(SportsScreen.PILLS, hub.zone);
+        press(KeyEvent.KEYCODE_DPAD_RIGHT);
+        assertEquals(SportsScreen.TOMORROW, hub.section);
+        press(KeyEvent.KEYCODE_DPAD_RIGHT);
         press(KeyEvent.KEYCODE_DPAD_RIGHT);
         assertEquals(SportsScreen.TABLES, hub.section);
         List<String[]> rows = new ArrayList<>();

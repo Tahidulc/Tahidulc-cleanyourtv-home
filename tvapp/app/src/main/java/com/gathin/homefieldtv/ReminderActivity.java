@@ -42,8 +42,8 @@ public final class ReminderActivity extends Activity implements ReminderCard.Fac
         ReminderCard.Face face = new ReminderCard.Face(this, r, this);
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(Ui.px(ReminderCard.Face.W), Ui.px(ReminderCard.Face.H),
                 Gravity.TOP | Gravity.END);
-        lp.topMargin = Ui.px(52);
-        lp.rightMargin = Ui.px(56);
+        lp.topMargin = Ui.px(56);
+        lp.rightMargin = Ui.px(64);
         root.addView(face, lp);
         setContentView(root);
         face.requestFocus();
@@ -60,6 +60,11 @@ public final class ReminderActivity extends Activity implements ReminderCard.Fac
     @Override public void close() {
         h.removeCallbacksAndMessages(null);
         finish();
+    }
+
+    @Override public void again() {
+        ReminderCard.again(this, r);
+        close();
     }
 
     @Override protected void onDestroy() {
