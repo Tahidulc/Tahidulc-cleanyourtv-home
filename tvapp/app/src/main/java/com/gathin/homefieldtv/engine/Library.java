@@ -852,10 +852,16 @@ public final class Library {
     private Loaded fetch(Source s, String id) throws IOException {
         if (Source.M3U.equals(s.type)) {
             Loaded l;
-            try (InputStream in = Fetch.open(s.m3uUrl, null); Reader r = new InputStreamReader(in, StandardCharsets.UTF_8)) {
-                M3u.Result res = M3u.parse(r);
-                // Its films and episodes kept for Movies and TV shows (Catalog), the channels for Live TV.
-                Catalog.saveM3u(app, id, res.vod);
+            // Its films and episodes kept for Movies and TV shows (Catalog), written to their file as they are read (never
+            // all in memory: a provider's M3U can list hundreds of thousands), the channels for Live TV.
+            try (Catalog.M3uSink vod = Catalog.m3uSink(app, id); InputStream in = Fetch.open(s.m3uUrl, null);
+                 Reader r = new InputStreamReader(in, StandardCharsets.UTF_8)) {
+                M3u.Result res = M3u.parse(r, vod);
+                try {
+                    vod.save();
+                } catch (IOException e) {
+                    // the films and series kept from before, until the playlist is read again
+                }
                 l = new Loaded(res.channels, s.guideUrl.isEmpty() ? res.guideUrl : s.guideUrl);
             }
             // An Xtream server's M3U address: its account's expiry date asked for too (no matter if it doesn't answer).

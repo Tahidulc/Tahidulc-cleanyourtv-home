@@ -98,7 +98,7 @@ public class CatalogTest {
         Catalog.Title show = r.series.get(0);
         assertEquals("Black Doves", show.name);
         assertEquals("Series | Drama", show.category);
-        assertEquals(3, r.episodes.get(show.id).size());
+        assertEquals(3, r.episodes.get(show.id()).size());
         Catalog.Model m = Catalog.merge(Arrays.asList(r));
         assertNotNull(m);
     }

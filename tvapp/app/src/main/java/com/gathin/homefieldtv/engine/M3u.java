@@ -30,7 +30,17 @@ public final class M3u {
         public final List<String[]> vod = new ArrayList<>();
     }
 
+    /** Where the films and episodes go as they are read, instead of Result.vod (Catalog.M3uSink: straight to a file). */
+    public interface VodSink {
+        void add(String[] entry) throws IOException;
+    }
+
     public static Result parse(Reader in) throws IOException {
+        return parse(in, null);
+    }
+
+    /** As parse(in), the films and episodes handed to vod as they come (none kept in Result.vod). */
+    public static Result parse(Reader in, VodSink vod) throws IOException {
         Result r = new Result();
         BufferedReader br = in instanceof BufferedReader ? (BufferedReader) in : new BufferedReader(in, 64 * 1024);
         Map<String, String> attrs = null;
@@ -85,8 +95,10 @@ public final class M3u {
             if (g == null || g.isEmpty()) g = group;
             if (isVod(url, a.get("tvg-type"))) {
                 r.skipped++;
-                r.vod.add(new String[]{name.trim(), url, g == null ? "" : g.trim(), ua != null ? ua : a.get("user-agent"), ref,
-                        a.get("tvg-type"), a.get("tvg-logo")});
+                String[] entry = {name.trim(), url, g == null ? "" : g.trim(), ua != null ? ua : a.get("user-agent"), ref,
+                        a.get("tvg-type"), a.get("tvg-logo")};
+                if (vod != null) vod.add(entry);
+                else r.vod.add(entry);
             } else {
                 String id = a.get("tvg-id") == null ? "" : a.get("tvg-id").trim();
                 String key = id + "|" + name.trim();

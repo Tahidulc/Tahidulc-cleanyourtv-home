@@ -72,9 +72,14 @@ public final class Catalog {
         public final boolean dolbyVision, atmos;
         /** The HDR and sound its name (or its category) says, as Formats words them ("HDR10", "Dolby Atmos"; "" for none). */
         public final String hdr, sound;
-        final String source, id, ext, url, userAgent, referrer;
-        /** The same title in the family's other playlists, played when this one doesn't start. */
-        final List<Title> copies = new ArrayList<>(0);
+        final String source, ext, url, userAgent, referrer;
+        /**
+         * The same title in the family's other playlists, played when this one doesn't start: put in place whole by each
+         * merge (never added to while a screen may read it), one shared empty list for the many with none.
+         */
+        volatile List<Title> copies = Collections.emptyList();
+        /** Its row in the catalogue's file, hashed: the same row read again keeps this very title (Catalog.read's reuse). */
+        int row;
 
         Title(String source, boolean series, String id, String rawName, String category, String poster, String backdrop,
               String rating, String plot, long added, String ext, String url, String userAgent, String referrer, String year) {
@@ -82,8 +87,8 @@ public final class Catalog {
             // agent): one copy each; one empty string for all that say nothing (the memory diet).
             this.source = Channel.shared(source);
             this.series = series;
-            this.id = Channel.own(id);
-            this.key = source + (series ? "|s|" : "|m|") + id;
+            // The provider's id lives in the key alone (id()): one string a title, not two (the memory diet, 200,000 titles).
+            this.key = this.source + (series ? "|s|" : "|m|") + Channel.own(id);
             this.name = displayName(rawName);
             String y = year == null || year.isEmpty() ? year(rawName) : year(year);
             this.year = Channel.shared(y);
@@ -91,7 +96,7 @@ public final class Catalog {
             this.poster = poster == null ? "" : Channel.own(poster.trim());
             this.backdrop = backdrop == null ? "" : Channel.own(backdrop.trim());
             this.rating = Channel.shared(rating(rating));
-            this.plot = plot == null ? "" : Channel.own(plot.trim());
+            this.plot = plot == null ? "" : Channel.own(cut(plot.trim(), PLOT_MAX));
             this.added = added;
             this.ext = Channel.shared(ext);
             this.url = Channel.own(url);
@@ -112,6 +117,11 @@ public final class Catalog {
         /** The playlist it is from. */
         public String playlist() {
             return source;
+        }
+
+        /** The provider's id for it (its key's last part). */
+        String id() {
+            return key.substring(source.length() + 3);
         }
 
         /** One of the family's own TorBox titles that no playlist has (Catalog.TORBOX). */
@@ -139,6 +149,17 @@ public final class Catalog {
             for (Title c : copies) if (c.atmos) return true;
             return false;
         }
+    }
+
+    /** A series' synopsis from the list is kept to this many characters (its page reads the whole of it). */
+    static final int PLOT_MAX = 420;
+
+    /** Pure: s cut to max characters at a word, with an ellipsis. */
+    static String cut(String s, int max) {
+        if (s.length() <= max) return s;
+        int sp = s.lastIndexOf(' ', max - 1);
+        if (sp < max / 2) sp = max - 1;
+        return s.substring(0, sp).trim() + "…";
     }
 
     /** The pictures a name can say it has, best last. */
@@ -358,44 +379,65 @@ public final class Catalog {
         void got(Details d);
     }
 
+    /** A series' episodes by its key, from memory or (an M3U's, many thousands) read from its file when asked. */
+    interface Episodes {
+        /** In order (season, then number); null when it has none. */
+        List<Episode> get(String key);
+    }
+
     static final class Model {
         final List<Title> films, series;
         final List<Category> filmCategories, seriesCategories;
-        final Map<String, Title> byKey;
-        final Map<String, List<Episode>> episodes;
-        final String[] filmNames, seriesNames;
+        /** A title by its key, a copy's key giving the title shown (TitleIndex.Keys: a few plain arrays). */
+        final TitleIndex.Keys byKey;
+        final Episodes episodes;
+        /** The names as search reads them, all in one string (TitleIndex.Names). */
+        final TitleIndex.Names filmNames, seriesNames;
         /** The titles the provider dated, newest first: sorted once as the catalogue is read, never as a screen opens. */
         final List<Title> datedFilms, datedSeries;
 
+        /** Tests and previews: from a map of keys and one of episodes. */
         Model(List<Title> films, List<Title> series, List<Category> fc, List<Category> sc, Map<String, Title> byKey,
               Map<String, List<Episode>> episodes) {
+            this(films, series, fc, sc, TitleIndex.Keys.of(byKey), episodes::get, TitleIndex.Names.of(films), TitleIndex.Names.of(series),
+                    dated(films), dated(series));
+        }
+
+        Model(List<Title> films, List<Title> series, List<Category> fc, List<Category> sc, TitleIndex.Keys byKey, Episodes episodes,
+              TitleIndex.Names filmNames, TitleIndex.Names seriesNames, List<Title> datedFilms, List<Title> datedSeries) {
             this.films = Collections.unmodifiableList(films);
             this.series = Collections.unmodifiableList(series);
             this.filmCategories = Collections.unmodifiableList(fc);
             this.seriesCategories = Collections.unmodifiableList(sc);
             this.byKey = byKey;
             this.episodes = episodes;
-            this.filmNames = lowered(films);
-            this.seriesNames = lowered(series);
-            this.datedFilms = dated(films);
-            this.datedSeries = dated(series);
+            this.filmNames = filmNames;
+            this.seriesNames = seriesNames;
+            this.datedFilms = datedFilms;
+            this.datedSeries = datedSeries;
         }
 
-        private static List<Title> dated(List<Title> all) {
+        static List<Title> dated(List<Title> all) {
             List<Title> out = new ArrayList<>();
             for (Title t : all) if (t.added > 0) out.add(t);
             out.sort((a, b) -> Long.compare(b.added, a.added));
             return Collections.unmodifiableList(out);
         }
 
-        static Model empty() {
-            return new Model(new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), new HashMap<>(), new HashMap<>());
+        /** Pure: two lists each newest first made one, newest first (the family's own TorBox titles among the playlists'). */
+        static List<Title> newestOf(List<Title> a, List<Title> b) {
+            if (b.isEmpty()) return a;
+            List<Title> out = new ArrayList<>(a.size() + b.size());
+            int i = 0, j = 0;
+            while (i < a.size() || j < b.size()) {
+                if (j >= b.size() || i < a.size() && a.get(i).added >= b.get(j).added) out.add(a.get(i++));
+                else out.add(b.get(j++));
+            }
+            return Collections.unmodifiableList(out);
         }
 
-        private static String[] lowered(List<Title> list) {
-            String[] out = new String[list.size()];
-            for (int i = 0; i < out.length; i++) out[i] = searchable(list.get(i).name);
-            return out;
+        static Model empty() {
+            return new Model(new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), new HashMap<>(), new HashMap<>());
         }
     }
 
@@ -476,14 +518,14 @@ public final class Catalog {
         if (q.isEmpty()) return out;
         Model m = model;
         List<Title> all = series ? m.series : m.films;
-        String[] names = series ? m.seriesNames : m.filmNames;
+        TitleIndex.Names names = series ? m.seriesNames : m.filmNames;
         List<Title> later = new ArrayList<>();
         String the = "the " + q, word = " " + q;
         boolean inside = q.length() > 2;
-        for (int i = 0; i < names.length && out.size() < max; i++) {
-            String n = names[i];
-            if (n.startsWith(q) || n.startsWith(the)) out.add(all.get(i));
-            else if (later.size() < max && (n.contains(word) || (inside && n.contains(q)))) later.add(all.get(i));
+        int count = Math.min(names.size(), all.size());
+        for (int i = 0; i < count && out.size() < max; i++) {
+            if (names.startsWith(i, q) || names.startsWith(i, the)) out.add(all.get(i));
+            else if (later.size() < max && (names.contains(i, word) || (inside && names.contains(i, q)))) later.add(all.get(i));
         }
         for (Title t : later) {
             if (out.size() >= max) break;
@@ -602,10 +644,12 @@ public final class Catalog {
         if (!series.isEmpty()) sc.add(new Category(TORBOX, new ArrayList<>(series)));
         fc.addAll(m.filmCategories);
         sc.addAll(m.seriesCategories);
-        Map<String, Title> byKey = new HashMap<>(m.byKey);
-        for (Title t : films) byKey.put(t.key, t);
-        for (Title t : series) byKey.put(t.key, t);
-        return new Model(f, s, fc, sc, byKey, m.episodes);
+        // The playlists' look-ups kept as they are, the own titles over them (never a copy of 200,000 keys every 15 minutes).
+        Map<String, Title> own = new HashMap<>();
+        for (Title t : films) own.put(t.key, t);
+        for (Title t : series) own.put(t.key, t);
+        return new Model(f, s, fc, sc, TitleIndex.Keys.over(m.byKey, own), m.episodes, m.filmNames.plus(films), m.seriesNames.plus(series),
+                Model.newestOf(m.datedFilms, Model.dated(films)), Model.newestOf(m.datedSeries, Model.dated(series)));
     }
 
     /** The family's own TorBox titles that no playlist has (films or series), newest first; empty without TorBox. */
@@ -677,35 +721,122 @@ public final class Catalog {
     }
 
     /**
-     * An M3U playlist's films and episodes as Library read them ({name, address, group, user agent, referrer,
-     * tvg-type, poster}): a film under its group, an episode under its series by its S01E02 (or 1x02).
+     * An M3U playlist's films and episodes as Library reads them, written to its catalogue file as they come, never all
+     * held in memory (a provider's M3U can list a few hundred thousand): each entry ({name, address, group, user agent,
+     * referrer, tvg-type, poster}) a film under its group or an episode under its series by its S01E02 (or 1x02), the
+     * films and the episodes into files of their own beside it, then put together after the categories and the series.
+     * save() puts the file in place; close() (always) clears what is left.
      */
-    public static synchronized void saveM3u(Context c, String id, List<String[]> entries) {
-        File f = file(c, id), tmp = new File(f.getPath() + ".part");
-        try (Writer w = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(tmp), StandardCharsets.UTF_8), 64 * 1024)) {
-            writeM3u(w, entries, System.currentTimeMillis());
-        } catch (IOException e) {
-            //noinspection ResultOfMethodCallIgnored
-            tmp.delete();
-            return;
+    public static final class M3uSink implements M3u.VodSink, java.io.Closeable {
+        private final File out, films, eps;
+        private final Writer fw, ew;
+        private final M3uRows rows;
+        private boolean saved;
+
+        M3uSink(Context c, String id) throws IOException {
+            out = file(c, id);
+            films = new File(out.getPath() + ".films");
+            eps = new File(out.getPath() + ".eps");
+            fw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(films), StandardCharsets.UTF_8), 64 * 1024);
+            ew = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(eps), StandardCharsets.UTF_8), 64 * 1024);
+            rows = new M3uRows(fw, ew);
         }
-        if (!tmp.renameTo(f)) {
-            //noinspection ResultOfMethodCallIgnored
-            tmp.delete();
+
+        @Override public void add(String[] entry) throws IOException {
+            rows.add(entry);
         }
+
+        /** The catalogue file made from what came, and put in place of the old one. */
+        public void save() throws IOException {
+            fw.close();
+            ew.close();
+            synchronized (Catalog.class) {
+                File tmp = new File(out.getPath() + ".part");
+                try (Writer w = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(tmp), StandardCharsets.UTF_8), 64 * 1024)) {
+                    w.write("v1\tm3u\t" + System.currentTimeMillis() + "\n");
+                    rows.categories(w);
+                    copy(films, w);
+                    rows.shows(w);
+                    copy(eps, w);
+                } catch (IOException e) {
+                    //noinspection ResultOfMethodCallIgnored
+                    tmp.delete();
+                    throw e;
+                }
+                if (!tmp.renameTo(out)) {
+                    //noinspection ResultOfMethodCallIgnored
+                    tmp.delete();
+                }
+            }
+            saved = true;
+        }
+
+        @Override public void close() {
+            try {
+                fw.close();
+                ew.close();
+            } catch (IOException ignored) {
+                // gone with the files
+            }
+            //noinspection ResultOfMethodCallIgnored
+            films.delete();
+            //noinspection ResultOfMethodCallIgnored
+            eps.delete();
+        }
+
+        /** Whether save() went through. */
+        public boolean saved() {
+            return saved;
+        }
+
+        private static void copy(File from, Writer to) throws IOException {
+            try (java.io.Reader r = new InputStreamReader(new FileInputStream(from), StandardCharsets.UTF_8)) {
+                char[] buf = new char[32 * 1024];
+                for (int n; (n = r.read(buf)) > 0; ) to.write(buf, 0, n);
+            }
+        }
+    }
+
+    /** Library: where an M3U playlist's films and episodes go as the playlist is read (M3u.parse). */
+    public static M3uSink m3uSink(Context c, String id) throws IOException {
+        return new M3uSink(c, id);
     }
 
     static final Pattern EPISODE = Pattern.compile("(?i)^(.*?)[\\s._-]*S(\\d{1,2})[\\s._-]*E(\\d{1,3})\\b[\\s._:-]*(.*)$");
     static final Pattern EPISODE_X = Pattern.compile("(?i)^(.*?)[\\s._-]+(\\d{1,2})x(\\d{1,3})\\b[\\s._:-]*(.*)$");
 
+    /** An M3U's films and episodes in memory (the tests): as M3uSink writes them, into w. */
     static void writeM3u(Writer w, List<String[]> entries, long at) throws IOException {
+        java.io.StringWriter films = new java.io.StringWriter(), eps = new java.io.StringWriter();
+        M3uRows rows = new M3uRows(films, eps);
+        for (String[] e : entries) rows.add(e);
         w.write("v1\tm3u\t" + at + "\n");
-        Map<String, Boolean> fc = new LinkedHashMap<>(), sc = new LinkedHashMap<>();
-        Map<String, String[]> shows = new LinkedHashMap<>();
-        StringBuilder films = new StringBuilder(), eps = new StringBuilder();
-        Map<String, Integer> seen = new HashMap<>();
-        for (String[] e : entries) {
-            if (e == null || e.length < 2 || e[1] == null || e[1].isEmpty()) continue;
+        rows.categories(w);
+        w.write(films.toString());
+        rows.shows(w);
+        w.write(eps.toString());
+    }
+
+    /**
+     * An M3U's entries made into the catalogue file's rows: films and episodes straight out to their writers; the
+     * categories and the series (one each, a few thousand) kept to be written before them. A film's id is its name's
+     * and group's hash, the n-th with the same one "-n": counted in plain int arrays, not a map of strings.
+     */
+    static final class M3uRows {
+        private final Writer films, eps;
+        private final Map<String, Boolean> fc = new LinkedHashMap<>(), sc = new LinkedHashMap<>();
+        private final Map<String, String[]> shows = new LinkedHashMap<>();
+        private int[] seenKey = new int[1024], seenCount = new int[1024];
+        private boolean[] seenUsed = new boolean[1024];
+        private int seenSize;
+
+        M3uRows(Writer films, Writer eps) {
+            this.films = films;
+            this.eps = eps;
+        }
+
+        void add(String[] e) throws IOException {
+            if (e == null || e.length < 2 || e[1] == null || e[1].isEmpty()) return;
             String name = e[0] == null ? "" : e[0].trim(), url = e[1];
             String group = e.length > 2 && e[2] != null ? e[2].trim() : "";
             String ua = e.length > 3 ? e[3] : "", ref = e.length > 4 ? e[4] : "", type = e.length > 5 ? e[5] : "";
@@ -716,8 +847,8 @@ public final class Catalog {
                 m = EPISODE_X.matcher(name);
                 matched = m.matches();
             }
-            boolean series = matched && (url.toLowerCase(Locale.ROOT).contains("/series/") || "series".equalsIgnoreCase(type)
-                    || !url.toLowerCase(Locale.ROOT).contains("/movie/"));
+            String lower = url.toLowerCase(Locale.ROOT);
+            boolean series = matched && (lower.contains("/series/") || "series".equalsIgnoreCase(type) || !lower.contains("/movie/"));
             if (series && !m.group(1).trim().isEmpty()) {
                 String show = m.group(1).trim().replaceAll("[\\s._-]+$", "");
                 String sid = key(show);
@@ -727,28 +858,66 @@ public final class Catalog {
                     shows.put(sid, new String[]{show, group, logo});
                     if (!group.isEmpty()) sc.put(group, Boolean.TRUE);
                 }
-                row(eps, "e", sid, m.group(2), m.group(3), m.group(4).trim(), url, ua, ref, logo);
+                eps.write(line("e", sid, m.group(2), m.group(3), m.group(4).trim(), url, ua, ref, logo));
             } else {
-                String base = Integer.toHexString((key(name) + "|" + group).hashCode());
-                Integer n = seen.get(base);
-                seen.put(base, n == null ? 1 : n + 1);
-                String fid = n == null ? base : base + "-" + (n + 1);
+                int hash = (key(name) + "|" + group).hashCode();
+                String base = Integer.toHexString(hash);
+                int n = seen(hash);
+                String fid = n == 1 ? base : base + "-" + n;
                 if (!group.isEmpty()) fc.put(group, Boolean.TRUE);
-                row(films, "m", fid, name, group, logo, "", "0", "", year(name), url, ua, ref);
+                films.write(line("m", fid, name, group, logo, "", "0", "", year(name), url, ua, ref));
             }
         }
-        for (String g : fc.keySet()) w.write(line("c", "m", g, g));
-        for (String g : sc.keySet()) w.write(line("c", "s", g, g));
-        w.write(films.toString());
-        for (Map.Entry<String, String[]> s : shows.entrySet()) {
-            String[] v = s.getValue();
-            w.write(line("s", s.getKey(), v[0], v[1], v[2], "", "0", year(v[0]), "", ""));
-        }
-        w.write(eps.toString());
-    }
 
-    private static void row(StringBuilder b, String... cols) {
-        b.append(line(cols));
+        void categories(Writer w) throws IOException {
+            for (String g : fc.keySet()) w.write(line("c", "m", g, g));
+            for (String g : sc.keySet()) w.write(line("c", "s", g, g));
+        }
+
+        void shows(Writer w) throws IOException {
+            for (Map.Entry<String, String[]> s : shows.entrySet()) {
+                String[] v = s.getValue();
+                w.write(line("s", s.getKey(), v[0], v[1], v[2], "", "0", year(v[0]), "", ""));
+            }
+        }
+
+        /** How many times this hash has come now (1 the first time): an open table of ints. */
+        private int seen(int hash) {
+            if (seenSize * 2 >= seenKey.length) grow();
+            int mask = seenKey.length - 1, i = mix(hash) & mask;
+            while (seenUsed[i]) {
+                if (seenKey[i] == hash) return ++seenCount[i];
+                i = (i + 1) & mask;
+            }
+            seenUsed[i] = true;
+            seenKey[i] = hash;
+            seenCount[i] = 1;
+            seenSize++;
+            return 1;
+        }
+
+        private void grow() {
+            int[] k = seenKey, c = seenCount;
+            boolean[] u = seenUsed;
+            seenKey = new int[k.length * 2];
+            seenCount = new int[k.length * 2];
+            seenUsed = new boolean[k.length * 2];
+            int mask = seenKey.length - 1;
+            for (int j = 0; j < k.length; j++) {
+                if (!u[j]) continue;
+                int i = mix(k[j]) & mask;
+                while (seenUsed[i]) i = (i + 1) & mask;
+                seenUsed[i] = true;
+                seenKey[i] = k[j];
+                seenCount[i] = c[j];
+            }
+        }
+
+        private static int mix(int h) {
+            h ^= h >>> 16;
+            h *= 0x85EBCA6B;
+            return h ^ (h >>> 13);
+        }
     }
 
     private static String line(String... cols) {
@@ -906,55 +1075,138 @@ public final class Catalog {
         final String source;
         final Map<String, String> filmCats = new LinkedHashMap<>(), seriesCats = new LinkedHashMap<>();
         final List<Title> films = new ArrayList<>(), series = new ArrayList<>();
+        /** Its series' episodes in memory (a file read from text: the tests), by the series' id. */
         final Map<String, List<Episode>> episodes = new HashMap<>();
+        /** Or, read from its file, where each series' episodes are in it ({from, to} bytes), read when its page opens. */
+        final Map<String, long[]> spans = new HashMap<>();
+        File file;
 
         Read(String source) {
             this.source = source;
         }
     }
 
+    /** The tests: a catalogue file's text read back, its episodes in memory. */
     static Read read(BufferedReader r, String source) throws IOException {
         Read out = new Read(source);
-        Map<String, Set<String>> ids = new HashMap<>();
         String head = r.readLine();
         if (head == null || !head.startsWith("v1\t")) return out;
         Map<String, String> pool = new HashMap<>();
-        for (String line; (line = r.readLine()) != null; ) {
-            String[] c = line.split("\t", -1);
-            switch (c[0]) {
-                case "c":
-                    if (c.length >= 4) (c[1].equals("s") ? out.seriesCats : out.filmCats).put(c[2], shared(pool, c[3]));
-                    break;
-                case "m":
-                    if (c.length >= 12) {
-                        out.films.add(new Title(source, false, c[1], c[2], shared(pool, out.filmCats.containsKey(c[3]) ? out.filmCats.get(c[3]) : ""),
-                                c[4], "", c[5], "", parseLong(c[6]), c[7], c[9], c[10], c[11], c[8]));
-                    }
-                    break;
-                case "s":
-                    if (c.length >= 10) {
-                        out.series.add(new Title(source, true, c[1], c[2], shared(pool, out.seriesCats.containsKey(c[3]) ? out.seriesCats.get(c[3]) : ""),
-                                c[4], c[9], c[5], c[8], parseLong(c[6]), "", "", "", "", c[7]));
-                    }
-                    break;
-                case "e":
-                    if (c.length >= 9) {
-                        List<Episode> l = out.episodes.get(c[1]);
-                        Set<String> had = ids.get(c[1]);
-                        if (l == null) {
-                            out.episodes.put(c[1], l = new ArrayList<>());
-                            ids.put(c[1], had = new HashSet<>());
-                        }
-                        int season = Library.number(c[2]), number = Library.number(c[3]);
-                        String id = c[1] + ":" + season + ":" + number;
-                        for (int n = 2; !had.add(id); n++) id = c[1] + ":" + season + ":" + number + "#" + n;
-                        l.add(new Episode(id, season, number, c[4], "", c[8], 0, "", c[5], c[6], c[7]));
-                    }
-                    break;
-                default:
-                    break;
-            }
+        Map<String, Set<String>> ids = new HashMap<>();
+        for (String line; (line = r.readLine()) != null; ) row(out, line, pool, null, ids, -1, -1);
+        return out;
+    }
+
+    /**
+     * A catalogue file read back: the titles made (the same row as last time keeps last time's very title: a refresh
+     * holds one catalogue in memory, not two), an M3U's episodes left in the file with where each series' are.
+     */
+    static Read read(File f, String source, TitleIndex.Keys before) throws IOException {
+        Read out = new Read(source);
+        out.file = f;
+        try (Rows r = new Rows(f)) {
+            String head = r.next();
+            if (head == null || !head.startsWith("v1\t")) return out;
+            Map<String, String> pool = new HashMap<>();
+            for (String line; (line = r.next()) != null; ) row(out, line, pool, before, null, r.start(), r.end());
         }
+        return out;
+    }
+
+    /** One row of a catalogue file into out. ids: the episodes' own (in memory); else where they are (from, to). */
+    private static void row(Read out, String line, Map<String, String> pool, TitleIndex.Keys before, Map<String, Set<String>> ids,
+                            long from, long to) {
+        int tab = line.indexOf('\t');
+        if (tab != 1) return;
+        char kind = line.charAt(0);
+        if (kind == 'e' && ids == null) {
+            // Only where this series' episodes are: they are read from the file when its page opens.
+            int t2 = line.indexOf('\t', 2);
+            if (t2 < 0) return;
+            String sid = line.substring(2, t2);
+            long[] span = out.spans.get(sid);
+            if (span == null) out.spans.put(sid, new long[]{from, to});
+            else {
+                span[0] = Math.min(span[0], from);
+                span[1] = Math.max(span[1], to);
+            }
+            return;
+        }
+        String[] c = line.split("\t", -1);
+        switch (kind) {
+            case 'c':
+                if (c.length >= 4) (c[1].equals("s") ? out.seriesCats : out.filmCats).put(c[2], shared(pool, c[3]));
+                break;
+            case 'm':
+                if (c.length >= 12) {
+                    String cat = shared(pool, out.filmCats.containsKey(c[3]) ? out.filmCats.get(c[3]) : "");
+                    int hash = line.hashCode() * 31 + cat.hashCode();
+                    Title t = same(before, out.source + "|m|" + c[1], hash);
+                    if (t == null) {
+                        t = new Title(out.source, false, c[1], c[2], cat, c[4], "", c[5], "", parseLong(c[6]), c[7], c[9], c[10], c[11], c[8]);
+                        t.row = hash;
+                    }
+                    out.films.add(t);
+                }
+                break;
+            case 's':
+                if (c.length >= 10) {
+                    String cat = shared(pool, out.seriesCats.containsKey(c[3]) ? out.seriesCats.get(c[3]) : "");
+                    int hash = line.hashCode() * 31 + cat.hashCode();
+                    Title t = same(before, out.source + "|s|" + c[1], hash);
+                    if (t == null) {
+                        t = new Title(out.source, true, c[1], c[2], cat, c[4], c[9], c[5], c[8], parseLong(c[6]), "", "", "", "", c[7]);
+                        t.row = hash;
+                    }
+                    out.series.add(t);
+                }
+                break;
+            case 'e':
+                if (c.length >= 9) {
+                    List<Episode> l = out.episodes.get(c[1]);
+                    Set<String> had = ids.get(c[1]);
+                    if (l == null) {
+                        out.episodes.put(c[1], l = new ArrayList<>());
+                        ids.put(c[1], had = new HashSet<>());
+                    }
+                    l.add(episode(c, had));
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
+    /** An "e" row's episode, its id made unique among its series' (had). */
+    private static Episode episode(String[] c, Set<String> had) {
+        int season = Library.number(c[2]), number = Library.number(c[3]);
+        String id = c[1] + ":" + season + ":" + number;
+        for (int n = 2; !had.add(id); n++) id = c[1] + ":" + season + ":" + number + "#" + n;
+        return new Episode(id, season, number, c[4], "", c[8], 0, "", c[5], c[6], c[7]);
+    }
+
+    /** The title read last time from the same row (its key, its row's hash), or null. */
+    private static Title same(TitleIndex.Keys before, String key, int hash) {
+        if (before == null) return null;
+        Title t = before.get(key);
+        return t != null && t.row == hash && t.key.equals(key) ? t : null;
+    }
+
+    /** Pure: a series' episodes read from its part of the file (sid's "e" rows between from and to), in order. */
+    static List<Episode> episodesFrom(File f, String sid, long from, long to) {
+        List<Episode> out = new ArrayList<>();
+        Set<String> had = new HashSet<>();
+        String want = "e\t" + sid + "\t";
+        try (Rows r = new Rows(f, from, to)) {
+            for (String line; (line = r.next()) != null; ) {
+                if (!line.startsWith(want)) continue;
+                String[] c = line.split("\t", -1);
+                if (c.length >= 9) out.add(episode(c, had));
+            }
+        } catch (IOException e) {
+            return null;
+        }
+        out.sort((a, b) -> a.season != b.season ? Integer.compare(a.season, b.season) : Integer.compare(a.number, b.number));
         return out;
     }
 
@@ -968,11 +1220,13 @@ public final class Catalog {
     /** Every playlist in use read and made one: a title in several of them shown once, the others' copies its backups. */
     private Model build(List<Sources.Entry> in) {
         List<Read> reads = new ArrayList<>();
+        // What is in memory now: a row read again unchanged keeps its title (no second catalogue while it is read).
+        TitleIndex.Keys before = base.byKey;
         for (Sources.Entry e : in) {
             File f = file(app, e.id);
             if (!f.exists()) continue;
-            try (BufferedReader r = new BufferedReader(new InputStreamReader(new FileInputStream(f), StandardCharsets.UTF_8), 64 * 1024)) {
-                reads.add(read(r, e.id));
+            try {
+                reads.add(read(f, e.id, before));
             } catch (IOException | RuntimeException ignored) {
                 // that playlist's titles left out until it is read again
             }
@@ -981,20 +1235,27 @@ public final class Catalog {
     }
 
     static Model merge(List<Read> reads) {
+        int n = 0;
+        for (Read r : reads) n += r.films.size() + r.series.size();
         List<Title> films = new ArrayList<>(), series = new ArrayList<>();
-        Map<String, Title> byKey = new HashMap<>(), first = new HashMap<>();
+        TitleIndex.Table byKey = new TitleIndex.Table(n);
+        Map<String, Title> first = new HashMap<>();
+        java.util.IdentityHashMap<Title, List<Title>> copies = new java.util.IdentityHashMap<>();
         Map<String, List<Episode>> episodes = new HashMap<>();
+        Map<String, Object[]> spans = new HashMap<>();
         LinkedHashMap<String, List<Title>> fc = new LinkedHashMap<>(), sc = new LinkedHashMap<>();
         for (Read r : reads) {
-            for (String n : r.filmCats.values()) if (!fc.containsKey(n)) fc.put(n, new ArrayList<>());
-            for (String n : r.seriesCats.values()) if (!sc.containsKey(n)) sc.put(n, new ArrayList<>());
+            for (String c : r.filmCats.values()) if (!fc.containsKey(c)) fc.put(c, new ArrayList<>());
+            for (String c : r.seriesCats.values()) if (!sc.containsKey(c)) sc.put(c, new ArrayList<>());
             for (int pass = 0; pass < 2; pass++) {
                 boolean isSeries = pass == 1;
                 for (Title t : isSeries ? r.series : r.films) {
                     String k = (isSeries ? "s|" : "m|") + key(t.name) + "|" + t.year;
                     Title had = first.get(k);
                     if (had != null && !had.source.equals(t.source)) {
-                        had.copies.add(t);
+                        List<Title> l = copies.get(had);
+                        if (l == null) copies.put(had, l = new ArrayList<>(2));
+                        l.add(t);
                         byKey.put(t.key, had);
                         continue;
                     }
@@ -1013,11 +1274,30 @@ public final class Catalog {
                 l.sort((a, b) -> a.season != b.season ? Integer.compare(a.season, b.season) : Integer.compare(a.number, b.number));
                 episodes.put(r.source + "|s|" + e.getKey(), l);
             }
+            for (Map.Entry<String, long[]> e : r.spans.entrySet()) {
+                spans.put(r.source + "|s|" + e.getKey(), new Object[]{r.file, e.getKey(), e.getValue()});
+            }
+        }
+        // Each title's copies put in place whole (a title kept from last time has its list replaced, not added to).
+        for (List<Title> l : java.util.Arrays.asList(films, series)) {
+            for (Title t : l) {
+                List<Title> c = copies.get(t);
+                t.copies = c == null ? Collections.emptyList() : Collections.unmodifiableList(c);
+            }
         }
         List<Category> fcs = new ArrayList<>(), scs = new ArrayList<>();
         for (Map.Entry<String, List<Title>> e : fc.entrySet()) if (!e.getValue().isEmpty()) fcs.add(new Category(e.getKey(), e.getValue()));
         for (Map.Entry<String, List<Title>> e : sc.entrySet()) if (!e.getValue().isEmpty()) scs.add(new Category(e.getKey(), e.getValue()));
-        return new Model(films, series, fcs, scs, byKey, episodes);
+        Episodes eps = key -> {
+            List<Episode> l = episodes.get(key);
+            if (l != null) return l;
+            Object[] s = spans.get(key);
+            if (s == null) return null;
+            long[] span = (long[]) s[2];
+            return episodesFrom((File) s[0], (String) s[1], span[0], span[1]);
+        };
+        return new Model(films, series, fcs, scs, byKey, eps, TitleIndex.Names.of(films), TitleIndex.Names.of(series),
+                Model.dated(films), Model.dated(series));
     }
 
     // ---- a title's details ----------------------------------------------------------------------------------------
@@ -1071,7 +1351,7 @@ public final class Catalog {
         }
         String base = Xtream.base(s.server);
         String action = t.series ? "get_series_info&series_id=" : "get_vod_info&vod_id=";
-        String json = Library.text(Xtream.api(base, s.user, s.pass, null) + "&action=" + action + Xtream.enc(t.id));
+        String json = Library.text(Xtream.api(base, s.user, s.pass, null) + "&action=" + action + Xtream.enc(t.id()));
         return t.series ? seriesInfo(json, t) : filmInfo(json, t);
     }
 
@@ -1260,7 +1540,7 @@ public final class Catalog {
         }
         if (!t.url.isEmpty()) return new Play(t.url, t.userAgent, t.referrer);
         if (!Source.XTREAM.equals(s.type)) return null;
-        return new Play(Xtream.movie(Xtream.base(s.server), s.user, s.pass, t.id, t.ext), null, null);
+        return new Play(Xtream.movie(Xtream.base(s.server), s.user, s.pass, t.id(), t.ext), null, null);
     }
 
     // ---- names --------------------------------------------------------------------------------------------------
@@ -1383,6 +1663,18 @@ public final class Catalog {
     }
 
     /** Previews only: a catalogue given straight in, as if read from a playlist. */
+    /** The title pages' details kept from before let go (a channel has been playing a while: Guard.watching). */
+    public void forgetPages() {
+        synchronized (details) {
+            details.clear();
+        }
+    }
+
+    /** Tests: the catalogue's files read again as the daily refresh reads them (TheFamilysSizeTest). */
+    void rebuildForTests() {
+        setBase(build(Sources.inUse(app)));
+    }
+
     public void useForPreview(List<String> rows, Map<String, Details> pages) {
         // Kept as the first playlist's file, as if just read, so nothing is read again from a provider.
         File f = file(app, "p0");

@@ -205,9 +205,12 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
         if (fresh) switched();
         else setMode(NONE);
         board.start();
+        // A while into watching: what the screens under it hold that playback doesn't need is let go (Guard.watching).
+        Guard.watching(true);
     }
 
     @Override void hidden() {
+        Guard.watching(false);
         bar.close();
         board.stop();
         if (tv.live.subs.asker == asker) tv.live.subs.asker = null;

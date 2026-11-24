@@ -106,45 +106,88 @@ public final class Guide {
         return new Schedule(st, en, t, d);
     }
 
-    /** Collects programmes for one channel key, then makes its Schedule. */
+    /**
+     * Collects programmes for one channel key, then makes its Schedule: in plain growing arrays (a guide of 90,000
+     * programmes read while a channel plays makes no object a programme), put in time order only when they came out of it.
+     */
     static final class Builder {
-        final List<long[]> times = new ArrayList<>();
-        final List<String> titles = new ArrayList<>(), descs = new ArrayList<>();
+        private long[] a = new long[8], b = new long[8];
+        private String[] t = new String[8], d = new String[8];
+        private int n;
 
-        void add(long a, long b, String t) {
-            add(a, b, t, "");
+        void add(long start, long stop, String title) {
+            add(start, stop, title, "");
         }
 
-        void add(long a, long b, String t, String d) {
-            times.add(new long[]{a, b});
-            titles.add(t == null ? "" : t);
-            descs.add(d == null ? "" : d);
+        void add(long start, long stop, String title, String desc) {
+            if (n == a.length) {
+                int cap = n + (n >> 1) + 8;
+                a = java.util.Arrays.copyOf(a, cap);
+                b = java.util.Arrays.copyOf(b, cap);
+                t = java.util.Arrays.copyOf(t, cap);
+                d = java.util.Arrays.copyOf(d, cap);
+            }
+            a[n] = start;
+            b[n] = stop;
+            t[n] = title == null ? "" : title;
+            d[n] = desc == null ? "" : desc;
+            n++;
         }
 
         Schedule build() {
-            Integer[] order = new Integer[times.size()];
-            for (int i = 0; i < order.length; i++) order[i] = i;
-            java.util.Arrays.sort(order, (x, y) -> Long.compare(times.get(x)[0], times.get(y)[0]));
-            long[] s = new long[order.length], e = new long[order.length];
-            String[] t = new String[order.length], d = new String[order.length];
-            for (int i = 0; i < order.length; i++) {
-                s[i] = times.get(order[i])[0];
-                e[i] = times.get(order[i])[1];
-                t[i] = titles.get(order[i]);
-                d[i] = descs.get(order[i]);
+            boolean ordered = true;
+            for (int i = 1; i < n && ordered; i++) ordered = a[i - 1] <= a[i];
+            long[] s = java.util.Arrays.copyOf(a, n), e = java.util.Arrays.copyOf(b, n);
+            String[] ti = java.util.Arrays.copyOf(t, n), de = java.util.Arrays.copyOf(d, n);
+            if (!ordered) {
+                // Stable, by start: the order a guide gives for the same start kept.
+                Integer[] order = new Integer[n];
+                for (int i = 0; i < n; i++) order[i] = i;
+                java.util.Arrays.sort(order, (x, y) -> Long.compare(a[x], a[y]));
+                for (int i = 0; i < n; i++) {
+                    int k = order[i];
+                    s[i] = a[k];
+                    e[i] = b[k];
+                    ti[i] = t[k];
+                    de[i] = d[k];
+                }
             }
-            return new Schedule(s, e, t, d);
+            return new Schedule(s, e, ti, de);
         }
     }
 
     /** A description cut to DESC_MAX characters at a word, with an ellipsis; spaces and line breaks made single. */
     static String shortDesc(String d) {
         if (d == null) return "";
-        String t = d.replaceAll("\\s+", " ").trim();
+        String t = single(d);
         if (t.length() <= DESC_MAX) return t;
         int cut = t.lastIndexOf(' ', DESC_MAX - 1);
         if (cut < DESC_MAX / 2) cut = DESC_MAX - 1;
         return t.substring(0, cut).trim() + "…";
+    }
+
+    /** Pure: spaces and line breaks made single, the ends trimmed (s itself when it has none to change: no regex a programme). */
+    static String single(String s) {
+        int n = s.length();
+        boolean clean = n == 0 || !Character.isWhitespace(s.charAt(0)) && !Character.isWhitespace(s.charAt(n - 1));
+        for (int i = 0; i < n && clean; i++) {
+            char c = s.charAt(i);
+            if (Character.isWhitespace(c) && (c != ' ' || i + 1 < n && Character.isWhitespace(s.charAt(i + 1)))) clean = false;
+        }
+        if (clean) return s;
+        StringBuilder b = new StringBuilder(n);
+        boolean space = false;
+        for (int i = 0; i < n; i++) {
+            char c = s.charAt(i);
+            if (Character.isWhitespace(c)) {
+                space = b.length() > 0;
+            } else {
+                if (space) b.append(' ');
+                space = false;
+                b.append(c);
+            }
+        }
+        return b.toString();
     }
 
     /**

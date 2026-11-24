@@ -26,7 +26,8 @@ import java.util.Locale;
  *
  * <pre>
  *   2026-11-17 15:35 heap=96.1/131.0/384MB native=88.4MB rss=301MB pics=18.2/40MB(hits=1210,reads=96) gc=41/3.1s
- *   blocking=0 channels=50000 guide=2000ch/96000p/5904kc catalog=40000 buffer=3.2s screen=GuideScreen
+ *   blocking=0 channels=50000 guide=2000ch/96000p/5904kc catalog=40000 buffer=3.2s screen=GuideScreen headroom=288MB
+ *   problems=oom:0,freeze:0,bg:2
  * </pre>
  *
  * Then, for each minute the app drew anything, a second line: each screen's frame times (FrameStats), the tier in use
@@ -42,7 +43,10 @@ import java.util.Locale;
  * what the process holds in RAM (VmRSS); pics: the picture cache's bytes and its budget, the pictures found in it and
  * read since the start; gc: collections and their time since the start (blocking: those that held up a thread);
  * channels, guide (channels, programmes, thousands of characters of descriptions) and catalogue sizes; the player's
- * buffer ahead; the screen on top. Written off the main thread; a line costs well under a millisecond there.
+ * buffer ahead; the screen on top; headroom: how much more the Java heap may take before it is out of memory; problems:
+ * since the app started, the out-of-memory errors, the main thread's freezes and the trouble in the background it carried
+ * on through (Problems; each noted for Settings' If something goes wrong). Written off the main thread; a line costs well
+ * under a millisecond there.
  */
 final class MemLog {
     private MemLog() {}
@@ -84,11 +88,11 @@ final class MemLog {
         long[] g = lib.guideSize();
         return String.format(Locale.ROOT,
                 "%1$tF %1$tR heap=%2$.1f/%3$.1f/%4$.0fMB native=%5$.1fMB rss=%6$dMB pics=%7$.1f/%8$.0fMB(hits=%9$d,reads=%10$d) "
-                        + "gc=%11$s/%12$.1fs blocking=%13$s channels=%14$d guide=%15$dch/%16$dp/%17$dkc catalog=%18$d buffer=%19$.1fs screen=%20$s",
+                        + "gc=%11$s/%12$.1fs blocking=%13$s channels=%14$d guide=%15$dch/%16$dp/%17$dkc catalog=%18$d buffer=%19$.1fs screen=%20$s headroom=%21$.0fMB problems=%22$s",
                 now, mb(used), mb(r.totalMemory()), mb(r.maxMemory()), mb(Debug.getNativeHeapAllocatedSize()), rssMb(),
                 mb(Pics.bytes()), mb(Pics.BUDGET), Pics.hits, Pics.loads, stat("art.gc.gc-count"),
                 parse(stat("art.gc.gc-time")) / 1000.0, stat("art.gc.blocking-gc-count"), channels, g[0], g[1], g[2] / 1000,
-                catalog, bufferedMs / 1000.0, screen);
+                catalog, bufferedMs / 1000.0, screen, mb(r.maxMemory() - used), com.gathin.homefieldtv.engine.Problems.sinceStart());
     }
 
     private static double mb(long bytes) {

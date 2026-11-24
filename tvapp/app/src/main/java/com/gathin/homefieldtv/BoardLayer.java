@@ -296,9 +296,38 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
     private final Runnable tick = new Runnable() {
         @Override public void run() {
             if (!started) return;
-            update();
+            // A reading that comes back wrong never closes the app: noted (If something goes wrong), and the board goes on.
+            try {
+                update();
+            } catch (RuntimeException e) {
+                Exec.trouble(e);
+            }
             h.postDelayed(this, 1000L);
         }
+    };
+
+    /**
+     * The board's drawing (the bug, the cover, what slides out, the cards): an error in any of it is noted and the board
+     * put away until its next reading, never the app closed. Nothing is made here.
+     */
+    @Override protected void dispatchDraw(Canvas c) {
+        int saved = c.getSaveCount();
+        try {
+            super.dispatchDraw(c);
+        } catch (RuntimeException e) {
+            c.restoreToCount(saved);
+            Exec.trouble(e);
+            drawFailed = true;
+            h.post(drawAway);
+        }
+    }
+
+    /** The board's drawing failed: away until the channel changes or the board comes back. */
+    private boolean drawFailed;
+    private final Runnable drawAway = () -> {
+        if (!drawFailed) return;
+        drawFailed = false;
+        hideAll();
     };
 
     private void update() {
@@ -350,7 +379,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             Game g = null;
             try {
                 g = Matching.gameOn(lib, c, now, relevant(SportsData.football(5 * 60_000L), now));
-            } catch (RuntimeException ignored) {
+            } catch (RuntimeException | OutOfMemoryError ignored) {
                 // nothing found this time
             }
             Game got = g;
@@ -435,7 +464,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
                         break;
                     }
                 }
-            } catch (RuntimeException ignored) {
+            } catch (RuntimeException | OutOfMemoryError ignored) {
                 // read again next time
             }
             Game got = fresh;
@@ -475,7 +504,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             Espn.Summary s = null;
             try {
                 s = Espn.summary(g0.slug, g0.id, 30_000L);
-            } catch (RuntimeException ignored) {
+            } catch (RuntimeException | OutOfMemoryError ignored) {
                 // read again next time
             }
             Espn.Summary got = s;
@@ -1012,7 +1041,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             try {
                 cfg = strap ? strapCfg(g, m, kind, score, scorer, minute, style, comp, light, at)
                         : BroadcastData.withMark(assets, BroadcastData.kickoff(kind, m, score, scorer, minute));
-            } catch (Exception ignored) {
+            } catch (Exception | OutOfMemoryError ignored) {
                 // none, then
             }
             JSONObject got = cfg;
@@ -1097,7 +1126,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             JSONObject cfg = null;
             try {
                 cfg = BroadcastData.lineups(m, FotMob.detailsFor(g), cache);
-            } catch (Exception ignored) {
+            } catch (Exception | OutOfMemoryError ignored) {
                 // asked again in a minute
             }
             JSONObject got = cfg;
@@ -1511,12 +1540,21 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
     // ---- the cover over the channel's logo ---------------------------------------------------------------------------------
 
     /** A plate in the board's own look over where the channel's logo is, the channel's own mark on it, LIVE under it. */
+    /** The cover's logo is read at most this many pixels across (it is never drawn much larger on a 1080p picture). */
+    static final int LOGO_MAX = 320;
+
+    /** Pure: a size rounded up to a step of 16 pixels (at least 16). */
+    static int step16(float px) {
+        return Math.max(16, (int) Math.ceil(px / 16f) * 16);
+    }
+
     private final class LogoCover extends View {
         boolean live, ringed;
         private final Paint ground = new Paint(Paint.ANTI_ALIAS_FLAG), ring = new Paint(Paint.ANTI_ALIAS_FLAG),
                 bmp = new Paint(Paint.FILTER_BITMAP_FLAG), pill = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final TextPaint name = new TextPaint(Paint.ANTI_ALIAS_FLAG), tag = new TextPaint(Paint.ANTI_ALIAS_FLAG);
         private final RectF r = new RectF();
+        private final Runnable again = this::invalidate;
 
         LogoCover(Context c) {
             super(c);
@@ -1539,10 +1577,16 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             Channel c = ch;
             String url = c == null ? null : LogoPack.url(c);
             int bw = Math.max(1, Math.round(w - 4 * e - w * 0.16f)), bh = Math.max(1, Math.round(hh - 4 * e - tagH - hh * 0.12f));
-            Bitmap b = Pics.get(url, bw, bh, Pics.FIT, this::invalidate);
+            // Read at most LOGO_MAX across and in steps of 16 (a cover made bigger a press at a time reads its logo once, not
+            // at every size), then drawn to the size it is.
+            float k = Math.min(1f, (float) LOGO_MAX / Math.max(bw, bh));
+            Bitmap b = Pics.get(url, step16(bw * k), step16(bh * k), Pics.FIT, again);
             float midY = (hh - tagH) / 2f;
             if (b != null) {
-                cv.drawBitmap(b, (w - b.getWidth()) / 2f, midY - b.getHeight() / 2f, bmp);
+                float s = Math.min((float) bw / b.getWidth(), (float) bh / b.getHeight());
+                float dw = b.getWidth() * s, dh = b.getHeight() * s;
+                r.set((w - dw) / 2f, midY - dh / 2f, (w + dw) / 2f, midY + dh / 2f);
+                cv.drawBitmap(b, null, r, bmp);
             } else if (c != null) {
                 name.setColor(look.ink);
                 name.setTextSize(Math.min(hh * 0.3f, w * 0.16f));

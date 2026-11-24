@@ -29,7 +29,9 @@
         <package android:name="com.gathin.tvhome" />
     </queries>
 
+    <!-- HomefieldApp: Guard first (problem notes; an error off the main thread never closes the app). -->
     <application
+        android:name=".HomefieldApp"
         android:label="@string/app_name"
         android:icon="@drawable/ic_app"
         android:banner="@drawable/banner"

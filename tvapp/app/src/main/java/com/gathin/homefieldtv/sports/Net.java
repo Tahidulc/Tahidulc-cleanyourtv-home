@@ -2,9 +2,7 @@ package com.gathin.homefieldtv.sports;
 
 import org.json.JSONObject;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -28,7 +26,7 @@ public final class Net {
         try {
             int code = c.getResponseCode();
             if (code >= 400) throw new IOException("HTTP " + code + " " + url);
-            return read(c.getInputStream());
+            return com.gathin.homefieldtv.engine.Bounded.text(c.getInputStream(), c.getContentLengthLong(), com.gathin.homefieldtv.engine.Bounded.TEXT_MAX);
         } finally {
             c.disconnect();
         }
@@ -51,7 +49,7 @@ public final class Net {
             }
             int code = c.getResponseCode();
             if (code >= 400) throw new HttpError(code);
-            return read(c.getInputStream());
+            return com.gathin.homefieldtv.engine.Bounded.text(c.getInputStream(), c.getContentLengthLong(), com.gathin.homefieldtv.engine.Bounded.TEXT_MAX);
         } finally {
             c.disconnect();
         }
@@ -66,12 +64,4 @@ public final class Net {
         }
     }
 
-    private static String read(InputStream in) throws IOException {
-        try (InputStream s = in) {
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
-            byte[] buf = new byte[8192];
-            for (int n; (n = s.read(buf)) > 0; ) out.write(buf, 0, n);
-            return out.toString("UTF-8");
-        }
-    }
 }

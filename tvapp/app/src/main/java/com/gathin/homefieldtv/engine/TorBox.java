@@ -317,7 +317,7 @@ public final class TorBox {
             if (code >= 400) throw new IOException("TorBox couldn't answer just now (" + code + ")");
             String body;
             try (InputStream in = h.getInputStream()) {
-                body = new String(readAll(in), StandardCharsets.UTF_8);
+                body = Bounded.text(in, h.getContentLengthLong(), 48 << 20);
             } catch (IOException e) {
                 throw new IOException("TorBox's answer was cut short");
             }
@@ -340,13 +340,6 @@ public final class TorBox {
         return e.contains("AUTH") || e.contains("TOKEN");
     }
 
-    private static byte[] readAll(InputStream in) throws IOException {
-        java.io.ByteArrayOutputStream b = new java.io.ByteArrayOutputStream();
-        byte[] buf = new byte[16384];
-        int n;
-        while ((n = in.read(buf)) > 0) b.write(buf, 0, n);
-        return b.toByteArray();
-    }
 
     // ---- names ----------------------------------------------------------------------------------------------------
 
