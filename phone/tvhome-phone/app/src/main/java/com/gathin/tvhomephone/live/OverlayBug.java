@@ -335,7 +335,8 @@ final class OverlayBug extends View implements BurnGuard.Dims {
     /** A custom board over the look (its base takes the look's place), or null to go back to the look itself. */
     void custom(com.gathin.broadcast.BoardSpec s) {
         if (s == null && custom == null) return;
-        if (s != null && custom != null && s.toJson().equals(custom.toJson())) return;
+        // The same board, already in its base look (a look chosen since takes it back).
+        if (s != null && custom != null && style == Style.of(s.base.name()) && s.toJson().equals(custom.toJson())) return;
         custom = s == null ? null : s.copy();
         if (custom != null) style = Style.of(custom.base.name());
         text.setTypeface(custom == null ? plainFace : com.gathin.broadcast.BoardPaint.typeface(getContext(), custom.font));

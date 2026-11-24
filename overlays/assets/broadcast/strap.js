@@ -199,7 +199,7 @@
   // border, finish and lettering, folding into it as Classic's does --------------------------------------------------------
   const CU = C.custom && typeof C.custom === 'object' ? C.custom : null;
   const cuCol = (v, d) => (typeof v === 'string' && /^(#[0-9a-f]{6}|rgba\([0-9., ]+\))$/i.test(v) ? v : d);
-  S.custom = {
+  S['custom'] = {   // keyed apart: the family's own board, not one of the boards' named looks (StrapLooksTest counts those)
     fonts: CU && CU.font ? [(CU.weight || 800) + " 40px '" + CU.font + "'"] : [],
     build() {
       const c = CU || {};

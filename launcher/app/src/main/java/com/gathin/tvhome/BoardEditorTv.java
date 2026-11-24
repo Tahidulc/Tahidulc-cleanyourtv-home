@@ -50,7 +50,7 @@ final class BoardEditorTv {
 
     private static FrameLayout win;
     private static Context app;
-    private static float u = 1f;
+    static float u = 1f;
     private static State st;
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     /** Closed after three minutes with no key pressed (a TV with no way to send it keys can't be stuck with it). */
@@ -220,7 +220,7 @@ final class BoardEditorTv {
     /** How many lines show at once. */
     private static final int SHOWN = 11;
 
-    private static final class State {
+    static final class State {
         final Context c;
         String id;
         final BoardEditing ed;
@@ -674,7 +674,7 @@ final class BoardEditorTv {
             }
         }
 
-        private void suggest() {
+        void suggest() {
             BoardDesigner.Brief b = new BoardDesigner.Brief(brief.home, brief.away, brief.comp,
                     moodAt < 0 ? null : BoardDesigner.Mood.values()[moodAt]);
             b.homeName = brief.homeName;

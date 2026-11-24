@@ -50,7 +50,7 @@ public class MyBoardsTest {
     }
 
     @Test
-    public void aBadOneFromAnotherDeviceIsSafeOrTurnedAway() {
+    public void aBadOneFromAnotherDeviceIsSafeOrTurnedAway() throws Exception {
         assertNull(MyBoards.read("not-an-id", new JSONObject()));
         assertNull(MyBoards.read(MyBoards.newId(), new JSONObject()));
         MyBoards.Saved s = MyBoards.read(MyBoards.newId(), new JSONObject().put("name", "Odd").put("spec", "{\"base\":\"NOPE\",\"colours\":7}"));
