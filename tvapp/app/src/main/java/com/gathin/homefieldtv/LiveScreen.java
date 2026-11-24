@@ -678,9 +678,10 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
                 openList();
                 return true;
             case RemoteKeys.PREVIOUS: {
-                // The channel watched last: Right, as TiviMate's ("Turn on most recent channel").
-                List<Channel> was = Library.get(tv).recent(c);
-                if (!was.isEmpty()) tune(was.get(0));
+                // The channel watched last: Right, as TiviMate's ("Turn on most recent channel"): the one tuned to before
+                // this one, however briefly (the recent channels' row counts one only after it has played a while).
+                Channel was = Library.get(tv).before(c);
+                if (was != null) tune(was);
                 return true;
             }
             case RemoteKeys.FAVOURITE: {

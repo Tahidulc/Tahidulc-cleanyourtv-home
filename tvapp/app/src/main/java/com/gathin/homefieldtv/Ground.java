@@ -29,7 +29,8 @@ import java.lang.ref.WeakReference;
  * the picture), drawn once; the plain ground (no picture) is one gradient. A cross-fade adds the one leaving. In Motion's
  * Lite tier the big picture is not swapped while the remote moves: the ground is the picture's own colour under the dim,
  * cross-fading from one colour to the next (no picture read or drawn), and the picture comes in once the remote has
- * rested REST_MS on something (Frost's panels take that colour meanwhile, so nothing is sampled while moving).
+ * rested REST_MS on something (Frost's panels take that colour meanwhile, so nothing is sampled while moving; once the
+ * ground has come to rest, the views over it are drawn again so their panels are frosted glass over the picture again).
  *
  * <pre>
  *   Ground ground = new Ground(view);                 one per screen, made with its view
@@ -194,8 +195,9 @@ final class Ground {
     private boolean lite(Canvas c) {
         long now = SystemClock.uptimeMillis();
         boolean resting = now - changedAt >= REST_MS;
-        // The colour to show: the new picture's own (known once its blurred copy was made), else the one there was.
-        int to = url.isEmpty() ? Look07.GROUND : Pics.tintOf(url);
+        // The colour to show: the new picture's own (known once its blurred copy was made), else the one there was; the
+        // plain ground's for none, or for one that couldn't be read (not the last picture's colour kept on).
+        int to = url.isEmpty() || Pics.failed(url) ? Look07.GROUND : Pics.tintOf(url);
         if (to != 0 && to != tintTo) {
             tintFrom = tint(now);
             tintTo = to;
@@ -246,7 +248,43 @@ final class Ground {
             c.drawRect(0, 0, w, h, shown.paint);
         }
         if (!picWant && picIn <= 0.001f && shown.bitmap != null && !want) shown.set(null, dst, dim);
+        // Come to rest: the frosted panels that took the colour while it moved are drawn again, on the picture now (or on
+        // the colour it settled on). Their views aren't drawn by the ground's own frames, so without this a panel kept
+        // the flat colour it had at the last key press (3.6: the guide's information panel stuck on a red wash).
+        if (handBack(lent, behindNow(now), moving)) {
+            lent = 0;
+            owner.removeCallbacks(redrawPanels);
+            owner.post(redrawPanels);
+        }
         return moving;
+    }
+
+    /** Lite: the colour last lent to a frosted panel (tintBehind) since the panels were last drawn again; 0 for none. */
+    private int lent;
+    /** Lite: every view over this ground (its screen's) drawn again, so their frosted panels take what is behind now. */
+    private final Runnable redrawPanels = this::redrawPanels;
+
+    private void redrawPanels() {
+        android.view.ViewParent p = owner.getParent();
+        redrawTree(p instanceof View ? (View) p : owner);
+    }
+
+    /** A view and every view in it that shows, drawn again. */
+    static void redrawTree(View v) {
+        if (v == null || v.getVisibility() != View.VISIBLE) return;
+        v.invalidate();
+        if (v instanceof android.view.ViewGroup) {
+            android.view.ViewGroup g = (android.view.ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) redrawTree(g.getChildAt(i));
+        }
+    }
+
+    /**
+     * Pure: whether the panels are drawn again: the ground has come to rest (not moving) and what a panel would take now
+     * (behind: 0 for the picture, else a colour) is not what one was lent (lent: 0 when none was).
+     */
+    static boolean handBack(int lent, int behind, boolean moving) {
+        return !moving && lent != 0 && behind != lent;
     }
 
     private Paint tintNow = new Paint(Paint.DITHER_FLAG), tintWas = new Paint(Paint.DITHER_FLAG);
@@ -272,8 +310,17 @@ final class Ground {
      * the ground's colour as it is now, under the dim's middle.
      */
     int tintBehind() {
-        if (!Motion.lite() || Exec.inline || picIn >= 0.999f && shown.bitmap != null) return 0;
-        return Palette.over(tint(SystemClock.uptimeMillis()), Look07.DIM[1]);
+        if (!Motion.lite() || Exec.inline) return 0;
+        int t = behindNow(SystemClock.uptimeMillis());
+        // Kept, so the panel is drawn again once the ground rests on something else (handBack).
+        if (t != 0) lent = t;
+        return t;
+    }
+
+    /** Lite: what a frosted panel takes now: 0 once the picture is wholly in, else the colour. */
+    private int behindNow(long now) {
+        if (picIn >= 0.999f && shown.bitmap != null) return 0;
+        return Palette.over(tint(now), Look07.DIM[1]);
     }
 
     /** The shown picture as a shader placed where the ground draws it (for Frost); null: none. */

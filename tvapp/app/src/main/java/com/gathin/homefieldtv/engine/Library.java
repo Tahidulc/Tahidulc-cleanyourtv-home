@@ -658,12 +658,39 @@ public final class Library {
         return ch.isEmpty() ? null : ch.get(0);
     }
 
-    /** A channel played: the last one, and first of the recent channels (kept on this TV only). */
+    /**
+     * A channel watched (played RecentChannels.COUNT_MS, LiveTv): the last one, and first of the recent channels (kept on
+     * this TV, and shared with the family's devices).
+     */
     public void watched(Channel c) {
         if (c == null) return;
         List<String> recent = RecentChannels.add(recentPicks().keys, c.key);
         prefs().edit().putString("last", c.key).putString("recent", RecentChannels.join(recent)).apply();
         com.gathin.homefieldtv.sync.TvSync.changed();
+    }
+
+    /**
+     * A channel just tuned to, before it counts as watched: the last one (Start on: Last channel) at once, and the one
+     * tuned to before it kept for Right (the channel before), however briefly it played.
+     */
+    public void tuned(Channel c) {
+        if (c == null) return;
+        String was = prefs().getString("last", null);
+        SharedPreferences.Editor e = prefs().edit().putString("last", c.key);
+        if (was != null && !was.equals(c.key)) e.putString("before", was);
+        e.apply();
+    }
+
+    /**
+     * Right while watching: the channel tuned to before the one playing (its row; not it, nor one hidden or locked away),
+     * else the newest of the recent channels; null when there is none.
+     */
+    public Channel before(Channel playing) {
+        Channel now = row(playing), b = byKey(prefs().getString("before", null));
+        Lists l = lists();
+        if (b != null && l.filter != null && l.filter.kept(b) && (now == null || !now.key.equals(b.key))) return b;
+        List<Channel> r = recent(playing);
+        return r.isEmpty() ? null : r.get(0);
     }
 
     /**
