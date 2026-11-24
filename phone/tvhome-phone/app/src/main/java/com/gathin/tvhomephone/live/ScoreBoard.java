@@ -500,13 +500,22 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         @Override public void run() {
             h.removeCallbacks(this);
             if (!running) return;
-            draw(System.currentTimeMillis());
+            long now = System.currentTimeMillis();
+            draw(now);
+            varTick(now);
             h.postDelayed(this, 250);
         }
     };
 
     /** VAR explained's WHY under a decision. */
     private final VarWhy why;
+    /**
+     * The VAR check out of the board (VarCheck): since when, for which game, whether the game has gone on past it (the
+     * commentary's next line, FotMob's flag gone, another event of the game), and whether it came from FotMob's flag.
+     */
+    private long varOutAt;
+    private String varOutGame;
+    private boolean varMoved, varFlag;
     private final Runnable read = this::read;
     private final Runnable hide = this::hideDrop;
     private final Runnable nextDrop = this::next;
@@ -944,6 +953,8 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                 else play.var(VarExplained.checking(g.id, now));
                 // A goal as the screen shows it: that side lit, then its scorer captioned once live play is back.
                 if (g.id != null && g.id.equals(lastShownId)) {
+                    // The score changed on the board (a goal, or one ruled out): a VAR check out is over (VarCheck).
+                    if (g.homeScore != lastHome || g.awayScore != lastAway) varOn(g.id);
                     int side = g.homeScore > lastHome && lastHome >= 0 ? 1 : g.awayScore > lastAway && lastAway >= 0 ? 2 : 0;
                     if (side > 0) {
                         play.goal(now);
@@ -1773,6 +1784,8 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             }
             FotMob.Match read = fm;
             List<VarExplained.Seen> var = got == null ? null : VarExplained.scan(got.varLines);
+            // The commentary gone on past its latest VAR check (play restarted): the check out of the board comes off.
+            boolean movedOn = got != null && com.gathin.broadcast.VarCheck.movedOn(got.varLines);
             // FotMob's live commentary while the game is on: the quick VAR checks that change nothing have a line only there.
             List<VarExplained.Seen> ltc = null;
             if (fm != null && fm.ticker && state == Game.LIVE && varOn) {
@@ -1791,6 +1804,16 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                 // A penalty given (its card out until the kick) and VAR's checks and decisions: once the picture reaches this read.
                 if (pen != null) held.add(id, st, () -> penaltyRead(g, (String) pen[0], (Drop[]) pen[1]));
                 if (read != null) fotmobRead(g, read, st);
+                // When the half is over on the picture (Whistle): FotMob's status, the minutes added, for the board's game.
+                if (id.equals(lastId)) {
+                    com.gathin.broadcast.Whistle w = screen.whistle();
+                    if (read != null) {
+                        w.fotmob(read.readAt > 0 ? read.readAt : st.at, id, read.status);
+                        for (int i = 0; i < 4; i++) if (read.added[i] > 0) w.added(id, i + 1, read.added[i]);
+                    }
+                    if (got != null) for (int i = 0; i < 4; i++) if (got.added[i] > 0) w.added(id, i + 1, got.added[i]);
+                }
+                if (movedOn) varHeld.add(id, st, () -> varOn(id));
                 if (var != null) varFromEspn(g, var, st);
                 if (ltcSeen != null) varFromTicker(g, ltcSeen, st);
                 // Another game: the reads before it go.
@@ -3028,7 +3051,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         if (n <= 0) return null;
         Drop d = new Drop();
         d.chip = "ADDED TIME";
-        d.colour = 0xFFE3061B;
+        d.colour = com.gathin.broadcast.AddedTime.RED;
         d.addedMins = n;
         d.title = "+" + n + (n == 1 ? " minute" : " minutes");
         d.homeColour = OverlayBug.colour(g.homeColor, g.homeAlt);
@@ -3038,6 +3061,10 @@ public final class ScoreBoard implements LiveAlerts.Listener {
 
     private void drop(Drop d) {
         if (small) return;
+        // Another event of the game (a goal, a card, a substitution) while its VAR check is out or waiting: play went on.
+        if (!"VAR".equals(d.chip) && d.addedMins <= 0 && !d.lineups && (d.own || d.gameId != null && d.gameId.equals(varOutGame))) {
+            varOn(d.gameId != null ? d.gameId : varOutGame);
+        }
         // A goal in the game: its penalty waiting for the kick is taken (scored, or play went on).
         if (d.key != null && penaltyFor != null && (d.own || penaltyFor.equals(d.gameId))) penaltyTaken(penaltyFor);
         if ("VAR".equals(d.chip)) {
@@ -3094,6 +3121,11 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         } else {
             d = drops.pollFirst();
         }
+        // A VAR check over before its turn came (its decision, or play went on): let go.
+        if (d.varCheck && !VarExplained.checking(d.gameId, System.currentTimeMillis())) {
+            h.post(nextDrop);
+            return;
+        }
         // A goal's scorer, when the after-goal pop-up showed that goal (its scorer, its minute): left out, the pop-up said it.
         if (d.own && d.goalN > 0 && d.gameId != null && afterGoal.showed(d.gameId, d.side, d.goalN)) {
             h.post(nextDrop);
@@ -3139,8 +3171,12 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         strip.show(d);
         // The minutes added: out until their half is over (keepAdded takes them in), not for a few seconds.
         if (d == standing) return;
-        // VAR explained: a check stays out until its decision (CHECK_MAX_MS at most); a decision with its WHY under it.
+        // VAR explained: a check stays out until its decision, or until it is over (play on again, the data gone on past
+        // it: varTick, VarCheck), CHECK_MAX_MS at most; a decision with its WHY under it.
         if (d.varCheck) {
+            varOutAt = System.currentTimeMillis();
+            varOutGame = d.gameId;
+            varMoved = false;
             h.postDelayed(hide, VarExplained.CHECK_MAX_MS);
             return;
         }
@@ -3198,9 +3234,16 @@ public final class ScoreBoard implements LiveAlerts.Listener {
 
     /** A check under way ({about, reason, player}): out of the board until its decision, the scan along the board with it. */
     private void varCheckOut(Game g, String[] about) {
+        varCheckOut(g, about, false);
+    }
+
+    /** The same; flag: from FotMob's flag alone (no words), which does not put a check out again soon after one came off. */
+    private void varCheckOut(Game g, String[] about, boolean flag) {
         if (g == null || g.id == null || small) return;
         long now = System.currentTimeMillis();
         if (VarExplained.decidedLately(g.id, now) && !VarExplained.checking(g.id, now)) return;
+        if (flag && VarExplained.endedLately(g.id, now)) return;
+        varFlag = flag;
         Drop out = strip.isOut() ? strip.drop() : null;
         if (out != null && out.varCheck && g.id.equals(out.gameId)) return;
         for (Drop q : drops) if (q.varCheck && g.id.equals(q.gameId)) return;
@@ -3308,8 +3351,11 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         List<String[]> fresh = VarExplained.freshFotmob(g.id, m.vars);
         boolean pending = m.varPending;
         List<String[]> reds = new ArrayList<>(m.reds);
-        if (!pending && fresh.isEmpty()) return;
+        // FotMob no longer flagging the check its flag put out: over, once the picture reaches the read.
+        boolean flagOff = !pending && varFlag && g.id.equals(varOutGame) && varOutAt > 0;
+        if (!pending && fresh.isEmpty() && !flagOff) return;
         varHeld.add(g.id, st, () -> {
+            if (flagOff) varOn(g.id);
             if (!running || !g.id.equals(lastId) || mode != FOOTBALL_MODE) return;
             if (!varExplained(c)) {
                 if (pending) bug.varCheck(8_000L);
@@ -3317,13 +3363,40 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             }
             if (!shows(c, FOOTBALL)) return;
             long now = System.currentTimeMillis();
-            if (pending) varCheckOut(g, VarExplained.noCheck());
+            if (pending) varCheckOut(g, VarExplained.noCheck(), true);
             for (String[] e : fresh) {
                 VarExplained.Call call = VarExplained.fromFotMob(e, reds);
                 if (call == null || VarExplained.decidedLately(g.id, now) && !VarExplained.checking(g.id, now)) continue;
                 varDecisionOut(g, call);
             }
         });
+    }
+
+    /** The game has gone on past its VAR check (another event, the commentary's next line, FotMob's flag gone, a goal). */
+    private void varOn(String gameId) {
+        if (gameId == null) return;
+        Drop out = strip.isOut() ? strip.drop() : null;
+        boolean waiting = false;
+        for (Drop q : drops) waiting |= q.varCheck && gameId.equals(q.gameId);
+        if ((out == null || !out.varCheck || !gameId.equals(out.gameId)) && !waiting) return;
+        varMoved = true;
+        // One still waiting its turn goes with it.
+        if (waiting && (out == null || !out.varCheck)) VarExplained.checkEnded(gameId, System.currentTimeMillis());
+    }
+
+    /**
+     * The check out of the board, each tick: off as soon as it is over (VarCheck: the game gone on past it, the picture
+     * back in live play, the channel's scoreboard back after the replays, or its longest), the scan along the board with it.
+     */
+    private void varTick(long now) {
+        Drop out = strip.isOut() ? strip.drop() : null;
+        if (out == null || !out.varCheck || varOutAt <= 0) return;
+        if (!com.gathin.broadcast.VarCheck.over(now - varOutAt, false, varMoved, play.wideMs(now), play.backSince(varOutAt, now))) return;
+        VarExplained.checkEnded(out.gameId, now);
+        varOutAt = 0;
+        varMoved = false;
+        bug.varCheck(0L);
+        hideDrop();
     }
 
     /** For the tests and the previews: an alert dropped now. */

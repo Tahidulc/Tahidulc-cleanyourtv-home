@@ -47,6 +47,18 @@ final class ScreenText {
         return null;
     }
 
+    /**
+     * Whether the score the scoreboard shows is read as a score ("2-1", "2 – 1" on a line): the two numbers alone (score's
+     * fallback) could be anything beside the clock (a stats graphic's, shirt numbers), so they count for less.
+     */
+    static boolean scoreSure(List<String> lines) {
+        for (String raw : lines) {
+            String s = CLOCK.matcher(fix(raw)).replaceAll(" ");
+            if (SCORE.matcher(s).find()) return true;
+        }
+        return false;
+    }
+
     /** "HT" or "FT" when the scoreboard says half time or full time; null otherwise. */
     static String state(List<String> lines) {
         for (String s : lines) {

@@ -215,7 +215,7 @@ public final class CompBug {
 
     // ---- drawing ------------------------------------------------------------------------------------------------------
 
-    private static final int INK = 0xFFF5F6FA, DARK = 0xFF111418, RED = 0xFFD7192F;
+    private static final int INK = 0xFFF5F6FA, DARK = 0xFF111418, RED = AddedTime.RED;
     /** The Lab's colours: the family's violet to coral, Floodlight's white and ink, the LED board's amber and red-orange. */
     static final int VIOLET = 0xFF6D28F2, CORAL = 0xFFFF6B6B, FLOOD = 0xFFF6F7FA, FLOOD_INK = 0xFF0B0E16, AMBER = 0xFFFFB21E,
             LED_RED = 0xFFFF5A3C, LAB_DARK = 0xFF0B0E16, YELLOW = 0xFFFFD21E;
@@ -1095,7 +1095,7 @@ public final class CompBug {
         }
         if (sc == null) words(cv, d.score, (x[2] + x[3]) / 2f, (rows[0] + rows[3]) / 2f, u * 0.3f, x[3] - x[2], INK, bsemi7, 0);
         float cw = Math.max(u * 1.34f, tw(d.clock, u * 0.475f, bsemi7) + u * 0.5f), cl = x[0] + u * 0.85f, ct = u * 1.3f, cb = u * 1.84f;
-        vgrad(cv, cl, ct, cl + cw, cb, d.stoppage ? RED : 0xFFF4F5F7, d.stoppage ? darker(RED, 0.2f) : 0xFFC8CCD2);
+        vgrad(cv, cl, ct, cl + cw, cb, d.stoppage ? RED : 0xFFF4F5F7, d.stoppage ? RED : 0xFFC8CCD2);
         words(cv, d.clock, cl + cw / 2f, (ct + cb) / 2f, u * 0.475f, cw - u * 0.2f, d.stoppage ? INK : 0xFF1E1E1E, bsemi7, 0);
         // The arrows over the names' start: silver and gold outside, navy inside.
         arrow(cv, x[0], h, 0f, u * 0.4f, u * 1.02f, u * 0.62f);

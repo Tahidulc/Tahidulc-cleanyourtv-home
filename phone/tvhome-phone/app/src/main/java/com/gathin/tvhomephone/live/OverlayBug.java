@@ -64,13 +64,13 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         }
     }
 
-    private static final int NAVY = 0xFF0B1640, NAVY_DEEP = 0xFF070C26, CLOCK = 0xFF050816, ADDED = 0xFFE0213A,
+    private static final int NAVY = 0xFF0B1640, NAVY_DEEP = 0xFF070C26, CLOCK = 0xFF050816, ADDED = com.gathin.broadcast.AddedTime.RED,
             AMBER = 0xFFFFB547, F1_RED = 0xFFE10600, DIM = 0xFFB9C1E6;
     /**
      * Card's white (a soft one, shaded to a light grey at its foot: it stays up all game), its red middle (darker at its
      * foot), the kick-off's time on the red before kick-off, and Half-Time on it.
      */
-    static final int CARD_TOP = 0xFFF1F3F7, CARD_FOOT = 0xFFD3D8E1, CARD_RED = 0xFFD7192F, CARD_RED_FOOT = 0xFF8E0B1D,
+    static final int CARD_TOP = 0xFFF1F3F7, CARD_FOOT = 0xFFD3D8E1, CARD_RED = com.gathin.broadcast.AddedTime.RED,
             CARD_SOFT = 0xFFF6D3D8, CARD_HT = 0xFFFFE7A3;
     /** Card's own blue in the middle (as the clubs' results cards have it); red only in added time. */
     static final int CARD_BLUE = 0xFF2A3DC9, CARD_BLUE_FOOT = 0xFF0F1B7E, CARD_BLUE_SOFT = 0xFFC3CBF4;
@@ -82,8 +82,11 @@ final class OverlayBug extends View implements BurnGuard.Dims {
      * sweeps it over SHINE_MS every SHINE_EVERY_MS (in added time the first as it begins).
      */
     static final long DRIFT_MS = 6_000L, SHINE_MS = 1_200L, SHINE_EVERY_MS = 9_000L;
-    /** The added time's tab beside the board (Card's in its own red): out over TAB_IN_MS, lit white at first over TAB_FLASH_MS. */
-    static final int TAB_RED = 0xFFC81E34;
+    /**
+     * The added time's tab beside the board, in added time's one red (AddedTime.RED: the same as Card's middle, every
+     * look's clock and the ADDED TIME pop-out): out over TAB_IN_MS, lit white at first over TAB_FLASH_MS.
+     */
+    static final int TAB_RED = com.gathin.broadcast.AddedTime.RED;
     static final long TAB_IN_MS = 400L, TAB_FLASH_MS = 600L;
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), text = new Paint(Paint.ANTI_ALIAS_FLAG),
             image = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
@@ -1417,9 +1420,9 @@ final class OverlayBug extends View implements BurnGuard.Dims {
             return;
         }
         if (p.score0 == 0 && p.score1 == 0) return;
-        // Card: its blue, turning red in added time.
+        // Card: its blue, turning red in added time: added time's one red, flat, as the tab and the ADDED TIME pop-out.
         boolean red = style == Style.CARD && look.stoppage;
-        int a = red ? CARD_RED : p.score0, b = red ? CARD_RED_FOOT : p.score1;
+        int a = red ? CARD_RED : p.score0, b = red ? CARD_RED : p.score1;
         if (scoreShade == null || shadeY != y || shadeH != h || shadeA != a || shadeB != b) {
             scoreShade = new LinearGradient(0, y, 0, y + h, a, b, Shader.TileMode.CLAMP);
             shadeY = y;
@@ -1493,7 +1496,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
             cv.drawRect(x, y, x + w, y + h, fill);
         }
         // In added time: the clock's box beats red, about once a second.
-        pulse(cv, x, y, w, h, 0xFFE3061B, 60, 210);
+        pulse(cv, x, y, w, h, com.gathin.broadcast.AddedTime.RED, 60, 255);
         int colour = "HT".equals(look.clock) ? AMBER : look.live ? p.clockInk : p.dim;
         if (!addedInside()) {
             words(cv, look.clock, x + w / 2, y, h, h * 0.44f * k, colour);
@@ -1612,7 +1615,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
             float k2 = Math.min(1f, w * 0.9f / Math.max(1f, measure(under, bh * 0.62f)));
             // In added time a red pill beats behind its clock.
             float uw = measure(under, bh * 0.62f * k2), pad = bh * 0.22f;
-            pulse(cv, w / 2f - uw / 2f - pad, top - h * 0.04f + bh * 0.12f, uw + 2 * pad, bh * 0.76f, 0xFFE3061B, 70, 220, bh * 0.38f);
+            pulse(cv, w / 2f - uw / 2f - pad, top - h * 0.04f + bh * 0.12f, uw + 2 * pad, bh * 0.76f, com.gathin.broadcast.AddedTime.RED, 70, 255, bh * 0.38f);
             int ink = "HT".equals(look.clock) ? AMBER : p.clockInk;
             words(cv, under, w / 2f, top - h * 0.04f, bh, bh * 0.62f * k2, ink);
             return;
@@ -1624,7 +1627,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         x += a + h * 0.7f * k;
         float b = measure(m[1], h * 0.44f * k);
         // In added time a red pill beats behind its clock.
-        pulse(cv, x - h * 0.2f * k, h * 0.2f, b + h * 0.4f * k, h * 0.6f, 0xFFE3061B, 70, 220, h * 0.3f);
+        pulse(cv, x - h * 0.2f * k, h * 0.2f, b + h * 0.4f * k, h * 0.6f, com.gathin.broadcast.AddedTime.RED, 70, 255, h * 0.3f);
         int clockInk = "HT".equals(look.clock) ? AMBER : flash > 0 ? (flashSide == 1 ? look.homeColour : look.awayColour) : p.clockInk;
         words(cv, m[1], x + b / 2, 0, h, h * 0.44f * k, clockInk);
         x += b + h * 0.5f * k;
@@ -1796,7 +1799,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
     private void stackedClock(Canvas cv, float x, float w, float h, float k) {
         fill.setColor(p.clock != 0 ? p.clock : p.ground);
         cv.drawRect(x, 0, x + w, h, fill);
-        pulse(cv, x, 0, w, h, 0xFFE3061B, 60, 210);
+        pulse(cv, x, 0, w, h, com.gathin.broadcast.AddedTime.RED, 60, 255);
         int colour = "HT".equals(look.clock) ? AMBER : look.live ? p.clockInk : p.dim;
         if (!addedInside()) {
             words(cv, look.clock, x + w / 2, 0, h, h * 0.3f * k, colour);
@@ -2115,8 +2118,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         String c = cardClock();
         if (c.isEmpty()) return;
         float y = h * 0.5f, lh = h * 0.44f, size = cardClockSize(h) * k;
-        // In added time the middle is red already: its clock's line beats a lighter red over it.
-        pulse(cv, x, y, w, lh, 0xFFFF5A6A, 0, 150);
+        // In added time the middle is red already (added time's one red): nothing more over its clock's line.
         int colour = "HT".equals(look.clock) ? CARD_HT : look.live || "FT".equals(look.clock) ? p.clockInk : look.stoppage ? CARD_SOFT : CARD_BLUE_SOFT;
         if (!addedInside()) {
             float s = Math.min(1f, w * 0.9f / Math.max(1f, measure(c, size)));
@@ -2154,7 +2156,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         cv.save();
         // Behind the board until it has slid out.
         cv.clipRect(bodyW, 0, full, h);
-        int red = style == Style.CARD ? CARD_RED : TAB_RED;
+        int red = TAB_RED;
         fill.setShader(null);
         fill.setColor(red);
         r.set(x, y, x + tw, y + th);

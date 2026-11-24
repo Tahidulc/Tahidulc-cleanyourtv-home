@@ -14,11 +14,21 @@ public class AddedAlertTest {
         ScoreBoard.Drop d = ScoreBoard.addedDrop(g, "+4");
         assertEquals("ADDED TIME", d.chip);
         assertEquals("+4 minutes", d.title);
-        assertEquals(0xFFE3061B, d.colour);
+        assertEquals(com.gathin.broadcast.AddedTime.RED, d.colour);
         assertEquals(4, d.addedMins);
         assertEquals("+1 minute", ScoreBoard.addedDrop(g, "+1").title);
         assertNull(ScoreBoard.addedDrop(g, "+?"));
         assertNull(ScoreBoard.addedDrop(g, "0"));
+    }
+
+    @Test public void addedTimeIsOneRedOnTheBoardAndBesideIt() {
+        // Card's middle in added time, the +N tab on every look and the ADDED TIME pop-out: one colour from one place.
+        int red = com.gathin.broadcast.AddedTime.RED;
+        assertEquals(red, OverlayBug.CARD_RED);
+        assertEquals(red, OverlayBug.TAB_RED);
+        Game g = new Game();
+        g.id = "9";
+        assertEquals(red, ScoreBoard.addedDrop(g, "+3").colour);
     }
 
     @Test public void fotMobsAddedTimeByTheMinuteItIsPutUpAt() {

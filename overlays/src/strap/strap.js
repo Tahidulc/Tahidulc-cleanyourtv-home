@@ -115,11 +115,20 @@
       side(false) +
       '<div class="row num bclock" style="height:100%;padding:0 ' + Math.round(h * 0.34) + 'px;font-size:' + Math.round(h * 0.44) + 'px;color:' + (o.clockInk || '#E6E9F2') + ';background:' + o.clock + '">00:00</div></div>';
   }
-  // the drawn board where the app's sits: its height matched, left-aligned (right-aligned for a board on the right)
+  // the drawn board where the app's sits: its height matched, left-aligned (right-aligned for a board on the right); a
+  // board the family made wider than its words need (Move and resize's Width) is as wide here, its blocks spread along
+  // it as the app's fills that box, so the strap folds into the place and the size they set
   function placeBoard(radius) {
     const b = $('board'), el = b.firstElementChild;
-    const nw = el.offsetWidth || 400, nh = el.offsetHeight || BH;
+    let nw = el.offsetWidth || 400;
+    const nh = el.offsetHeight || BH;
     BS = RECT.h / nh;
+    const want = C.board ? RECT.w / BS : 0;
+    if (want > nw * 1.03) {
+      el.style.width = want + 'px';
+      el.style.justifyContent = 'space-between';
+      nw = el.offsetWidth || want;
+    }
     BXd = RECT.x + RECT.w / 2 > 960 ? RECT.x + RECT.w - nw * BS : RECT.x;
     BYd = RECT.y;
     b.style.left = BXd + 'px'; b.style.top = BYd + 'px'; b.style.borderRadius = radius + 'px';

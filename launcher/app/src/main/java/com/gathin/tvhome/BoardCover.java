@@ -1025,6 +1025,18 @@ final class BoardCover {
 
     /** Each game's readings, oldest first (main thread). */
     private static final Map<String, ArrayDeque<Reading>> readings = new HashMap<>();
+    /**
+     * When the board's game's half is over on the picture (Whistle): the polls' flips and FotMob's (its status and its
+     * times for each half), the minutes added, so HT and FT come as the whistle reaches the screen, not a poll later
+     * than the reading the screen is at (main thread).
+     */
+    private static final com.gathin.broadcast.Whistle whistle = new com.gathin.broadcast.Whistle();
+
+    /** Pure: what a poll's reading of a game says for the whistle: not begun, in play, at a break (half time), over. */
+    static int phaseOf(int state, boolean halftime) {
+        return state == 1 ? com.gathin.broadcast.Whistle.NOT_BEGUN : state == 2 ? com.gathin.broadcast.Whistle.AT_END
+                : halftime ? com.gathin.broadcast.Whistle.AT_BREAK : com.gathin.broadcast.Whistle.IN_PLAY;
+    }
 
     /** Pure: a reading kept after the others (none out of order), its clock's first sight carried on while it has not moved. */
     static void add(ArrayDeque<Reading> list, Reading r) {
@@ -1609,7 +1621,7 @@ final class BoardCover {
             case "red": return 0xFFFF5A5F;
             case "var": case "pen": case "drama": case "incident": return 0xFFFFB547;
             case "sub": return 0xFF5CC8FF;
-            case "added": return 0xFFE3061B;
+            case "added": return com.gathin.broadcast.AddedTime.RED;
             default: return BoardDrop.PLAIN;
         }
     }
@@ -1993,6 +2005,12 @@ final class BoardCover {
             }
             add(list, new Reading(now, score(g.homeScore), score(g.awayScore), g.state, g.halftime, g.clockSec, g.detail));
         }
+        // The board's game's flips for the whistle, as each poll has them (no wait on them: the whistle puts it on).
+        String board = showingId(c);
+        for (ScoresTicker.Game g : games) {
+            if (g == null || g.id == null || !g.id.equals(board)) continue;
+            whistle.data(now, g.id, periodOf(g.detail), phaseOf(g.state, g.halftime), g.clockSec);
+        }
         // A game not read for half an hour is over: its readings go.
         readings.values().removeIf(l -> l.isEmpty() || now - l.peekLast().seen > 30 * 60_000L);
         if (!active(c)) {
@@ -2026,7 +2044,33 @@ final class BoardCover {
             add(list, new Reading(now - hold, score(g.homeScore), score(g.awayScore), g.state, g.halftime, g.clockSec, g.detail));
             readings.put(id, list);
         }
-        return atScreen(list, now - hold);
+        Reading r = atScreen(list, now - hold);
+        return r == null ? null : whistled(c, id, r, now, hold);
+    }
+
+    /**
+     * The reading the screen is at, with half time or full time as soon as the whistle reaches the picture (Whistle: the
+     * board's clock as it counts, the channel's own once set or read off it), never before; r itself while the half goes on.
+     */
+    private static Reading whistled(Context c, String id, Reading r, long now, long hold) {
+        if (r.state != 0 || r.halftime) return r;
+        double set = anchoredSecs(anchorOf(prefs(c).getString("anchor", null), id), now, r.detail);
+        double secs = set >= 0 ? set : clockSecs(r, now - hold);
+        if (secs < 0) return r;
+        int p = periodOf(r.detail);
+        if (p <= 0) p = periodOfSecs((long) secs);
+        // As the board shows it: counted on from the one shown last in this game and half.
+        if ((id + "|" + p).equals(steadyKey)) secs = Math.max(secs, steadySecs + (now - steadyAt) / 1000.0);
+        int to = whistle.over(now, id, p, (long) secs, hold, set >= 0);
+        if (to == com.gathin.broadcast.Whistle.NONE) return r;
+        return over(r, to == com.gathin.broadcast.Whistle.FT);
+    }
+
+    /** Pure: a reading's copy with its half over: full time (ft) or half time, its score and clock as they were. */
+    static Reading over(Reading r, boolean ft) {
+        Reading w = new Reading(r.seen, r.home, r.away, ft ? 2 : 0, !ft, r.clockSec, r.detail);
+        w.since = r.since;
+        return w;
     }
 
     // ---- showing it ------------------------------------------------------------------------------------------------
@@ -2466,6 +2510,8 @@ final class BoardCover {
         // A goal on the screen: its moment on the board (the scorers' colour across it, the new score popping up), and
         // the board bright again; what it brings (its scorer, the restart's pop-up) once live play is back.
         if (pre == null && g != null && r != null && id.equals(shownId) && shownScore != null && !shownScore.equals(l.score)) {
+            // The score changed on the board (a goal, or one ruled out): a VAR check out is over (VarCheck).
+            varOn(id);
             int side = goalSide(shownScore, l.score);
             if (side > 0) {
                 BugCover.PLAY.goal(SystemClock.uptimeMillis());
@@ -2574,6 +2620,7 @@ final class BoardCover {
             held.release(id, picture);
             varHeld.release(id, picture);
         }
+        varTick(now);
         if (g != null && board && !adjusting && testUntil <= now) {
             readStats(c, g, now);
             // Not while the board is aside in a replay: what comes out of it waits for live play.
@@ -3181,14 +3228,42 @@ final class BoardCover {
     private static int[] lastBoard;
 
     /**
-     * Where the board is (or was last put, or would stand by default) on a 1920 x 1080 screen {x, y, w, h}: the strap in
-     * the board's look folds into it. Null before it was ever placed (the page then uses the standard top left).
+     * Where the board is for the strap to fold into, on a 1920 x 1080 picture {x, y, w, h} (any thread): where this
+     * channel's places put it (the family's own from Move and resize first), at the size set, whether the board is up now
+     * or away (half time, a pop-up, the windows gone), so the strap folds into that place and the board comes back there,
+     * never to the standard place; the board's last place where the places can't be had; null with neither.
      */
     static float[] boardRect1920() {
-        int[] r = lastBoard;
-        if (r == null || sw <= 0) return null;
-        float k = 1920f / sw;
+        Context c = app;
+        int[] r = null;
+        int w = sw, h = sh;
+        if (c != null && w > 0 && h > 0) {
+            try {
+                r = placeOf(BoardPlace.get(c, InStep.channel(c)), w, h, lastTall, lastPerH);
+            } catch (RuntimeException e) {
+                r = null;
+            }
+        }
+        if (r == null) r = lastBoard;
+        if (r == null || w <= 0) return null;
+        float k = 1920f / w;
         return new float[]{r[0] * k, r[1] * k, r[2] * k, r[3] * k};
+    }
+
+    /** The board's look as last laid out: its height for the height set (Stacked's taller), its own width per height. */
+    private static volatile float lastTall = 1f, lastPerH = 7f;
+
+    /**
+     * Pure: the board's place on a w x h screen from the places p, as layout() puts it there: {x, y, width, height};
+     * tall its look's height for the height set, perH its own width for each pixel of height (when p keeps no width).
+     */
+    static int[] placeOf(BoardPlace p, int w, int h, float tall, float perH) {
+        if (p == null || w <= 0 || h <= 0) return null;
+        int bh = Math.max(8, Math.round(p.bh * h * tall));
+        int bw = p.bw > 0 ? Math.max(bh * 2, Math.min(Math.round(w * 0.6f), Math.round(p.bw * w)))
+                : Math.min(Math.round(w * 0.5f), Math.round(bh * perH));
+        int bx = Math.max(0, Math.min(Math.round(p.bx * w), w - bw)), by = Math.max(0, Math.min(Math.round(p.by * h), h - bh));
+        return new int[]{bx, by, bw, bh};
     }
 
     /** The classic line-ups on the screen (ClassicIntro): the board and the cover out of their way meanwhile. */
@@ -3339,8 +3414,12 @@ final class BoardCover {
         if (p == null) p = BoardPlace.standard();
         // Stacked is drawn taller than the height set (its clubs one above the other), and kept on the screen.
         int bh = Math.max(8, Math.round(p.bh * sh * bug.tall()));
+        int natural = bug.natural(bh);
         int bw = p.bw > 0 ? Math.max(bh * 2, Math.min(Math.round(sw * 0.6f), Math.round(p.bw * sw)))
-                : Math.min(Math.round(sw * 0.5f), bug.natural(bh));
+                : Math.min(Math.round(sw * 0.5f), natural);
+        // The look's shape kept, for the board's place while it is away (boardRect1920).
+        lastTall = bug.tall();
+        if (natural > 0) lastPerH = natural / (float) bh;
         int bx = Math.min(Math.round(p.bx * sw), sw - bw), by = Math.min(Math.round(p.by * sh), sh - bh);
         boardH = Math.max(8, Math.round(p.bh * sh));
         positionBoard(c, Math.max(0, bx), Math.max(0, by), bw, bh);
@@ -3494,10 +3573,49 @@ final class BoardCover {
     private static boolean dropping;
     private static final Runnable nextDropRun = BoardCover::nextDrop, hideDropRun = BoardCover::hideDrop;
 
+    /**
+     * The VAR check out of the board (VarCheck): since when (the wall clock and the uptime LivePlay keeps), for which game,
+     * whether the game has gone on past it (the commentary's next line, FotMob's flag gone, another event of the game, a
+     * goal on the board), and whether it came from FotMob's flag alone.
+     */
+    private static long varOutAt, varOutUp;
+    private static String varOutGame;
+    private static boolean varMoved, varFlag;
+
+    /** The game has gone on past its VAR check (another event, the commentary's next line, FotMob's flag gone, a goal). */
+    private static void varOn(String gameId) {
+        if (gameId == null) return;
+        BoardDrop.Drop out = drop == null || !drop.isOut() ? null : drop.showing();
+        boolean waiting = false;
+        for (BoardDrop.Drop q : drops) waiting |= q.varCheck && gameId.equals(q.gameId);
+        if ((out == null || !out.varCheck || !gameId.equals(out.gameId)) && !waiting) return;
+        varMoved = true;
+        // One still waiting its turn goes with it.
+        if (waiting && (out == null || !out.varCheck)) VarExplained.checkEnded(gameId, System.currentTimeMillis());
+    }
+
+    /**
+     * The check out of the board, each second: off as soon as it is over (VarCheck: the game gone on past it, the picture
+     * back in live play, the channel's scoreboard back after the replays, or its longest), the scan along the board with it.
+     */
+    private static void varTick(long now) {
+        BoardDrop.Drop out = drop == null || !drop.isOut() ? null : drop.showing();
+        if (out == null || !out.varCheck || varOutAt <= 0) return;
+        long up = SystemClock.uptimeMillis();
+        if (!com.gathin.broadcast.VarCheck.over(now - varOutAt, false, varMoved, BugCover.PLAY.wideMs(up), BugCover.PLAY.backSince(varOutUp, up))) return;
+        VarExplained.checkEnded(out.gameId, now);
+        varOutAt = 0;
+        varMoved = false;
+        if (bug != null) bug.varCheck(0L);
+        hideDrop();
+    }
+
     private static void drop(Context c, BoardDrop.Drop d) {
         // A goal is captioned once: from its card, or (no card come) from the scores.
         if (d.key != null && !captioned.add(d.key)) return;
         if (captioned.size() > 200) captioned.clear();
+        // Another event of the game (a goal, a card, a substitution) while its VAR check is out or waiting: play went on.
+        if (!"VAR".equals(d.chip) && d.addedMins <= 0 && !d.lineups && d.gameId != null) varOn(d.gameId);
         // A goal for the game: its penalty waiting for the kick is taken (scored, or play went on).
         if (d.key != null && d.gameId != null && d.gameId.equals(penaltyFor)) penaltyTaken(d.gameId);
         // The board's own game: the board beside it says the clubs and the score already (VAR explained's tests say so).
@@ -3556,6 +3674,11 @@ final class BoardCover {
             return;
         }
         BoardDrop.Drop d = drops.pollFirst();
+        // A VAR check over before its turn came (its decision, or play went on): let go.
+        if (d != null && d.varCheck && !VarExplained.checking(d.gameId, System.currentTimeMillis())) {
+            main().post(nextDropRun);
+            return;
+        }
         // A goal's scorer beside the board, when the after-goal pop-up showed that goal (its scorer, its minute): left out,
         // the pop-up said it. Only with that pop-up switched off (or where it did not come) does the scorer come out here.
         if (afterGoalShowed(d)) {
@@ -3580,8 +3703,13 @@ final class BoardCover {
         drop.show(d);
         // The minutes added: out until their half is over (keepAdded takes them in), not for a few seconds.
         if (d != null && d == standing) return;
-        // VAR explained: a check stays out until its decision (CHECK_MAX_MS at most); a decision with its WHY under it.
+        // VAR explained: a check stays out until its decision, or until it is over (play on again, the data gone on past
+        // it: varTick, VarCheck), CHECK_MAX_MS at most; a decision with its WHY under it.
         if (d != null && d.varCheck) {
+            varOutAt = System.currentTimeMillis();
+            varOutUp = SystemClock.uptimeMillis();
+            varOutGame = d.gameId;
+            varMoved = false;
             main().postDelayed(hideDropRun, VarExplained.CHECK_MAX_MS);
             return;
         }
@@ -3960,11 +4088,18 @@ final class BoardCover {
 
     /** A check under way ({about, reason, player}): out of the board until its decision, the scan along the board with it. */
     private static void varCheckOut(Context c, String gameId, ScoresTicker.Game g, String[] about) {
+        varCheckOut(c, gameId, g, about, false);
+    }
+
+    /** The same; flag: from FotMob's flag alone (no words), which does not put a check out again soon after one came off. */
+    private static void varCheckOut(Context c, String gameId, ScoresTicker.Game g, String[] about, boolean flag) {
         long now = System.currentTimeMillis();
         if (VarExplained.decidedLately(gameId, now) && !VarExplained.checking(gameId, now)) {
             // Its decision is in already (the check read late): nothing to wait for.
             return;
         }
+        if (flag && VarExplained.endedLately(gameId, now)) return;
+        varFlag = flag;
         BoardDrop.Drop out = drop == null ? null : drop.showing();
         if (out != null && out.varCheck && gameId.equals(out.gameId)) return;
         for (BoardDrop.Drop q : drops) if (q.varCheck && gameId.equals(q.gameId)) return;
@@ -4065,8 +4200,11 @@ final class BoardCover {
         java.util.List<String[]> fresh = VarExplained.freshFotmob(g.id, m.vars);
         boolean pending = m.varPending;
         java.util.List<String[]> reds = new java.util.ArrayList<>(m.reds);
-        if (!pending && fresh.isEmpty()) return;
+        // FotMob no longer flagging the check its flag put out: over, once the picture reaches the read.
+        boolean flagOff = !pending && varFlag && g.id.equals(varOutGame) && varOutAt > 0;
+        if (!pending && fresh.isEmpty() && !flagOff) return;
         varHeld.add(g.id, st, () -> {
+            if (flagOff) varOn(g.id);
             if (!g.id.equals(game(c))) return;
             if (!varExplainedOn(c)) {
                 if (pending && bug != null) bug.varCheck(8_000L);
@@ -4074,7 +4212,7 @@ final class BoardCover {
             }
             if (!dropsOn(c) || !up(c)) return;
             long now = System.currentTimeMillis();
-            if (pending) varCheckOut(c, g.id, g, VarExplained.noCheck());
+            if (pending) varCheckOut(c, g.id, g, VarExplained.noCheck(), true);
             for (String[] e : fresh) {
                 VarExplained.Call call = VarExplained.fromFotMob(e, reds);
                 if (call == null || VarExplained.decidedLately(g.id, now) && !VarExplained.checking(g.id, now)) continue;
@@ -4506,6 +4644,8 @@ final class BoardCover {
                 }
             }
             List<VarExplained.Seen> varSeen = var;
+            // The commentary gone on past its latest VAR check (play restarted): the check out of the board comes off.
+            boolean movedOn = lines != null && com.gathin.broadcast.VarCheck.movedOn(lines);
             Object[] penSeen = pen;
             // FotMob's figures on top: expected goals, big chances, ratings, who is on top, its player of the match.
             FotMob.Match fm = null;
@@ -4558,6 +4698,12 @@ final class BoardCover {
                 }
                 // The minutes added give no goal or chance away: their read's time alone holds them.
                 if (added != null) addedReads.add(new com.gathin.broadcast.AsSeen.Stamp(st.at, st.phase, st.period, -1, -1, -1), added.clone());
+                // When the half is over on the picture (Whistle): FotMob's status, the minutes added, for the board's game.
+                if (id.equals(showingId(c))) {
+                    if (read != null) whistle.fotmob(read.readAt > 0 ? read.readAt : st.at, id, read.status);
+                    for (int i = 0; added != null && i < Math.min(4, added.length); i++) if (added[i] > 0) whistle.added(id, i + 1, added[i]);
+                }
+                if (movedOn) varHeld.add(id, st, () -> varOn(id));
                 if (read != null) fotmobRead(c, g, read, st);
                 // VAR's checks and decisions, a penalty given (its card out until the kick): once the picture reaches this read.
                 if (varSeen != null) varFromEspn(c, g, varSeen, st);

@@ -571,7 +571,9 @@ final class ScoresTicker {
             g.abroad = abroad(c);
             g.broadcasts = broadcasts(c);
             g.clockAt = firstSeen(g.id, g.clockSec, System.currentTimeMillis());
-            g.halftime = type.optString("name").contains("HALFTIME");
+            // Half time, and the breaks before extra time and before a shootout (ESPN's END_OF_REGULATION, END_OF_EXTRATIME):
+            // no clock runs in them.
+            g.halftime = com.gathin.broadcast.Whistle.atBreak(type.optString("name"));
         } else if ("pre".equals(state)) {
             g.state = 1;
             g.detail = when.format(DateTimeFormatter.ofPattern("HH:mm"));
