@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Settings' main page: its headings, the sections' names and the line under each, the search (settings.Sections). -->
+    <string name="sn_group_watching">Watching</string>
+    <string name="sn_group_sport">Sport and matchday</string>
+    <string name="sn_group_channels">Your channels</string>
+    <string name="sn_group_films">Films and shows</string>
+    <string name="sn_group_tvs">TVs and sync</string>
+    <string name="sn_group_app">App</string>
+
+    <string name="sn_intro">Matchday intro</string>
+    <string name="sn_tvs">Your TVs and sync</string>
+    <string name="sn_sports">Sports and alerts</string>
+    <string name="sn_updates">App updates</string>
+
+    <string name="sn_search_hint">Search settings</string>
+    <string name="sn_search_clear">Clear the search</string>
+    <string name="sn_back">Back to Settings</string>
+    <string name="sn_looking">Looking through every section…</string>
+    <string name="sn_nothing">Nothing in Settings matches “%1$s”</string>
+    <string name="sn_section">The whole section</string>
+    <string name="sn_open">Open %1$s</string>
+
+    <!-- What each section holds, until the line of how it is set comes. -->
+    <string name="sn_live_about">Playlists, picture quality, rewind</string>
+    <string name="sn_look_about">Colour theme, programme times, the guide</string>
+    <string name="sn_reminders_about">Programmes and games to be reminded of</string>
+    <string name="sn_intro_about">The film before kick-off</string>
+    <string name="sn_sports_about">Clubs, alerts, competitions, pop-ups</string>
+    <string name="sn_channels_about">Merged channels, hidden ones, categories, names</string>
+    <string name="sn_posters_about">How the posters look on Home and Watch</string>
+    <string name="sn_subs_about">Languages, size and look</string>
+    <string name="sn_torbox_about">Your own TorBox files</string>
+    <string name="sn_tvs_about">Pairing, what syncs, bedtime</string>
+    <string name="sn_updates_about">This version, and newer ones from the TVs</string>
+
+    <!-- How each is set now. -->
+    <string name="sn_live_line">%1$s · Quality: %2$s</string>
+    <string name="sn_live_none">No playlists yet</string>
+    <plurals name="sn_playlists">
+        <item quantity="one">%d playlist</item>
+        <item quantity="other">%d playlists</item>
+    </plurals>
+    <string name="sn_look_line">%1$s · %2$s</string>
+    <string name="sn_times_24">24-hour times</string>
+    <string name="sn_times_12">12-hour times</string>
+    <string name="sn_reminders_none">None set</string>
+    <plurals name="sn_reminders">
+        <item quantity="one">%d reminder</item>
+        <item quantity="other">%d reminders</item>
+    </plurals>
+    <string name="sn_reminders_line">%1$s · next %2$s</string>
+    <string name="sn_intro_off">Off</string>
+    <string name="sn_intro_builtin">On · the built-in films</string>
+    <string name="sn_intro_own">On · your own video</string>
+    <string name="sn_sports_none">No starred clubs yet · alerts and pop-ups</string>
+    <plurals name="sn_clubs">
+        <item quantity="one">%d starred club · alerts and pop-ups</item>
+        <item quantity="other">%d starred clubs · alerts and pop-ups</item>
+    </plurals>
+    <string name="sn_channels_merged">One row per channel</string>
+    <string name="sn_channels_apart">A row for each quality</string>
+    <string name="sn_channels_line">%1$s · %2$s</string>
+    <string name="sn_posters_portrait">Portrait posters</string>
+    <string name="sn_posters_landscape">Landscape cards</string>
+    <string name="sn_subs_off">Off</string>
+    <string name="sn_subs_on">On · %1$s</string>
+    <string name="sn_torbox_none">Not set up</string>
+    <string name="sn_torbox_on">Connected · in use</string>
+    <string name="sn_torbox_off">Connected · switched off</string>
+    <string name="sn_tvs_none">No TVs paired yet</string>
+    <plurals name="sn_tvs">
+        <item quantity="one">%d TV paired</item>
+        <item quantity="other">%d TVs paired</item>
+    </plurals>
+    <string name="sn_updates_line">This phone has Homefield %1$s</string>
+</resources>
