@@ -286,7 +286,16 @@ wordmark are Homefield; it carries no Sky logo or name.
   board, OK starts from it, Up for more), Ask AI (quick asks or the family's own words, typed on the keyboard at the
   left of the picture; Claude's design taken in), Save, Save and use, Duplicate, Delete (OK twice: everywhere), Undo and
   Use the look instead. Saved boards are the family's "myboard" items, in this app's sync store, so a board saved here
-  is on the phone and the other TVs after the next sync with the launcher on this TV, and theirs are here. The scoreboard and the logo cover show only while the channel
+  is on the phone and the other TVs after the next sync with the launcher on this TV, and theirs are here. Half time and
+  full time come as the whistle reaches the picture, by the launcher's and the phone's one rule (Whistle, from the
+  data: ESPN's flip at each read, FotMob's own length of each half to the second, the minutes added), never before
+  45:00 or 90:00 and, on the channel's own clock set at kick-off, never before the minutes added are up; the clock
+  stops there rather than running on. "Checking VAR" goes at its decision, the commentary's next line, FotMob no longer
+  flagging the check, another event of the game or the score changing, 100 seconds at most (VarCheck); never under 8
+  seconds. Added time is one red on every look (AddedTime.RED: Card's middle, the clock, the +N tab, the ADDED TIME
+  pop-out), a custom board's own when it sets one. The kick-off, restart and after-goal pop-ups fold into the board where
+  the family put it on this channel (Move and resize: its place and size), whether the board was up or away, and the
+  board is back there after them, never in the standard corner. The scoreboard and the logo cover show only while the channel
   plays full screen with nothing over it: the info card, the OK overlay, the bar, the channel list, a number being typed
   or any screen or panel over the picture (the guide's preview, Home, Settings) takes them away at once, and
   they come back with plain playback; their pop-ups wait for it, or are let go when stale (a kick-off after two minutes,
@@ -493,8 +502,10 @@ wordmark are Homefield; it carries no Sky logo or name.
   channel, for every match), and Ask AI (the family's own Anthropic API key, typed once on the keyboard as dots, then
   shown masked, "sk-ant-••••••••abcd", kept only in the app's private preferences: never synced, backed up, logged or
   shown; Take the key away; the model: Claude Opus 5.5 as it comes, Sonnet 5.5 or Haiku 5.5; the requests go only to
-  Anthropic's API, one at a time off the main thread. The phone's "Send key to the TVs" reaches the TV launcher only, so
-  on Homefield TV it is typed here). The player's bar has
+  Anthropic's API, one at a time off the main thread. The phone's "Send key to the TVs" reaches the TV launcher: with no
+  key of its own, Homefield TV takes it from the launcher on this TV as the page opens, and says so, or with Get the key
+  from the TV launcher (its provider hands it to Homefield TV alone, signed with the launcher's key; the launcher 5.41
+  or later); after Take the key away only when asked). The player's bar has
   Scoreboard on every channel, for the scoreboard's menu ("No match on this channel now", "Reading the match", "Reading
   the scores" until there is one). The film player's Picture and sound has Sound (The film's sound, as it comes, or a
   track) and Subtitles (Off, or the copy's own; "This copy has no subtitles of its own").

@@ -56,18 +56,21 @@ import java.util.Set;
  * the game is found from the channel playing (its name, else its guide entry: Matching.gameOn), and the board shows it as
  * the picture does, not as the scores are: each reading of the scores is kept with when it was seen and the board shows
  * the one the channel has reached, its wait behind (InStep), its clock counting on in minutes and seconds with the
- * minutes added beside it (BoardClock). At each kick-off a card asks for OK as it happens on the screen: from then the
- * clock is the channel's own and the wait is set. It comes and goes as a broadcaster's does (BoardBug, the launcher's
+ * minutes added beside it (BoardClock), half time and full time as soon as the whistle reaches the picture (BoardTime:
+ * Whistle, the launcher's and the phone's one rule from the data), never early. At each kick-off a card asks for OK as it
+ * happens on the screen: from then the clock is the channel's own and the wait is set. It comes and goes as a broadcaster's does (BoardBug, the launcher's
  * board copied whole, in the Scoreboard Lab's looks or By competition): up twenty minutes before kick-off, resting at
  * half time once its moment has passed, gone a minute after full time; a goal sweeps across it with the family's sounds.
  *
  * <p>Out of it, in its look (BoardDrop): the cards, the substitutions, VAR explained, the minutes added, half and full
  * time, each once the picture reaches it (AsSeen: the channel's delay since the scores had it, and the board's clock past
- * its minute; with no delay set for the channel and its clock not set at kick-off, the longest a channel runs behind);
+ * its minute; with no delay set for the channel and its clock not set at kick-off, the longest a channel runs behind),
+ * "Checking VAR" off when play goes on (BoardVar: VarCheck);
  * the +N beside the clock by the shared rule for every look (AddedTime); the kick-off pop-up, the pop-up after a goal and at the second half, and the
  * classic line-ups seven minutes before kick-off (the shared broadcast pages, BroadcastView), the board away while a
  * moment's pop-up is on. The pop-ups in my scoreboard's look unless set otherwise: a strap in the board's own look that
- * folds into it where it is (the board away at once while the strap draws it, back at once after). Over the channel's
+ * folds into it where the family put it on this channel, at its size (boardAt; the board away at once while the strap
+ * draws it, back at once there after). Over the channel's
  * own logo, a cover (top right, where most broadcasters put theirs).
  *
  * <p>Where they sit: the standard places (the board top left over the broadcaster's own, the cover top right) until moved

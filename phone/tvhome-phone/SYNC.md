@@ -55,9 +55,10 @@ call `/sync` on another TV without a token only from an address it knows as one 
 - `POST /tmdb` `{}` → `{"key"}`: the TV's TMDB key, so the phone can read TMDB without its own (kept on the phone).
 - `POST /ai/key` `{"key", "model"}` → `{"ok"}`: the family's Anthropic API key for Ask AI and the model chosen, sent by
   Settings, Ask AI, Send key to the TVs; kept in the launcher's own private storage, never synced on, logged or shown
-  ("" takes it away). Like the logins, it crosses the home network over this link. Homefield TV doesn't get it this way
-  (the launcher's provider hands it only the sync token and TMDB's key): on Homefield TV it is typed in Settings › Other ›
-  Ask AI.
+  ("" takes it away). Like the logins, it crosses the home network over this link. Homefield TV on the same TV takes it
+  from the launcher's provider (`call("aikey")`, launcher 5.41: answered only for Homefield TV's package signed with the
+  launcher's own key) when it has none of its own (Settings › Other › Ask AI, Get the key from the TV launcher), or it
+  is typed there.
 
 The phone syncs with every paired TV when it opens, a few seconds after each change it makes, and every 15 minutes
 (WorkManager). A TV syncs with the other TVs ten seconds after a local change and every ten minutes. Homefield TV syncs
