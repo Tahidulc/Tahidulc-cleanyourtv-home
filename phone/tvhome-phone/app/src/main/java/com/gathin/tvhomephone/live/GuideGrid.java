@@ -446,16 +446,13 @@ final class GuideGrid extends FrameLayout {
             return p;
         }
 
-        /** "09:30" for t into buf at at (the 24-hour clock); the index after it. No allocation (it runs while drawing). */
+        /**
+         * "09:30" (or "9.30am": Settings › Appearance › Programme times) for t into buf at at; the index after it. No
+         * allocation (it runs while drawing).
+         */
         int clock(long t, int at) {
             long mins = Math.floorMod(Math.floorDiv(t + tz.getOffset(t), 60_000L), 1440L);
-            int h = (int) (mins / 60), m = (int) (mins % 60);
-            buf[at++] = (char) ('0' + h / 10);
-            buf[at++] = (char) ('0' + h % 10);
-            buf[at++] = ':';
-            buf[at++] = (char) ('0' + m / 10);
-            buf[at++] = (char) ('0' + m % 10);
-            return at;
+            return Times.write(buf, at, (int) (mins / 60), (int) (mins % 60), Times.h24);
         }
 
         /** Writes s from x on the baseline y, cut with an ellipsis to fit max; the width written. */

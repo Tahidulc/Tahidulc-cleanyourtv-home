@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Opening on Live TV (MainActivity, LiveTvSettings). -->
+<!-- Where the app opens, as Homefield TV's Start on (MainActivity, LiveTvSettings, StartOn). -->
 <resources>
-    <string name="live82_open_live">Open on Live TV</string>
-    <string name="live82_open_live_line">The app opens straight on Live TV, on the channel you were last watching. Turn it off to open on Home. A notification or link still opens where it points.</string>
+    <string name="live82_open_live">Open on</string>
+    <string name="live82_open_live_line">Where the app opens from its icon, and when you come back to it after a minute away: Live TV goes on with the channel you were last watching; Home leaves it where it was. A notification or link still opens where it points.</string>
 </resources>

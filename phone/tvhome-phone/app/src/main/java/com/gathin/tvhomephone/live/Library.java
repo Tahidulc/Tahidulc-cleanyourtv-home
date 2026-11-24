@@ -58,6 +58,17 @@ public final class Library {
     /** Hidden by the channel itself (Hidden), not by its category (Groups): for Favourites and the Hidden sheet. */
     private volatile boolean[] ownHidden = new boolean[0];
     private volatile int visible;
+    /**
+     * The channels as the playlists give them (each the same in several playlists made one), before the family's own
+     * names and logos (ChannelEdits): channels is made from it, again whenever those change.
+     */
+    private volatile List<Channel> plain = Collections.emptyList();
+    /** One row per channel: each channel's versions by place, best first (null for one in a single version, or off). */
+    private volatile int[][] families = new int[0][];
+    /** Whether each channel is its channel's row in the lists (the version picked, else the best one shown). */
+    private volatile boolean[] rows = new boolean[0];
+    /** Each channel's name as By name sorts it: plain and lower case. */
+    private volatile String[] sortNames = new String[0];
     private volatile Map<String, Guide.Schedule> guide = Collections.emptyMap();
     private volatile ProgrammeSearch.Index programmes = ProgrammeSearch.Index.EMPTY;
     private volatile String fingerprint = "", guideUrl = "", status = "";
@@ -107,13 +118,63 @@ public final class Library {
      */
     public Channel resolve(String key) {
         Channel c = byKey(key);
-        if (c != null || key == null) return c;
+        if (c != null || key == null) return rowOf(c);
         List<Channel> ch = channels;
         for (Channel m : ch) {
             if (m.alternates.isEmpty()) continue;
-            for (Channel a : m.alternates) if (key.equals(a.key)) return m;
+            for (Channel a : m.alternates) if (key.equals(a.key)) return rowOf(m);
         }
         return null;
+    }
+
+    // ---- one row per channel (Versions, ChannelEdits) ------------------------------------------------------------
+
+    /** The versions of a channel shown as one row (its places, best first), or null: one version, or the setting off. */
+    private int[] familyAt(int i) {
+        int[][] f = families;
+        return i >= 0 && i < f.length ? f[i] : null;
+    }
+
+    /** The row a channel is shown as: itself, or the version of its channel the lists show (one row per channel). */
+    public Channel rowOf(Channel c) {
+        if (c == null) return null;
+        int[] fam = familyAt(position(c.key));
+        if (fam == null) return c;
+        boolean[] r = rows;
+        List<Channel> ch = channels;
+        for (int p : fam) if (p < r.length && r[p] && p < ch.size()) return ch.get(p);
+        return c;
+    }
+
+    /** A channel's versions, best first, as its Quality lists them (the channel alone when it comes in one). */
+    public List<Channel> versions(Channel c) {
+        List<Channel> out = new ArrayList<>();
+        if (c == null) return out;
+        int[] fam = familyAt(position(c.key));
+        List<Channel> ch = channels;
+        if (fam == null) {
+            out.add(c);
+            return out;
+        }
+        for (int p : fam) if (p < ch.size()) out.add(ch.get(p));
+        return out;
+    }
+
+    /** The keys of a channel's versions (its own first), for what is kept for the channel as a whole. */
+    public List<String> familyKeys(String key) {
+        List<String> out = new ArrayList<>(3);
+        if (key == null) return out;
+        out.add(key);
+        int[] fam = familyAt(position(key));
+        List<Channel> ch = channels;
+        if (fam != null) for (int p : fam) if (p < ch.size() && !ch.get(p).key.equals(key)) out.add(ch.get(p).key);
+        return out;
+    }
+
+    /** Whether the version is its channel's row now (shown and played: the one picked, else the best shown). */
+    private boolean rowAt(int i) {
+        boolean[] r = rows;
+        return i < 0 || i >= r.length || r[i];
     }
 
     public Guide.Schedule schedule(String key) { return guide.get(key); }
@@ -206,7 +267,8 @@ public final class Library {
         }
         Set<String> f = FAVOURITES.equals(group) ? favourites() : null;
         if (f != null) {
-            // Your channels in their own order (any not placed yet after, in the playlist's order).
+            // Your channels in their own order (any not placed yet after, in the playlist's order), each channel shown
+            // as one row once (a favourite on any of its versions is the channel's).
             List<Channel> placed = new ArrayList<>();
             java.util.HashSet<String> seen = new java.util.HashSet<>();
             for (String k : Picks.order(app)) {
@@ -214,21 +276,81 @@ public final class Library {
                 if (c != null && seen.add(k)) placed.add(c);
             }
             for (Channel c : ch) if (f.contains(c.key) && !seen.contains(c.key)) placed.add(c);
+            java.util.HashSet<String> rowsSeen = new java.util.HashSet<>();
             for (Channel c : placed) {
                 if (ownHiddenAt(c)) continue;
-                if (q.isEmpty() || Names.plain(c.name).toLowerCase(Locale.ROOT).contains(q)) out.add(c);
+                Channel r = rowOf(c);
+                if (r != c && ownHiddenAt(r) || !rowsSeen.add(r.key)) continue;
+                if (q.isEmpty() || Names.plain(r.name).toLowerCase(Locale.ROOT).contains(q)) out.add(r);
             }
             return out;
         }
         for (int i = 0; i < ch.size(); i++) {
             Channel c = ch.get(i);
             if (i < hid.length && hid[i]) continue;
-            if (f != null && !f.contains(c.key)) continue;
-            if (f == null && group != null && !group.isEmpty() && !group.equals(c.group)) continue;
+            if (!rowAt(i)) continue;
+            if (group != null && !group.isEmpty() && !group.equals(c.group)) continue;
             if (!q.isEmpty() && (i >= low.length || !low[i].contains(q))) continue;
             out.add(c);
         }
-        return out;
+        return sorted(out, group);
+    }
+
+    /**
+     * A category's channels (or all of them) in the order its Sort channels says, else Channels sorting's: as the
+     * playlist has them, by name, by number, or the family's own (Move channel; All channels: each category's, the
+     * categories as arranged).
+     */
+    private List<Channel> sorted(List<Channel> out, String group) {
+        boolean all = group == null || group.isEmpty();
+        int own = all ? -1 : Groups.sortOf(group);
+        int mode = own >= 0 ? own : ChannelEdits.sort(app);
+        if (mode == ChannelEdits.PLAYLIST || out.size() < 2) return out;
+        List<Channel> channels = this.channels;
+        String[] names = sortNames;
+        int n = channels.size();
+        if (names.length < n) return out;
+        Integer[] places = new Integer[out.size()];
+        for (int i = 0; i < places.length; i++) {
+            places[i] = position(out.get(i).key);
+            // Made again meanwhile: as they are.
+            if (places[i] < 0 || places[i] >= n || channels.get(places[i]) != out.get(i)) return out;
+        }
+        int[] numbers = null, manual = null;
+        if (mode == ChannelEdits.NUMBER) {
+            numbers = new int[n];
+            for (Integer p : places) if (p >= 0 && p < n) numbers[p] = number(channels.get(p));
+        } else if (mode == ChannelEdits.MANUAL) {
+            manual = new int[n];
+            java.util.Map<String, Integer> rank = new HashMap<>();
+            if (all) {
+                List<String> arranged = Groups.arranged(groups);
+                for (int i = 0; i < arranged.size(); i++) rank.put(arranged.get(i), i);
+            }
+            java.util.Map<String, java.util.Map<String, Integer>> at = new HashMap<>();
+            for (Integer p : places) {
+                if (p < 0 || p >= n) continue;
+                Channel c = channels.get(p);
+                java.util.Map<String, Integer> o = at.get(c.group);
+                if (o == null) {
+                    o = new HashMap<>();
+                    List<String> keys = ChannelEdits.order(app, c.group);
+                    for (int i = 0; i < keys.size(); i++) o.put(keys.get(i), i);
+                    at.put(c.group, o);
+                }
+                int place = 99_999;
+                for (String k : familyKeys(c.key)) {
+                    Integer i = o.get(k);
+                    if (i != null) place = Math.min(place, i);
+                }
+                Integer r = rank.get(c.group);
+                manual[p] = (all ? (r == null ? 9_999 : r) : 0) * 100_000 + place;
+            }
+        }
+        Integer[] order = ChannelEdits.sorted(places, mode, names, numbers, manual);
+        List<Channel> s = new ArrayList<>(order.length);
+        for (Integer p : order) s.add(channels.get(p));
+        return s;
     }
 
     // ---- finding a broadcaster's channel ----------------------------------------------------------------------------
@@ -283,7 +405,7 @@ public final class Library {
     public List<Channel> variants(Channel ch) {
         List<Channel> out = new ArrayList<>();
         if (ch == null) return out;
-        Names.Info mine = Names.info(ch.name, ch.group);
+        Names.Info mine = Names.info(ch.playlistName, ch.group);
         int[] idx = mine.key.isEmpty() ? null : byName.get(mine.key);
         Names.Info[] in = infos;
         boolean[] hid = hidden;
@@ -311,9 +433,9 @@ public final class Library {
         return out;
     }
 
-    /** A channel's picture quality as Names reads it (4 UHD … 0 SD). */
+    /** A channel's picture quality as Names reads it from the playlist's name (4 UHD … 0 SD). */
     static int level(Channel ch) {
-        return ch == null ? 1 : Names.info(ch.name, ch.group).quality;
+        return ch == null ? 1 : Names.info(ch.playlistName, ch.group).quality;
     }
 
     private static int[] toInts(java.util.List<Integer> l) {
@@ -376,11 +498,66 @@ public final class Library {
     private synchronized void remask() {
         boolean[] own = Hidden.mask(hideKeys, Hidden.keys(app));
         boolean[] m = withGroups(own, channels, Groups.hidden(app));
+        boolean[] r = rows(channels, families, m, ChannelEdits.state(app).picks);
         int n = 0;
-        for (boolean b : m) if (!b) n++;
+        for (int i = 0; i < m.length; i++) if (!m[i] && (i >= r.length || r[i])) n++;
         ownHidden = own;
         hidden = m;
+        rows = r;
         visible = n;
+    }
+
+    /** The Quality picked for a channel (ChannelEdits): its row again, the lists drawn again. */
+    void picksOfQualityChanged() {
+        remask();
+        matches.clear();
+        changed();
+    }
+
+    /** The family's names, logos or one row per channel changed (ChannelEdits): the channels made again from plain. */
+    void editsChanged() {
+        App.io.execute(() -> {
+            build();
+            reindex();
+            matches.clear();
+            changed();
+        });
+    }
+
+    /** Channels sorting, a category's Sort channels, or a channel moved: the lists again. */
+    void orderChanged() {
+        changed();
+    }
+
+    /**
+     * Pure: which channels are their channel's row (one row per channel): one in a single version always; of a channel's
+     * versions, the one picked (picks: a version's key to the picked one's key) when it isn't hidden, else the best one
+     * that isn't. hidden lines up with channels.
+     */
+    static boolean[] rows(List<Channel> ch, int[][] families, boolean[] hidden, Map<String, String> picks) {
+        int n = ch.size();
+        boolean[] r = new boolean[n];
+        java.util.Arrays.fill(r, true);
+        for (int i = 0; i < Math.min(n, families.length); i++) {
+            int[] fam = families[i];
+            if (fam == null || fam[0] != i && contains(fam, i) && fam[0] < i) continue;
+            if (fam[0] != i) continue;
+            int pick = -1;
+            for (int p : fam) {
+                r[p] = false;
+                String k = picks.get(ch.get(p).key);
+                if (k == null || pick >= 0) continue;
+                for (int q : fam) if (ch.get(q).key.equals(k) && !(q < hidden.length && hidden[q])) pick = q;
+            }
+            if (pick < 0) for (int p : fam) if (!(p < hidden.length && hidden[p])) { pick = p; break; }
+            if (pick >= 0) r[pick] = true;
+        }
+        return r;
+    }
+
+    private static boolean contains(int[] a, int v) {
+        for (int x : a) if (x == v) return true;
+        return false;
     }
 
     /** Pure: the hidden channels and, besides, those in a hidden category. */

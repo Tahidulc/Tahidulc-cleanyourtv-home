@@ -479,7 +479,10 @@ final class CategoryPanel extends FrameLayout {
         out.add(new String[]{all, Library.ALL});
         out.add(new String[]{recent, Library.RECENT});
         out.add(new String[]{sport, SportGuide.GROUP});
-        for (String g : Groups.order(playlist, hidden, favs)) out.add(new String[]{favs.contains(g) ? "★ " + g : g, g, "own"});
+        // In the family's own order when they keep one, under their own names (Groups: Manage categories).
+        for (String g : Groups.order(Groups.arranged(playlist), hidden, favs)) {
+            out.add(new String[]{favs.contains(g) ? "★ " + Groups.label(g) : Groups.label(g), g, "own"});
+        }
         return out;
     }
 

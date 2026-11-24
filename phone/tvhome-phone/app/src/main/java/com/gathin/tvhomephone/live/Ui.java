@@ -38,8 +38,6 @@ final class Ui {
             G_CELL = 0xFF1460C2, G_BLOCK = 0x00000000, G_NOW = 0x1AFFFFFF, G_PAST = 0x12FFFFFF, G_CHOSEN = 0x52FFFFFF,
             G_SELECT = 0xFFFFFFFF, G_INK = 0xFF0C3483, G_TIME = 0xD9FFFFFF, G_LINE = 0x40FFFFFF, RED = 0xFFFF3B55,
             STAR = 0xFFFFC93C, G_MENU = 0xFF0C3483;
-    /** Times as Sky's guide writes them: 7.00pm. */
-    private static final DateTimeFormatter HM = DateTimeFormatter.ofPattern("h.mma", Locale.UK);
     private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("EEE d MMM", Locale.UK);
 
     /** sp in pixels (the phone's text size setting included). */
@@ -90,9 +88,10 @@ final class Ui {
         return t;
     }
 
-    /** "7.00pm", as Sky's guide writes it. */
+    /** "19:00", or "7.00pm" as Sky's guide writes it: Settings › Appearance › Programme times (Times). */
     static String clock(long ms) {
-        return HM.format(Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault())).toLowerCase(Locale.UK);
+        java.time.ZonedDateTime t = Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault());
+        return Times.hm(t.getHour(), t.getMinute(), Times.h24);
     }
 
     /** "30m", "1h 05m": a programme's length as Sky gives it. */
@@ -101,7 +100,7 @@ final class Ui {
         return m >= 60 ? m / 60 + "h " + (m % 60 < 10 ? "0" : "") + m % 60 + "m" : m + "m";
     }
 
-    /** "7.00pm – 8.00pm". */
+    /** "19:00 – 20:00", or "7.00pm – 8.00pm". */
     static String range(long a, long b) {
         return clock(a) + " – " + clock(b);
     }
