@@ -110,8 +110,8 @@ wordmark are Homefield; it carries no Sky logo or name.
   now, or opens the small menu for one to come; OK held opens the whole menu.
 - **Live TV:** full screen, the picture alone. A channel changed to brings up the info card at the foot for the channel banner's
   seconds (Settings, Player; 6 as it comes), and INFO brings it up too: a card in the playback panel's colour with the
-  channel's logo and name, the programme's title, the date and the clock, its times with a bar and the minutes left,
-  the playlist and the group, chips for the picture and the sound as the player has them (FHD, 50 FPS, STEREO; the
+  channel's logo alone (as the guide's cells have it: no number or name, which talk-back says), the programme's title,
+  the date and the clock, its times with a bar and the minutes left, the playlist and the group, chips for the picture and the sound as the player has them (FHD, 50 FPS, STEREO; the
   frames a second as the stream says them, else counted from the frames it shows over a few seconds and taken to the
   usual rate: 24, 25, 30, 50 or 60, left out until they are known, and kept for each channel), two lines about it and
   what's next, and behind it all the programme's own picture filling the whole card (its faces whole, between the words

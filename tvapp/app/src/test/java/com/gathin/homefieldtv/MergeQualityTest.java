@@ -399,6 +399,14 @@ public class MergeQualityTest {
         assertEquals("e:2", Ladder.of(vs, vs.get(0), 2).stream().key);
     }
 
+    @Test public void theInfoCardShowsTheLogoAloneItsNumberSaidForTalkBack() {
+        // "I don't want channels numbers now": the card's left block is the logo alone; its number and name are said.
+        assertEquals("Channel 101, ITV 1", InfoCard.described(101, ChannelEdits.name(itv())));
+        assertEquals("ITV 1", InfoCard.described(0, "ITV 1"));
+        // Typed, any version's number still goes to the channel.
+        assertEquals("e:3", lib.numbered(103).key);
+    }
+
     private static void idle() {
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(400));
         shadowOf(Looper.getMainLooper()).idle();

@@ -37,8 +37,9 @@ import java.util.List;
  * material as before (Frost over the live picture).
  *
  * <pre>
- *   the channel        its logo on its tile (150 x 104, in its own colour: Logos) at (88, +40), its number (26 px, bold)
- *                      and its name (17 px) under it
+ *   the channel        its logo alone, as the guide's channel cells have it (ChannelLook.cell: 150 x 150 at (88, +40),
+ *                      in the logo's own colour); no number or name ("I don't want channels numbers now": the number
+ *                      and name are the card's content description, and the number keys still go to a channel)
  *   the kicker         the red LIVE badge (from the archive: the catch-up mark) and where the channel is from ("Home •
  *                      UK Entertainment"), 20 px
  *   the title          44 px bold, one line
@@ -57,7 +58,7 @@ import java.util.List;
  */
 final class InfoCard {
     static final float X = 48f, W = 1824f, H = 322f, FOOT_Y = 1080f - 40f - 322f, TOP_Y = 40f, RADIUS = 44f;
-    static final float LOGO_X = 88f, LOGO_W = 150f, LOGO_H = 104f, TEXT_X = 280f, TEXT_R = 1372f;
+    static final float LOGO_X = 88f, LOGO_W = 150f, LOGO_H = 104f, CELL_H = 150f, TEXT_X = 280f, TEXT_R = 1372f;
     /** What's next: its left, its width, its picture's height. */
     static final float NEXT_X = 1412f, NEXT_W = 420f, NEXT_H = 170f;
     /** The picture's cross-fade from one programme's to the next. */
@@ -84,10 +85,8 @@ final class InfoCard {
             nextShade = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG);
     private final TextPaint titleP = Type.paint(44f, Type.BOLD, Look07.L1), kickP = Type.paint(20f, Type.SEMIBOLD, Look07.L2);
     private final TextPaint metaP = Type.clock(21f, Type.MEDIUM, Look07.L2), descP = Type.paint(21f, Type.REGULAR, Look07.L2);
-    private final TextPaint numP = Type.clock(26f, Type.BOLD, Look07.L1), nameP = Type.paint(17f, Type.SEMIBOLD, Look07.L3);
     private final TextPaint chipP = Type.paint(16f, Type.BOLD, Look07.L1), nextLabelP = Type.label(Type.LABEL, Look07.L3);
     private final TextPaint nextTitleP = Type.paint(22f, Type.SEMIBOLD, Look07.L1), nextTimeP = Type.clock(18f, Type.MEDIUM, Look07.L3);
-    private final TextPaint logoP = Type.paint(Type.ITEM, Type.BOLD, Look07.L1);
     private final RectF r = new RectF();
     private final float[] lay = new float[PicFill.SIZE];
     /** Laid out once: what the programme is about (for descKey, at descWidth), and its lines' widest. */
@@ -107,7 +106,7 @@ final class InfoCard {
     private long picAt = -10_000L;
     private boolean fading;
     private final TextFit titles = new TextFit(titleP, 64), kicks = new TextFit(kickP, 64), metas = new TextFit(metaP, 64),
-            names = new TextFit(nameP, 64), nextTitles = new TextFit(nextTitleP, 64), chips = new TextFit(chipP, 32);
+            nextTitles = new TextFit(nextTitleP, 64), chips = new TextFit(chipP, 32);
 
     InfoCard(View owner) {
         this.owner = owner;
@@ -118,6 +117,24 @@ final class InfoCard {
         PicTile.shades(wordsShade, wordsFade, SHADE, SHADE_LEFT, SHADE_WORDS);
         nextShade.setShader(new LinearGradient(0, 0, 1, 0, new int[]{SHADE, SHADE_NEXT_IN << 24 | SHADE, SHADE_NEXT << 24 | SHADE},
                 new float[]{0f, 0.3f, 1f}, Shader.TileMode.CLAMP));
+    }
+
+    /** The channel the card is for, said for the TV's talk-back: its number and name (only when it changes). */
+    private void describe(Context ctx, Channel ch, String name) {
+        int n = Library.get(ctx).number(ch);
+        String said = described(n, name);
+        if (!said.equals(saidFor)) {
+            saidFor = said;
+            owner.setContentDescription(said);
+        }
+    }
+
+    private String saidFor = "";
+
+    /** Pure: the card's content description: "Channel 101, Riverside One" ("Riverside One" with no number). */
+    static String described(int number, String name) {
+        String n = name == null ? "" : name;
+        return number > 0 ? "Channel " + number + ", " + n : n;
     }
 
     /**
@@ -185,7 +202,6 @@ final class InfoCard {
         kickP.setColor(words);
         metaP.setColor(words);
         descP.setColor(onPicture ? ON_PICTURE_QUIET : Look07.L2);
-        nameP.setColor(quiet);
         nextLabelP.setColor(onPicture ? ON_PICTURE_QUIET : Look07.L3);
         nextTimeP.setColor(quiet);
 
@@ -214,22 +230,12 @@ final class InfoCard {
             shade(c, end, faces, shown);
         }
 
-        // The channel: its logo on its tile, its number and name under it.
+        // The channel: its logo alone, as the guide's logo-only cells (no number, no name: they are the content description).
         float lx = Ui.f(LOGO_X), ly = Ui.f(top + 40f);
         RectF lr = r;
-        lr.set(lx, ly, lx + Ui.f(LOGO_W), ly + Ui.f(LOGO_H));
-        if (!Logos.draw(c, ch, lr, redraw)) {
-            String in = initials(name);
-            c.drawText(in, lr.centerX() - logoP.measureText(in) / 2f, Type.centred(logoP, lr.centerY()), logoP);
-        }
-        float mid = Ui.f(LOGO_X + LOGO_W / 2f);
-        int n = Library.get(ctx).number(ch);
-        if (n > 0) {
-            String num = Words.number(n);
-            c.drawText(num, mid - numP.measureText(num) / 2f, Ui.f(top + 183f), numP);
-        }
-        float nw = Math.min(names.width(name), Ui.f(LOGO_W + 60f));
-        names.line(c, name, mid - nw / 2f, Ui.f(top + 207f), Ui.f(LOGO_W + 60f));
+        lr.set(lx, ly, lx + Ui.f(LOGO_W), ly + Ui.f(CELL_H));
+        ChannelLook.cell(c, lr, Ui.f(Look07.R_CHANNEL), ch, 0f, 0, "", false, redraw);
+        describe(ctx, ch, name);
 
         // The kicker: LIVE (or the archive's mark) and where the channel is from.
         float x0 = Ui.f(TEXT_X), right = wordsRight, kcy = Ui.f(top + 55f), x = x0;
@@ -463,17 +469,6 @@ final class InfoCard {
         String id = PlayerPrefs.playlistOf(ch.key);
         for (Sources.Entry e : Sources.list(ctx)) if (e.id.equals(id)) return e.name;
         return "";
-    }
-
-    /** A logo's stand-in: the name's first letters ("Kestrel Sports 1" as "KS1"). */
-    private static String initials(String name) {
-        StringBuilder b = new StringBuilder();
-        for (String w : name.trim().split("\\s+")) {
-            if (w.isEmpty()) continue;
-            b.append(Character.toUpperCase(w.charAt(0)));
-            if (b.length() >= 4) break;
-        }
-        return b.toString();
     }
 
     /** Lines of text in a width, at most max, an ellipsis on the last; spacing the line height over the size. */
