@@ -404,13 +404,21 @@ wordmark are Homefield; it carries no Sky logo or name.
   title's TMDB logo (or its name in big lettering), a line of facts (★ rating, the years it ran, its age, its seasons
   or running time, the picture and sound marks, TorBox's cloud), then the red Play pill (Resume, or Resume S2 E4, and
   From the start where it was left part-way) and grey buttons: My List (a tick once on it), a film's trailer and, once
-  something was started, taking it off Continue watching. A series then has its seasons as the phone has them: the
-  season pills, the white one under the season the remote is in, over one row of every season's episodes, the trailer
-  first; Left and Right go along the episodes and the pill follows into the next season, or along the pills and the
-  row jumps to that season's first episode. The episode the remote is on grows and shows its name. Down from there the
-  page rises: Overview and Genres side by side, the cast as round photos with the parts they play (OK searches for
-  someone), and More like this, the poster the remote is on lifted. TMDB's logo, cast photos and seasons' posters come
-  with the key the TV launcher hands over (kept in memory only), and are kept on this TV for a fortnight.
+  something was started, taking it off Continue watching. A series then has its seasons and episodes as the family's
+  recording of a series page has them: the season tabs and the first episodes peek in under the buttons, and Down from
+  there the page rises to the series section, dark, the picture behind faded right down: the show's title art (TMDB's
+  logo, or its name in big lettering) in the middle at the top, the season tabs under it ("Season 1  Season 2  Season
+  3", the season in view bold and white, a white pill behind it while the remote is on the tabs), then ONE row of every
+  season's episodes, each a 16:9 still with rounded corners (a thin white line on it as far as it was watched, UP NEXT on
+  the one to carry on with) and under it "S2 E1" small and quiet, its name, two lines of its story and "58m  16 Jun
+  2024". The episode the remote is on lifts and its words sit on a frosted rounded panel; Left and Right go along the
+  episodes and the tab changes by itself as the row goes into the next season, or along the tabs and the row jumps to
+  that season's first episode; OK on an episode plays it. Under them a Videos row: TMDB's trailers, teasers and extras on
+  YouTube as 16:9 stills with their kind on a small badge at the top left (OK opens one in the TV's YouTube app). Down
+  from there the page rises again: Overview and Genres side by side, the cast as round photos with the parts they play
+  (OK searches for someone), and More like this, the poster the remote is on lifted. TMDB's logo, cast photos, seasons'
+  posters and videos come with the key the TV launcher hands over (kept in memory only), and are kept on this TV for a
+  fortnight.
 
 - **The cover (Play):** Play on a film's page (and From the start, and an episode chosen) opens its cover, the
   family's cover B: on the left the poster (an episode's show's), popping in from a little smaller with a slight

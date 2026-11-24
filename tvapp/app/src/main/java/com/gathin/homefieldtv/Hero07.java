@@ -330,6 +330,14 @@ final class Hero07 {
             return p.getTextSize() * 1.02f;
         }
 
+        /** How wide it is as drawn now: the logo's own width, else the name's (the box's while the logo is read). */
+        float width(Runnable ready) {
+            Bitmap b = logo(ready);
+            if (b != null) return b.getWidth();
+            if (waiting(ready)) return w;
+            return p.measureText(shown);
+        }
+
         /** Drawn with its top left at (x, top), at an opacity. */
         void draw(Canvas c, float x, float top, int alpha, Runnable ready) {
             Bitmap b = logo(ready);

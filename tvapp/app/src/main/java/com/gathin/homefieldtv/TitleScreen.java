@@ -26,7 +26,9 @@ import java.util.List;
  * first (VodActivity's CoverPage); Resume carries on straight away from the copy it was started on. TMDB's logo, cast and seasons' colours come
  * when it has answered (kept on the TV after, so the page has them at once next time). With Home style Editorial the
  * buttons are a menu down the left, as the family's other film app has them: Play (or Resume), Trailer, More episodes
- * (a series: down to its episodes), Add to My List, More like this (down to it).
+ * (a series: down to its episodes), Add to My List, More like this (down to it). A series' seasons, episodes and Videos
+ * row are its page's series section (TitlePage): OK on an episode plays it here as before; OK on a video opens it in
+ * the TV's YouTube app, as the trailer button does.
  */
 final class TitleScreen extends Screen implements TitlePage.Host {
     private Catalog.Title title;
@@ -266,6 +268,11 @@ final class TitleScreen extends Screen implements TitlePage.Host {
 
     @Override public void trailer() {
         String id = trailerId(details == null ? "" : details.trailer);
+        if (!id.isEmpty()) trailer(id);
+    }
+
+    @Override public void video(String key) {
+        String id = trailerId(key);
         if (!id.isEmpty()) trailer(id);
     }
 

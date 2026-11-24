@@ -333,19 +333,30 @@ public final class Tmdb {
 
     /**
      * What a title's page shows from TMDB beyond its playlist's page: its logo ("" for none), its cast as {name, the part
-     * they play, their photo}, its seasons' posters by number, its years ("2011–2019") and its age rating ("15").
+     * they play, their photo}, its seasons' posters by number, its years ("2011–2019"), its age rating ("15") and its
+     * videos on YouTube (a series' Videos row, the trailer in a poster). Kept from before videos were (old): asked again.
      */
     public static final class Extras {
         public final String logo, years, age;
         public final List<String[]> cast;
         public final Map<Integer, String> seasons;
+        public final List<Videos.Video> videos;
+        /** Kept on this TV before its videos were kept too: TMDB is asked again for them when it can be. */
+        public final boolean old;
 
         Extras(String logo, List<String[]> cast, Map<Integer, String> seasons, String years, String age) {
+            this(logo, cast, seasons, years, age, null, false);
+        }
+
+        public Extras(String logo, List<String[]> cast, Map<Integer, String> seasons, String years, String age, List<Videos.Video> videos,
+                      boolean old) {
             this.logo = logo == null ? "" : logo;
             this.cast = Collections.unmodifiableList(cast == null ? new ArrayList<>() : cast);
             this.seasons = Collections.unmodifiableMap(seasons == null ? new HashMap<>() : seasons);
             this.years = years == null ? "" : years;
             this.age = age == null ? "" : age;
+            this.videos = Collections.unmodifiableList(videos == null ? new ArrayList<>() : videos);
+            this.old = old;
         }
     }
 
@@ -363,15 +374,16 @@ public final class Tmdb {
         if (m.id <= 0) return NO_EXTRAS;
         File f = file(c, "x|" + (t.series ? "tv" : "movie") + "|" + m.id);
         JSONObject had = read(f);
-        if (had != null && System.currentTimeMillis() - had.optLong("_at") < KEEP_MS) return fromKept(had);
+        if (had != null && System.currentTimeMillis() - had.optLong("_at") < KEEP_MS && had.has("vids")) return fromKept(had);
         String k = key(c);
         if (k == null) return had == null ? null : fromKept(had);
         try {
-            // Logos in the family's language too (English and those with no words as before).
+            // Logos and videos in the family's language too (English and those with no words as before).
             String family = com.gathin.homefieldtv.prefs.PlayerPrefs.languages(c).get(0);
             String langs = family.isEmpty() || family.equals("en") ? "en,null" : enc(family) + ",en,null";
-            JSONObject j = get(k, (t.series ? "tv/" : "movie/") + m.id + "?append_to_response=credits,images,"
-                    + (t.series ? "content_ratings" : "release_dates") + "&include_image_language=" + langs);
+            JSONObject j = get(k, (t.series ? "tv/" : "movie/") + m.id + "?append_to_response=credits,images,videos,"
+                    + (t.series ? "content_ratings" : "release_dates") + "&include_image_language=" + langs
+                    + "&include_video_language=" + langs);
             Extras x = extrasOf(j, t.series, family);
             write(f, kept(x).toString());
             return x;
@@ -471,7 +483,19 @@ public final class Tmdb {
                 }
             }
         }
-        return new Extras(logo, cast, seasons, years, age);
+        return new Extras(logo, cast, seasons, years, age, Videos.parse(j.optJSONObject("videos")), false);
+    }
+
+    /** The family's language (the TV's), as TMDB writes one ("en"). */
+    public static String language() {
+        String l = Locale.getDefault().getLanguage();
+        return l == null || l.isEmpty() ? "en" : l.toLowerCase(Locale.ROOT);
+    }
+
+    /** The videos asked for: the family's language, English, and those with none given. */
+    static String videoLanguages() {
+        String l = language();
+        return (l.equals("en") ? "en" : l + ",en") + ",null";
     }
 
     private static String year(String date) {
@@ -488,6 +512,7 @@ public final class Tmdb {
         JSONObject seasons = new JSONObject();
         for (Map.Entry<Integer, String> e : x.seasons.entrySet()) seasons.put(String.valueOf(e.getKey()), e.getValue());
         o.put("seasons", seasons);
+        o.put("vids", Videos.kept(x.videos));
         return o;
     }
 
@@ -511,7 +536,8 @@ public final class Tmdb {
                 }
             }
         }
-        return new Extras(o.optString("logo", ""), cast, seasons, o.optString("years", ""), o.optString("age", ""));
+        return new Extras(o.optString("logo", ""), cast, seasons, o.optString("years", ""), o.optString("age", ""),
+                Videos.fromKept(o.optJSONArray("vids")), !o.has("vids"));
     }
 
     // ---- asking, and keeping ------------------------------------------------------------------------------------

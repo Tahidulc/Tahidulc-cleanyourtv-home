@@ -16,6 +16,7 @@ import android.view.View;
 
 import com.gathin.homefieldtv.engine.Catalog;
 import com.gathin.homefieldtv.engine.Tmdb;
+import com.gathin.homefieldtv.engine.Videos;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -26,14 +27,23 @@ import java.util.Locale;
  * px): the page in the title's own colour (its picture's, made deep; a series' its season's, cross-fading as the season
  * changes), its picture across the right fading into that colour, a glow of it at the foot. On the left its logo (TMDB's)
  * or name, its facts, story and credits, then its buttons: Resume (or Play) white with the minutes left after it, From
- * the Start, then round ones for My List (a tick once on it), the trailer and Remove from Continue watching. A series
- * then has the phone's season pills over one row of every episode of every season (Card07s that lift and tilt, the
- * remote's kept third, its story under it; watched ones ticked, UP NEXT on the one to carry on with, a line between
- * seasons); the white pill slides with the remote into the next season and the page turns that season's colour. Further
+ * the Start, then round ones for My List (a tick once on it), the trailer and Remove from Continue watching. With Home
+ * style Editorial (vertical) the buttons are a menu down the left instead, four lines in sight, Up and Down along it.
+ *
+ * <p>A series then has its seasons and episodes as the family's screen recording of a series page shows them ("when I'm
+ * in the series section on a programme and scrolling through seasons and channels, make it look like this"), in
+ * Homefield's own type and 07's materials: the season tabs and the first episodes peek in under the buttons, and Down
+ * from them the page rises to the series section, dark, the picture behind faded right down: the show's title art (its
+ * TMDB logo, or its name in big lettering) in the middle at the top; under it the season tabs ("Season 1  Season 2
+ * Season 3", the season in view bold and white, a white pill behind it while the remote is on the tabs); under them ONE
+ * row of every season's episodes, each a 16:9 still with rounded corners (a thin white line on it as far as it was
+ * watched, UP NEXT on the one to carry on with) and under it "S2 E1" small and quiet, its name, two lines of its story
+ * and "58m  16 Jun 2024". The episode the remote is on lifts (Card07) and its words sit on a frosted rounded panel; as
+ * the row goes on into the next season's episodes the tab follows by itself, and Left or Right on the tabs jumps the row
+ * to that season's first episode. Under them a Videos row: its trailers, teasers and extras on YouTube (TMDB's) as 16:9
+ * stills with their kind on a small badge at the top left (OK: in the TV's YouTube app, as the trailer button). Further
  * down the page rises to About, its genres, the cast's faces and More like this; a film has its cast and More like this
- * under its buttons. With Home style Editorial (vertical) the buttons are a menu down the left instead, four lines in sight,
- * Up and Down along it, the rest of the page further down. Every move glides; only what is in sight is drawn; nothing
- * is made while drawing.
+ * under its buttons. Every move glides; only what is in sight is drawn; nothing is made while drawing.
  */
 final class TitlePage extends View {
     interface Host {
@@ -42,6 +52,9 @@ final class TitlePage extends View {
 
         /** The trailer (a series' has it among the buttons too). */
         void trailer();
+
+        /** One of a series' videos (its YouTube key), from the Videos row. */
+        void video(String key);
 
         /** A poster in More like this. */
         void open(Catalog.Title t);
@@ -85,14 +98,25 @@ final class TitlePage extends View {
 
     /** The buttons' icons (EPS: More episodes, LIKE: More like this, in the menu down the left). */
     static final int PLAY = 0, PLUS = 1, TICK = 2, RESTART = 3, TRAILER = 4, BIN = 5, EPS = 6, LIKE = 7;
-    /** The parts the remote moves through, top to bottom. */
-    static final int BUTTONS = 0, SEASONS = 1, EPISODES = 2, CAST = 3, MORE = 4;
+    /** The parts the remote moves through, top to bottom (VIDEOS: a series' trailers and extras). */
+    static final int BUTTONS = 0, SEASONS = 1, EPISODES = 2, VIDEOS = 3, CAST = 4, MORE = 5;
 
     /** Places (design px; the mock-ups' .tp-*). */
     static final float LEFT = 90f, LOGO_TOP = 150f, LOGO_W = 620f, LOGO_H = 170f, FACTS_Y = 353.3f, STORY_TOP = 386f, STORY_W = 920f,
-            CREDITS_TOP = 492f, BUTTONS_Y = 575f, PILLS_Y = 678f, PILL_H = 56f, EP_TOP = 730f, EP_W = 384f, EP_H = 216f,
-            EP_GAP = 40f, SEASON_GAP = 44f, ART_X = 420f, ART_W = 1500f, ART_H = 844f, FACE = 140f, FACE_STEP = 200f,
+            CREDITS_TOP = 492f, BUTTONS_Y = 575f, ART_X = 420f, ART_W = 1500f, ART_H = 844f, FACE = 140f, FACE_STEP = 200f,
             MORE_W = 196f, MORE_H = 294f, MORE_STEP = 222f, LOWER = 1080f;
+    /**
+     * A series' section (design px from its top, which is SECTION down the page: the page rises that far to it): the
+     * title art's foot, box and the room it has; the tabs' middle, height and the room either side of each tab's word; the
+     * episodes' stills (16:9), their step along the row, the gap to their words, the words' room inside the panel and the
+     * panel's height; the Videos row's heading and its stills. What is under it (About, the cast, More like this) starts
+     * LOWER further down.
+     */
+    static final float SECTION = 438f, ART_FOOT = 214f, ART_BOX_W = 560f, ART_BOX_H = 120f, TABS_Y = 262f, TAB_H = 50f, TAB_PAD = 24f,
+            EP_TOP = 312f, EP_W = 400f, EP_H = 225f, EP_STEP = 432f, WORDS_GAP = 10f, PAD = 16f, PANEL_H = 160f, VIDEOS_TOP = 750f,
+            VID_W = 320f, VID_H = 180f, VID_STEP = 344f;
+    /** How much the remote's episode's words (and their panel) grow as it lifts. */
+    static final float WORDS_GROW = 0.05f;
     /**
      * The menu down the left (Home style Editorial, as the family's other film app has it): its first line's top, a
      * line's step, height, width and corners; four lines in sight at a time; what is under it moved down by MENU_SHIFT.
@@ -109,22 +133,24 @@ final class TitlePage extends View {
     private final List<Button> buttons = new ArrayList<>();
     private final List<Catalog.Episode> episodes = new ArrayList<>();
     private final List<Catalog.Title> more = new ArrayList<>();
+    /** A series' videos (its Videos row), from TMDB's extras. */
+    private final List<Videos.Video> videos = new ArrayList<>();
     private final List<String[]> cast = new ArrayList<>();
     /** Each season's number and its first episode's place in the row. */
     private final List<int[]> seasons = new ArrayList<>();
     private String resumeId = "", backdrop = "";
     private int resumeAt = -1;
 
-    private int part = BUTTONS, buttonAt, epAt, castAt, moreAt, seasonAt;
+    private int part = BUTTONS, buttonAt, epAt, castAt, moreAt, seasonAt, vidAt;
     /** The buttons as a menu down the left (Home style Editorial), and where the menu has slid to (design px). */
     private boolean vertical;
     private final Glide menuY = new Glide(ROW_MS);
     /** Whether the page has the remote (false while it is up on the tab bar: nothing lifted). */
     private boolean active = true;
     private final Glide page = new Glide(PAGE_MS), epX = new Glide(ROW_MS), castX = new Glide(ROW_MS), moreX = new Glide(ROW_MS),
-            pillL = new Glide(PILL_MS), pillR = new Glide(PILL_MS);
+            vidX = new Glide(ROW_MS), pillL = new Glide(PILL_MS), pillR = new Glide(PILL_MS);
     private final Lift07 lift = new Lift07(), buttonLift = new Lift07();
-    private final Card07 epCards = new Card07(Look07.R_CARD), moreCards = new Card07(Look07.R_POSTER);
+    private final Card07 epCards = new Card07(Look07.R_CARD), moreCards = new Card07(Look07.R_POSTER), vidCards = new Card07(Look07.R_CARD);
     private final Card07.Marks marks = new Card07.Marks();
     /** The page's colour: its ground, and the fades of it over the picture (made when the colour is given). */
     private final Cine.Wash wash = new Cine.Wash();
@@ -134,22 +160,25 @@ final class TitlePage extends View {
     private int[] seasonTint = new int[0];
 
     // ---- words, laid out in set(), never while drawing --------------------------------------------------------------
-    private final Hero07.Mark mark = new Hero07.Mark(64f);
+    private final Hero07.Mark mark = new Hero07.Mark(64f), sectionMark = new Hero07.Mark(60f);
     private final Hero07.Facts facts = new Hero07.Facts();
-    private final TextPaint factsP, storyP, creditsP, pillP, pillInk, metaP, capP, capSub, aboutP, headP, sideHead, sideP,
-            faceName, faceRole, moreName, moreSub, upNextP, initialsP, menuP, menuAfter;
+    private final TextPaint factsP, storyP, creditsP, tabP, tabQuiet, tabInk, codeP, epNameP, epStoryP, epFactsP, badgeP, aboutP, headP,
+            sideHead, sideP, faceName, faceRole, moreName, moreSub, upNextP, initialsP, menuP, menuAfter;
     private StaticLayout story, credits, about;
-    private final Paint ground = new Paint(), art = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG),
+    private final Paint ground = new Paint(), scrim = new Paint(), art = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG),
             darkLeft = new Paint(Paint.DITHER_FLAG), darkFoot = new Paint(Paint.DITHER_FLAG), white = Ui.fill(Look07.L1),
-            fill = new Paint(Paint.ANTI_ALIAS_FLAG), ring = new Paint(Paint.ANTI_ALIAS_FLAG), line = Ui.fill(0x33FFFFFF),
+            fill = new Paint(Paint.ANTI_ALIAS_FLAG), ring = new Paint(Paint.ANTI_ALIAS_FLAG),
             faceP = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private final Shaders shaders = new Shaders();
     private String[] seasonWords = new String[0];
     private float[] seasonX = new float[0], seasonW = new float[0];
     private String meta = "";
-    private String[] epTitles = new String[0], epSubs = new String[0];
-    private final StaticLayout[] epStories = new StaticLayout[3];
-    private final int[] epStoryFor = {-1, -1, -1};
+    /** Each episode's words: "S2 E1", its name (cut to the panel), "58m  16 Jun 2024"; its story laid out as it comes near. */
+    private String[] epCodes = new String[0], epNames = new String[0], epFacts = new String[0], vidNames = new String[0];
+    /** How many episodes' stories are kept laid out (those in sight and either side). */
+    static final int STORIES = 16;
+    private final StaticLayout[] epStories = new StaticLayout[STORIES];
+    private final int[] epStoryFor = new int[STORIES];
     private String genresWords = "", onWords = "";
     private String[] castNames = new String[0], castParts = new String[0], castInitials = new String[0];
     private int[] castColours = new int[0];
@@ -165,11 +194,15 @@ final class TitlePage extends View {
         factsP = Type.paint(22f, Type.MEDIUM, Look07.L2);
         storyP = Type.paint(22f, Type.REGULAR, Look07.L2);
         creditsP = Type.paint(19f, Type.REGULAR, Look07.L3);
-        pillP = Type.paint(22f, Type.SEMIBOLD, Look07.L2);
-        pillInk = Type.paint(22f, Type.SEMIBOLD, Look07.INK);
-        metaP = Type.paint(19f, Type.MEDIUM, Look07.L3);
-        capP = Type.paint(21f, Type.SEMIBOLD, Look07.L2);
-        capSub = Type.paint(17f, Type.MEDIUM, Look07.L3);
+        tabP = Type.paint(25f, Type.BOLD, Look07.L1);
+        tabQuiet = Type.paint(25f, Type.SEMIBOLD, Look07.L3);
+        tabInk = Type.paint(25f, Type.BOLD, Look07.INK);
+        codeP = Type.paint(17f, Type.MEDIUM, Look07.L3);
+        epNameP = Type.paint(22f, Type.SEMIBOLD, Look07.L1);
+        epStoryP = Type.paint(18f, Type.REGULAR, Look07.L3);
+        epFactsP = Type.paint(17f, Type.MEDIUM, Look07.L3);
+        badgeP = Type.paint(14f, Type.EXTRABOLD, Look07.L1);
+        badgeP.setLetterSpacing(0.06f);
         aboutP = Type.paint(23f, Type.REGULAR, Look07.L2);
         headP = Type.paint(Type.H3, Type.BOLD, Look07.L1);
         sideHead = Type.paint(26f, Type.BOLD, Look07.L1);
@@ -186,6 +219,8 @@ final class TitlePage extends View {
         Shadows.prepare(Look07.SH_BUTTON, MENU_R);
         ring.setStyle(Paint.Style.STROKE);
         ground.setColor(Look07.GROUND);
+        scrim.setColor(0xFF000000);
+        java.util.Arrays.fill(epStoryFor, -1);
         Shadows.prepare(Look07.SH_BUTTON, 35f);
         Shadows.prepare(Look07.SH_TILE, FACE / 2f);
         Shadows.prepare(Look07.SH_ROW, FACE / 2f);
@@ -227,17 +262,27 @@ final class TitlePage extends View {
         }
         int n = episodes.size();
         resumeAt = -1;
-        epTitles = new String[n];
-        epSubs = new String[n];
+        epCodes = new String[n];
+        epNames = new String[n];
+        epFacts = new String[n];
+        float room = Ui.f(EP_W - 2 * PAD);
         for (int i = 0; i < n; i++) {
             Catalog.Episode e = episodes.get(i);
             if (e.id.equals(resumeId)) resumeAt = i;
-            epTitles[i] = Ui.fit("S" + e.season + " E" + e.number + " · " + (e.title.isEmpty() ? "Episode " + e.number : e.title), capP,
-                    Ui.f(EP_W - 8f));
-            String when = episodeDay(e.aired);
-            epSubs[i] = (e.minutes > 0 ? e.minutes + " min" : "") + (e.minutes > 0 && !when.isEmpty() ? " · " : "") + when;
+            epCodes[i] = "S" + e.season + " E" + e.number;
+            epNames[i] = Ui.fit(e.title.isEmpty() ? "Episode " + e.number : e.title, epNameP, room);
+            epFacts[i] = episodeLine(e.minutes, e.aired);
         }
-        for (int i = 0; i < epStoryFor.length; i++) epStoryFor[i] = -1;
+        java.util.Arrays.fill(epStoryFor, -1);
+        // Its videos (TMDB's, with its extras): trailers first, the family's language first.
+        videos.clear();
+        if (t.series && extras != null) videos.addAll(Videos.row(extras.videos, Tmdb.language()));
+        vidNames = new String[videos.size()];
+        for (int i = 0; i < videos.size(); i++) {
+            Videos.Video v = videos.get(i);
+            vidNames[i] = Ui.fit(v.name.isEmpty() ? v.badge() : v.name, moreName, Ui.f(VID_W - 8f));
+        }
+        vidAt = Math.min(vidAt, Math.max(0, videos.size() - 1));
         seasonWords = new String[seasons.size()];
         for (int i = 0; i < seasons.size(); i++) seasonWords[i] = "Season " + seasons.get(i)[0];
         seasonTint = new int[seasons.size()];
@@ -252,7 +297,9 @@ final class TitlePage extends View {
             menuY.jump(0f);
             castX.jump(0f);
             moreX.jump(0f);
+            vidX.jump(0f);
             moreAt = 0;
+            vidAt = 0;
         }
         epAt = Math.min(epAt, Math.max(0, n - 1));
         epX.jump(epTarget());
@@ -296,6 +343,7 @@ final class TitlePage extends View {
         Catalog.Title t = title;
         Catalog.Details d = details;
         mark.set(t.name, extras == null ? "" : extras.logo, Ui.f(LOGO_W), Ui.f(t.series ? LOGO_H : 120f), Ui.f(1000f));
+        sectionMark.set(t.name, extras == null ? "" : extras.logo, Ui.f(ART_BOX_W), Ui.f(ART_BOX_H), Ui.f(1500f));
         facts.set(t, d, extras, 3);
         String plot = d != null && !d.plot.isEmpty() ? d.plot : t.plot;
         story = plot.isEmpty() ? null : Hero07.lines(plot, storyP, Ui.px(STORY_W), 3, Ui.f(22f * 1.45f));
@@ -313,13 +361,13 @@ final class TitlePage extends View {
             on.append(" · ").append(Ui.duration(d.minutes));
         }
         onWords = on.toString();
-        // The season pills: each 26 px either side of its words, side by side.
+        // The season tabs: each TAB_PAD either side of its words (as wide as in bold), side by side.
         seasonX = new float[seasonWords.length];
         seasonW = new float[seasonWords.length];
         float x = 0;
         for (int i = 0; i < seasonWords.length; i++) {
             seasonX[i] = x;
-            seasonW[i] = pillP.measureText(seasonWords[i]) + Ui.f(52f);
+            seasonW[i] = tabP.measureText(seasonWords[i]) + Ui.f(2 * TAB_PAD);
             x += seasonW[i];
         }
         if (seasonWords.length > 0) {
@@ -439,6 +487,8 @@ final class TitlePage extends View {
                 return seasons.size() > 1;
             case EPISODES:
                 return rowSize() > 0;
+            case VIDEOS:
+                return lowerPage() && !videos.isEmpty();
             case CAST:
                 return !cast.isEmpty();
             default:
@@ -451,12 +501,21 @@ final class TitlePage extends View {
         return title != null && title.series && rowSize() > 0;
     }
 
-    /** How far the page has risen for the part the remote is on. */
+    /**
+     * How far the page has risen for the part the remote is on: a series' section (its seasons, episodes and videos)
+     * to the top of the screen, what is under it a screen further.
+     */
     private float pageTarget() {
         // With the menu down the left, what is under the buttons starts lower: the page rises as much more for it.
         float shift = part == BUTTONS ? 0f : menuShift();
-        if (lowerPage()) return (part >= CAST ? LOWER : 0f) + shift;
+        if (lowerPage()) return part == BUTTONS ? 0f : SECTION + (part >= CAST ? LOWER : 0f) + shift;
         return (part == MORE ? 450f : 0f) + shift;
+    }
+
+    /** How far into a series' section the page has risen (0 on the buttons, 1 there and further down). */
+    private float into() {
+        if (!lowerPage()) return 0f;
+        return Math.max(0f, Math.min(1f, page.value() / (SECTION + menuShift())));
     }
 
     private float menuShift() {
@@ -481,14 +540,23 @@ final class TitlePage extends View {
         settle();
     }
 
-    /** An episode's place in the row (design px from its start): a season's first a little further on (its line). */
-    private float epPlace(int i) {
-        return i * (EP_W + EP_GAP) + seasonOf(i) * SEASON_GAP;
+    /** An episode's place in the row (design px from its start): one row, every season's after the one before. */
+    private static float epPlace(int i) {
+        return i * EP_STEP;
     }
 
-    /** The episode row's offset: the remote's episode kept third from the left (the first ones from the start). */
+    /**
+     * The episode row's offset: the remote's episode kept second from the left, the one before it peeking in at the
+     * screen's edge (the first from the start; the last ones with the row's end at the right margin).
+     */
     private float epTarget() {
-        return Math.max(0f, epPlace(epAt) - 2 * (EP_W + EP_GAP));
+        float max = Math.max(0f, rowSize() * EP_STEP - (EP_STEP - EP_W) - (1920f - 2 * LEFT));
+        return Math.max(0f, Math.min(max, epPlace(epAt) - EP_STEP));
+    }
+
+    private float vidTarget() {
+        float max = Math.max(0f, videos.size() * VID_STEP - (VID_STEP - VID_W) - (1920f - 2 * LEFT));
+        return Math.max(0f, Math.min(max, (vidAt - 2) * VID_STEP));
     }
 
     private float castTarget() {
@@ -583,8 +651,11 @@ final class TitlePage extends View {
                 break;
             case EPISODES:
                 epAt = Math.max(0, Math.min(rowSize() - 1, epAt + dir));
-                // The pills follow the row.
+                // The tabs follow the row.
                 if (!seasons.isEmpty()) seasonAt = seasonOf(epAt);
+                break;
+            case VIDEOS:
+                vidAt = Math.max(0, Math.min(videos.size() - 1, vidAt + dir));
                 break;
             case CAST:
                 castAt = Math.max(0, Math.min(cast.size() - 1, castAt + dir));
@@ -603,26 +674,50 @@ final class TitlePage extends View {
         epX.to(epTarget());
         castX.to(castTarget());
         moreX.to(moreTarget());
+        vidX.to(vidTarget());
         if (seasonWords.length > 0) {
+            // The white pill glides along the tabs while the remote is on them; it waits under the season in view.
             int s = Math.min(seasonAt, seasonX.length - 1);
-            pillL.to(seasonX[s]);
-            pillR.to(seasonX[s] + seasonW[s]);
+            if (part == SEASONS) {
+                pillL.to(seasonX[s]);
+                pillR.to(seasonX[s] + seasonW[s]);
+            } else {
+                pillL.jump(seasonX[s]);
+                pillR.jump(seasonX[s] + seasonW[s]);
+            }
         }
-        storyOf(epAt);
+        storiesNear();
         toColour(target(), false);
         readAhead();
         invalidate();
     }
 
-    /** The story the episode the remote is on shows under it, laid out once (the last three kept). */
+    /** An episode's two lines of story, laid out once (STORIES kept: those in sight and either side). */
     private StaticLayout storyOf(int i) {
-        for (int k = 0; k < epStoryFor.length; k++) if (epStoryFor[k] == i) return epStories[k];
+        int slot = Math.floorMod(i, STORIES);
+        if (epStoryFor[slot] == i) return epStories[slot];
         Catalog.Episode e = episode(i);
         if (e == null) return null;
-        int slot = Math.floorMod(i, epStoryFor.length);
         epStoryFor[slot] = i;
-        epStories[slot] = e.plot.isEmpty() ? null : Hero07.lines(e.plot, capSub, Ui.px(EP_W), 2, Ui.f(17f * 1.38f));
+        epStories[slot] = e.plot.isEmpty() ? null : Hero07.lines(e.plot, epStoryP, Ui.px(EP_W - 2 * PAD), 2, Ui.f(STORY_LINE));
         return epStories[slot];
+    }
+
+    /** A story's line height (design px). */
+    static final float STORY_LINE = 18f * 1.36f;
+
+    /** The stories of the episodes in sight where the row is and where it is going, laid out now (not while drawing). */
+    private void storiesNear() {
+        if (rowSize() == 0) return;
+        float from = Math.min(epX.value(), epTarget()), to = Math.max(epX.value(), epTarget());
+        int first = Math.max(0, (int) Math.floor((from - LEFT) / EP_STEP) - 1);
+        int last = Math.min(rowSize() - 1, (int) Math.ceil((to + 1920f) / EP_STEP));
+        // Never more than are kept at once: those around the remote's first.
+        if (last - first >= STORIES) {
+            first = Math.max(first, epAt - STORIES / 2 + 1);
+            last = Math.min(last, first + STORIES - 1);
+        }
+        for (int i = first; i <= last; i++) storyOf(i);
     }
 
     /**
@@ -635,6 +730,11 @@ final class TitlePage extends View {
             for (int i = Math.max(0, epAt - 2), end = Math.min(rowSize() - 1, epAt + 5); i <= end; i++) {
                 Catalog.Episode e = episode(i);
                 if (e != null && !e.still.isEmpty()) Pics.prefetch(e.still, w, h, Pics.CROP);
+            }
+        } else if (part == VIDEOS) {
+            int w = vidCards.picW(Ui.f(VID_W)), h = vidCards.picH(Ui.f(VID_H));
+            for (int i = Math.max(0, vidAt - 1), end = Math.min(videos.size() - 1, vidAt + 6); i <= end; i++) {
+                Pics.prefetch(Videos.thumb(videos.get(i).key), w, h, Pics.CROP);
             }
         } else if (part == MORE) {
             int w = moreCards.picW(Ui.f(MORE_W)), h = moreCards.picH(Ui.f(MORE_H));
@@ -657,6 +757,9 @@ final class TitlePage extends View {
                 if (e != null) host.play(e);
                 break;
             }
+            case VIDEOS:
+                if (vidAt < videos.size()) host.video(videos.get(vidAt).key);
+                break;
             case CAST:
                 if (castAt < cast.size()) host.person(cast.get(castAt)[0]);
                 break;
@@ -692,9 +795,62 @@ final class TitlePage extends View {
         } else if (p == EPISODES) {
             epAt = Math.min(along, Math.max(0, rowSize() - 1));
             if (!seasons.isEmpty()) seasonAt = seasonOf(epAt);
-        } else if (p == CAST) castAt = along;
+        } else if (p == VIDEOS) vidAt = Math.min(along, Math.max(0, videos.size() - 1));
+        else if (p == CAST) castAt = along;
         else moreAt = along;
         settle();
+    }
+
+    /** Tests: the season tab in view (its place), the episode the remote is on (its place in the row), the video's. */
+    int previewSeason() {
+        return seasonAt;
+    }
+
+    int previewEpisode() {
+        return epAt;
+    }
+
+    int previewVideo() {
+        return vidAt;
+    }
+
+    /** Tests: each season's first episode's place in the row. */
+    int previewFirstOf(int season) {
+        return season < seasons.size() ? seasons.get(season)[1] : -1;
+    }
+
+    /** Tests: how lifted an episode is now (0 resting, 1 the remote's). */
+    float previewLift(int i) {
+        return lift.of(episode(i));
+    }
+
+    /** Tests: an episode's words as its panel holds them: its name (cut to fit) and its story's lines, laid out. */
+    String previewName(int i) {
+        return i >= 0 && i < epNames.length ? epNames[i] : "";
+    }
+
+    StaticLayout previewStory(int i) {
+        return storyOf(i);
+    }
+
+    /** Tests: the room the words have inside the panel (screen px), and the paint the name is drawn in. */
+    float previewRoom() {
+        return Ui.f(EP_W - 2 * PAD);
+    }
+
+    TextPaint previewNamePaint() {
+        return epNameP;
+    }
+
+    /** Tests: how far down the page a series' section is (design px), and its videos' keys. */
+    static float previewSection() {
+        return SECTION;
+    }
+
+    List<String> previewVideos() {
+        List<String> out = new ArrayList<>();
+        for (Videos.Video v : videos) out.add(v.key);
+        return out;
     }
 
     /** Tests: the buttons' words in order, and whether they are the menu down the left. */
@@ -746,12 +902,14 @@ final class TitlePage extends View {
         moving |= epX.step();
         moving |= castX.step();
         moving |= moreX.step();
+        moving |= vidX.step();
         moving |= pillL.step();
         moving |= pillR.step();
         moving |= menuY.step();
         moving |= wash.step();
         Object focus = !active ? null : part == EPISODES ? episode(epAt) : part == MORE && moreAt < more.size() ? more.get(moreAt)
-                : part == CAST && castAt < cast.size() ? cast.get(castAt) : null;
+                : part == CAST && castAt < cast.size() ? cast.get(castAt) : part == VIDEOS && vidAt < videos.size() ? videos.get(vidAt)
+                : null;
         moving |= lift.step(focus);
         moving |= buttonLift.step(active && part == BUTTONS && buttonAt < buttons.size() ? buttons.get(buttonAt) : null);
 
@@ -760,10 +918,12 @@ final class TitlePage extends View {
         // The page's colour, its picture across the right fading into it, its shade and its glow: five screens of fill
         // that don't move as the rows do, kept as one picture (Cached) and drawn again only when they change.
         groundPic = backdrop.isEmpty() ? null : Pics.get(backdrop, 1280, 720, Pics.CROP, redraw);
-        float lower = groundPic != null && lowerPage() ? Math.min(1f, page.value() / LOWER) : 0f;
-        groundArt = Math.round(255 * (1f - 0.65f * lower));
+        // A series' section is dark: the picture fades right down and the page darkens as it rises to it.
+        float into = into();
+        groundArt = Math.round(255 * (1f - 0.78f * into));
+        groundDark = Math.round(DARK * into);
         groundFade = wash.fading();
-        long key = Cached.key(Cached.key(wash.colour(), groundArt), Cached.key(Math.round(groundFade * 255f), glowWasColour)
+        long key = Cached.key(Cached.key(wash.colour(), groundArt * 256 + groundDark), Cached.key(Math.round(groundFade * 255f), glowWasColour)
                 + Cached.key(glowColour, Math.round(Ui.s * 1000f)));
         still.draw(c, w, h, groundPic, key, paintGround, 1f, 0f);
         if (groundFade >= 1f) glowWasColour = 0;
@@ -775,14 +935,18 @@ final class TitlePage extends View {
         int topAlpha = Math.round(255 * Math.max(0f, Math.min(1f, 1f - page.value() / (vertical ? MENU_SHIFT * 0.8f : 320f))));
         if (topAlpha > 0) drawTop(c, topAlpha);
         if (vertical) c.translate(0, Ui.f(MENU_SHIFT));
-        if (!seasons.isEmpty() && seasonWords.length > 1) drawSeasons(c);
-        if (hasPart(EPISODES)) drawEpisodes(c);
         if (lowerPage()) {
+            // The series' section, then (a screen further down) About, the cast and More like this; each only in sight.
+            float sectionTop = Ui.f(SECTION + menuShift()) - risen;
             c.save();
+            c.translate(0, Ui.f(SECTION));
+            if (sectionTop < h && sectionTop + Ui.f(LOWER) > 0) drawSection(c, into, sectionTop);
             c.translate(0, Ui.f(LOWER));
-            drawAbout(c);
-            if (hasPart(CAST)) drawCast(c, Ui.f(380f));
-            if (hasPart(MORE)) drawMore(c, Ui.f(690f));
+            if (sectionTop + Ui.f(LOWER) < h) {
+                drawAbout(c);
+                if (hasPart(CAST)) drawCast(c, Ui.f(380f));
+                if (hasPart(MORE)) drawMore(c, Ui.f(690f));
+            }
             c.restore();
         } else {
             if (hasPart(CAST)) drawCast(c, Ui.f(660f));
@@ -796,8 +960,10 @@ final class TitlePage extends View {
     private final Cached.Painter paintGround = this::paintGround;
     /** What the kept ground was drawn with: the picture, its opacity (lower on the page's lower part), the glow's fade. */
     private Bitmap groundPic;
-    private int groundArt = 255;
+    private int groundArt = 255, groundDark;
     private float groundFade = 1f;
+    /** How dark a series' section is made over the page's colour (of 255). */
+    static final int DARK = 170;
 
     /** The page's ground: its colour, the picture across the right fading into it, its shade and its glow. */
     private void paintGround(Canvas c) {
@@ -828,6 +994,10 @@ final class TitlePage extends View {
         }
         glowNow.setAlpha(glowWasColour != 0 ? Math.round(255 * k) : 255);
         c.drawRect(0, gt, gr, h, glowNow);
+        if (groundDark > 0) {
+            scrim.setAlpha(groundDark);
+            c.drawRect(0, 0, w, h, scrim);
+        }
     }
 
     @Override protected void onDetachedFromWindow() {
@@ -935,50 +1105,68 @@ final class TitlePage extends View {
         }
     }
 
-    /** The seasons, as the phone has them: the white pill sliding behind the season the remote is in. */
-    private void drawSeasons(Canvas c) {
-        float x0 = Ui.f(LEFT), cy = Ui.f(PILLS_Y), h = Ui.f(PILL_H);
-        r.set(x0 + pillL.value(), cy - h / 2f, x0 + pillR.value(), cy + h / 2f);
-        Shadows.draw(c, r, h / 2f, Look07.SH_PILL, 1f);
-        c.drawRoundRect(r, h / 2f, h / 2f, white);
-        if (part == SEASONS) {
-            ring.setColor(Look07.L1);
-            ring.setStrokeWidth(Ui.f(3f));
-            r.inset(-Ui.f(5f), -Ui.f(5f));
-            c.drawRoundRect(r, h / 2f + Ui.f(5f), h / 2f + Ui.f(5f), ring);
+    /**
+     * A series' section (its top at the canvas's 0; screenTop: where that is on the screen now): the title art in the
+     * middle coming in as the page rises to it, the season tabs, the row of episodes and, where in sight, the Videos row.
+     */
+    private void drawSection(Canvas c, float into, float screenTop) {
+        int la = Math.round(255 * Math.max(0f, Math.min(1f, (into - 0.45f) / 0.55f)));
+        if (la > 0) {
+            float mw = sectionMark.width(redraw), mh = sectionMark.height(redraw);
+            sectionMark.draw(c, (getWidth() - mw) / 2f, Ui.f(ART_FOOT) - mh, la, redraw);
         }
-        float end = x0;
+        if (!seasons.isEmpty()) drawTabs(c);
+        if (hasPart(EPISODES)) drawEpisodes(c);
+        if (hasPart(VIDEOS) && screenTop + Ui.f(VIDEOS_TOP) < getHeight()) drawVideos(c);
+    }
+
+    /**
+     * The season tabs: the season in view bold and white, the others quieter; while the remote is on them a white pill
+     * behind the one it is on (gliding to the next), its word in ink.
+     */
+    private void drawTabs(Canvas c) {
+        float x0 = Ui.f(LEFT), cy = Ui.f(TABS_Y), h = Ui.f(TAB_H);
+        boolean on = active && part == SEASONS;
+        if (on) {
+            r.set(x0 + pillL.value(), cy - h / 2f, x0 + pillR.value(), cy + h / 2f);
+            Shadows.draw(c, r, h / 2f, Look07.SH_PILL, 1f);
+            c.drawRoundRect(r, h / 2f, h / 2f, white);
+        }
         for (int i = 0; i < seasonWords.length; i++) {
             float x = x0 + seasonX[i];
-            // Ink where the pill is under the word, light elsewhere.
-            float mid = x + seasonW[i] / 2f;
-            boolean under = x0 + pillL.value() < mid && x0 + pillR.value() > mid;
-            TextPaint p = under ? pillInk : pillP;
-            c.drawText(seasonWords[i], x + Ui.f(26f), Type.centred(p, cy), p);
-            end = x + seasonW[i];
+            TextPaint p;
+            if (on) {
+                // Ink where the pill is under the word, quiet elsewhere.
+                float mid = x + seasonW[i] / 2f;
+                p = x0 + pillL.value() < mid && x0 + pillR.value() > mid ? tabInk : tabQuiet;
+            } else {
+                p = i == seasonAt ? tabP : tabQuiet;
+            }
+            c.drawText(seasonWords[i], x + Ui.f(TAB_PAD), Type.centred(p, cy), p);
         }
-        if (!meta.isEmpty()) c.drawText(meta, end + Ui.f(18f) + Ui.f(26f), Type.centred(metaP, cy), metaP);
     }
 
     private void drawEpisodes(Canvas c) {
         int n = rowSize();
-        float w = Ui.f(EP_W), h = Ui.f(EP_H), top = Ui.f(EP_TOP), x0 = Ui.f(LEFT) - Ui.f(epX.value());
+        float w = Ui.f(EP_W), h = Ui.f(EP_H), top = Ui.f(EP_TOP), step = Ui.f(EP_STEP), x0 = Ui.f(LEFT) - Ui.f(epX.value());
         int lifted = -1;
-        for (int i = 0; i < n; i++) {
-            float x = x0 + Ui.f(epPlace(i));
+        for (int i = Math.max(0, (int) Math.floor((-x0 - w) / step) - 1); i < n; i++) {
+            float x = x0 + i * step;
             if (x > getWidth()) break;
             if (x + w < -Ui.f(60f)) continue;
-            // A line between seasons.
-            if (i > 0 && seasonOf(i) != seasonOf(i - 1)) c.drawRect(x - Ui.f(42f), top + Ui.f(18f), x - Ui.f(40f), top + Ui.f(198f), line);
-            if (part == EPISODES && i == epAt) {
+            if (active && part == EPISODES && i == epAt) {
                 lifted = i;
                 continue;
             }
             episodeCard(c, i, x, top, w, h, lift.of(episode(i)));
         }
-        if (lifted >= 0) episodeCard(c, lifted, x0 + Ui.f(epPlace(lifted)), top, w, h, lift.of(episode(lifted)));
+        if (lifted >= 0) episodeCard(c, lifted, x0 + lifted * step, top, w, h, lift.of(episode(lifted)));
     }
 
+    /**
+     * An episode: its still (lifting where the remote is), a thin white line on it as far as it was watched, UP NEXT on
+     * the one to carry on with; under it its words, on a frosted panel as it lifts.
+     */
     private void episodeCard(Canvas c, int i, float x, float y, float w, float h, float up) {
         Catalog.Episode e = episode(i);
         if (e == null) return;
@@ -987,10 +1175,19 @@ final class TitlePage extends View {
         boolean seen = resumeAt >= 0 && i < resumeAt;
         float p = seen ? 1f : host.progress(e);
         marks.clear();
-        marks.progress = p;
         marks.torbox = e.torbox;
         epCards.begin(c, x, y, w, h, up, b);
         epCards.marks(c, w, h, marks);
+        if (p > 0f) {
+            // How far it was watched: a thin white line across the still's foot, on a faint one.
+            float lx = Ui.f(18f), lw = w - 2 * lx, ly = h - Ui.f(18f), lt = Math.max(2f, Ui.f(4f));
+            r.set(lx, ly - lt / 2f, lx + lw, ly + lt / 2f);
+            fill.setColor(0x52FFFFFF);
+            c.drawRoundRect(r, lt / 2f, lt / 2f, fill);
+            r.right = lx + lw * Math.min(1f, p);
+            fill.setColor(Look07.L1);
+            c.drawRoundRect(r, lt / 2f, lt / 2f, fill);
+        }
         if (i == resumeAt) {
             // UP NEXT on the one to carry on with.
             float bw = upNextP.measureText("UP NEXT") + Ui.f(20f);
@@ -998,31 +1195,80 @@ final class TitlePage extends View {
             fill.setColor(Look07.L1);
             c.drawRoundRect(r, Ui.f(8f), Ui.f(8f), fill);
             c.drawText("UP NEXT", r.left + Ui.f(10f), Type.centred(upNextP, r.centerY()), upNextP);
-        } else if (seen) {
-            // A tick on one watched.
-            float d = Ui.f(30f), cx = w - Ui.f(12f) - d / 2f, cy = Ui.f(12f) + d / 2f;
-            fill.setColor(0x80000000);
-            c.drawCircle(cx, cy, d / 2f, fill);
-            Icons07.draw(c, Icons07.CHECK, cx, cy, Ui.f(18f), Look07.L1);
         }
         epCards.end(c);
-        // Its words: its number and name, length and day, and for the remote's its story (dropping 24 px as it lifts).
-        float k = Math.max(0f, Math.min(1.2f, up)), top = y + h + Ui.f(16f) + Ui.f(24f) * k, tx = x + Ui.f(4f);
-        capP.setColor(Theme.mix(Look07.L2 | 0xFF000000, Look07.L1, Math.min(1f, k)));
-        capP.setAlpha(Math.round(0xBD + (0xFF - 0xBD) * Math.min(1f, k)));
-        float lh = Hero07.normal(Ui.f(21f));
-        c.drawText(epTitles[i], tx, Hero07.baseline(top, lh, Ui.f(21f)), capP);
-        float sh = Hero07.normal(Ui.f(17f));
-        c.drawText(epSubs[i], tx, Hero07.baseline(top + lh + Ui.f(4f), sh, Ui.f(17f)), capSub);
-        if (k > 0.05f && part == EPISODES && i == epAt) {
-            StaticLayout s = storyOf(i);
-            if (s != null) {
-                int was = capSub.getAlpha();
-                capSub.setAlpha(Math.round(was * Math.min(1f, k)));
-                Ui.draw(c, s, tx, top + lh + Ui.f(4f) + sh + Ui.f(6f));
-                capSub.setAlpha(was);
-            }
+        words(c, i, x, y + h, w, h, up);
+    }
+
+    /**
+     * An episode's words under its still: "S2 E1" small and quiet, its name, two lines of its story, its length and the
+     * day it was first shown; as it lifts they move down with the still's foot, grow a little and sit on frosted glass.
+     */
+    private void words(Canvas c, int i, float x, float foot, float w, float h, float up) {
+        float k = Math.max(0f, Math.min(1f, up));
+        float top = foot + (Look07.CARD_SCALE - 1f) * h / 2f * k + Ui.f(WORDS_GAP);
+        float g = 1f + WORDS_GROW * k;
+        c.save();
+        c.scale(g, g, x + w / 2f, top);
+        if (k > 0.01f) {
+            r.set(x, top, x + w, top + Ui.f(PANEL_H));
+            Frost.glass(c, r, Ui.f(18f), k);
         }
+        float tx = x + Ui.f(PAD), ty = top + Ui.f(12f);
+        float ch = Hero07.normal(Ui.f(17f)), nh = Hero07.normal(Ui.f(22f)), lh = Ui.f(STORY_LINE);
+        c.drawText(epCodes[i], tx, Hero07.baseline(ty, ch, Ui.f(17f)), codeP);
+        ty += ch + Ui.f(4f);
+        epNameP.setColor(Theme.mix(Look07.L2 | 0xFF000000, Look07.L1, k));
+        epNameP.setAlpha(Math.round(0xD8 + (0xFF - 0xD8) * k));
+        c.drawText(epNames[i], tx, Hero07.baseline(ty, nh, Ui.f(22f)), epNameP);
+        ty += nh + Ui.f(6f);
+        StaticLayout s = storyOf(i);
+        if (s != null) {
+            // Quiet, and a little brighter on the panel.
+            epStoryP.setColor(Palette.alpha(Look07.L2, Math.round((Look07.L3 >>> 24) + ((Look07.L2 >>> 24) - (Look07.L3 >>> 24)) * k)));
+            Ui.draw(c, s, tx, ty + (lh - (epStoryP.descent() - epStoryP.ascent())) / 2f);
+        }
+        ty += 2 * lh + Ui.f(6f);
+        if (!epFacts[i].isEmpty()) c.drawText(epFacts[i], tx, Hero07.baseline(ty, ch, Ui.f(17f)), epFactsP);
+        c.restore();
+    }
+
+    /** The Videos row: each a 16:9 still (YouTube's) with its kind on a small badge at its top left, its name under it. */
+    private void drawVideos(Canvas c) {
+        float x = Ui.f(LEFT), top = Ui.f(VIDEOS_TOP);
+        c.drawText("Videos", x, Hero07.baseline(top, Hero07.normal(Ui.f(30f)), Ui.f(30f)), headP);
+        float w = Ui.f(VID_W), h = Ui.f(VID_H), step = Ui.f(VID_STEP), y = top + Ui.f(48f), x0 = x - Ui.f(vidX.value());
+        int lifted = -1;
+        for (int i = 0; i < videos.size(); i++) {
+            float vx = x0 + i * step;
+            if (vx + w < 0 || vx > getWidth()) continue;
+            if (active && part == VIDEOS && i == vidAt) {
+                lifted = i;
+                continue;
+            }
+            video(c, i, vx, y, w, h, lift.of(videos.get(i)));
+        }
+        if (lifted >= 0) video(c, lifted, x0 + lifted * step, y, w, h, lift.of(videos.get(lifted)));
+    }
+
+    private void video(Canvas c, int i, float x, float y, float w, float h, float up) {
+        Videos.Video v = videos.get(i);
+        String url = Videos.thumb(v.key);
+        Bitmap b = url.isEmpty() ? null : Pics.get(url, vidCards.picW(w), vidCards.picH(h), Pics.CROP, redraw);
+        vidCards.begin(c, x, y, w, h, up, b);
+        if (b == null) {
+            fill.setColor(PosterArt.blank(v.name));
+            c.drawRoundRect(0, 0, w, h, Ui.f(Look07.R_CARD), Ui.f(Look07.R_CARD), fill);
+        }
+        // Its kind, small, on a dark chip at the top left.
+        String kind = v.badge().toUpperCase(Locale.UK);
+        float bw = badgeP.measureText(kind) + Ui.f(18f);
+        r.set(Ui.f(12f), Ui.f(12f), Ui.f(12f) + bw, Ui.f(38f));
+        fill.setColor(0xB3000000);
+        c.drawRoundRect(r, Ui.f(7f), Ui.f(7f), fill);
+        c.drawText(kind, r.left + Ui.f(9f), Type.centred(badgeP, r.centerY()), badgeP);
+        vidCards.end(c);
+        vidCards.caption(c, x, y + h, w, up, vidNames[i], "");
     }
 
     /** About (its story), its genres and where it is from (the lower page, its top at the page's 0). */
@@ -1117,6 +1363,14 @@ final class TitlePage extends View {
     }
 
     // ---- pure, for the tests ----------------------------------------------------------------------------------------
+
+    /** Pure: an episode's last line on the series page: "58m  16 Jun 2024", "1h 7m", "16 Jun 2024" or "". */
+    static String episodeLine(int minutes, String aired) {
+        String len = Ui.duration(minutes);
+        String day = episodeDay(aired);
+        if (len.isEmpty()) return day;
+        return day.isEmpty() ? len : len + "  " + day;
+    }
 
     /** Pure: an episode's facts under its name: "1h 7m, 9 Oct 2022", "54m", "9 Oct 2022" or "". */
     static String episodeFacts(int minutes, String aired) {
