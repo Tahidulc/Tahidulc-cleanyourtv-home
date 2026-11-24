@@ -244,20 +244,26 @@ wordmark are Homefield; it carries no Sky logo or name.
   doesn't answer), and an M3U playlist's catchup, catchup-days and catchup-source (default, append, shift, Flussonic
   and Xtream; {utc}, {start}, {end}, {duration}, {offset}, {lutc}, {Y}{m}{d}{H}{M}{S} and the like filled in; also the
   older timeshift and tvg-rec), or an Xtream server's M3U address given its archive by the player API. It starts with
-  the info card at the foot, the archive's mark and the programme's whole length in it. OK brings up the overlay: the
-  card at the top; across the foot a line for the programme, the part shown in the accent and what has been on so far
-  in light grey; the time ("00:05 / 55:00") at the left; the buttons in the middle (to the programme's start or the one
-  before, back, pause, on, the next programme or live); at the right, in a pill, from the start again and LIVE. Down
-  brings up the row of tiles in the buttons' place, Up takes them away. Left and Right (and the rewind and fast forward
-  keys) move it 10 seconds a press, more as they are held (30 seconds, a minute, three minutes), and the archive is asked
-  for from there a moment after the remote rests; play/pause pauses. Up and Down change channel, live; CH+ and CH−
-  bring up a channel's card; OK held or MENU the player's settings (their pills by themselves). The bar you can move:
-  OK brings the overlay up with the remote on the seek line itself (its knob larger with a white ring), and Left or Right from the plain picture goes
-  straight there; Left and Right then move a spot along it (Skip steps a press, then faster as the key is held), a white
-  bubble over the knob saying where (the time in the programme, and the clock then), OK jumps there, Back leaves it where
-  the picture is, Down goes to the buttons and Up back. Back closes the overlay, then goes to the TV guide. It
-  goes on into the next programme when one ends, and is live again at the live edge. The archive's address is made on the TV from the
-  channel's own, and like it is never shown or written out. Channels with no archive don't offer any of it.
+  the info card at the foot, the archive's mark and the programme's whole length in it. Left and Right on the picture go
+  back and on at once: 10 seconds a press (Settings › VOD › Skip steps), then 30 seconds, a minute and three minutes as
+  the key is held. The seek bar comes up by itself at the foot: the line across the programme (the accent up to the spot,
+  light grey on to what has been on so far, a small mark where the picture still is), a white bubble over the knob
+  ("21:14 · 34:10 of 1:00:00": the clock then, the time into the programme and its length; "Live" at the live edge), the
+  programme's name, channel and times under it and how far it has moved ("−1:30"). The picture follows a moment after
+  the remote rests, with one request to the archive however many presses (OK jumps at once, Back stays where the
+  picture was); past the programme's start the bar is the programme before's, and on to the live edge it is live. The
+  rewind and fast forward keys move the same way, play/pause pauses, previous and next go to the programme before and the
+  next one. While the bar shows, Up and Down bring up the overlay; on the plain picture they change channel, live. OK
+  brings up the overlay: the card at the top; across the foot the same line; the time ("34:10 / 1:00:00") at the left;
+  the buttons in the middle with the remote on pause (the programme before, back 10 seconds, pause, on 30 seconds, the
+  next programme or live; the ones that move add up press by press); at the right, in a pill, the programme from its
+  start and LIVE. Up goes to the line itself (Left and Right move it the same way, OK jumps), Down brings up the row of
+  tiles in the buttons' place and Up takes them away. CH+ and CH− bring up a channel's card; OK held or MENU the player's
+  settings (their pills by themselves). Back closes the bar or the overlay, then goes to the TV guide. It goes on into the
+  next programme when one ends. An Xtream archive is asked for from the minute and its picture moved on to the second
+  where the stream can be moved in, and a move inside what was asked for is a move in the stream, nothing asked again.
+  The archive's address is made on the TV from the channel's own, and like it is never shown or written out. Channels
+  with no archive don't offer any of it.
 - **Sports:** Sports is a page under the tab bar (its Sports tab), in 07's look over the blurred picture of what the
   remote is on: its title with its sections as pills beside it (Live, Today, Tomorrow, Yesterday, Tables, F1 &amp; more;
   Live what is on now, "No football is live right now. Today's games are under Today." when nothing is; Tomorrow and

@@ -199,6 +199,16 @@ public final class Catchup {
         return a;
     }
 
+    /**
+     * Pure: what to ask the archive for to show target from current (where it plays): {the start asked for, how far into
+     * it the picture starts}. A stream that can be moved in (movable) is asked for from target's minute (an Xtream
+     * server's; else its second) and moved on to target; one that can't plays from where it is asked for (requestAt).
+     */
+    public static long[] ask(String kind, long target, long current, int dir, boolean movable) {
+        long a = movable ? requestAt(kind, target, 0, 0) : requestAt(kind, target, current, dir);
+        return new long[]{a, movable ? Math.max(0, target - a) : 0};
+    }
+
     /** Pure: how far to ask the archive for from start: past the programme's end (or half an hour), at most four hours. */
     public static long requestEnd(long startMs, long programmeEnd) {
         long end = Math.max(programmeEnd, startMs + 30 * 60_000L) + 5 * 60_000L;

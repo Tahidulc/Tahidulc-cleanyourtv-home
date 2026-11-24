@@ -103,10 +103,14 @@ final class LiveTv {
         void liveChanged();
     }
 
-    /** A programme playing from the archive: the channel, the time the request started at, how far to ask for. */
+    /**
+     * A programme playing from the archive: the channel, the time the request started at, how far to ask for, and how far
+     * into it the picture starts (an Xtream archive starts on the minute: moved on to the second asked for where the
+     * stream can be moved in; one that can't plays from the start asked for).
+     */
     private static final class Archive {
         final Channel channel;
-        long from, end;
+        long from, end, offset;
         /** The older Xtream address (timeshift.php) in use; whether it has played (later errors pick up where it got to). */
         boolean older, played;
         int retries;
@@ -115,6 +119,12 @@ final class LiveTv {
             this.channel = channel;
             this.from = from;
             this.end = end;
+        }
+
+        /** Asked for again from t: the start of t's minute on an Xtream server (else its second), moved on to t. */
+        void again(long t) {
+            from = Catchup.requestAt(kind(channel), t, 0, 0);
+            offset = Math.max(0, t - from);
         }
     }
 
@@ -594,7 +604,7 @@ final class LiveTv {
         Afr.reset(layer.getContext() instanceof android.app.Activity ? (android.app.Activity) layer.getContext() : null);
         if (arc != null && player != null) {
             // Picked up again where it got to.
-            arc.from = Catchup.requestAt(kind(arc.channel), shownAt(), 0, 0);
+            arc.again(shownAt());
             arc.played = false;
         }
         inWindow = false;
@@ -718,9 +728,16 @@ final class LiveTv {
         }
         boolean same = cur != null && cur.key.equals(c.key);
         if (Exec.inline) {
+            // As a stream that can be moved in: asked for from the minute (its second), the picture at t.
             if (!same) cur = c;
-            if (Catchup.source(c) != null) arc = new Archive(c, t, programmeEnd);
-            else inWindow = true;
+            Channel src = Catchup.source(c);
+            if (src != null) {
+                long[] ask = Catchup.ask(src.catchup, t, shownAt(), dir, true);
+                arc = new Archive(c, ask[0], programmeEnd > ask[0] ? programmeEnd : programmeEnd(c, ask[0]));
+                arc.offset = ask[1];
+            } else {
+                inWindow = true;
+            }
             previewShown = t;
             if (!where.isEmpty()) {
                 layout();
@@ -751,7 +768,11 @@ final class LiveTv {
                 return;
             }
         }
-        long start = Catchup.requestAt(src.catchup, t, shownAt(), dir);
+        // Asked for again: from the minute (Xtream) and moved on to t, unless the archive playing can't be moved in (then
+        // from the start asked for, never behind where it plays when moving on).
+        boolean movable = !(same && arc != null && player != null && !player.isCurrentMediaItemSeekable());
+        long[] ask = Catchup.ask(src.catchup, t, shownAt(), dir, movable);
+        long start = ask[0];
         if (!same) {
             cur = c;
             ladder = null;
@@ -763,12 +784,18 @@ final class LiveTv {
         asHls = false;
         videoW = videoH = rawW = rawH = 0;
         arc = new Archive(c, start, programmeEnd > start ? programmeEnd : programmeEnd(c, start));
+        arc.offset = ask[1];
         if (!where.isEmpty()) {
             layout();
             picture.setVisibility(View.VISIBLE);
         }
         ensure();
         prepare();
+    }
+
+    /** What was last asked of the archive: {the start asked for, how far into it the picture starts, the programme's end}; null: none. */
+    long[] asked() {
+        return arc == null ? null : new long[]{arc.from, arc.offset, arc.end};
     }
 
     /** Paused (or played on) behind live. */
@@ -831,8 +858,9 @@ final class LiveTv {
                 set(FAILED);
                 return;
             }
+            // From how far into it the picture starts (a stream that can't be moved in starts at its own start).
             player.setMediaSource(Streams.source(url, PlayerPrefs.agent(app, s.key, s.userAgent), s.referrer,
-                    asHls || Streams.looksHls(url)));
+                    asHls || Streams.looksHls(url)), arc.offset);
         } else {
             Channel s = stream();
             // The provider's HLS form of an MPEG-TS channel first, so a drop is ridden out on its segments and the
@@ -1130,6 +1158,7 @@ final class LiveTv {
             return;
         }
         arc.from = Catchup.requestAt(kind(arc.channel), t + 5000, 0, 0);
+        arc.offset = 0;
         arc.end = programmeEnd(arc.channel, arc.from);
         arc.played = false;
         prepare();
@@ -1156,7 +1185,7 @@ final class LiveTv {
         int most = arc.played ? RETRIES : 1;
         if (arc.retries < most) {
             arc.retries++;
-            if (arc.played) arc.from = Catchup.requestAt(kind(arc.channel), shownAt(), 0, 0);
+            if (arc.played) arc.again(shownAt());
             arc.played = false;
             arc.older = false;
             asHls = false;
