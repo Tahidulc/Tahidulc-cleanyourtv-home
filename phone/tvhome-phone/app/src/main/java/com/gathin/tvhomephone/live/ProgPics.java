@@ -134,6 +134,8 @@ final class ProgPics {
         }
     });
     private static final long RETRY_MS = 3 * 60_000L;
+    /** The application's context (never an activity's). */
+    @android.annotation.SuppressLint("StaticFieldLeak")
     private static volatile Context app;
     private static int running;
 
@@ -354,10 +356,5 @@ final class ProgPics {
         int r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, b = c & 0xFF, max = Math.max(r, Math.max(g, b));
         float k = max <= 100 ? 1f : 100f / max;
         return 0xFF000000 | Math.round(r * k) << 16 | Math.round(g * k) << 8 | Math.round(b * k);
-    }
-
-    /** Memory is short: everything kept let go (made again as it is drawn). */
-    static void trim() {
-        MEM.evictAll();
     }
 }

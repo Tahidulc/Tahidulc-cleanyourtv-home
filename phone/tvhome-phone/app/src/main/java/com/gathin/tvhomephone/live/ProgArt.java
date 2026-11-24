@@ -81,6 +81,8 @@ final class ProgArt {
     private static boolean running, loaded;
     private static int unsaved;
     private static volatile boolean told;
+    /** The application's context (never an activity's). */
+    @android.annotation.SuppressLint("StaticFieldLeak")
     private static volatile Context app;
     private static final Runnable TELL = () -> {
         told = false;

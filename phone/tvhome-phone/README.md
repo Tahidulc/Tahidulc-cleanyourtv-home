@@ -737,3 +737,20 @@ up for the guide panel, now with Channels and Recent over its mini guide and "Ba
 put it away. The player's options and Settings → Live TV have the switch; off, the swipes are as they were (up and down
 change channel, left brings the mini guide and right puts it away). Tests: the swipe's rules (how far, how fast, how
 straight, the edge strip, what stops it) and Recently watched's order, each channel once and its limit.
+
+**Programme pictures in the guide and its panel, as Homefield TV has them.** Each programme in the guide is a card filled
+by its own picture, and the chosen programme's panel too (upright, the panel with its title, times and Watch; on its side
+and on a tablet, across the top of the pane). The picture is the guide's own (XMLTV's icon, from the playlist's guide or
+the Xtream login's), kept with the listings in a few bytes a programme. A programme without one is looked for on TMDB by
+its title (a film as a film with its year from the title or description, a series as a series, a kids' channel's as a
+series; nothing for a sports or news channel, or for "News" or "To Be Announced"), off the main thread, one search a
+third of a second after the last, the newest asked for first, and what is found is kept so a title is looked for once.
+With nothing found, the card shows the channel's own picture: its logo on its colour. Faces are found once per picture
+(the phone's own face finder) and kept whole and clear: the picture is laid out for each card at the size it is drawn,
+covering it, or for a long, short card sharp where the faces are over its own colours; the words sit on the left over a
+soft shade that ends before the faces. A card too small to keep its faces whole, or whose words leave them no room, shows
+the picture's own colours, never half a face. What's on now is at full brightness with its white line, the others a
+little dimmer and what has been shown dimmer still; the chosen card keeps its white ring and lift. The channels' logo
+tiles are as they were. Tests: the guide's picture links (and 90,000 of them staying small), the TMDB search for each
+kind of programme and the result taken, and the cards' layout (faces whole, beside the words, the shade ending before
+them).
