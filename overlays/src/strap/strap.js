@@ -2,8 +2,9 @@
 // as page elements over a see-through stage (the mock-up was built that way: CSS moves and clips, no canvas). The strap
 // comes up over the channel's own lower band, holds about four seconds, then folds into the look's board where the
 // app's real board sits (window.STRAP_CFG.board, 1920 x 1080), holds it a moment and fades: the app's own board then
-// shows. For a restart or the second half the board is up first, steps aside as the strap comes in, and the strap folds
-// back into it. The mock-up's own times are kept (T): the page's second t is the mock-up's t + LEAD.
+// shows. After a goal (the score alone, no word), for the second half and at full time (FULL TIME, the final score, the
+// clock at FT) the board is up first, steps aside as the strap comes in, and the strap folds back into it. The mock-up's own
+// times are kept (T): the page's second t is the mock-up's t + LEAD.
 (function () {
   const C = window.STRAP_CFG;
   const LEAD = 0.20;                                   // the page starts 0.2 s into the mock-up's timeline
@@ -15,7 +16,7 @@
   // ---------- the match and the moment ----------
   // the look (one this page does not know is drawn as Classic: init)
   let STYLE = String(C.look || 'FROSTED').toLowerCase();
-  const MOMENT = C.kind === 'restart' || C.kind === 'second' ? C.kind : 'kickoff';
+  const MOMENT = C.kind === 'restart' || C.kind === 'second' || C.kind === 'full' ? C.kind : 'kickoff';
   const M = {
     home: esc(up(C.home.name)), away: esc(up(C.away.name)),
     hs: esc(up(C.home.short || C.home.name).slice(0, 3)), as: esc(up(C.away.short || C.away.name).slice(0, 3)),
@@ -27,15 +28,22 @@
   };
   const score = MOMENT === 'kickoff' ? ['0', '0'] : [String((C.score || [0, 0])[0] | 0), String((C.score || [0, 0])[1] | 0)];
   const weather = esc(up(C.weather || ''));
-  const scorer = esc(up([C.scorer, C.goalMin].filter(Boolean).join(' ')));
   const live = M.ground ? 'LIVE FROM ' + M.ground : '';
   const join = (...a) => a.filter(Boolean).join('  ·  ');
+  // The moment's word (LABELS): after a goal none, the score alone (as the family asked: no word for it, no scorer, no
+  // minute); FULL TIME with the final score. The line under the strap: the ground (and its weather at the kick-offs).
+  const LABELS = { kickoff: 'KICK-OFF', restart: '', second: 'SECOND HALF', full: 'FULL TIME' };
   const MO = {
-    kickoff: { label: 'KICK-OFF', sub: join(live, weather), extra: weather },
-    restart: { label: 'RESTART', sub: join(scorer, live), extra: scorer },
-    second: { label: 'SECOND HALF', sub: join(live, weather), extra: weather },
+    kickoff: { sub: join(live, weather), extra: weather },
+    restart: { sub: '', extra: '' },
+    second: { sub: join(live, weather), extra: weather },
+    full: { sub: live, extra: '' },
   }[MOMENT];
+  MO.label = LABELS[MOMENT];
   MO.score = score;
+  // Full time: the clock stopped, FT where it shows on its own (as the app's board then has it); where the moment's word
+  // and the clock share a place, the word alone (FULL TIME), as after a goal the clock alone: ONE, then in its middle.
+  const FT = MOMENT === 'full', ONE = FT || !MO.label;
   // the match clock, running from the page's start: the app's own reading if it gave one, else from the moment
   const minute = parseInt(String(C.goalMin || '').replace(/[^0-9]/g, ''), 10);
   const CLOCK_AT0 = C.clock != null && isFinite(+C.clock) ? +C.clock
@@ -54,7 +62,14 @@
   const back = (x) => { const c1 = 1.5, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
   const lerp = (a, b, x) => a + (b - a) * x;
   const pad = (n) => String(n).padStart(2, '0');
-  const clockText = (T) => { const s = Math.max(0, Math.floor(CLOCK_AT0 + Math.max(0, T - LEAD))); return pad(Math.floor(s / 60)) + ':' + pad(s % 60); };
+  const clockText = (T) => {
+    if (FT) return 'FT';
+    const s = Math.max(0, Math.floor(CLOCK_AT0 + Math.max(0, T - LEAD))); return pad(Math.floor(s / 60)) + ':' + pad(s % 60);
+  };
+  // the clock where it shares a place with the moment's word: none at full time (the word says it)
+  const slotClock = () => (FT ? '' : clockText(LEAD));
+  // the moment's word as a page element (none after a goal: kept, hidden, for a look that moves it)
+  const lab = (css, id) => '<span' + (id ? ' id="' + id + '"' : '') + ' class="lab" style="' + css + (MO.label ? '' : ';display:none') + '">' + MO.label + '</span>';
 
   // Homefield's mark (the house with the play cut through it), in its icon's 108 units.
   let markN = 0;
@@ -166,7 +181,7 @@
         '<div style="width:' + H + 'px;height:100%;flex:none;display:grid;place-items:center;background:#070C26">' + comp(86) + '</div>' +
         '<div class="row fitrow" style="flex:1;height:100%;gap:20px;padding-right:24px;min-width:0"><i style="width:10px;height:100%;flex:none;background:' + M.hc + '"></i>' + crest(true, 84) + '<span class="nm" style="font-size:44px">' + M.home + '</span></div>' +
         '<div style="width:236px;height:100%;flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(#2443B4,#142A78)">' +
-        '<span class="lab" style="font-size:16px;color:#c9d3ff">' + MO.label + '</span><span class="num" style="font-size:62px;line-height:1">' + MO.score[0] + ' – ' + MO.score[1] + '</span></div>' +
+        lab('font-size:16px;color:#c9d3ff') + '<span class="num" style="font-size:62px;line-height:1">' + MO.score[0] + ' – ' + MO.score[1] + '</span></div>' +
         '<div class="row fitrow" style="flex:1;height:100%;gap:20px;justify-content:flex-end;padding-left:24px;min-width:0"><span class="nm" style="font-size:44px">' + M.away + '</span>' + crest(false, 84) + '<i style="width:10px;height:100%;flex:none;background:' + M.ac + '"></i></div>' +
         '<div class="row num sslot" style="width:150px;height:100%;flex:none;justify-content:center;font-size:34px;background:#050816">00:00</div>' +
         '<i id="sedge" style="position:absolute;top:0;bottom:0;width:4px;background:#fff;box-shadow:0 0 18px 4px rgba(255,255,255,.7)"></i>' +
@@ -220,7 +235,7 @@
         '<div style="width:' + H + 'px;height:100%;flex:none;display:grid;place-items:center;background:' + compBg + '">' + comp(86) + '</div>' +
         '<div class="row fitrow" style="flex:1;height:100%;gap:20px;padding-right:24px;min-width:0;' + sideBg(true) + '">' + strip(true) + crest(true, 84) + '<span class="nm" style="font-size:44px">' + M.home + '</span></div>' +
         '<div style="width:236px;height:100%;flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;background:' + score + ';color:' + sInk + '">' +
-        '<span class="lab" style="font-size:16px;color:' + dim + '">' + MO.label + '</span><span class="num" style="font-size:62px;line-height:1">' + MO.score[0] + ' – ' + MO.score[1] + '</span></div>' +
+        lab('font-size:16px;color:' + dim) + '<span class="num" style="font-size:62px;line-height:1">' + MO.score[0] + ' – ' + MO.score[1] + '</span></div>' +
         '<div class="row fitrow" style="flex:1;height:100%;gap:20px;justify-content:flex-end;padding-left:24px;min-width:0;' + sideBg(false) + '"><span class="nm" style="font-size:44px">' + M.away + '</span>' + crest(false, 84) + strip(false) + '</div>' +
         '<div class="row num sslot" style="width:150px;height:100%;flex:none;justify-content:center;font-size:34px;background:' + clock + ';color:' + cInk + '">00:00</div>' + line +
         '<i id="sedge" style="position:absolute;top:0;bottom:0;width:4px;background:#fff;box-shadow:0 0 18px 4px rgba(255,255,255,.7)"></i>' +
@@ -244,7 +259,7 @@
         '<div id="gin" class="row" style="position:absolute;left:0;top:0;width:' + W + 'px;height:' + H + 'px;padding:0 26px 0 30px;box-sizing:border-box">' +
         comp(76) +
         '<div class="row fitrow" style="flex:1;gap:18px;justify-content:flex-end;padding-right:22px;min-width:0"><span class="nm" style="font-size:46px">' + M.home + '</span><div style="width:96px;height:96px;flex:none;border-radius:50%;background:rgba(255,255,255,.1);display:grid;place-items:center">' + crest(true, 72) + '</div></div>' +
-        '<div style="padding:10px 34px;border-radius:44px;background:rgba(255,255,255,.22);display:flex;flex-direction:column;align-items:center;flex:none"><span class="lab" style="font-size:15px;color:#d6dcf3">' + MO.label + '</span><span class="num" style="font-size:58px;line-height:1">' + MO.score[0] + ' – ' + MO.score[1] + '</span></div>' +
+        '<div style="padding:10px 34px;border-radius:44px;background:rgba(255,255,255,.22);display:flex;flex-direction:column;align-items:center;flex:none">' + lab('font-size:15px;color:#d6dcf3') + '<span class="num" style="font-size:58px;line-height:1">' + MO.score[0] + ' – ' + MO.score[1] + '</span></div>' +
         '<div class="row fitrow" style="flex:1;gap:18px;padding-left:22px;min-width:0"><div style="width:96px;height:96px;flex:none;border-radius:50%;background:rgba(255,255,255,.1);display:grid;place-items:center">' + crest(false, 72) + '</div><span class="nm" style="font-size:46px">' + M.away + '</span></div>' +
         '<div class="row num sslot" style="padding:14px 22px;border-radius:40px;background:rgba(0,0,0,.3);font-size:30px;flex:none">00:00</div></div>' +
         '<i style="position:absolute;inset:0 0 50% 0;background:linear-gradient(rgba(255,255,255,.2),rgba(255,255,255,0))"></i>' +
@@ -281,7 +296,7 @@
       $('strap').innerHTML = '<div id="lp" class="row" style="width:' + W + 'px;height:' + H + 'px;background:linear-gradient(#EEF1F6,#DCE1EA);border-radius:12px 12px 0 0;overflow:hidden;color:#0B1640;box-shadow:0 18px 40px -18px rgba(0,0,0,.6);position:relative">' +
         '<div style="width:' + H + 'px;height:100%;flex:none;display:grid;place-items:center;background:#0B1640">' + comp(86) + '</div>' +
         '<div class="row fitrow" style="flex:1;height:100%;gap:20px;padding:0 24px;min-width:0">' + crest(true, 84) + '<span class="nm" style="font-size:44px">' + M.home + '</span></div>' +
-        '<div style="width:236px;height:100%;flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0B1640;color:#fff"><span class="lab" style="font-size:16px;color:#aab6e6">' + MO.label + '</span><span class="num" style="font-size:62px;line-height:1">' + MO.score[0] + ' – ' + MO.score[1] + '</span></div>' +
+        '<div style="width:236px;height:100%;flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0B1640;color:#fff">' + lab('font-size:16px;color:#aab6e6') + '<span class="num" style="font-size:62px;line-height:1">' + MO.score[0] + ' – ' + MO.score[1] + '</span></div>' +
         '<div class="row fitrow" style="flex:1;height:100%;gap:20px;justify-content:flex-end;padding:0 24px;min-width:0"><span class="nm" style="font-size:44px">' + M.away + '</span>' + crest(false, 84) + '</div>' +
         '<div class="row num sslot" style="width:140px;height:100%;flex:none;justify-content:center;font-size:34px;background:#D0D6E2">00:00</div>' +
         '<i id="lline" style="position:absolute;left:0;bottom:0;height:6px;background:linear-gradient(90deg,' + M.hc + ',#0B1640 50%,' + M.ac + ')"></i></div>';
@@ -310,7 +325,7 @@
       $('strap').innerHTML = '<div style="position:relative;width:' + W + 'px;height:' + H + 'px">' + half(true) + half(false) +
         '<div id="ccomp" style="position:absolute;left:0;top:0;width:' + H + 'px;height:' + H + 'px;display:grid;place-items:center;background:#000">' + comp(84) + '</div>' +
         '<div id="cs" style="position:absolute;left:' + (W / 2 - 120) + 'px;top:-10px;width:240px;height:' + (H + 20) + 'px;background:#0E0E10;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:6px;box-shadow:0 0 0 3px rgba(255,255,255,.12)">' +
-        '<span class="lab" style="font-size:16px;color:#bbb">' + MO.label + '</span><span class="num" style="font-size:64px;line-height:1;color:#fff">' + MO.score[0] + ' – ' + MO.score[1] + '</span></div>' +
+        lab('font-size:16px;color:#bbb') + '<span class="num" style="font-size:64px;line-height:1;color:#fff">' + MO.score[0] + ' – ' + MO.score[1] + '</span></div>' +
         '<i id="cflash" style="position:absolute;left:' + (W / 2 - 80) + 'px;top:-40px;width:160px;height:' + (H + 80) + 'px;background:radial-gradient(closest-side,rgba(255,255,255,.95),rgba(255,255,255,0))"></i></div>';
       $('subline').innerHTML = subHTML('#000', '#fff', 'grad', '#000');
       $('board').innerHTML = blockBoard({ bg: '#0E0E10', comp: '#000', score: 'linear-gradient(#1A1A1C,#000)', clock: '#000', ink: '#fff', strips: false, sideBg: [M.hc, M.ac] }) + SHEEN;
@@ -336,7 +351,7 @@
       $('strap').innerHTML = '<div id="mn" style="position:relative;width:1560px;height:300px">' +
         '<i id="mshade" style="position:absolute;left:40px;top:10px;width:1480px;height:280px;border-radius:140px;background:radial-gradient(closest-side,rgba(6,8,16,.97) 72%,rgba(6,8,16,.6) 86%,rgba(6,8,16,0))"></i>' +
         '<div id="mtext" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px">' +
-        '<div class="row" style="gap:14px">' + comp(40) + '<span id="ml" class="lab" style="font-size:20px;color:#cfd5ea">' + MO.label + '</span></div>' +
+        '<div class="row" style="gap:14px">' + comp(40) + lab('font-size:20px;color:#cfd5ea', 'ml') + '</div>' +
         '<div id="mt" class="row nm" style="font-size:66px;gap:26px;color:#fff">' + crest(true, 66) + M.home +
         '<span class="num" style="font-weight:300;color:#cfd5ea">' + MO.score[0] + '–' + MO.score[1] + '</span>' + M.away + crest(false, 66) + '</div>' +
         '<div class="sub row" style="gap:12px;font-size:17px;color:#cfd5ea">' + markSvg(22, 'grad', '#070912') + '<span style="opacity:.85">WHITEBROOK ROAD SPORTS</span>' +
@@ -374,7 +389,7 @@
       $('strap').innerHTML = '<div id="cr" class="row" style="width:' + W + 'px;height:' + H + 'px;background:#0A1238;border-radius:12px 12px 0 0">' +
         '<div style="width:' + H + 'px;height:100%;flex:none;display:grid;place-items:center;background:#070C26;border-radius:12px 0 0 0">' + comp(86) + '</div>' +
         '<div class="fitrow" style="flex:1;min-width:0;text-align:right;padding-right:24px;overflow:visible"><span class="nm" style="font-size:44px">' + M.home + '</span></div>' + cr(true) +
-        '<div style="width:250px;height:100%;flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(#2443B4,#142A78);margin:0 18px"><span class="lab" style="font-size:16px;color:#c9d3ff">' + MO.label + '</span><span id="cnum" class="num" style="font-size:64px;line-height:1">' + MO.score[0] + ' – ' + MO.score[1] + '</span></div>' +
+        '<div style="width:250px;height:100%;flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(#2443B4,#142A78);margin:0 18px">' + lab('font-size:16px;color:#c9d3ff') + '<span id="cnum" class="num" style="font-size:64px;line-height:1">' + MO.score[0] + ' – ' + MO.score[1] + '</span></div>' +
         cr(false) + '<div class="fitrow" style="flex:1;min-width:0;padding-left:24px;overflow:visible"><span class="nm" style="font-size:44px">' + M.away + '</span></div>' +
         '<div class="row num sslot" style="width:140px;height:100%;flex:none;justify-content:center;font-size:34px;background:#050816;border-radius:0 12px 0 0">00:00</div></div>';
       $('subline').innerHTML = subHTML('#070C26', '#E6E9F2', 'grad', '#070C26');
@@ -412,7 +427,7 @@
         '<div id="scomp2" style="width:132px;height:100%;flex:none;display:grid;place-items:center;background:#070C26">' + comp(90) + '</div>' +
         '<div style="flex:1;min-width:0;display:flex;flex-direction:column;perspective:900px">' + row(true) + row(false) + '</div>' +
         '<div id="sright" style="width:200px;height:100%;flex:none;background:#050816;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px">' +
-        '<span class="lab" style="font-size:16px;color:#c9d3ff">' + MO.label + '</span><span class="num sslot" style="font-size:36px">00:00</span></div>' +
+        (FT ? lab('font-size:22px;color:#fff') : lab('font-size:16px;color:#c9d3ff') + '<span class="num sslot" style="font-size:36px">00:00</span>') + '</div>' +
         '<div id="svenue" style="width:360px;height:100%;flex:none;box-sizing:border-box;padding:0 28px;background:linear-gradient(#111a48,#070C26);display:flex;flex-direction:column;justify-content:center;gap:6px;overflow:hidden">' +
         '<div class="row sub" style="gap:10px;font-size:14px;color:#aeb8e6">' + markSvg(22, 'grad', '#070C26') + (M.ground ? 'LIVE FROM' : 'WHITEBROOK ROAD SPORTS') + '</div>' +
         '<span id="svname" class="nm" style="font-size:30px;color:#fff">' + (M.ground || esc(up(C.compName))) + '</span>' +
@@ -459,7 +474,7 @@
         '<span class="nm" style="font-size:46px">' + (home ? M.home : M.away) + '</span></div></div>';
       $('strap').innerHTML = '<div style="position:relative;width:' + W + 'px;height:' + H + 'px;border-radius:10px 10px 0 0;overflow:hidden">' + panel(true) + panel(false) +
         '<div id="cmid" style="position:absolute;left:' + PW + 'px;top:0;width:' + CM + 'px;height:' + H + 'px;background:linear-gradient(#2A3DC9,#0F1B7E);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff">' +
-        '<div class="row" style="gap:9px">' + comp(28) + '<span class="lab" style="font-size:14px;color:#C3CBF4">' + MO.label + '</span></div>' +
+        '<div class="row" style="gap:9px">' + comp(28) + lab('font-size:14px;color:#C3CBF4') + '</div>' +
         '<span class="num" style="font-size:60px;line-height:1.02">' + MO.score[0] + ' - ' + MO.score[1] + '</span></div></div>';
       $('subline').innerHTML = subHTML('#0F1B7E', '#fff', 'grad', '#0F1B7E');
       $('board').innerHTML = '<div class="row" style="height:84px;background:linear-gradient(#F1F3F7,#D3D8E1)">' +
@@ -494,7 +509,7 @@
         '<div id="fin" class="row" style="position:absolute;left:0;top:0;width:' + W + 'px;height:' + H + 'px;padding:0 24px 0 26px;box-sizing:border-box;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.25)">' +
         comp(80) +
         '<div class="row fitrow" style="flex:1;gap:18px;justify-content:flex-end;padding-right:24px;min-width:0"><span class="nm" style="font-size:46px">' + M.home + '</span>' + crest(true, 90) + '</div>' +
-        '<div style="height:100%;padding:0 38px;flex:none;background:rgba(255,255,255,.24);display:flex;flex-direction:column;align-items:center;justify-content:center"><span class="lab" style="font-size:15px;color:#eef1f7">' + MO.label + '</span><span class="num" style="font-size:60px;line-height:1">' + MO.score[0] + ' – ' + MO.score[1] + '</span></div>' +
+        '<div style="height:100%;padding:0 38px;flex:none;background:rgba(255,255,255,.24);display:flex;flex-direction:column;align-items:center;justify-content:center">' + lab('font-size:15px;color:#eef1f7') + '<span class="num" style="font-size:60px;line-height:1">' + MO.score[0] + ' – ' + MO.score[1] + '</span></div>' +
         '<div class="row fitrow" style="flex:1;gap:18px;padding-left:24px;min-width:0">' + crest(false, 90) + '<span class="nm" style="font-size:46px">' + M.away + '</span></div>' +
         '<div class="row num sslot" style="padding:14px 20px;border-radius:14px;flex:none;background:rgba(0,0,0,.14);font-size:30px">00:00</div></div>' +
         '<i style="position:absolute;inset:0 0 52% 0;background:linear-gradient(rgba(255,255,255,.32),rgba(255,255,255,0))"></i>' +
@@ -1748,17 +1763,23 @@
     e.style.left = lerp(-260, w + 80, eio(p)) + 'px';
     e.style.opacity = p > 0 && p < 1 ? 1 : 0;
   }
-  // the label and the score set in a block: the moment small and spaced over the score
+  // the label and the score set in a block: the moment small and spaced over the score (after a goal the score alone, in
+  // the middle)
   function labelScore(g, cx, l, r, top, bot, f, labelInk, scoreInk, labelSize, scoreSize, o) {
-    const span = bot - top, ly = top + span * 0.27, sy = top + span * 0.64;
+    const span = bot - top, ly = top + span * 0.27, sy = top + span * (MO.label ? 0.64 : 0.5);
     words(g, MO.label, cx, ly, labelSize, r - l - 16, labelInk, o && o.lf ? o.lf : f, 0, { em: 0.2, w: o && o.lw });
     words(g, MO.score[0] + (o && o.dash ? o.dash : ' – ') + MO.score[1], cx, sy, scoreSize, r - l - 20, scoreInk, f, 0, { w: o && o.sw, em: o && o.sem });
   }
-  // the label and the ticking clock set in a block
+  // the label and the ticking clock set in a block: after a goal the clock alone, at full time FULL TIME alone (larger, in
+  // the clock's ink), each in the middle
   function labelClock(g, cx, l, r, top, bot, f, labelInk, clockInk, labelSize, clockSize, o) {
     const span = bot - top;
+    if (FT) {
+      words(g, MO.label, cx, top + span * 0.5, labelSize * 1.5, r - l - 14, clockInk, o && o.lf ? o.lf : f, 0, { em: 0.12, w: o && o.lw });
+      return;
+    }
     words(g, MO.label, cx, top + span * 0.3, labelSize, r - l - 14, labelInk, o && o.lf ? o.lf : f, 0, { em: 0.2, w: o && o.lw });
-    words(g, clockText(LEAD), cx, top + span * 0.66, clockSize, r - l - 14, clockInk, o && o.cf ? o.cf : f, 0, { cls: 'sslot', w: o && o.cw });
+    words(g, clockText(LEAD), cx, top + span * (MO.label ? 0.66 : 0.5), clockSize, r - l - 14, clockInk, o && o.cf ? o.cf : f, 0, { cls: 'sslot', w: o && o.cw });
   }
   // the subline under a strap whose foot is not at the standard place
   function subAt(t, left, width, top) {
@@ -1969,7 +1990,7 @@
   S.laliga = f1('LALIGA', {
     fonts: ['800 40px CBBarlowC'], sub: ['#0E0F1F', '#fff', 'grad', '#0E0F1F'],
     draw(g, s, sh) {
-      const u = sh / 2, lab = 160, sc1 = W - lab, sc0 = sc1 - u * 1.3, e0 = sc0 - u * 0.16;
+      const u = sh / 2, lab = MO.label ? 160 : 26, sc1 = W - lab, sc0 = sc1 - u * 1.3, e0 = sc0 - u * 0.16;
       g.rect(s, 0, e0, sh, 0xFF0E0F1F);
       for (let i = 0; i < 2; i++) {
         crestOr(g, i === 0, s + 16, i * u + 7, u - 14);
@@ -1998,8 +2019,8 @@
         nameAt(g, i === 0, s + rh + 16, rh * (i + 0.5), rh * 0.56, sc0 - 16 - (s + rh + 16), INK, F.mont8, -1);
       }
       g.rect(s, low, sc0, sh, 0xFFFFFFFF);
-      words(g, MO.label, s + 16, (low + sh) / 2, (sh - low) * 0.5, 0, 0xFF0D2E73, F.mont8, -1, { em: 0.2 });
-      words(g, clockText(LEAD), sc0 - 16, (low + sh) / 2, (sh - low) * 0.72, 0, 0xFF0D2E73, F.mont8, 1, { cls: 'sslot' });
+      words(g, MO.label, ONE ? (s + sc0) / 2 : s + 16, (low + sh) / 2, (sh - low) * (FT ? 0.62 : 0.5), 0, 0xFF0D2E73, F.mont8, ONE ? 0 : -1, { em: 0.2 });
+      words(g, slotClock(), ONE ? (s + sc0) / 2 : sc0 - 16, (low + sh) / 2, (sh - low) * 0.72, 0, 0xFF0D2E73, F.mont8, ONE ? 0 : 1, { cls: 'sslot' });
       g.rect(sc0, 0, sc1, low, 0xFFFFFFFF);
       g.rect(sc0 + u * 0.1, rh - u * 0.01, sc1 - u * 0.1, rh + u * 0.01, 0xFFB9C3D6);
       scoreOne(g, MO.score[0], (sc0 + sc1) / 2, rh / 2, u * 0.62, 0xFF0D2E73, F.mont7);
@@ -2024,8 +2045,10 @@
         nameAt(g, i === 0, (l + 58 + r - 14) / 2, band / 2 + 2, 28, r - 14 - (l + 58), ((inkOn(c) & 0xFFFFFF) | 0xE6000000) >>> 0, F.bsemi7, 0);
         scoreOne(g, MO.score[i], (l + r) / 2 + (i === 0 ? -40 : 40), band + (sh - band) / 2 - 2, (sh - band) * 0.9, inkOn(c), F.bsemi7);
       }
-      g.round(mid - 90, band + 16, mid + 90, sh - 18, 4, 0xEB2C2C2C);
-      words(g, MO.label, mid, (band + 16 + sh - 18) / 2, 16, 160, INK, F.bsemi7, 0, { em: 0.2 });
+      if (MO.label) {
+        g.round(mid - 90, band + 16, mid + 90, sh - 18, 4, 0xEB2C2C2C);
+        words(g, MO.label, mid, (band + 16 + sh - 18) / 2, 16, 160, INK, F.bsemi7, 0, { em: 0.2 });
+      }
     },
   });
   // Ligue 1: the logo on its blue square over the clock on white (the board's first block), the clubs and their scores on
@@ -2043,8 +2066,10 @@
       }
       g.rect(e0, 0, W, rh, solid(BD.homeColour));
       g.rect(e0, rh, W, low, solid(BD.awayColour));
-      g.vgrad(s, low, s + 280, sh, 0xFF2766FF, 0xFF1A50DD);
-      words(g, MO.label, s + 140, (low + sh) / 2, 16, 250, 0xFFFFFFFF, F.mont7, 0, { em: 0.2 });
+      if (MO.label) {
+        g.vgrad(s, low, s + 280, sh, 0xFF2766FF, 0xFF1A50DD);
+        words(g, MO.label, s + 140, (low + sh) / 2, 16, 250, 0xFFFFFFFF, F.mont7, 0, { em: 0.2 });
+      }
     },
   });
   // Serie A: the logo large, edged in white, standing over the strap's start; the clock and the moment on white, each club
@@ -2131,7 +2156,7 @@
     html() {
       const g = new Svg(), u = H, ck = 180, c0 = W - ck, sw = 300, hc = solid(BD.homeColour), ac = solid(BD.awayColour);
       const name = BD.title || 'PREMIER LEAGUE', tab = 46, ts = 22, nw = tw(name, ts, F.mont6);
-      const tabW = 64 + nw + 26 + tw(MO.label, 15, F.mont6, 0, 0.2) + 26;
+      const tabW = 64 + nw + 26 + (MO.label ? tw(MO.label, 15, F.mont6, 0, 0.2) + 26 : 0);
       g.rect(0, -tab, tabW, 0, 0xF0121212);
       logoIn(g, M.compW, 8, -tab + 6, 52, -6, 0, null);
       words(g, name, 60, -tab / 2, ts, 0, INK, F.mont6, -1);
@@ -2173,8 +2198,8 @@
       nameAt(ga, false, W - 124, u / 2, 46, W - 124 - 20 - a0, INK, F.mont8, 1);
       crestOr(ga, false, W - 106, (u - 84) / 2, 84);
       gm.rect(mid - 200, u - 2, mid + 200, u + 56, 0xFF37003C);
-      words(gm, MO.label, mid - 100, u + 27, 16, 170, 0xFFD9B8E0, F.mont7, 0, { em: 0.2 });
-      words(gm, clockText(LEAD), mid + 100, u + 27, 36, 170, INK, F.mont7, 0, { cls: 'sslot' });
+      words(gm, MO.label, ONE ? mid : mid - 100, u + 27, FT ? 24 : 16, ONE ? 340 : 170, FT ? INK : 0xFFD9B8E0, F.mont7, 0, { em: 0.2 });
+      words(gm, slotClock(), ONE ? mid : mid + 100, u + 27, 36, 170, INK, F.mont7, 0, { cls: 'sslot' });
       bigDigit(gm, MO.score[0], mid - 140, u / 2 - 4, 140);
       bigDigit(gm, MO.score[1], mid + 140, u / 2 - 4, 140);
       logoIn(gm, logoOf('PL', BD), mid - 84, -96, mid + 84, u + 14, 0, null);
@@ -2203,8 +2228,8 @@
       crestOr(g, false, a2 - 96, (u - 80) / 2, 80);
       g.rect(a2, 0, W, u, solid(BD.awayColour));
       g.round(h3 - 6, tt, a0 + 6, u + 62, 6, 0xFFC8102E);
-      words(g, MO.label, mid, tt + 30, 15, mw - 30, 0xFFFFD9DE, F.mont7, 0, { em: 0.2 });
-      words(g, clockText(LEAD), mid, u + 24, 46, mw - 30, INK, F.mont7, 0, { cls: 'sslot' });
+      words(g, MO.label, mid, ONE ? u + 24 : tt + 30, FT ? 24 : 15, mw - 30, FT ? INK : 0xFFFFD9DE, F.mont7, 0, { em: FT ? 0.12 : 0.2 });
+      words(g, slotClock(), mid, u + 24, 46, mw - 30, INK, F.mont7, 0, { cls: 'sslot' });
       const m = new Svg();
       if (M.compM) standing(m, M.compM, mid - 120, -122, mid + 120, tt + 4, 4);
       else logoIn(m, M.compW, mid - 110, -116, mid + 110, tt, 0, null);
@@ -2233,8 +2258,8 @@
       gm.vgrad(mid - sw, 0, mid, u, 0xFFE3E3E3, 0xFFC9C9C9);
       gm.vgrad(mid, 0, mid + sw, u, 0xFFD4D4D4, 0xFFBBBBBB);
       words(gm, MO.label, mid, 24, 13, sw * 2 - 24, 0x99121212, F.inter6, 0, { em: 0.2 });
-      scoreOne(gm, MO.score[0], mid - sw / 2, 74, 72, 0xFF121212, F.inter6);
-      scoreOne(gm, MO.score[1], mid + sw / 2, 74, 72, 0xFF121212, F.inter6);
+      scoreOne(gm, MO.score[0], mid - sw / 2, MO.label ? 74 : u / 2, 72, 0xFF121212, F.inter6);
+      scoreOne(gm, MO.score[1], mid + sw / 2, MO.label ? 74 : u / 2, 72, 0xFF121212, F.inter6);
       return svgPart('ph', gh, 0, 0, mid - sw, u) + svgPart('pa', ga, mid + sw, 0, W - mid - sw, u) +
         svgPart('pm', gm, mid - sw, 0, sw * 2, u, 'transform-origin:50% 50%') + FLASH(mid);
     },
@@ -2288,8 +2313,8 @@
       }
       const ct = u * 1.3, cb = u * 1.84, cr = s + 420;
       g.vgrad(u * 0.85, ct, cr, cb, 0xFFF4F5F7, 0xFFC8CCD2);
-      words(g, MO.label, s + 16, (ct + cb) / 2, u * 0.3, 0, 0xFF1E1E1E, F.bsemi7, -1, { em: 0.12 });
-      words(g, clockText(LEAD), cr - 16, (ct + cb) / 2, u * 0.475, 0, 0xFF1E1E1E, F.bsemi7, 1, { cls: 'sslot' });
+      words(g, MO.label, ONE ? (s + cr) / 2 : s + 16, (ct + cb) / 2, u * (FT ? 0.4 : 0.3), 0, 0xFF1E1E1E, F.bsemi7, ONE ? 0 : -1, { em: 0.12 });
+      words(g, slotClock(), ONE ? (s + cr) / 2 : cr - 16, (ct + cb) / 2, u * 0.475, 0, 0xFF1E1E1E, F.bsemi7, ONE ? 0 : 1, { cls: 'sslot' });
       // the board's own first block, its arrows over the names' start
       g.path(arrowD(0, sh, 0, u * 0.4, u * 1.02, u * 0.62), g.grad(0, 0, u * 1.02, 0, [0xFFFFFFFF, 0xFFEAD9A6, 0xFFA3ABB7]));
       g.path(arrowD(0, sh, u * 0.42, u * 0.66, u * 1.28, u * 1.04), g.grad(u * 0.42, 0, u * 1.28, 0, [0xFF1D2A69, 0xFF2F45A3]));
@@ -2320,8 +2345,8 @@
     const cl = s - u * 0.05, cw = Math.max(u * 3.4, tw(MO.label, u * 0.34, F.bsemi7, 0, 0.12) + tw('88:88', u * 0.7, F.bsemi7) + u * 0.9);
     g.round(cl, bb - u * 0.08, cl + cw, bb + u * 0.78, u * 0.3, 0xFF16224F);
     g.rect(cl, bb - u * 0.08, cl + cw, bb + u * 0.2, 0xFF16224F);
-    words(g, MO.label, cl + u * 0.3, bb + u * 0.36, u * 0.34, 0, 0xFFB5C2E2, F.bsemi7, -1, { em: 0.12 });
-    words(g, clockText(LEAD), cl + cw - u * 0.3, bb + u * 0.36, u * 0.7, 0, INK, F.bsemi7, 1, { cls: 'sslot' });
+    words(g, MO.label, ONE ? cl + cw / 2 : cl + u * 0.3, bb + u * 0.36, u * (FT ? 0.5 : 0.34), 0, FT ? INK : 0xFFB5C2E2, F.bsemi7, ONE ? 0 : -1, { em: 0.12 });
+    words(g, slotClock(), ONE ? cl + cw / 2 : cl + cw - u * 0.3, bb + u * 0.36, u * 0.7, 0, INK, F.bsemi7, ONE ? 0 : 1, { cls: 'sslot' });
     // the board's own first block: the blade and the ball with the logo
     blade(g, BD, 0, bt, bb, u);
   };
@@ -2351,8 +2376,8 @@
       g.rect(a2, 0, W - e, u, 0xFFFFFFFF);
       g.rect(W - e, 0, W, u, solid(BD.awayColour));
       g.rect(h2, u, a1, u + 66, 0xFFFFFFFF);
-      words(g, MO.label, mid, u + 18, 14, sw - 30, 0xFF38003C, F.rubik6, 0, { em: 0.2 });
-      words(g, clockText(LEAD), mid, u + 45, 34, sw - 30, 0xFF1A1A1A, F.rubik6, 0, { cls: 'sslot' });
+      words(g, MO.label, mid, ONE ? u + 33 : u + 18, FT ? 22 : 14, sw - 30, 0xFF38003C, F.rubik6, 0, { em: 0.2 });
+      words(g, slotClock(), mid, ONE ? u + 33 : u + 45, 34, sw - 30, 0xFF1A1A1A, F.rubik6, 0, { cls: 'sslot' });
       const m = new Svg();
       logoIn(m, logoOf('R2016', BD), h2 + 30, -106, a1 - 30, 4, 0, null);
       return svgPart('pr', g, 0, 0, W, u + 70) + svgPart('pp', m, h2, -110, sw, 116, 'transform-origin:50% 100%');
@@ -2383,10 +2408,10 @@
       nameAt(g, false, W - 122, u * 0.48, 44, W - 122 - 22 - a0, FLOOD_INK, F.outfit, 1, { w: W800, em: 0.04 });
       g.rect(a0 + (W - a0) * 0.18, u - und, W - (W - a0) * 0.18, u, solid(BD.awayColour));
       words(g, MO.label, mid, 34, 14, sw - 30, 0xFFB7BDCC, F.outfit, 0, { w: W600, em: 0.2 });
-      digits(g, BD, MO.score, h1, a0, 78, 64, INK, F.outfit, W800, 0.04, '–', 0.7);
+      digits(g, BD, MO.score, h1, a0, MO.label ? 78 : u / 2, 64, INK, F.outfit, W800, 0.04, '–', 0.7);
       const tt = u + 10, cy = tt + 29;
       words(g, clockText(LEAD), 24, cy, 34, 0, INK, F.mono, -1, { w: W760, cls: 'sslot' });
-      if (C.compShort) words(g, C.compShort, 24 + tw('88:88', 34, F.mono, W760) + 22, cy, 28, 120, YELLOW, F.outfit, -1, { w: W600, em: 0.1 });
+      if (C.compShort) words(g, C.compShort, 24 + tw(FT ? 'FT' : '88:88', 34, F.mono, W760) + 22, cy, 28, 120, YELLOW, F.outfit, -1, { w: W600, em: 0.1 });
       logoIn(g, M.compW, 300, tt + 8, 370, tt + 50, 0, null);
       return svgPart('sc', g, 0, 0, W, u + 72);
     },
@@ -2440,9 +2465,11 @@
       const g = new Svg(), t0 = H - TK, cy = t0 + TK / 2, mid = W / 2, mk = 110;
       if (C.compShort) words(g, C.compShort, 95, cy, 38, 160, INK, F.outfit, 0, { w: W800, em: 0.06 });
       else houseMark(g, 95 - 21, cy - 21, 42, INK, 0xFF8C3FB0);
-      const lw0 = tw(MO.label, 16, F.outfit, W800, 0.2) + 36;
-      g.rect(190, t0 - 30, 190 + lw0, t0, CORAL);
-      words(g, MO.label, 190 + 18, t0 - 15, 16, 0, INK, F.outfit, -1, { w: W800, em: 0.2 });
+      if (MO.label) {
+        const lw0 = tw(MO.label, 16, F.outfit, W800, 0.2) + 36;
+        g.rect(190, t0 - 30, 190 + lw0, t0, CORAL);
+        words(g, MO.label, 190 + 18, t0 - 15, 16, 0, INK, F.outfit, -1, { w: W800, em: 0.2 });
+      }
       crestOr(g, true, 206, t0 + 12, TK - 24);
       nameAt(g, true, 206 + TK - 10, cy, 34, mid - 90 - 20 - (206 + TK - 10), INK, F.outfit, -1, { w: W760, em: 0.06 });
       digits(g, BD, MO.score, mid - 90, mid + 90, cy, 40, LAB_DARK, F.outfit, W800, 0.06, '–', 1);
@@ -2505,8 +2532,8 @@
       nameAt(g, true, (40 + mid - 120) / 2, u / 2, 46, mid - 120 - 40 - 20, AMBER, F.mono, 0, amber);
       digits(g, BD, MO.score, mid - 110, mid + 110, u / 2, 70, AMBER, F.mono, W760, 0.12, '-', 1, { halo: AMBER });
       nameAt(g, false, (mid + 120 + W - rb) / 2, u / 2, 46, W - rb - mid - 120 - 20, AMBER, F.mono, 0, amber);
-      words(g, MO.label, W - rb / 2, 40, 20, rb - 30, LED_RED, F.mono, 0, { w: W760, em: 0.12, halo: LED_RED });
-      words(g, minuteMark(clockText(LEAD)), W - rb / 2, 84, 40, rb - 30, LED_RED, F.mono, 0, { w: W760, em: 0.12, halo: LED_RED, cls: 'bmin' });
+      words(g, MO.label, W - rb / 2, ONE ? 62 : 40, FT ? 26 : 20, rb - 30, LED_RED, F.mono, 0, { w: W760, em: 0.12, halo: LED_RED });
+      words(g, minuteMark(slotClock()), W - rb / 2, ONE ? 62 : 84, 40, rb - 30, LED_RED, F.mono, 0, { w: W760, em: 0.12, halo: LED_RED, cls: 'bmin' });
       dotMatrix(g, 6, 6, W - 6, u - 6, u, 10);
       return svgPart('sc', g, 0, 0, W, u);
     },
@@ -2602,7 +2629,7 @@
     const t = tp + LEAD;
     S[STYLE].render(t);
     const b = $('board');
-    // a restart or the second half: the board is up first, and steps down into the strap as it comes in
+    // after a goal, the second half or full time: the board is up first, and steps down into the strap as it comes in
     if (MOMENT !== 'kickoff' && t < IN0 + 0.2) {
       const p = eio(prog(t, IN0 - 0.15, IN0 + 0.12));
       b.style.opacity = 1 - p; b.style.clipPath = 'none';

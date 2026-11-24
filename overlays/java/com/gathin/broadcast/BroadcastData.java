@@ -183,8 +183,10 @@ public final class BroadcastData {
     // ---- the kick-off pop-up -----------------------------------------------------------------------------------------
 
     /**
-     * The pop-up for one moment: kind "kickoff" (the game's kick-off), "restart" (play starting again after a goal, with the
-     * score, scorer and minute) or "second" (the second half's kick-off, with the score). Crests and the logo inline.
+     * The pop-up for one moment (Moments.KINDS): kind "kickoff" (the game's kick-off), "restart" (play starting again after
+     * a goal: the score alone, as the family asked, no word for it and no scorer), "second" (the second half's kick-off, with
+     * the score) or "full" (full time, with the final score). Crests and the logo inline. The scorer is no page's any more
+     * (it is not given); a goal's minute is, for the strap's clock (goalMin).
      */
     public static JSONObject kickoff(String kind, Match m, int[] score, String scorer, String minute) throws JSONException {
         JSONObject o = new JSONObject();
@@ -200,8 +202,7 @@ public final class BroadcastData {
         if (!mk.isEmpty()) o.put("mark", mk);
         o.put("stadium", m.venue == null ? "" : m.venue);
         if (score != null && score.length == 2) o.put("score", new JSONArray().put(score[0]).put(score[1]));
-        if (scorer != null) o.put("scorer", scorer);
-        if (minute != null) o.put("goalMin", minute);
+        if (minute != null && !minute.isEmpty()) o.put("goalMin", minute);
         o.put("kicksOff", "home");
         o.put("sound", true);
         return o;

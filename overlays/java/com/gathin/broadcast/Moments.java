@@ -4,10 +4,17 @@ import java.util.List;
 
 /**
  * When the classic pop-up and line-ups come, the same on the TV and the phone, from the game as the picture shows it
- * (the app's scoreboard, its states: 0 live, 1 before kick-off, 2 full time).
+ * (the app's scoreboard, its states: 0 live, 1 before kick-off, 2 full time: as the board has it, its whistle on the
+ * picture, Whistle).
  */
 public final class Moments {
     private Moments() { }
+
+    /**
+     * The moments' pop-ups, each once a game (KINDS): the kick-off, play starting again after a goal ("restart": the score
+     * alone), the second half's kick-off, and full time ("full": the final score) as the board's full time reaches the picture.
+     */
+    public static final String[] KINDS = {"kickoff", "restart", "second", "full"};
 
     /** How long after a goal reaches the picture play starts again (the restart's pop-up then). */
     public static final long RESTART_MS = 40_000L;
@@ -42,7 +49,7 @@ public final class Moments {
 
     /**
      * Pure: whether the app's own scoreboard stays away for the classic pop-up, the same on the TV and the phone: while a
-     * moment's pop-up is on (the kick-off, the restart after a goal, the second half: never on the screen with it), and,
+     * moment's pop-up is on (the kick-off, after a goal, the second half, full time: never on the screen with it), and,
      * once already away after a goal (its replays), while that goal's restart pop-up is still to come, so it never comes
      * back only to go again. Once it has gone the board comes back in, with its swish.
      */
@@ -50,9 +57,10 @@ public final class Moments {
         return popupOn || boardAway && restartToCome;
     }
 
-    /** Pure: the moments' pop-ups the board stays away for (the strap is the board's own look and folds into it). */
+    /** Pure: the moments' pop-ups (KINDS) the board stays away for (the strap is the board's own look and folds into it). */
     public static boolean boardMoment(String kind) {
-        return "kickoff".equals(kind) || "restart".equals(kind) || "second".equals(kind);
+        for (String k : KINDS) if (k.equals(kind)) return true;
+        return false;
     }
 
     /** How long after the goal the restart's pop-up waits at most for live play (the replays to end): LivePlay's most. */
@@ -81,10 +89,15 @@ public final class Moments {
         return sinceGoal < RESTART_WAIT_MS ? 0 : -1;
     }
 
-    /** Pure: the pop-up a change of phase brings: the kick-off's ("kickoff") or the second half's ("second"); else null. */
+    /**
+     * Pure: the pop-up a change of phase brings: the kick-off's ("kickoff"), the second half's ("second"), or full time's
+     * ("full") as the board's full time reaches the picture from a half in play (its whistle: never early, and not for a
+     * game first seen over, or at half time); else null.
+     */
     public static String moment(String was, String now) {
         if ("pre".equals(was) && "h1".equals(now)) return "kickoff";
         if ("ht".equals(was) && "h2".equals(now)) return "second";
+        if (("h1".equals(was) || "h2".equals(was)) && "ft".equals(now)) return "full";
         return null;
     }
 
@@ -276,7 +289,7 @@ public final class Moments {
         return last;
     }
 
-    /** Pure: the scorer as the restart's pop-up names them ("Havertz", "Gabriel (OG)" for an own goal). */
+    /** Pure: the scorer as a goal's alert beside the board names them ("Havertz", "Gabriel (OG)" for an own goal). */
     public static String scorer(String[] goal) {
         if (goal == null || goal.length < 2 || goal[1] == null) return "";
         boolean og = goal.length > 4 && "og".equals(goal[4]);

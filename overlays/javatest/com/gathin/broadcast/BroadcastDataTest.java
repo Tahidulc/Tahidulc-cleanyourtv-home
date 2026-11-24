@@ -240,6 +240,27 @@ public class BroadcastDataTest {
     }
 
     @Test
+    public void afterAGoalAndAtFullTimeThePopUpIsGivenTheScoreAndNoScorer() throws Exception {
+        BroadcastData.Match m = new BroadcastData.Match();
+        m.homeName = "Northfield"; m.awayName = "Riverside"; m.homeShort = "NOR"; m.awayShort = "RIV"; m.venue = "Whitebrook Park";
+        for (String kind : new String[]{"restart", "full"}) {
+            String minute = "restart".equals(kind) ? "67'" : null;
+            JSONObject[] both = {BroadcastData.kickoff(kind, m, new int[]{2, 1}, "Ayo Bennett", minute),
+                    BroadcastData.strap(kind, m, new int[]{2, 1}, "Ayo Bennett", minute, "CLASSIC", new float[]{64, 46, 380, 49}, "")};
+            for (JSONObject o : both) {
+                assertEquals(kind, o.getString("kind"));
+                assertEquals(2, o.getJSONArray("score").getInt(0));
+                assertEquals(1, o.getJSONArray("score").getInt(1));
+                // the score alone: no page names the scorer any more
+                assertFalse(kind + " " + o, o.has("scorer"));
+            }
+        }
+        // a goal's minute stays, for the strap's clock to run on from it; full time has none
+        assertEquals("67'", BroadcastData.kickoff("restart", m, new int[]{2, 1}, "Ayo Bennett", "67'").getString("goalMin"));
+        assertFalse(BroadcastData.kickoff("full", m, new int[]{2, 1}, null, null).has("goalMin"));
+    }
+
+    @Test
     public void introTrophyCoversTheLeaguesItHas() {
         assertEquals("pl", BroadcastData.introTrophy("eng.1", "Premier League"));
         assertEquals("ucl", BroadcastData.introTrophy("uefa.champions", ""));

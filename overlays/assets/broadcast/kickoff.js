@@ -1093,7 +1093,7 @@
   // The lettering, matched to the recording by measurement: Khand (free, SIL Open Font Licence) is the closest free
   // match to the broadcaster's own typeface, which isn't available to use. Weight 600 has the recording's stroke
   // (0.18 of the capital height); the capitals are 54% of the bar's height and the letters are set open (0.1 cap).
-  const NAME = { w: 600, s: 70, ls: 4.8 };   // team names, stadium, scorer: capitals 48 px on the 88 px bar
+  const NAME = { w: 600, s: 70, ls: 4.8 };   // team names, stadium: capitals 48 px on the 88 px bar
   const TABT = { w: 600, s: 44, ls: 2.4 };   // the tab's words: capitals 30 px on the 52 px tab
   const capOf = (s) => s * 0.685;            // Khand's capital height
   const RED = '#E10A1E', RED_DEEP = '#B0061A';
@@ -1591,8 +1591,8 @@
       fontOut(g, 800, 25, 0); const w2 = g.measureText('sports').width + 18;
       items.push({ w: w2, gap: 8, draw: (x, cy) => { g.beginPath(); g.roundRect(x, cy - 16, w2, 32, 5); const rg = g.createLinearGradient(0, cy - 16, 0, cy + 16); rg.addColorStop(0, RED); rg.addColorStop(1, RED_DEEP); g.fillStyle = rg; g.fill(); fontOut(g, 800, 25, 0); g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#fff'; g.fillText('sports', x + w2 / 2, cy + 0.5); } });
     } else if (kind === 'live') { items.push(house(30)); items.push(text('LIVE FROM', TABT.w, TABT.s, TABT.ls)); }
-    else if (kind === 'goal') { items.push(text('GOAL', 700, TABT.s, TABT.ls, '#ffd75a')); items.push(text(m.goalMin || '', TABT.w, TABT.s, TABT.ls)); }
     else if (kind === 'second') { items.push(house(30)); items.push(text('SECOND HALF', TABT.w, TABT.s, TABT.ls)); }
+    else if (kind === 'full') { items.push(house(30)); items.push(text('FULL TIME', TABT.w, TABT.s, TABT.ls)); }
     return items;
   }
   // the competition's name and logo sit straight on the tab (no box of their own, as the family asked), inside it
@@ -1668,8 +1668,7 @@
       put(MATCH.home, 960 - gap, room, 'right', NAME.ls);
       put(MATCH.away, 960 + gap, room, 'left', 0);
     } else {
-      const s = kind === 'stadium' ? MATCH.stadium : (m.scorer || '');
-      put(s, 960, OPEN_R - OPEN_L - 2 * (R_CREST + 22), 'center', NAME.ls / 2);
+      put(MATCH.stadium, 960, OPEN_R - OPEN_L - 2 * (R_CREST + 22), 'center', NAME.ls / 2);
     }
     g.restore();
   }
@@ -1721,10 +1720,14 @@
   }
 
   // ---------------------------------------------------------------- one pop-up, T seconds after it starts
+  // Each moment's pages (the tab's words, the bar's) and when they change. After a goal the score alone, under the
+  // competition (as the family asked: no word for it, no scorer, no minute); full time the final score, its tab turning to
+  // FULL TIME as the second half's turns to SECOND HALF.
   const KINDS = {
     kickoff: { pages: [['comp', 'vs'], ['brand', 'vs'], ['live', 'stadium']], steps: [[2.9, 'tab'], [4.2, 'flip']], close: 6.6 },
-    restart: { pages: [['comp', 'score'], ['goal', 'scorer']], steps: [[2.3, 'flip']], close: 4.4 },
+    restart: { pages: [['comp', 'score']], steps: [], close: 4.4 },
     second: { pages: [['comp', 'score'], ['second', 'score']], steps: [[2.3, 'tab']], close: 4.4 },
+    full: { pages: [['comp', 'score'], ['full', 'score']], steps: [[2.3, 'tab']], close: 4.4 },
     still: { pages: [['comp', 'vs']], steps: [], close: 9 },
   };
   // Slower and up longer, as the family asked: a moment comes in and goes at two-thirds speed (SLOW) and stays up two and a

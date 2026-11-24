@@ -26,13 +26,73 @@ public class MomentsTest {
     }
 
     @Test
-    public void thePopUpComesAtEachKickOffOnly() {
+    public void thePopUpComesAtEachKickOffAndAtFullTime() {
         assertEquals("kickoff", Moments.moment("pre", "h1"));
         assertEquals("second", Moments.moment("ht", "h2"));
         assertNull(Moments.moment("h1", "h1"));
         assertNull(Moments.moment("h1", "ht"));
-        assertNull(Moments.moment("h2", "ft"));
         assertNull(Moments.moment("", "h1"));
+        // full time as the board's reaches the picture, from a half in play (half time never seen: still full time)
+        assertEquals("full", Moments.moment("h2", "ft"));
+        assertEquals("full", Moments.moment("h1", "ft"));
+        // not for a game first seen over, after half time without the second half seen, or once it is over
+        assertNull(Moments.moment(null, "ft"));
+        assertNull(Moments.moment("", "ft"));
+        assertNull(Moments.moment("ht", "ft"));
+        assertNull(Moments.moment("pre", "ft"));
+        assertNull(Moments.moment("ft", "ft"));
+    }
+
+    @Test
+    public void aGameSeenThroughHasEachMomentOnceInTurn() {
+        // the board's phases through a game (each second), as the apps follow them: each moment once, in turn
+        String[][] seen = {{"1", "0"}, {"0", "0"}, {"0", "0"}, {"0", "1"}, {"0", "1"}, {"0", "0"}, {"0", "0"}, {"2", "0"}, {"2", "0"}};
+        java.util.List<String> got = new java.util.ArrayList<>();
+        String was = null;
+        for (String[] r : seen) {
+            String now = Moments.phase(false, Integer.parseInt(r[0]), "1".equals(r[1]), was, 0);
+            String kind = was == null ? null : Moments.moment(was, now);
+            if (kind != null) got.add(kind);
+            if (!now.isEmpty()) was = now;
+        }
+        assertEquals(Arrays.asList("kickoff", "second", "full"), got);
+        for (String k : Moments.KINDS) assertTrue(k, Moments.boardMoment(k));
+        assertEquals(Arrays.asList("kickoff", "restart", "second", "full"), Arrays.asList(Moments.KINDS));
+    }
+
+    /**
+     * Full time's pop-up comes with the board's own full time (Whistle, as every app's board decides it): the data has the
+     * game over a minute before the stream shows it, and the pop-up waits for the whistle on the picture, then comes once.
+     */
+    @Test
+    public void fullTimesPopUpComesWithTheBoardsFullTimeNeverEarly() {
+        final String g = "g1";
+        final long t0 = 1_000_000_000L, delay = 60_000, end = 95 * 60;
+        Whistle w = new Whistle();
+        w.added(g, 2, 5);
+        String was = "h2";
+        long fullAt = -1;
+        int fulls = 0;
+        for (long wall = t0 + 5000_000L; wall <= t0 + 5900_000L; wall += 1000) {
+            long real = (wall - t0) / 1000;
+            if (real % 15 == 0) w.data(wall, g, 2, real < end ? Whistle.IN_PLAY : Whistle.AT_END, real < end ? real / 60 * 60 : 5400);
+            long pic = Math.min((wall - delay - t0) / 1000, end);
+            if (real % 2 == 0) {
+                if ((wall - delay - t0) / 1000 < end) w.picture(wall, g, pic, false);
+                else w.pictureNone(wall, g);
+            }
+            int state = w.over(wall, g, 2, pic, delay, true) == Whistle.FT ? 2 : 0;
+            String now = Moments.phase(false, state, false, was, 2);
+            if ("full".equals(Moments.moment(was, now))) {
+                fulls++;
+                if (fullAt < 0) fullAt = wall;
+            }
+            was = now;
+        }
+        long whistleOnPicture = t0 + end * 1000 + delay;
+        assertEquals(1, fulls);
+        assertTrue("came " + (fullAt - whistleOnPicture) + " ms after the whistle on the picture",
+                fullAt >= whistleOnPicture && fullAt - whistleOnPicture <= 7_000);
     }
 
     @Test
@@ -219,10 +279,11 @@ public class MomentsTest {
         // nothing on, nothing to come: back
         org.junit.Assert.assertFalse(Moments.boardAwayForPopup(false, false, true));
         org.junit.Assert.assertFalse(Moments.boardAwayForPopup(false, false, false));
-        // the moments: the kick-off, the restart after a goal, the second half; not the line-ups, the strap or the intro
+        // the moments: the kick-off, after a goal, the second half, full time; not the line-ups, the strap or the intro
         org.junit.Assert.assertTrue(Moments.boardMoment("kickoff"));
         org.junit.Assert.assertTrue(Moments.boardMoment("restart"));
         org.junit.Assert.assertTrue(Moments.boardMoment("second"));
+        org.junit.Assert.assertTrue(Moments.boardMoment("full"));
         org.junit.Assert.assertFalse(Moments.boardMoment("strap"));
         org.junit.Assert.assertFalse(Moments.boardMoment("lineups"));
         org.junit.Assert.assertFalse(Moments.boardMoment("intro"));
