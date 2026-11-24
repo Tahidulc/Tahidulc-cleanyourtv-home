@@ -23,6 +23,9 @@ import java.util.List;
  * number, logo and logo colours, and what is on now and next (title, times, a few lines, picture). Only an app signed
  * with Homefield TV's own key may read it (the signature permission READ_CHANNEL_CARDS, which the launcher declares too).
  *
+ * <p>A logo made on this TV (Change logo's Make my own and Ask AI) is in this app's own files, so its card's logo_url is
+ * this provider's content://com.gathin.homefieldtv.cards/logo/<name>, opened read-only (openFile), for the same apps.
+ *
  * <p>Answered at once from what ChannelCards last made (kept in memory, else read back from its small file): never the
  * playlists or the guide, and nothing else of the app is started for it.
  */
@@ -107,7 +110,38 @@ public final class ChannelCardsProvider extends ContentProvider {
         }
     }
 
+    /** A made logo's picture for the launcher: content://…cards/logo/<its file's name>, served read-only below. */
+    static final String LOGO = "logo";
+
+    /**
+     * Pure: a logo's address as the launcher can read it: a logo made on this TV (a "file:" in this app's made logos) as
+     * this provider's content address, any other as it is.
+     */
+    static String shared(String url) {
+        if (url == null || !url.startsWith("file:")) return url;
+        String name = url.substring(url.lastIndexOf('/') + 1);
+        if (!com.gathin.homefieldtv.engine.MadeLogos.validName(name) || !url.contains("/logos-made/")) return url;
+        return "content://" + AUTHORITY + "/" + LOGO + "/" + name;
+    }
+
+    /**
+     * A made logo's picture, read-only, for the launcher (signed with this app's key: the provider's permission): only a
+     * name MadeLogos makes, from its own folder, and nothing else of the app.
+     */
+    @Override public android.os.ParcelFileDescriptor openFile(Uri uri, String mode) throws java.io.FileNotFoundException {
+        Context c = getContext();
+        List<String> path = uri.getPathSegments();
+        if (c == null || mode == null || !mode.equals("r") || path.size() != 2 || !LOGO.equals(path.get(0))) {
+            throw new java.io.FileNotFoundException("no such picture");
+        }
+        File f = com.gathin.homefieldtv.engine.MadeLogos.fileNamed(c, path.get(1));
+        if (f == null || !f.isFile()) throw new java.io.FileNotFoundException("no such picture");
+        return android.os.ParcelFileDescriptor.open(f, android.os.ParcelFileDescriptor.MODE_READ_ONLY);
+    }
+
     @Override public String getType(Uri uri) {
+        List<String> path = uri.getPathSegments();
+        if (path.size() == 2 && LOGO.equals(path.get(0))) return "image/png";
         return "vnd.android.cursor.dir/vnd." + AUTHORITY + ".card";
     }
 

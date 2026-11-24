@@ -23,7 +23,8 @@ import java.util.Map;
  *
  * <p>Kept as compact records keyed by the channel's stable key, one line a channel that has an edit, in the "channel_edits"
  * settings (so a backup carries them): {@code key<TAB>hidden<TAB>place<TAB>name<TAB>logo}, hidden "1" or "", place a
- * number or "", the logo "" (as Settings › Appearance › Logos says), "-" (the playlist's) or a new logo's path. They hold
+ * number or "", the logo "" (as Settings › Appearance › Logos says), "-" (the playlist's), a new logo's path, a logo from
+ * the catalogue (its https address) or one made on this TV ("made:" and its file: MadeLogos). They hold
  * across reloads and playlists' changes; a channel gone keeps its line until it comes back.
  *
  * <p>Read at once from memory (the screens draw names with name()); a change that the lists show (hidden, a name, a
@@ -347,6 +348,13 @@ public final class ChannelEdits {
     public static List<String> hiddenKeys(Context c) {
         List<String> out = new ArrayList<>();
         for (Map.Entry<String, Rec> e : records(c).entrySet()) if (e.getValue().hidden) out.add(e.getKey());
+        return out;
+    }
+
+    /** Every logo chosen for a channel (Change logo), each once: the made logos still in use are among them. */
+    public static java.util.Set<String> logoChoices(Context c) {
+        java.util.Set<String> out = new java.util.HashSet<>();
+        for (Rec r : records(c).values()) if (!r.logo.isEmpty()) out.add(r.logo);
         return out;
     }
 
