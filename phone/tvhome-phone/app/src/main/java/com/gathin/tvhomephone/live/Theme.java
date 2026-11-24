@@ -82,6 +82,8 @@ public final class Theme {
     static final int GLASS_GROUND = 0xFF0E0F14, TV_GROUND = 0xFF0B0B0F, PAGE_GROUND = 0xFF0D0F2C;
 
     private static volatile int primary = HOMEFIELD, accent = AMBER;
+    /** Appearance › Progress bars ("look": "progress", Homefield TV's key): how far through on now, on as it comes. */
+    static volatile boolean progress = true;
     /** The ground of the pages that are neither glass nor Live TV (Settings): its navy, or the theme's ground. */
     private static volatile int page = PAGE_GROUND;
 
@@ -125,6 +127,12 @@ public final class Theme {
     public static void apply(Context c) {
         SharedPreferences p = prefs(c);
         apply(clampP(p.getInt(PRIMARY_KEY, HOMEFIELD)), clampA(p.getInt(ACCENT_KEY, AMBER)));
+        progress = p.getBoolean("progress", true);
+    }
+
+    static void setProgress(Context c, boolean on) {
+        progress = on;
+        prefs(c).edit().putBoolean("progress", on).apply();
     }
 
     static void apply(int p, int a) {

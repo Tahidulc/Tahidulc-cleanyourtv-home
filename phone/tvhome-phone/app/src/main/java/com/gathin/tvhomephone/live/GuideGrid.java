@@ -602,8 +602,8 @@ final class GuideGrid extends FrameLayout {
             boolean past = s.stop[i] <= now;
             if (picture(cv, s, i, r - l - 2 * st.gap, h, on, sel, past, wordsEnd)) edges(cv, sel, pressed);
             else card(cv, left, right, h, on, sel, pressed);
-            if (on) {
-                // How far in it is: a white line on a soft track along the card's foot.
+            if (on && Theme.progress) {
+                // How far in it is: a white line on a soft track along the card's foot (Appearance › Progress bars).
                 float y = h - k - st.lineIn / 2 - st.lineH;
                 float x0 = left + k + st.lineIn, x1 = right - k - st.lineIn;
                 if (x1 - x0 > st.lineIn) {

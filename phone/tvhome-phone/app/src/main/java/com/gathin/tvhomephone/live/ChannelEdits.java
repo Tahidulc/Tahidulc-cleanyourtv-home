@@ -189,6 +189,19 @@ public final class ChannelEdits {
         Library.get(c).orderChanged();
     }
 
+    /**
+     * Settings come from another of the family's devices (sync: one row per channel, Channels sorting, programme times,
+     * progress bars): read again, and the lists made again if one row per channel changed.
+     */
+    public static void synced(Context c) {
+        State was = state;
+        state = read(prefs(c));
+        Times.load(c);
+        Theme.progress = c.getApplicationContext().getSharedPreferences(Theme.PREFS, Context.MODE_PRIVATE).getBoolean("progress", true);
+        if (was != null && was.merge != state.merge) Library.get(c).editsChanged();
+        else Library.get(c).orderChanged();
+    }
+
     /** Everything forgotten (Live TV's Remove everything). */
     static void clear(Context c) {
         prefs(c).edit().clear().apply();

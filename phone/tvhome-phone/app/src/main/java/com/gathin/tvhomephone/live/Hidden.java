@@ -43,8 +43,9 @@ final class Hidden {
         return "nm:" + plainName(name) + "|" + Long.toHexString(fnv(url == null ? "" : url.trim()));
     }
 
+    /** By the playlist's name, so a channel the family renamed keeps its key. */
     static String key(Channel c) {
-        return key(c.tvgId, c.name, c.url);
+        return key(c.tvgId, c.playlistName, c.url);
     }
 
     /** FNV-1a, 64 bits: the same on every phone and every run (unlike a salted hash). */
@@ -132,8 +133,10 @@ final class Hidden {
         Library.get(c).hiddenChanged();
     }
 
+    /** Hidden, with every version of it shown as one row (one row per channel: Library.versions). */
     static void hide(Context c, Channel ch) {
         LinkedHashMap<String, String> m = all(c);
+        for (Channel v : Library.get(c).versions(ch)) m.put(key(v), ch.name);
         m.put(key(ch), ch.name);
         save(c, m);
     }
@@ -141,6 +144,14 @@ final class Hidden {
     static void unhide(Context c, String key) {
         LinkedHashMap<String, String> m = all(c);
         if (m.remove(key) != null) save(c, m);
+    }
+
+    /** Shown again, with every one of its versions. */
+    static void unhide(Context c, Channel ch) {
+        LinkedHashMap<String, String> m = all(c);
+        boolean any = m.remove(key(ch)) != null;
+        for (Channel v : Library.get(c).versions(ch)) any |= m.remove(key(v)) != null;
+        if (any) save(c, m);
     }
 
     static void unhideAll(Context c) {

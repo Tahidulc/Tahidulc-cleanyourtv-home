@@ -171,6 +171,30 @@ public final class Library {
         return out;
     }
 
+    /** The name a channel shows without one of the family's: its channel's without the quality (one row), else the playlist's. */
+    public String defaultName(Channel c) {
+        int[] fam = familyAt(position(c.key));
+        List<Channel> ch = channels;
+        return fam != null && fam[0] < ch.size() ? Versions.title(ch.get(fam[0]).playlistName) : c.playlistName;
+    }
+
+    /** Whether the family gave the channel a name of their own (Rename channel). */
+    public boolean renamed(Channel c) {
+        return c != null && ChannelEdits.name(app, familyKeys(c.key)) != null;
+    }
+
+    /** The channels the family renamed, as the lists show them (each once), by name. */
+    List<Channel> renamedChannels() {
+        List<Channel> out = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (String k : ChannelEdits.state(app).names.keySet()) {
+            Channel c = rowOf(byKey(k));
+            if (c != null && seen.add(c.key)) out.add(c);
+        }
+        out.sort((a, b) -> a.name.compareToIgnoreCase(b.name));
+        return out;
+    }
+
     /** Whether the version is its channel's row now (shown and played: the one picked, else the best shown). */
     private boolean rowAt(int i) {
         boolean[] r = rows;
@@ -540,8 +564,8 @@ public final class Library {
         java.util.Arrays.fill(r, true);
         for (int i = 0; i < Math.min(n, families.length); i++) {
             int[] fam = families[i];
-            if (fam == null || fam[0] != i && contains(fam, i) && fam[0] < i) continue;
-            if (fam[0] != i) continue;
+            // Each channel once: from the first of its versions met (its versions share one array).
+            if (fam == null || min(fam) != i) continue;
             int pick = -1;
             for (int p : fam) {
                 r[p] = false;
@@ -555,9 +579,10 @@ public final class Library {
         return r;
     }
 
-    private static boolean contains(int[] a, int v) {
-        for (int x : a) if (x == v) return true;
-        return false;
+    private static int min(int[] a) {
+        int m = Integer.MAX_VALUE;
+        for (int x : a) m = Math.min(m, x);
+        return m;
     }
 
     /** Pure: the hidden channels and, besides, those in a hidden category. */
@@ -706,8 +731,13 @@ public final class Library {
         Watched.clear(app);
         Hidden.clear(app);
         Groups.clear(app);
+        ChannelEdits.clear(app);
         Playback.get(app).forget();
         channels = Collections.emptyList();
+        plain = Collections.emptyList();
+        families = new int[0][];
+        rows = new boolean[0];
+        sortNames = new String[0];
         perPlaylist = Collections.emptyMap();
         lower = new String[0];
         groups = Collections.emptyList();
@@ -953,18 +983,50 @@ public final class Library {
             per.put(id, n == null ? 1 : n + 1);
         }
         perPlaylist = per;
-        List<Channel> list = merged(raw);
-        List<Channel> ch = Collections.unmodifiableList(new ArrayList<>(list));
+        plain = Collections.unmodifiableList(new ArrayList<>(merged(raw)));
+        build();
+        fingerprint = fp;
+        guideUrl = gUrl == null ? "" : gUrl;
+        loadedAt = at;
+        matches.clear();
+    }
+
+    /**
+     * The channels as the family has them, from the playlists' (plain): one row per channel (Versions), their own names
+     * and logos (ChannelEdits), the names without their quality for a channel shown as one row; then the indexes.
+     */
+    private synchronized void build() {
+        List<Channel> base = plain;
+        Groups.load(app);
+        ChannelEdits.State ed = ChannelEdits.state(app);
+        int size = base.size();
+        Names.Info[] in = new Names.Info[size];
+        for (int i = 0; i < size; i++) in[i] = Names.info(base.get(i).playlistName, base.get(i).group);
+        int[][] fam = ed.merge ? Versions.group(base, in) : new int[size][];
+        List<Channel> dressed = new ArrayList<>(size);
+        for (int i = 0; i < size; i++) {
+            Channel c = base.get(i);
+            List<String> ks = new ArrayList<>(3);
+            ks.add(c.key);
+            if (fam[i] != null) for (int p : fam[i]) if (p != i) ks.add(base.get(p).key);
+            String own = ChannelEdits.State.first(ed.names, ks), logo = ChannelEdits.State.first(ed.logos, ks);
+            String title = fam[i] != null ? Versions.title(base.get(fam[i][0]).playlistName) : null;
+            String name = ChannelEdits.shown(c.playlistName, own, title);
+            String shownLogo = logo != null ? logo : c.playlistLogo;
+            dressed.add(name.equals(c.name) && shownLogo.equals(c.logo) ? c : c.dressed(name, shownLogo));
+        }
+        List<Channel> ch = Collections.unmodifiableList(dressed);
         String[] low = new String[ch.size()];
+        String[] sorts = new String[ch.size()];
         String[] hk = new String[ch.size()];
-        Names.Info[] in = new Names.Info[ch.size()];
         Map<String, Integer> keys = new HashMap<>(ch.size() * 2);
         Map<String, List<Integer>> names = new HashMap<>(ch.size() * 2);
         LinkedHashMap<String, Boolean> gs = new LinkedHashMap<>();
         for (int i = 0; i < ch.size(); i++) {
             Channel c = ch.get(i);
-            low[i] = Names.plain(c.name).toLowerCase(Locale.ROOT);
-            in[i] = Names.info(c.name, c.group);
+            sorts[i] = Names.plain(c.name).toLowerCase(Locale.ROOT);
+            // Found by search under its own name and the playlist's.
+            low[i] = c.name.equals(c.playlistName) ? sorts[i] : sorts[i] + "\n" + Names.plain(c.playlistName).toLowerCase(Locale.ROOT);
             hk[i] = Hidden.key(c);
             keys.put(c.key, i);
             if (!in[i].key.isEmpty()) {
@@ -981,23 +1043,23 @@ public final class Library {
             idx.put(e.getKey(), a);
         }
         lower = low;
+        sortNames = sorts;
         infos = in;
         hideKeys = hk;
+        families = fam;
         boolean[] own = Hidden.mask(hk, Hidden.keys(app));
         boolean[] m = withGroups(own, ch, Groups.hidden(app));
+        boolean[] r = rows(ch, fam, m, ed.picks);
         int vis = 0;
-        for (boolean b : m) if (!b) vis++;
+        for (int i = 0; i < m.length; i++) if (!m[i] && r[i]) vis++;
         ownHidden = own;
         hidden = m;
+        rows = r;
         visible = vis;
         byKey = keys;
         byName = idx;
         groups = Collections.unmodifiableList(new ArrayList<>(gs.keySet()));
         channels = ch;
-        fingerprint = fp;
-        guideUrl = gUrl == null ? "" : gUrl;
-        loadedAt = at;
-        matches.clear();
     }
 
     /** The guide read again (in the background, after the channels): only the playlist's channels, a 13 hour window. */
@@ -1021,7 +1083,7 @@ public final class Library {
                             if (!l.contains(main.key)) l.add(main.key);
                         } else if (!named) {
                             named = true;
-                            String k = Names.key(c.name);
+                            String k = Names.key(c.playlistName);
                             if (k.isEmpty()) continue;
                             List<String> l = names.get(k);
                             if (l == null) names.put(k, l = new ArrayList<>(1));
@@ -1074,13 +1136,14 @@ public final class Library {
         File f = file("channels.tsv"), tmp = file("channels.tsv.tmp");
         try (Writer w = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(tmp), StandardCharsets.UTF_8), 64 * 1024)) {
             w.write("v1\t" + fingerprint + "\t" + loadedAt + "\t" + cell(guideUrl) + "\n");
-            // Each channel with its backups after it: read back, they are made one again (merged).
-            for (Channel main : channels) {
-                List<Channel> rows = new ArrayList<>(1 + main.alternates.size());
-                rows.add(main);
-                rows.addAll(main.alternates);
-                for (Channel c : rows) {
-                    w.write(cell(c.key) + "\t" + cell(c.name) + "\t" + cell(c.group) + "\t" + cell(c.logo) + "\t" + cell(c.url) + "\t"
+            // Each channel with its backups after it: read back, they are made one again (merged). As the playlists give
+            // them: the family's names and logos are made again from ChannelEdits.
+            for (Channel main : plain) {
+                List<Channel> all = new ArrayList<>(1 + main.alternates.size());
+                all.add(main);
+                all.addAll(main.alternates);
+                for (Channel c : all) {
+                    w.write(cell(c.key) + "\t" + cell(c.playlistName) + "\t" + cell(c.group) + "\t" + cell(c.playlistLogo) + "\t" + cell(c.url) + "\t"
                             + cell(c.tvgId) + "\t" + cell(c.userAgent) + "\t" + cell(c.referrer) + "\t" + c.number + "\n");
                 }
             }

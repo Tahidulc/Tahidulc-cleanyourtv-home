@@ -48,6 +48,9 @@ final class Sheets {
         void similar(Channel ch);
 
         void info(Channel ch);
+
+        /** A version picked in its Quality (one row per channel): kept already; the host plays it if the channel is on. */
+        default void quality(Channel version) {}
     }
 
     static BottomSheetDialog open(Context c, View content, boolean draggable) {
@@ -90,7 +93,11 @@ final class Sheets {
 
     // ---- a channel's menu ------------------------------------------------------------------------------------------
 
-    /** A long press on a channel: Add or Remove favourite, Hide channel, Similar channels, Channel info. */
+    /**
+     * A long press on a channel: its Quality (a channel in several, one row per channel), Add or Remove favourite, Hide
+     * channel, its category's lines, then Homefield TV's Rename channel (Restore channel name once renamed), Change logo
+     * and Move channel; Similar channels, Channel info.
+     */
     static BottomSheetDialog channel(Context c, Library lib, Channel ch, ChannelMenu m) {
         LinearLayout box = new LinearLayout(c);
         box.setOrientation(LinearLayout.VERTICAL);
@@ -98,6 +105,10 @@ final class Sheets {
         box.addView(head(c, lib, ch));
         box.addView(new View(c), new LinearLayout.LayoutParams(-1, Ui.dp(c, 10)));
         BottomSheetDialog[] d = new BottomSheetDialog[1];
+        quality(c, lib, ch, box, v -> {
+            d[0].dismiss();
+            m.quality(v);
+        });
         boolean fav = Picks.isFavourite(c, ch.key);
         action(c, box, fav ? R.drawable.live_ic_star : R.drawable.live_ic_star_outline,
                 fav ? R.string.live_fav_remove : R.string.live_fav_add, () -> {
@@ -111,15 +122,37 @@ final class Sheets {
         // Its whole category: hidden, or a favourite (first among the chips).
         if (!ch.group.isEmpty()) {
             boolean favGroup = Groups.isFavourite(c, ch.group);
+            String label = Groups.label(ch.group);
             action(c, box, favGroup ? R.drawable.live_ic_star : R.drawable.live_ic_star_outline,
-                    favGroup ? R.string.groups_unfavourite_named : R.string.groups_favourite_named, ch.group, () -> {
+                    favGroup ? R.string.groups_unfavourite_named : R.string.groups_favourite_named, label, () -> {
                         d[0].dismiss();
                         Groups.setFavourite(c, ch.group, !favGroup);
                     });
-            action(c, box, R.drawable.live_ic_hide, R.string.groups_hide_named, ch.group, () -> {
+            action(c, box, R.drawable.live_ic_hide, R.string.groups_hide_named, label, () -> {
                 d[0].dismiss();
                 Groups.setHidden(c, ch.group, true);
-                android.widget.Toast.makeText(c, c.getString(R.string.groups_hidden_toast, ch.group), android.widget.Toast.LENGTH_LONG).show();
+                android.widget.Toast.makeText(c, c.getString(R.string.groups_hidden_toast, label), android.widget.Toast.LENGTH_LONG).show();
+            });
+        }
+        // As Homefield TV's channel menu: a name of the family's own, its logo, its place in its category.
+        action(c, box, R.drawable.live_ic_edit, R.string.ps_rename_channel, () -> {
+            d[0].dismiss();
+            EditSheets.renameChannel(c, lib, ch);
+        });
+        if (lib.renamed(ch)) {
+            action(c, box, R.drawable.live_ic_replay, c.getString(R.string.ps_restore_name) + " · " + lib.defaultName(ch), () -> {
+                d[0].dismiss();
+                EditSheets.restoreName(c, lib, ch);
+            });
+        }
+        action(c, box, R.drawable.live_ic_tv, R.string.ps_change_logo, () -> {
+            d[0].dismiss();
+            EditSheets.changeLogo(c, lib, ch);
+        });
+        if (!ch.group.isEmpty()) {
+            action(c, box, R.drawable.live_ic_drag, R.string.ps_move_channel, () -> {
+                d[0].dismiss();
+                EditSheets.moveChannels(c, lib, ch);
             });
         }
         action(c, box, R.drawable.live_ic_similar, R.string.live_similar, () -> {
@@ -132,6 +165,41 @@ final class Sheets {
         });
         d[0] = open(c, box, true);
         return d[0];
+    }
+
+    /**
+     * Quality, for a channel shown as one row in several (Homefield TV's hold-OK card): Best, then each version by its
+     * playlist's name, best first, the one shown lit; a tap keeps it for the channel (ChannelEdits) and hands it on.
+     */
+    static void quality(Context c, Library lib, Channel ch, LinearLayout box, Consumer<Channel> picked) {
+        List<Channel> vs = lib.versions(ch);
+        if (vs.size() < 2) return;
+        List<String> keys = lib.familyKeys(ch.key);
+        boolean auto = ChannelEdits.pick(c, keys) == null;
+        TextView label = Ui.text(c, c.getString(R.string.ps_quality), 13, Ui.DIM, true);
+        label.setPadding(Ui.dp(c, 4), 0, 0, Ui.dp(c, 6));
+        box.addView(label);
+        LinearLayout row = new LinearLayout(c);
+        TextView best = LiveTvSettings.pill(c, c.getString(R.string.ps_quality_best), auto);
+        best.setOnClickListener(v -> {
+            ChannelEdits.setPick(c, keys, null);
+            picked.accept(vs.get(0));
+        });
+        row.addView(best, LiveTvSettings.chipParams(c));
+        for (Channel v : vs) {
+            TextView t = LiveTvSettings.pill(c, v.playlistName, !auto && v.key.equals(ch.key));
+            t.setOnClickListener(x -> {
+                ChannelEdits.setPick(c, keys, v.key);
+                android.widget.Toast.makeText(c, c.getString(R.string.ps_quality_kept, ch.name, v.playlistName), android.widget.Toast.LENGTH_SHORT).show();
+                picked.accept(v);
+            });
+            row.addView(t, LiveTvSettings.chipParams(c));
+        }
+        android.widget.HorizontalScrollView hs = new android.widget.HorizontalScrollView(c);
+        hs.setHorizontalScrollBarEnabled(false);
+        hs.addView(row);
+        box.addView(hs);
+        box.addView(new View(c), new LinearLayout.LayoutParams(-1, Ui.dp(c, 10)));
     }
 
     /** A channel's logo, number and name, and its group. */
@@ -148,7 +216,7 @@ final class Sheets {
         name.setEllipsize(TextUtils.TruncateAt.END);
         texts.addView(name);
         if (!ch.group.isEmpty()) {
-            TextView g = Ui.text(c, ch.group, 13, Ui.DIM, false);
+            TextView g = Ui.text(c, Groups.label(ch.group), 13, Ui.DIM, false);
             g.setSingleLine(true);
             g.setEllipsize(TextUtils.TruncateAt.END);
             texts.addView(g);
@@ -257,9 +325,16 @@ final class Sheets {
     /** The channels hidden on this phone, each with Unhide, and Unhide all. */
     static void hidden(Context c, Library lib) {
         List<String[]> list = new ArrayList<>();
-        for (Map.Entry<String, String> e : Hidden.all(c).entrySet()) list.add(new String[]{e.getKey(), e.getValue()});
         // The ones still in the playlist (for their logos and numbers).
         Map<String, Channel> found = lib.hiddenChannels();
+        // A channel shown as one row in several qualities, hidden whole, is one line (its versions hidden with it).
+        java.util.Set<String> lines = new java.util.HashSet<>();
+        for (Map.Entry<String, String> e : Hidden.all(c).entrySet()) {
+            Channel ch = found.get(e.getKey());
+            List<String> fam = ch == null ? null : lib.familyKeys(ch.key);
+            String line = fam == null || fam.size() < 2 ? e.getKey() : java.util.Collections.min(fam);
+            if (lines.add(line)) list.add(new String[]{e.getKey(), e.getValue()});
+        }
         LinearLayout root = new LinearLayout(c);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(Ui.dp(c, 16), Ui.dp(c, 16), Ui.dp(c, 16), Ui.dp(c, 8));
@@ -324,7 +399,9 @@ final class Sheets {
                     int at = vh.getBindingAdapterPosition();
                     if (at < 0 || at >= list.size()) return;
                     String[] gone = list.remove(at);
-                    Hidden.unhide(c, gone[0]);
+                    Channel was = found.get(gone[0]);
+                    if (was != null) Hidden.unhide(c, was);
+                    else Hidden.unhide(c, gone[0]);
                     notifyItemRemoved(at);
                     if (list.isEmpty()) {
                         hint.setText(R.string.live_hidden_empty);
@@ -376,103 +453,8 @@ final class Sheets {
      * again; Show all brings every one back.
      */
     static void categories(Context c, Library lib) {
-        List<String> all = new ArrayList<>(lib.groups());
-        LinearLayout root = new LinearLayout(c);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(Ui.dp(c, 16), Ui.dp(c, 16), Ui.dp(c, 16), Ui.dp(c, 8));
-        LinearLayout head = new LinearLayout(c);
-        head.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout titles = new LinearLayout(c);
-        titles.setOrientation(LinearLayout.VERTICAL);
-        titles.addView(Ui.text(c, c.getString(R.string.groups_title), 20, Ui.TEXT, true));
-        titles.addView(Ui.text(c, c.getString(all.isEmpty() ? R.string.groups_empty : R.string.groups_hint), 13, Ui.DIM, false));
-        head.addView(titles, new LinearLayout.LayoutParams(0, -2, 1f));
-        MaterialButton showAll = new MaterialButton(c);
-        showAll.setText(R.string.groups_show_all);
-        showAll.setAllCaps(false);
-        showAll.setCornerRadius(Ui.dp(c, 24));
-        showAll.setTextColor(Ui.G_INK);
-        showAll.setBackgroundTintList(ColorStateList.valueOf(Ui.G_SELECT));
-        showAll.setVisibility(Groups.hidden(c).isEmpty() ? View.GONE : View.VISIBLE);
-        head.addView(showAll, new LinearLayout.LayoutParams(-2, Ui.dp(c, 48)));
-        root.addView(head);
-
-        RecyclerView rv = new RecyclerView(c);
-        rv.setLayoutManager(new LinearLayoutManager(c));
-        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-1, -2);
-        rp.topMargin = Ui.dp(c, 12);
-        root.addView(rv, rp);
-        RecyclerView.Adapter<RecyclerView.ViewHolder> adapter = new RecyclerView.Adapter<RecyclerView.ViewHolder>() {
-            @Override public int getItemCount() { return all.size(); }
-
-            @NonNull @Override public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int type) {
-                LinearLayout row = new LinearLayout(c);
-                row.setGravity(Gravity.CENTER_VERTICAL);
-                row.setLayoutParams(new RecyclerView.LayoutParams(-1, Ui.dp(c, 60)));
-                ImageButton star = new ImageButton(c);
-                star.setBackground(Ui.touch(c, false, 0, 24));
-                row.addView(star, new LinearLayout.LayoutParams(Ui.dp(c, 48), Ui.dp(c, 48)));
-                LinearLayout words = new LinearLayout(c);
-                words.setOrientation(LinearLayout.VERTICAL);
-                words.setPadding(Ui.dp(c, 8), 0, Ui.dp(c, 8), 0);
-                TextView name = Ui.text(c, "", 15, Ui.TEXT, true);
-                name.setSingleLine(true);
-                name.setEllipsize(TextUtils.TruncateAt.END);
-                words.addView(name);
-                TextView count = Ui.text(c, "", 12, Ui.DIM, false);
-                words.addView(count);
-                row.addView(words, new LinearLayout.LayoutParams(0, -2, 1f));
-                MaterialButton hide = new MaterialButton(c);
-                hide.setAllCaps(false);
-                hide.setCornerRadius(Ui.dp(c, 24));
-                hide.setTextColor(Ui.TEXT);
-                hide.setBackgroundTintList(ColorStateList.valueOf(0x29FFFFFF));
-                row.addView(hide, new LinearLayout.LayoutParams(-2, Ui.dp(c, 48)));
-                RecyclerView.ViewHolder vh = new RecyclerView.ViewHolder(row) {};
-                star.setOnClickListener(v -> {
-                    int at = vh.getBindingAdapterPosition();
-                    if (at < 0 || at >= all.size()) return;
-                    String g = all.get(at);
-                    boolean fav = !Groups.isFavourite(c, g);
-                    if (fav && Groups.hidden(c).contains(g)) Groups.setHidden(c, g, false);
-                    Groups.setFavourite(c, g, fav);
-                    notifyItemChanged(at);
-                });
-                hide.setOnClickListener(v -> {
-                    int at = vh.getBindingAdapterPosition();
-                    if (at < 0 || at >= all.size()) return;
-                    String g = all.get(at);
-                    Groups.setHidden(c, g, !Groups.hidden(c).contains(g));
-                    showAll.setVisibility(Groups.hidden(c).isEmpty() ? View.GONE : View.VISIBLE);
-                    notifyItemChanged(at);
-                });
-                row.setTag(new View[]{star, name, count, hide});
-                return vh;
-            }
-
-            @Override public void onBindViewHolder(@NonNull RecyclerView.ViewHolder h, int position) {
-                String g = all.get(position);
-                View[] v = (View[]) h.itemView.getTag();
-                boolean fav = Groups.isFavourite(c, g), gone = Groups.hidden(c).contains(g);
-                ImageButton star = (ImageButton) v[0];
-                star.setImageResource(fav ? R.drawable.live_ic_star : R.drawable.live_ic_star_outline);
-                star.setImageTintList(ColorStateList.valueOf(fav ? Ui.STAR : Ui.DIM));
-                star.setContentDescription(c.getString(fav ? R.string.groups_unfavourite : R.string.groups_favourite) + ": " + g);
-                ((TextView) v[1]).setText(g);
-                ((TextView) v[1]).setTextColor(gone ? Ui.DIM : Ui.TEXT);
-                int n = lib.groupSize(g);
-                ((TextView) v[2]).setText(c.getResources().getQuantityString(R.plurals.groups_channels, n, n)
-                        + (gone ? " · " + c.getString(R.string.groups_hidden_word) : fav ? " · " + c.getString(R.string.groups_favourite_word) : ""));
-                ((MaterialButton) v[3]).setText(gone ? R.string.groups_show : R.string.groups_hide_short);
-                v[3].setContentDescription(c.getString(gone ? R.string.groups_show : R.string.groups_hide_short) + ": " + g);
-            }
-        };
-        rv.setAdapter(adapter);
-        BottomSheetDialog sheet = open(c, root, false);
-        showAll.setOnClickListener(v -> {
-            Groups.showAll(c);
-            sheet.dismiss();
-        });
+        // Homefield TV's Manage categories: names, their own order and each one's Sort channels besides (EditSheets).
+        EditSheets.categories(c, lib);
     }
 
     // ---- Manage favourites ------------------------------------------------------------------------------------------

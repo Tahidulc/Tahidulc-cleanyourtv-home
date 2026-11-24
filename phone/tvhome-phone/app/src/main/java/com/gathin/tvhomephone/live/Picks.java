@@ -28,18 +28,33 @@ final class Picks {
         return new HashSet<>(prefs(c).getStringSet("fav", new HashSet<>()));
     }
 
+    /** Whether a channel is a favourite: by its key, or (one row per channel) any of its versions'. */
     static boolean isFavourite(Context c, String key) {
-        return prefs(c).getStringSet("fav", new HashSet<>()).contains(key);
+        Set<String> f = prefs(c).getStringSet("fav", new HashSet<>());
+        if (f.isEmpty() || key == null) return false;
+        if (f.contains(key)) return true;
+        for (String k : Library.get(c).familyKeys(key)) if (f.contains(k)) return true;
+        return false;
     }
 
-    /** Turns a favourite on or off; true when it is now one. A new favourite goes to the end of the order. */
+    /**
+     * Turns a favourite on or off; true when it is now one. A new favourite goes to the end of the order; one taken off
+     * goes with every one of its versions' keys.
+     */
     static boolean toggle(Context c, String key) {
         Set<String> f = favourites(c);
-        boolean on = !f.remove(key);
-        if (on) f.add(key);
+        boolean on = !isFavourite(c, key);
         List<String> o = order(c);
-        o.remove(key);
-        if (on) o.add(key);
+        if (on) {
+            f.add(key);
+            o.remove(key);
+            o.add(key);
+        } else {
+            for (String k : Library.get(c).familyKeys(key)) {
+                f.remove(k);
+                o.remove(k);
+            }
+        }
         prefs(c).edit().putStringSet("fav", f).putString("fav_order", new JSONArray(o).toString()).apply();
         Library.get(c).picksChanged();
         return on;

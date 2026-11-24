@@ -918,23 +918,29 @@ public class LiveTvFragment extends Fragment {
         showCatsButton();
     }
 
-    /** A category held: make it a favourite (first in the panel) or not, hide it, or all the categories. */
+    /**
+     * A category held: make it a favourite (first in the panel) or not, hide it, or all the categories; then Homefield
+     * TV's Rename category, its playlist's name again and Sort channels (EditSheets.categoryMenu).
+     */
     private void groupMenu(View anchor, String g) {
         Context c = requireContext();
-        PopupMenu m = new PopupMenu(c, anchor);
         boolean fav = Groups.isFavourite(c, g);
-        m.getMenu().add(0, 1, 0, fav ? R.string.groups_unfavourite : R.string.groups_favourite);
-        m.getMenu().add(0, 2, 1, R.string.groups_hide);
-        m.getMenu().add(0, 3, 2, R.string.groups_manage);
-        m.setOnMenuItemClickListener(item -> {
-            if (item.getItemId() == 1) Groups.setFavourite(c, g, !fav);
-            else if (item.getItemId() == 2) {
+        EditSheets.categoryMenu(c, anchor, g, this::buildCatsSoon, menu -> {
+            menu.add(0, 1, 0, fav ? R.string.groups_unfavourite : R.string.groups_favourite);
+            menu.add(0, 2, 1, R.string.groups_hide);
+            menu.add(0, 3, 2, R.string.groups_manage);
+        }, id -> {
+            if (id == 1) Groups.setFavourite(c, g, !fav);
+            else if (id == 2) {
                 Groups.setHidden(c, g, true);
-                Toast.makeText(c, getString(R.string.groups_hidden_toast, g), Toast.LENGTH_LONG).show();
+                Toast.makeText(c, getString(R.string.groups_hidden_toast, Groups.label(g)), Toast.LENGTH_LONG).show();
             } else Sheets.categories(c, lib);
-            return true;
         });
-        m.show();
+    }
+
+    /** A category renamed or sorted: the panel's words again (they show the family's names). */
+    private void buildCatsSoon() {
+        if (isAdded() && cats != null) buildCats();
     }
 
     /** The panel's rows drawn again (the one showing lit) and the button's words. */
@@ -1602,18 +1608,23 @@ public class LiveTvFragment extends Fragment {
                 int at = s == null ? -1 : s.at(System.currentTimeMillis());
                 Sheets.programme(c, lib, x, at, actions());
             }
+
+            @Override public void quality(Channel v) {
+                // The channel on in the guide's picture: the version picked plays at once (the guide's row follows).
+                Channel on = inline.live() ? inline.channel() : null;
+                if (on != null && lib.familyKeys(v.key).contains(on.key) && !on.key.equals(v.key)) play(v);
+            }
         });
     }
 
     /** Hidden on this phone (Undo brings it back; More, Hidden channels lists them all). */
     private void hide(Channel ch) {
         Context c = requireContext();
-        String key = Hidden.key(ch);
         Hidden.hide(c, ch);
         View v = getView();
         if (v == null) return;
         Snackbar.make(v, getString(R.string.live_hidden_one, ch.name), Snackbar.LENGTH_LONG)
-                .setAction(R.string.live_undo, x -> Hidden.unhide(c, key))
+                .setAction(R.string.live_undo, x -> Hidden.unhide(c, ch))
                 .show();
     }
 
