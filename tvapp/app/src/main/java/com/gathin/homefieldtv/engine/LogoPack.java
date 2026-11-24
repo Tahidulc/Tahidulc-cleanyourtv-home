@@ -91,6 +91,7 @@ public final class LogoPack {
 
     /** The app starting: the setting read, the index read off the main thread, and asked for again when a week old. */
     public static void init(Context c) {
+        MadeLogos.init(c);
         on = look(c).getBoolean(ON_KEY, true);
         if (app != null) return;
         app = c.getApplicationContext();
@@ -105,19 +106,33 @@ public final class LogoPack {
 
     // ---- what the screens draw ------------------------------------------------------------------------------------
 
-    /** The logo to draw for a channel: its own choice, else the new one when sure (and the setting says so), else the playlist's. */
+    /**
+     * The logo to draw for a channel: its own choice (a new logo, one from the catalogue, one made on this TV, or the
+     * playlist's), else the new one when sure (and the setting says so), else the playlist's. A choice that can't be read
+     * (gone, or not answering) is the playlist's.
+     */
     public static String url(Channel ch) {
         if (ch == null) return "";
         // Its own choice (one row per channel: or one of its versions').
         String choice = ChannelEdits.logo(ch);
         String path;
         if (ChannelEdits.LOGO_PLAYLIST.equals(choice)) return ch.logo;
+        if (MadeLogos.is(choice)) {
+            String u = MadeLogos.url(choice);
+            return u == null || failed.test(u) ? ch.logo : u;
+        }
+        if (catalogue(choice)) return failed.test(choice) ? ch.logo : choice;
         if (!choice.isEmpty()) path = choice;
         else if (!on || offline()) return ch.logo;
         else path = auto(ch);
         if (path == null || path.isEmpty()) return ch.logo;
         String u = urlOf(path);
         return failed.test(u) ? ch.logo : u;
+    }
+
+    /** Pure: whether a channel's logo choice is a logo from the catalogue (its own address: TV Logos', iptv-org's). */
+    public static boolean catalogue(String choice) {
+        return choice != null && choice.startsWith("https://");
     }
 
     /** A logo's address: the project's file (made new by Refresh logos); made once a path. */

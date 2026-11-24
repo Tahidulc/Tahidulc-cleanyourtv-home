@@ -133,6 +133,44 @@ final class BoardBug extends View {
         boolean edgeLine;
         /** The corners' radius as a share of the height (0.5: a pill). */
         float round = 0.14f;
+        /** Added time's red (the clock's, Card's middle) and the added time's tab: 0 for the look's own, set on a custom board. */
+        int stoppage, added;
+    }
+
+    /** Added time's red: a custom board's, else the look's own. */
+    private int stopRed(int own) {
+        return p.stoppage != 0 ? p.stoppage : own;
+    }
+
+    /** The added time's tab: a custom board's, else the look's own. */
+    private int tabRed(int own) {
+        return p.added != 0 ? p.added : own;
+    }
+
+    /**
+     * A custom board's palette (BoardSpec, My scoreboards): its base look's, with the spec's colours, corners, finish and
+     * strips; the base draws it, so every moment over the board comes with it (as the launcher's and the phone's boards).
+     */
+    private static Palette palette(com.gathin.broadcast.BoardSpec s) {
+        Palette p = palette(Style.of(s.base.name()));
+        p.ground = s.panel;
+        p.groundFoot = s.groundFoot();
+        p.comp = s.comp;
+        p.score0 = s.score;
+        p.score1 = s.scoreFoot;
+        p.clock = s.base == com.gathin.broadcast.BoardSpec.Base.MINIMAL ? 0 : s.clock;
+        p.ink = s.text;
+        p.scoreInk = s.scoreText;
+        p.clockInk = s.clockText;
+        p.dim = s.dim;
+        p.round = s.radius;
+        p.sheen = s.sheen();
+        p.edgeLine = false;
+        p.strips = s.strips && s.base != com.gathin.broadcast.BoardSpec.Base.CLUB;
+        p.stoppage = s.stoppage;
+        p.added = s.added;
+        if (s.base == com.gathin.broadcast.BoardSpec.Base.MINIMAL) p.score0 = p.score1 = 0;
+        return p;
     }
 
     private static Palette palette(Style s) {
@@ -295,6 +333,28 @@ final class BoardBug extends View {
         invalidate();
     }
 
+    /** One of the family's own boards (My scoreboards), drawn in its base look; null for the chosen look as it is. */
+    private com.gathin.broadcast.BoardSpec custom;
+    private android.graphics.Typeface plainFace;
+
+    /** A custom board over the look (its base takes the look's place), or null to go back to the look itself. */
+    void custom(com.gathin.broadcast.BoardSpec s) {
+        if (s == null && custom == null) return;
+        // The same board, already in its base look (a look chosen since takes it back).
+        if (s != null && custom != null && style == Style.of(s.base.name()) && s.toJson().equals(custom.toJson())) return;
+        custom = s == null ? null : s.copy();
+        if (custom != null) style = Style.of(custom.base.name());
+        if (plainFace == null) plainFace = text.getTypeface();
+        text.setTypeface(custom == null ? plainFace : com.gathin.broadcast.BoardPaint.typeface(getContext(), custom.font));
+        p = paletteNow();
+        requestLayout();
+        invalidate();
+    }
+
+    com.gathin.broadcast.BoardSpec custom() {
+        return custom;
+    }
+
     // ---- the competitions' own looks (CompBug) -----------------------------------------------------------------------
 
     /** The game's competition's look (By competition draws it), its name, and its logo in its own colours. */
@@ -393,6 +453,7 @@ final class BoardBug extends View {
     /** Its colours now: a competition look's own (it draws its grounds itself), else its look's. */
     private Palette paletteNow() {
         CompBug.Kind k = kind();
+        if (k == null && custom != null) return palette(custom);
         if (k == null) return palette(style);
         Palette c = new Palette();
         int[] st = CompBug.strip(k);
@@ -926,13 +987,22 @@ final class BoardBug extends View {
     /** Its strips' look, made again only when its own look changes. */
     StripLook stripLook() {
         CompBug.Kind k = kind();
-        if (strip == null || stripFor != style || stripKind != k) {
+        if (strip == null || stripFor != style || stripKind != k || stripCustom != custom) {
             strip = k != null ? compStrip(k) : strip(style, p);
+            if (k == null && custom != null) {
+                // A custom board's pop-outs in its own panel, words and score cell.
+                strip.ground = custom.panel;
+                strip.light = custom.light();
+                strip.block = (custom.score >>> 24) == 0xFF ? custom.score : strip.block;
+            }
             stripFor = style;
             stripKind = k;
+            stripCustom = custom;
         }
         return strip;
     }
+
+    private com.gathin.broadcast.BoardSpec stripCustom;
 
     /** A competition look's strips: its own dark ground and its accent, square cornered. */
     private static StripLook compStrip(CompBug.Kind k) {
@@ -1147,6 +1217,14 @@ final class BoardBug extends View {
             edge.setColor(INK);
             dashFor = -1;
         }
+        if (custom != null && kind() == null) {
+            com.gathin.broadcast.BoardPaint.accentLine(cv, fill, custom, body, h);
+            edge.setPathEffect(null);
+            com.gathin.broadcast.BoardPaint.border(cv, edge, custom, body, h, rad, r);
+            edge.setStyle(Paint.Style.STROKE);
+            edge.setColor(INK);
+            dashFor = -1;
+        }
         cv.restore();
         boolean moving = turning || meshing || varUntil > now || (ft >= 0 && ft < FT_MS) || weathering && weatherFrozen < 0;
         if (moving && !part) postInvalidateOnAnimation();
@@ -1341,7 +1419,7 @@ final class BoardBug extends View {
         if (p.score0 == 0 && p.score1 == 0) return;
         // Card: its blue, turning red in added time.
         boolean red = style == Style.CARD && look.stoppage;
-        int a = red ? CARD_RED : p.score0, b = red ? CARD_RED_FOOT : p.score1;
+        int a = red ? stopRed(CARD_RED) : p.score0, b = red ? (p.stoppage != 0 ? p.stoppage : CARD_RED_FOOT) : p.score1;
         if (scoreShade == null || shadeY != y || shadeH != h || shadeA != a || shadeB != b) {
             scoreShade = new LinearGradient(0, y, 0, y + h, a, b, Shader.TileMode.CLAMP);
             shadeY = y;
@@ -1406,7 +1484,7 @@ final class BoardBug extends View {
             cv.drawRect(x, y, x + w, y + h, fill);
         }
         // In added time: the clock's box red, steady.
-        pulse(cv, x, y, w, h, 0xFFE3061B, 60, 210);
+        pulse(cv, x, y, w, h, stopRed(0xFFE3061B), 60, 210);
         int colour = "HT".equals(look.clock) ? AMBER : look.live ? p.clockInk : p.dim;
         if (look.added.isEmpty() || addedOutside) {
             float size = h * 0.44f * k;
@@ -1423,7 +1501,7 @@ final class BoardBug extends View {
         float start = x + (w - cw - aw - gap) / 2;
         words(cv, look.clock, start + cw / 2, y, h, cs * f, colour);
         float ax = start + cw + gap;
-        fill.setColor(ADDED);
+        fill.setColor(stopRed(ADDED));
         r.set(ax, y + h * 0.24f, ax + aw, y + h * 0.76f);
         cv.drawRoundRect(r, h * 0.08f, h * 0.08f, fill);
         words(cv, look.added, ax + aw / 2, y, h, as * f, INK);
@@ -1814,7 +1892,7 @@ final class BoardBug extends View {
     private void stackedClock(Canvas cv, float x, float w, float h, float k) {
         fill.setColor(p.clock != 0 ? p.clock : p.ground);
         cv.drawRect(x, 0, x + w, h, fill);
-        pulse(cv, x, 0, w, h, 0xFFE3061B, 60, 210);
+        pulse(cv, x, 0, w, h, stopRed(0xFFE3061B), 60, 210);
         int colour = "HT".equals(look.clock) ? AMBER : look.live ? p.clockInk : p.dim;
         float cs = h * 0.3f * k;
         cs *= fitIn(look.clock, cs, w * 0.88f);
@@ -1824,7 +1902,7 @@ final class BoardBug extends View {
         }
         words(cv, look.clock, x + w / 2, h * 0.08f, h * 0.5f, cs, colour);
         float aw = Math.min(w * 0.88f, measure(look.added, h * 0.22f * k) + h * 0.3f * k);
-        fill.setColor(ADDED);
+        fill.setColor(stopRed(ADDED));
         r.set(x + (w - aw) / 2, h * 0.6f, x + (w + aw) / 2, h * 0.86f);
         cv.drawRoundRect(r, h * 0.05f, h * 0.05f, fill);
         words(cv, look.added, x + w / 2, h * 0.6f, h * 0.26f, h * 0.22f * k, INK);
@@ -2071,7 +2149,7 @@ final class BoardBug extends View {
         fill.setColor(0xFFFFFFFF);
         r.set(ax, y + lh * 0.22f, ax + aw, y + lh * 0.78f);
         cv.drawRoundRect(r, lh * 0.12f, lh * 0.12f, fill);
-        words(cv, look.added, ax + aw / 2f, y, lh, as * f, CARD_RED);
+        words(cv, look.added, ax + aw / 2f, y, lh, as * f, stopRed(CARD_RED));
     }
 
     /**
@@ -2094,7 +2172,7 @@ final class BoardBug extends View {
         // Out from behind the board.
         cv.clipRect(body, 0, getWidth(), getHeight());
         fill.setShader(null);
-        fill.setColor(style == Style.CARD ? CARD_RED : ADDED);
+        fill.setColor(tabRed(style == Style.CARD ? CARD_RED : ADDED));
         r.set(left, top, left + tw, top + th);
         cv.drawRoundRect(r, rad, rad, fill);
         // The minutes added running: a thin white line along its foot filling as they go (empty at the half's end, full
@@ -2191,7 +2269,7 @@ final class BoardBug extends View {
             float k2 = Math.min(1f, w * 0.9f / Math.max(1f, measure(under, bh * 0.62f)));
             // In added time a red pill beats behind its clock.
             float uw = measure(under, bh * 0.62f * k2), pad = bh * 0.22f;
-            pulse(cv, w / 2f - uw / 2f - pad, top - h * 0.04f + bh * 0.12f, uw + 2 * pad, bh * 0.76f, 0xFFE3061B, 70, 220, bh * 0.38f);
+            pulse(cv, w / 2f - uw / 2f - pad, top - h * 0.04f + bh * 0.12f, uw + 2 * pad, bh * 0.76f, stopRed(0xFFE3061B), 70, 220, bh * 0.38f);
             words(cv, under, w / 2f, top - h * 0.04f, bh, bh * 0.62f * k2, clockInk);
             return;
         }
@@ -2202,12 +2280,12 @@ final class BoardBug extends View {
         x += a + h * 0.7f * k;
         float b = measure(m[1], h * 0.44f * k);
         // In added time a red pill beats behind its clock.
-        pulse(cv, x - h * 0.2f * k, h * 0.2f, b + h * 0.4f * k, h * 0.6f, 0xFFE3061B, 70, 220, h * 0.3f);
+        pulse(cv, x - h * 0.2f * k, h * 0.2f, b + h * 0.4f * k, h * 0.6f, stopRed(0xFFE3061B), 70, 220, h * 0.3f);
         words(cv, m[1], x + b / 2, 0, h, h * 0.44f * k, clockInk);
         x += b + h * 0.5f * k;
         if (!m[2].isEmpty()) {
             float c = measure(m[2], h * 0.38f * k);
-            words(cv, m[2], x + c / 2, 0, h, h * 0.38f * k, ADDED);
+            words(cv, m[2], x + c / 2, 0, h, h * 0.38f * k, stopRed(ADDED));
         }
     }
 
@@ -2293,6 +2371,8 @@ final class BoardBug extends View {
     }
 
     private void drawImage(Canvas cv, Bitmap b, float x, float y, float size) {
+        // A custom board's crests on their disc or in their ring.
+        if (custom != null && (b == homeCrest || b == awayCrest)) com.gathin.broadcast.BoardPaint.crestBack(cv, fill, custom, x, y, size);
         float s = size / Math.max(b.getWidth(), b.getHeight());
         float bw = b.getWidth() * s, bh = b.getHeight() * s;
         r.set(x + (size - bw) / 2, y + (size - bh) / 2, x + (size + bw) / 2, y + (size + bh) / 2);

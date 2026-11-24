@@ -63,6 +63,8 @@ final class ChannelMenu {
     /** The logo the channel shows now, for Change logo's line: "BBC Two · tv-logos", or "Playlist's". */
     static String logoWords(Channel ch) {
         String choice = ChannelEdits.logo(ch);
+        if (com.gathin.homefieldtv.engine.MadeLogos.is(choice)) return "Made by you";
+        if (com.gathin.homefieldtv.engine.LogoPack.catalogue(choice)) return LogoCatalogue.packOf(choice);
         String path = ChannelEdits.LOGO_PLAYLIST.equals(choice) ? null : !choice.isEmpty() ? choice
                 : com.gathin.homefieldtv.engine.LogoPack.on() ? com.gathin.homefieldtv.engine.LogoPack.auto(ch) : null;
         if (path == null || path.isEmpty()) return "Playlist's";

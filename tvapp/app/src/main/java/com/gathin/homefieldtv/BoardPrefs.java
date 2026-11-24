@@ -142,8 +142,23 @@ final class BoardPrefs {
         return st == BoardBug.Style.KITS ? BoardBug.Style.COMPETITION : st;
     }
 
+    /** A look chosen: one of My scoreboards in use is let go (the look as chosen shows), as the launcher's. */
     static void setStyle(Context c, BoardBug.Style s) {
-        prefs(c).edit().putString("style", s.name()).apply();
+        prefs(c).edit().putString("style", s.name()).remove(CUSTOM).apply();
+    }
+
+    private static final String CUSTOM = "custom";
+
+    /** The family's own board in use (My scoreboards: its id), or null for the look as chosen. Kept on this TV. */
+    static String customId(Context c) {
+        String id = prefs(c).getString(CUSTOM, null);
+        return id == null || id.isEmpty() ? null : id;
+    }
+
+    /** One of My scoreboards in use (its id), or null to go back to the look as chosen. */
+    static void setCustom(Context c, String id) {
+        if (id == null || id.isEmpty()) prefs(c).edit().remove(CUSTOM).apply();
+        else prefs(c).edit().putString(CUSTOM, id).apply();
     }
 
     /** The looks offered, in the launcher's order (all but the 3D kits). */

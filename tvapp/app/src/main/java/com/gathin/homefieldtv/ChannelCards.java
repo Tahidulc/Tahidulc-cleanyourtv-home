@@ -143,8 +143,10 @@ final class ChannelCards {
     /** One channel into a list (its card made the first time, with its programmes); false when it is left out (locked). */
     private static boolean put(Context c, Library lib, CardsSnapshot.Builder b, Channel ch, CardsSnapshot prev, String section, long now) {
         if (ch == null || Parental.locked(c, ch)) return false;
-        String logo = LogoPack.url(ch);
-        Logos.Tint t = Logos.tint(logo);
+        String drawn = LogoPack.url(ch);
+        Logos.Tint t = Logos.tint(drawn);
+        // A logo made on this TV is in this app's own files: the launcher reads it through the cards' provider.
+        String logo = ChannelCardsProvider.shared(drawn);
         CardsSnapshot.Card card = b.card(ch.key, ChannelEdits.name(ch), lib.number(ch), logo, t == null ? null : new int[]{t.tileTop, t.tileFoot});
         if (card == null) return false;
         if (card.progs.isEmpty()) {

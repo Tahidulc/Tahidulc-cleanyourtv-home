@@ -112,6 +112,8 @@ final class MoreSettings implements SettingsScreen.Pages {
             case "subs.look": case "subs.size": return "playback.subtitles";
             case "updown": case "direction": case "ok": case "oklong": case "wait": case "previous": return "remote.player";
             case "rec.before": case "rec.after": return "other.recording";
+            case "ai.model": return "other.askai";
+            case "board.mine": return "other.scoreboard";
             case "x.lists.hours": return "playlists";
             case "x.guide.hours": case "x.shift": return "epg";
             case "x.mode": return "parental";
@@ -150,6 +152,8 @@ final class MoreSettings implements SettingsScreen.Pages {
                 out.add(page("other.recording", "Recording", ""));
                 out.add(page("other.vod", "VOD", ""));
                 out.add(page("other.scoreboard", "Scoreboard", ""));
+                // Ask AI's key and model (AiSettings, AddedSettings' page): the scoreboard editor's and Change logo's.
+                out.add(AiSettings.row(tv));
                 break;
             case "other.search":
                 out.add(tog("history", "Show search history", "", OtherPrefs.showHistory(tv)));
@@ -270,6 +274,8 @@ final class MoreSettings implements SettingsScreen.Pages {
         out.add(u);
         // If something goes wrong (AddedSettings' page): the last problem noted, and how to send it.
         out.add(AddedSettings.problemsRow());
+        // The logo catalogue's packs and their terms (AddedSettings' page).
+        out.add(page(AddedSettings.LICENCES, "Logo packs' licences", "TV Logos and iptv-org, and the logos you make"));
         out.add(RowList.Row.note("Live TV, the guide, movies and TV shows come only from your own playlists, which stay on this TV "
                 + "in the app's own storage."));
         out.add(RowList.Row.header("Adding a login from a computer"));

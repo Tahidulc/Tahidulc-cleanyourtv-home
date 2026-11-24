@@ -36,7 +36,7 @@ Every synced thing is one item:
 | `livecat` | `groups` / `channels` | `{hidden: [category], favs: [category]}` / `{hidden: {channel key: name}}` |
 | `resume` | `mv:` or `tv:` + the title's name made plain | `{tv, name, year, alt, tmdb, s, e, pos, dur, at, poster, title}` |
 | `setting` | the setting's name (`posters.landscape`) | `{v: value, t: "b" boolean, "i" int, "l" long or "s" text}` |
-| `myboard` | `b` and 12 hex digits (made where it was first saved) | `{name, spec: the board's design (BoardSpec), at}`: one of My scoreboards; the TV launcher keeps them as its own (MyBoardStore) |
+| `myboard` | `b` and 12 hex digits (made where it was first saved) | `{name, spec: the board's design (BoardSpec), at}`: one of My scoreboards; the TV launcher keeps them as its own (MyBoardStore), Homefield TV in its sync store as they are (its MyBoardStore), synced with the launcher on its TV |
 
 ## Endpoints on each TV (all POST, JSON, `X-Token` from pairing)
 
@@ -55,7 +55,9 @@ call `/sync` on another TV without a token only from an address it knows as one 
 - `POST /tmdb` `{}` → `{"key"}`: the TV's TMDB key, so the phone can read TMDB without its own (kept on the phone).
 - `POST /ai/key` `{"key", "model"}` → `{"ok"}`: the family's Anthropic API key for Ask AI and the model chosen, sent by
   Settings, Ask AI, Send key to the TVs; kept in the launcher's own private storage, never synced on, logged or shown
-  ("" takes it away). Like the logins, it crosses the home network over this link.
+  ("" takes it away). Like the logins, it crosses the home network over this link. Homefield TV doesn't get it this way
+  (the launcher's provider hands it only the sync token and TMDB's key): on Homefield TV it is typed in Settings › Other ›
+  Ask AI.
 
 The phone syncs with every paired TV when it opens, a few seconds after each change it makes, and every 15 minutes
 (WorkManager). A TV syncs with the other TVs ten seconds after a local change and every ten minutes. Homefield TV syncs

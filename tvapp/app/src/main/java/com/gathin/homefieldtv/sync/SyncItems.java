@@ -15,7 +15,8 @@ import java.util.Map;
 
 /**
  * The family's shared things as Homefield TV last had them (phone/tvhome-phone/SYNC.md): items {type, key, data,
- * updated, deleted, from}, last writer wins, a removal kept as a tombstone for 60 days. In this app's own private
+ * updated, deleted, from}, last writer wins, a removal kept as a tombstone for 60 days. My scoreboards ("myboard") are
+ * kept here as they are, as the phone keeps them in its own store (MyBoardStore). In this app's own private
  * storage, never on /sdcard; a playlist's item holds its login, so nothing here is ever logged or shown.
  */
 public final class SyncItems {
@@ -25,7 +26,7 @@ public final class SyncItems {
     static final long TOMBSTONE_MS = 60L * 24 * 3600_000L;
     /** The kinds Homefield TV uses; the launcher's others (My list, ratings and the rest) are not kept here. */
     static final java.util.Set<String> KEPT = new java.util.HashSet<>(java.util.Arrays.asList("playlist", "livefav", "liverecent",
-            "resume", "setting"));
+            "resume", "setting", com.gathin.broadcast.MyBoards.TYPE));
 
     private static SharedPreferences prefs(Context c) {
         return c.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
@@ -54,6 +55,14 @@ public final class SyncItems {
     public static synchronized JSONObject get(Context c, String type, String key) {
         JSONObject it = parse(prefs(c).getAll().get(id(type, key)));
         return it == null || it.optBoolean("deleted") ? null : it.optJSONObject("data");
+    }
+
+    /**
+     * One item as kept (its JSON text, tombstone or not), or null: one look in the store, nothing else read (for what is
+     * looked at often: the scoreboard in use, My scoreboards). Not held behind a sync's merge: the main thread asks it.
+     */
+    public static String raw(Context c, String type, String key) {
+        return prefs(c).getString(id(type, key), null);
     }
 
     /** Every item of one type as kept, tombstones included. */
