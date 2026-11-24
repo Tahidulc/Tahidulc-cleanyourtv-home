@@ -1,10 +1,12 @@
-// The kick-off pop-up, live: BROADCAST.start({kind, home, away, comp, compName, compLogo, stadium, score, scorer,
+// The kick-off pop-up, live: BROADCAST.start({kind, home, away, comp, compName, compLogo, mark, markImg, stadium, score, scorer,
 // goalMin, kicksOff, sound, volume, q, hold}) plays it once over a see-through page, then calls done(). With hold it
 // gets everything ready, calls prepared() and waits for BROADCAST.go() (the app shows it on the moment, without the wait).
 // It is drawn as compositor layers (layers.js): every part drawn once while it gets ready, the frames only placing them.
 (function () {
   const LEAD = 0.15;   // the sound starts this much before the first frame (its thump lands as the crests do)
   const LEN = { kickoff: 6.6, restart: 4.4, second: 4.4 };
+  // the whole pop-up's length as the page plays it (slower and up longer than LEN, its design's own times: kickoff.js)
+  const length = () => (window.POP_LEN && window.POP_LEN(kind)) || LEN[kind] + 0.62;
   const TROPHY = { pl: 'pl', facup: 'facup', leaguecup: 'leaguecup', ucl: 'ucl', uel: 'uel', uecl: 'uecl' };
   let cfg = null, kind = 'kickoff', raf = 0, finished = false, began = false, going = false;
   window.BROADCAST = {
@@ -18,12 +20,13 @@
       window.DATA = { home: side(cfg.home), away: side(cfg.away), lat: 51.5, lon: -0.1 };
       window.POP = {
         background: 'none', captions: false, cuts: [], dur: 12,
-        match: { home: BX.up(cfg.home.name), away: BX.up(cfg.away.name), stadium: BX.up(cfg.stadium), comp, compName: cfg.compName || '',
+        match: { home: BX.up(cfg.home.name), away: BX.up(cfg.away.name), stadium: BX.up(cfg.stadium), comp, compName: cfg.compName || '', mark: cfg.mark || '',
           trophy: TROPHY[cfg.trophy] || TROPHY[comp] || 'generic' },
         moments: [{ n: 1, kind, t0: 0, kicksOff: cfg.kicksOff === 'away' ? 'away' : 'home', score: cfg.score || [0, 0],
           goalMin: cfg.goalMin || '', scorer: BX.up(cfg.scorer) }],
       };
-      window.ASSET_URLS = { home: cfg.home.crest, away: cfg.away.crest, logos: cfg.compLogo ? { [comp]: cfg.compLogo } : {} };
+      // the competition's own mark (its logo, then its name in its own lettering) comes inline as markImg
+      window.ASSET_URLS = { home: cfg.home.crest, away: cfg.away.crest, logos: cfg.compLogo ? { [comp]: cfg.compLogo } : {}, mark: cfg.markImg || '' };
       // always the full look; q only when the app gives it, to compare: {flat (no shadows), plus (added light), t3res (0.3-1: the trophy
       // drawn smaller, then scaled up)}
       const q = cfg.q && Object.keys(cfg.q).length ? cfg.q : {};
@@ -50,13 +53,13 @@
   };
   // The whole pop-up played through once out of sight (the stage at 0.4%, in a window still unseen when it is held), every
   // quarter second: each part's first showing costs the GPU (on the Streamer's PowerVR the first frames took one to two
-  // seconds each), and that is paid here. Nothing is parked meanwhile or after (it is eight seconds long).
+  // seconds each), and that is paid here. Nothing is parked meanwhile or after (it is eight to ten seconds long).
   async function rehearse() {
     if (!window.LK || !window.drawFrame) return;
     const r0 = performance.now(), raf2 = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
     LK.park(Infinity);
     LK.root.style.opacity = '0.004';
-    for (let t = -LEAD; t <= LEN[kind] + 0.75 && !finished; t += 0.25) { window.drawFrame(t); await raf2(); }
+    for (let t = -LEAD; t <= length() + 0.13 && !finished; t += 0.25) { window.drawFrame(t); await raf2(); }
     LK.hideAll();
     await raf2();
     LK.root.style.opacity = '';
@@ -75,7 +78,7 @@
       window.drawFrame(t);
       BX.meter(performance.now() - d0, now);
       if (first) { first = false; BX.started(); BX.log(BX.view()); }
-      if (t > LEN[kind] + 0.75) { finish(); return; }
+      if (t > length() + 0.13) { finish(); return; }
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);

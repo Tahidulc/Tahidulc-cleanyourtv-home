@@ -308,41 +308,111 @@
     const colour = best ? `rgb(${(best[1] / best[0]) | 0},${(best[2] / best[0]) | 0},${(best[3] / best[0]) | 0})` : '#20305a';
     return { x0, y0, w: x1 - x0 + 1, h: y1 - y0 + 1, colour };
   }
-  // the crest big in a plain white circle, in its own shape (never stretched), like the recording's: scaled evenly so the
-  // crest sits snug in the circle, its outermost corners just tucked under the rim; no ring and no edge
+  // The coin as the family's City v Spurs picture has it: dark glass, a lit blue-grey dome over its top with a light band
+  // on its horizon and near black below it, a thin bright blue rim and a soft blue glow; the crest big in it (a dark
+  // crest lit glossy in its own hue, as the picture's navy cockerel is), with a thin pale edge round it. Drawn at twice
+  // its size (MS), so it stays sharp as it comes in big.
+  const MS = 2;
+  function hueOf(d) {
+    let x = 0, y = 0, n = 0, sat = 0;
+    for (let i = 0; i < d.length; i += 16) {
+      if (d[i + 3] < 128) continue;
+      const r = d[i] / 255, gg = d[i + 1] / 255, b = d[i + 2] / 255, mx = Math.max(r, gg, b), mn = Math.min(r, gg, b);
+      const sv = mx === 0 ? 0 : (mx - mn) / mx;
+      sat += sv; n++;
+      if (mx - mn < 0.04) continue;
+      let h = mx === r ? ((gg - b) / (mx - mn)) % 6 : mx === gg ? (b - r) / (mx - mn) + 2 : (r - gg) / (mx - mn) + 4;
+      h *= 60;
+      x += Math.cos(h * DEG) * sv; y += Math.sin(h * DEG) * sv;
+    }
+    let h = Math.atan2(y, x) / DEG;
+    if (h < 0) h += 360;
+    return { h, s: n ? sat / n : 0 };
+  }
+  function crestReady(im) {
+    const n = 600, pad = 10, c = mk(n, n), x = c.getContext('2d', { willReadFrequently: true });
+    const k = Math.min(n / im.width, n / im.height), w = im.width * k, h = im.height * k;
+    x.imageSmoothingQuality = 'high';
+    x.drawImage(im, (n - w) / 2, (n - h) / 2, w, h);
+    const d = x.getImageData(0, 0, n, n).data;
+    let sum = 0, cnt = 0, x0 = n, y0 = n, x1 = 0, y1 = 0;
+    for (let py = 0; py < n; py += 2) for (let px = 0; px < n; px += 2) {
+      const i = (py * n + px) * 4;
+      if (d[i + 3] < 100) continue;
+      sum += (0.3 * d[i] + 0.59 * d[i + 1] + 0.11 * d[i + 2]) / 255; cnt++;
+      if (px < x0) x0 = px; if (px > x1) x1 = px; if (py < y0) y0 = py; if (py > y1) y1 = py;
+    }
+    if (!cnt) { x0 = 0; y0 = 0; x1 = n; y1 = n; }
+    if ((cnt ? sum / cnt : 1) < 0.3) {
+      const hs = hueOf(d);
+      let hue = hs.s < 0.15 ? 222 : hs.h;
+      const sat = hs.s < 0.15 ? 14 : 50;
+      if (hs.s >= 0.15 && hue >= 200 && hue <= 250) hue = Math.min(256, hue + 26);
+      x.globalCompositeOperation = 'source-in';
+      const gr = x.createLinearGradient(0, y0, 0, y1);
+      gr.addColorStop(0, `hsl(${hue},${sat * 0.6}%,84%)`); gr.addColorStop(0.14, `hsl(${hue},${sat}%,54%)`);
+      gr.addColorStop(0.42, `hsl(${hue},${sat}%,41%)`); gr.addColorStop(0.75, `hsl(${hue},${sat}%,27%)`); gr.addColorStop(1, `hsl(${hue},${sat}%,19%)`);
+      x.fillStyle = gr; x.fillRect(0, 0, n, n);
+      x.globalCompositeOperation = 'source-atop';
+      const st = x.createLinearGradient(x0, 0, x1, 0);
+      st.addColorStop(0, 'rgba(255,255,255,0)'); st.addColorStop(0.3, 'rgba(232,232,255,0.34)'); st.addColorStop(0.44, 'rgba(255,255,255,0)'); st.addColorStop(1, 'rgba(255,255,255,0)');
+      x.fillStyle = st; x.fillRect(0, 0, n, n);
+    }
+    x.globalCompositeOperation = 'source-atop';
+    const sh = x.createLinearGradient(0, 0, n, n);
+    sh.addColorStop(0, 'rgba(255,255,255,0.2)'); sh.addColorStop(0.45, 'rgba(255,255,255,0.03)'); sh.addColorStop(1, 'rgba(0,0,0,0.16)');
+    x.fillStyle = sh; x.fillRect(0, 0, n, n);
+    x.globalCompositeOperation = 'source-over';
+    const out = mk(n + 2 * pad, n + 2 * pad), o = out.getContext('2d');
+    const sil = mk(n, n), sg = sil.getContext('2d');
+    sg.drawImage(c, 0, 0); sg.globalCompositeOperation = 'source-in'; sg.fillStyle = 'rgb(214,226,255)'; sg.fillRect(0, 0, n, n);
+    for (let i = 0; i < 16; i++) { const an = (i * PI) / 8; o.drawImage(sil, pad + Math.cos(an) * 4.2, pad + Math.sin(an) * 4.2); }
+    o.drawImage(c, pad, pad);
+    out.box = { x: pad + x0, y: pad + y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0) };
+    return out;
+  }
   function medallion(side) {
     if (MEDAL[side]) return MEDAL[side];
-    const r = R_CREST, pad = 30, sz = 2 * (r + pad);
+    const R = R_CREST * MS, pad = 30 * MS, sz = 2 * (R + pad);
     const c = mk(sz, sz), g = c.getContext('2d');
     const cx = sz / 2, cy = sz / 2;
-    // a soft blue glow round the circle, always there (asked for: the deep blue circle with the blue glow)
-    const og = g.createRadialGradient(cx, cy, r * 0.9, cx, cy, r + pad);
-    og.addColorStop(0, 'rgba(90,170,255,0.6)'); og.addColorStop(0.45, 'rgba(60,140,255,0.24)'); og.addColorStop(1, 'rgba(40,110,255,0)');
-    g.fillStyle = og; g.fillRect(0, 0, sz, sz);
-    // the circle: deep blue glass, lit from above
-    const fg = g.createRadialGradient(cx - r * 0.2, cy - r * 0.45, r * 0.1, cx, cy, r);
-    fg.addColorStop(0, '#2f6fd6'); fg.addColorStop(0.45, '#173f99'); fg.addColorStop(0.85, '#0b2463'); fg.addColorStop(1, '#071a4c');
-    g.beginPath(); g.arc(cx, cy, r, 0, TAU); g.fillStyle = fg; g.fill();
+    // the glow round it, and the rim: a thin bright line, near white at the top left, blue at the foot
+    const gl = g.createRadialGradient(cx, cy, R * 0.97, cx, cy, R * 1.12);
+    gl.addColorStop(0, 'rgba(150,200,255,0.9)'); gl.addColorStop(0.35, 'rgba(100,160,255,0.36)'); gl.addColorStop(1, 'rgba(80,140,255,0)');
+    g.fillStyle = gl; g.beginPath(); g.arc(cx, cy, R * 1.12, 0, TAU); g.fill();
+    const rim = g.createLinearGradient(cx - R * 0.7, cy - R * 0.7, cx + R * 0.7, cy + R * 0.7);
+    rim.addColorStop(0, '#e2f1ff'); rim.addColorStop(0.5, '#86b9ff'); rim.addColorStop(1, '#3f8bff');
+    g.fillStyle = rim; g.beginPath(); g.arc(cx, cy, R, 0, TAU); g.fill();
+    // the glass
+    const r = R * 0.972, hz = cy + r * 0.2;
+    g.save(); g.beginPath(); g.arc(cx, cy, r, 0, TAU); g.clip();
+    const low = g.createLinearGradient(0, hz, 0, cy + r);
+    low.addColorStop(0, '#050c11'); low.addColorStop(0.6, '#0a151b'); low.addColorStop(0.88, '#1b2532'); low.addColorStop(1, '#3a4258');
+    g.fillStyle = low; g.fillRect(cx - r, cy - r, 2 * r, 2 * r);
+    g.beginPath(); g.moveTo(cx - r, cy - r); g.lineTo(cx + r, cy - r); g.lineTo(cx + r, hz - r * 0.03);
+    g.quadraticCurveTo(cx, hz + r * 0.05, cx - r, hz - r * 0.03); g.closePath();
+    const dome = g.createLinearGradient(0, cy - r, 0, hz);
+    dome.addColorStop(0, '#3e62a8'); dome.addColorStop(0.3, '#2f4f85'); dome.addColorStop(0.62, '#2d4a68'); dome.addColorStop(0.88, '#496677'); dome.addColorStop(1, '#58737f');
+    g.fillStyle = dome; g.fill();
+    const bl = g.createRadialGradient(cx - r * 0.55, cy - r * 0.45, 0, cx - r * 0.55, cy - r * 0.45, r * 0.8);
+    bl.addColorStop(0, 'rgba(90,150,255,0.34)'); bl.addColorStop(1, 'rgba(90,150,255,0)');
+    g.fillStyle = bl; g.fillRect(cx - r, cy - r, 2 * r, 2 * r);
+    const ring = g.createRadialGradient(cx, cy, r * 0.86, cx, cy, r);
+    ring.addColorStop(0, 'rgba(110,150,240,0)'); ring.addColorStop(1, 'rgba(110,150,240,0.42)');
+    g.fillStyle = ring; g.fillRect(cx - r, cy - r, 2 * r, 2 * r);
+    // the crest, big: as tall as the glass allows
     const im = IMG[side];
     if (im) {
-      const L = crestLook(im);
-      const k = (2 * r) / Math.hypot(L.w, L.h); // whole inside the circle, corner to corner
-      const dw = L.w * k, dh = L.h * k;
-      g.save(); g.beginPath(); g.arc(cx, cy, r - 0.5, 0, TAU); g.clip();
-      g.shadowColor = 'rgba(0,0,0,0.45)'; g.shadowBlur = 8; g.shadowOffsetY = 3;
+      const cr = crestReady(im), b = cr.box, D = 2 * R, k = Math.min((D * 0.78) / b.w, (D * 0.86) / b.h);
+      g.shadowColor = 'rgba(0,0,0,0.55)'; g.shadowBlur = D * 0.03; g.shadowOffsetY = D * 0.012;
       g.imageSmoothingQuality = 'high';
-      g.drawImage(im, L.x0, L.y0, L.w, L.h, cx - dw / 2, cy - dh / 2, dw, dh);
-      g.restore();
+      g.drawImage(cr, cx - (b.x + b.w / 2) * k, cy - (b.y + b.h / 2) * k, cr.width * k, cr.height * k);
+      g.shadowColor = 'transparent'; g.shadowBlur = 0; g.shadowOffsetY = 0;
     }
-    // the glass's shine over its top, and its bright blue rim
-    g.save(); g.beginPath(); g.arc(cx, cy, r - 1, 0, TAU); g.clip();
-    const sh = g.createLinearGradient(0, cy - r, 0, cy + r * 0.1);
-    sh.addColorStop(0, 'rgba(255,255,255,0.3)'); sh.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = sh; g.beginPath(); g.ellipse(cx, cy - r * 0.42, r * 0.86, r * 0.55, 0, 0, TAU); g.fill();
+    const hl = g.createRadialGradient(cx - r * 0.5, cy - r * 0.62, 0, cx - r * 0.5, cy - r * 0.62, r * 0.6);
+    hl.addColorStop(0, 'rgba(255,255,255,0.18)'); hl.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = hl; g.fillRect(cx - r, cy - r, 2 * r, 2 * r);
     g.restore();
-    const rim = Math.max(3, r * 0.045);
-    g.lineWidth = rim; g.strokeStyle = 'rgba(140,205,255,0.95)'; g.beginPath(); g.arc(cx, cy, r - rim / 2, 0, TAU); g.stroke();
-    g.lineWidth = 1.5; g.strokeStyle = 'rgba(235,247,255,0.9)'; g.beginPath(); g.arc(cx, cy, r - 0.75, 0, TAU); g.stroke();
     MEDAL[side] = c;
     return c;
   }
@@ -350,7 +420,7 @@
   // sheen: a gold glint passing across (0..1 as it goes, 0 when none)
   function drawMedal(g, side, x, y, scale, alpha, sheen, tilt = 0, glow = 0) {
     if (alpha <= 0.001 || scale <= 0.01) return;
-    const c = medallion(side), sz = c.width * scale, r = R_CREST * scale;
+    const c = medallion(side), sz = c.width * scale / MS, r = R_CREST * scale;
     g.save(); g.globalAlpha = alpha;
     if (glow > 0.01) { // a blue halo round the circle
       g.save(); g.globalCompositeOperation = 'lighter';
@@ -368,11 +438,11 @@
     g.beginPath(); g.arc(0, 0, r - 0.5, 0, TAU); g.clip();
     const lx = -r * 0.6 - Math.sin(tilt) * r * 0.8, ly = -r * 0.7;
     const wg = g.createRadialGradient(lx, ly, 0, lx, ly, r * 2.1);
-    wg.addColorStop(0, `rgba(150,205,255,${(0.18 + 0.4 * glow).toFixed(3)})`); wg.addColorStop(0.55, `rgba(90,160,255,${(0.06 + 0.16 * glow).toFixed(3)})`); wg.addColorStop(1, 'rgba(80,150,255,0)');
+    wg.addColorStop(0, `rgba(150,205,255,${(0.06 + 0.12 * glow).toFixed(3)})`); wg.addColorStop(0.55, `rgba(90,160,255,${(0.02 + 0.05 * glow).toFixed(3)})`); wg.addColorStop(1, 'rgba(80,150,255,0)');
     g.globalCompositeOperation = 'soft-light'; g.fillStyle = wg; g.fillRect(-r, -r, 2 * r, 2 * r);
     g.globalCompositeOperation = 'lighter';
     const wg2 = g.createRadialGradient(lx, ly, 0, lx, ly, r * 1.6);
-    wg2.addColorStop(0, `rgba(140,200,255,${(0.1 + 0.3 * glow).toFixed(3)})`); wg2.addColorStop(1, 'rgba(80,150,255,0)');
+    wg2.addColorStop(0, `rgba(140,200,255,${(0.03 + 0.08 * glow).toFixed(3)})`); wg2.addColorStop(1, 'rgba(80,150,255,0)');
     g.fillStyle = wg2; g.fillRect(-r, -r, 2 * r, 2 * r);
     if (sheen > 0 && sheen < 1) {
       const sx = -r * 1.7 + sheen * r * 3.4;
@@ -429,9 +499,8 @@
     const text = (s, w, size, ls, col) => { fontBC(g, w, size, ls); const tw = g.measureText(s).width - ls; return { w: tw, draw: (x, cy) => { fontBC(g, w, size, ls); g.textAlign = 'left'; g.textBaseline = 'alphabetic'; g.fillStyle = col || '#fff'; g.fillText(s, x, cy + capOf(size) / 2); } }; };
     const house = (s) => ({ w: s, draw: (x, cy) => tile(g, x, cy - s / 2, s) });
     if (kind === 'comp') {
-      const lc = logoCanvas(m.comp || MATCH.comp);
-      if (lc) { const h = 42, w = (lc.width * h) / lc.height; items.push({ w, draw: (x, cy) => { g.imageSmoothingQuality = 'high'; g.drawImage(lc, x, cy - h / 2, w, h); } }); }
-      items.push(text((MATCH.compName || COMP_NAME[m.comp || MATCH.comp] || '').toUpperCase(), TABT.w, TABT.s, TABT.ls));
+      if (LOGO.mark) items.push(markItem(g, LOGO.mark));
+      else items.push(pillItem(g, (MATCH.compName || COMP_NAME[m.comp || MATCH.comp] || '').toUpperCase(), logoCanvas(m.comp || MATCH.comp)));
     } else if (kind === 'brand') {
       items.push(house(34));
       fontOut(g, 800, 29, 0); const w1 = g.measureText('whitebrook road').width;
@@ -443,7 +512,51 @@
     else if (kind === 'second') { items.push(house(30)); items.push(text('SECOND HALF', TABT.w, TABT.s, TABT.ls)); }
     return items;
   }
-  function tabWidth(items) { let w = 0; items.forEach((it, i) => { w += it.w + (i ? (it.gap || 14) : 0); }); return Math.max(300, w + 56); }
+  // the competition's name and logo sit straight on the tab (no box of their own, as the family asked), inside it
+  const PILL_H = 40, PILL_S = 30;
+  function pillFont(g) { g.font = `700 ${PILL_S}px BarlowSC`; g.letterSpacing = '0.6px'; }
+  // the competition's own mark (broadcast/marks: its logo, then its name in its own lettering, white): its logo 34 px
+  // tall on the 52 px tab, never wider than the tab can take
+  const MARK_ICON = 96, MARK_MAXW = 600;
+  function markItem(g, im) {
+    let s = 34 / MARK_ICON;
+    if (im.width * s > MARK_MAXW) s = MARK_MAXW / im.width;
+    const mw = im.width * s, mh = im.height * s;
+    return { w: mw, draw: (x, cy) => {
+      g.save();
+      g.shadowColor = 'rgba(0,10,40,0.7)'; g.shadowBlur = 2; g.shadowOffsetY = 1;
+      g.imageSmoothingQuality = 'high';
+      g.drawImage(im, x, cy - mh / 2, mw, mh);
+      g.restore();
+    } };
+  }
+  // a competition without its own mark: its logo first, on a white disc, then its name (the first word white, the rest
+  // a light blue, capitals 21 px)
+  function pillItem(g, name, lc) {
+    pillFont(g);
+    const words = name.split(' '), first = words[0] || '', rest = words.slice(1).join(' ');
+    const w1 = g.measureText(first).width, w2 = rest ? g.measureText(' ' + rest).width : 0;
+    const badge = lc ? PILL_H - 5 : 0, tx = lc ? badge + 10 : 0, w = tx + w1 + w2;
+    return { w, draw: (x, cy) => {
+      g.save();
+      if (lc) {
+        const bx = x + badge / 2, br = badge / 2;
+        g.beginPath(); g.arc(bx, cy, br, 0, TAU);
+        const wg = g.createLinearGradient(0, cy - br, 0, cy + br); wg.addColorStop(0, '#ffffff'); wg.addColorStop(1, '#dfe6f2');
+        g.fillStyle = wg; g.fill(); g.lineWidth = 1.5; g.strokeStyle = 'rgba(10,30,80,0.8)'; g.stroke();
+        const lh = br * 1.36, lw = (lc.width * lh) / lc.height, fit = Math.min(1, (br * 1.5) / lw);
+        g.imageSmoothingQuality = 'high';
+        g.drawImage(lc, bx - (lw * fit) / 2, cy - (lh * fit) / 2, lw * fit, lh * fit);
+      }
+      pillFont(g); g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+      g.shadowColor = 'rgba(0,10,40,0.7)'; g.shadowBlur = 2; g.shadowOffsetY = 1;
+      const base = cy + 21 / 2;
+      g.fillStyle = '#ffffff'; g.fillText(first, x + tx, base);
+      if (rest) { g.fillStyle = '#a6d2ff'; g.fillText(' ' + rest, x + tx + w1, base); }
+      g.restore();
+    } };
+  }
+  function tabWidth(items) { let w = 0; items.forEach((it, i) => { w += it.w + (i ? (it.gap || 14) : 0); }); return Math.max(300, w + 60); }
   function drawTabContent(g, items, cy, a, blur) {
     if (a <= 0.01) return;
     let w = 0; items.forEach((it, i) => { w += it.w + (i ? (it.gap || 14) : 0); });
@@ -531,7 +644,22 @@
     second: { pages: [['comp', 'score'], ['second', 'score']], steps: [[2.3, 'tab']], close: 4.4 },
     still: { pages: [['comp', 'vs']], steps: [], close: 9 },
   };
-  function popLen(m) { return KINDS[m.kind].close + 0.62; }
+  // Slower and up longer, as the family asked: a moment comes in and goes at two-thirds speed (SLOW) and stays up two and a
+  // half seconds more (HOLD). Every part is drawn on the design's own clock (warp), so the trophy, the page turns and the
+  // lights keep together; the page turns while it is up come slower with it.
+  const SLOW = 1.5, HOLD = 2.5, OPENED = 1.0;
+  function closeAt(kind) { const tc = KINDS[kind].close; return kind === 'still' ? tc : OPENED * SLOW + (tc - OPENED) + HOLD; }
+  function warp(kind, T) {
+    const tc = KINDS[kind].close;
+    if (kind === 'still') return T;
+    const o = OPENED * SLOW, rc = closeAt(kind);
+    if (T <= o) return T / SLOW;
+    if (T <= rc) return OPENED + ((T - o) * (tc - OPENED)) / (rc - o);
+    return tc + (T - rc) / SLOW;
+  }
+  function popLen(m) { return closeAt(m.kind) + (m.kind === 'still' ? 0.62 : 0.62 * SLOW); }
+  // the whole pop-up's length in seconds, for the host (kickoff-host.js)
+  window.POP_LEN = (kind) => (KINDS[kind] ? popLen({ kind }) : 0);
 
   // ---------------------------------------------------------------- its layers (layers.js)
   // Every part is drawn once, when the pop-up is made ready, into a canvas of its own with its shadow and its glow (a
@@ -539,6 +667,7 @@
   // alone, as the strap page's is. The trophy is drawn ready turned for each moment it is seen (a sprite each, the frame
   // only picks one); what changes as it plays (the crests' gold light, the tab's light) goes in small canvases of its own.
   const Lmul = LK.mul, LT = LK.T;
+  const LM = (...ms) => ms.reduce((a, b) => Lmul(a, b));   // several in a row
   const SPR = {};
   const bake = (x, y, w, h, draw) => {
     const c = mk(Math.max(1, Math.ceil(w)), Math.max(1, Math.ceil(h))), g = c.getContext('2d');
@@ -586,7 +715,7 @@
   // a crest's coin with the gold over it (a warm wash from the light's side, a glint passing): its own small canvas,
   // drawn again only when the light on it changes
   function medalCoin(side, sheen, tilt, glow) {
-    const base = medallion(side), sz = base.width, r = R_CREST;
+    const base = medallion(side), sz = base.width, r = R_CREST * MS;
     const c = LK.dyn('medal-' + side, sz, sz), g = c._g;
     const key = sheen.toFixed(3) + '|' + tilt.toFixed(4) + '|' + glow.toFixed(3);
     if (c._key === key) return c;
@@ -598,11 +727,11 @@
     g.beginPath(); g.arc(0, 0, r - 0.5, 0, TAU); g.clip();
     const lx = -r * 0.6 - Math.sin(tilt) * r * 0.8, ly = -r * 0.7;
     const wg = g.createRadialGradient(lx, ly, 0, lx, ly, r * 2.1);
-    wg.addColorStop(0, `rgba(150,205,255,${(0.18 + 0.4 * glow).toFixed(3)})`); wg.addColorStop(0.55, `rgba(90,160,255,${(0.06 + 0.16 * glow).toFixed(3)})`); wg.addColorStop(1, 'rgba(80,150,255,0)');
+    wg.addColorStop(0, `rgba(150,205,255,${(0.06 + 0.12 * glow).toFixed(3)})`); wg.addColorStop(0.55, `rgba(90,160,255,${(0.02 + 0.05 * glow).toFixed(3)})`); wg.addColorStop(1, 'rgba(80,150,255,0)');
     g.globalCompositeOperation = 'soft-light'; g.fillStyle = wg; g.fillRect(-r, -r, 2 * r, 2 * r);
     g.globalCompositeOperation = 'lighter';
     const wg2 = g.createRadialGradient(lx, ly, 0, lx, ly, r * 1.6);
-    wg2.addColorStop(0, `rgba(140,200,255,${(0.1 + 0.3 * glow).toFixed(3)})`); wg2.addColorStop(1, 'rgba(80,150,255,0)');
+    wg2.addColorStop(0, `rgba(140,200,255,${(0.03 + 0.08 * glow).toFixed(3)})`); wg2.addColorStop(1, 'rgba(80,150,255,0)');
     g.fillStyle = wg2; g.fillRect(-r, -r, 2 * r, 2 * r);
     if (sheen > 0 && sheen < 1) {
       const sx = -r * 1.7 + sheen * r * 3.4;
@@ -613,15 +742,51 @@
     g.restore();
     return c;
   }
-  // tilt: the circle turned about its upright axis (radians); glow: the gold light behind and over it (0..1.2);
+  // The circles' turn about their upright axis, seen in perspective (the near side taller), as the family asked: as the
+  // pop-up comes in both turn clearly but gently from left to right, looking left (24 degrees), round past face on to
+  // looking right (16), back a touch and settled face on; and as they meet when it closes, each turning in towards the
+  // middle (40). Above 0: its right side away from us (looking right).
+  const YAW_IN = [[0, -24], [0.12, -22], [0.5, 16], [0.78, -4], [1.0, 0]];
+  function keyed(keys, t) {
+    if (t <= keys[0][0]) return keys[0][1];
+    for (let i = 1; i < keys.length; i++) {
+      if (t <= keys[i][0]) {
+        const [t0, v0] = keys[i - 1], [t1, v1] = keys[i], u = (t - t0) / (t1 - t0);
+        return v0 + (v1 - v0) * u * u * (3 - 2 * u);
+      }
+    }
+    return keys[keys.length - 1][1];
+  }
+  // side: -1 home (on the left: turns in by looking right), 1 away
+  const yawAt = (T, tc, side) => (keyed(YAW_IN, T) - side * 40 * eInOut3(ramp(tc + 0.1, tc + 0.5, T))) * DEG;
+  // how far the eye is, in crest radii: near enough that the turn reads as one (the near side a fifth taller at 24 degrees)
+  const EYE = 5;
+  // how far a turned circle reaches to its right (dir 1) or left (-1) of its middle, in radii, as seen
+  const reach = (yaw, dir) => Math.cos(yaw) / (1 + dir * Math.sin(yaw) / EYE);
+  // the coin's edge, seen when it is turned: its rim's side, silver lit from above, darker below
+  function edgeBake() {
+    if (SPR.edge) return SPR.edge;
+    const base = medallion('home'), sz = base.width, R = R_CREST * MS, c = mk(sz, sz), g = c.getContext('2d');
+    const cx = sz / 2, cy = sz / 2;
+    const gr = g.createLinearGradient(0, cy - R, 0, cy + R);
+    gr.addColorStop(0, '#f2f6fc'); gr.addColorStop(0.35, '#b9c6da'); gr.addColorStop(0.7, '#6d7f9c'); gr.addColorStop(1, '#2c3a52');
+    g.beginPath(); g.arc(cx, cy, R * 0.995, 0, TAU); g.fillStyle = gr; g.fill();
+    g.lineWidth = R * 0.03; g.strokeStyle = 'rgba(10,18,32,0.85)'; g.stroke();
+    return (SPR.edge = c);
+  }
+  // yaw: the circle's turn (radians, above 0 looking right); glow: the gold light behind and over it (0..1.2);
   // sheen: a gold glint passing across (0..1 as it goes, 0 when none)
-  function medalLayers(side, x, y, scale, alpha, sheen, tilt, glow) {
+  function medalLayers(side, x, y, scale, alpha, sheen, yaw, glow) {
     if (alpha <= 0.001 || scale <= 0.01) return;
     if (glow > 0.01) at(haloBake(), [scale, 0, 0, scale, x, y], alpha * glow / 1.2, 'lighter');
-    const c = medalCoin(side, sheen, tilt, glow), h = c.width / 2;
-    const ct = Math.max(0.08, Math.cos(tilt));
-    // turned: narrower, with a slight lean as it would in perspective
-    LK.put(c, Lmul([ct, Math.sin(tilt) * 0.16, 0, 1, x, y], [scale, 0, 0, scale, -h * scale, -h * scale]), alpha);
+    // the coin's light moves with the turn in steps (each a redraw); the turn itself is the compositor's, smooth
+    const towards = side === 'home' ? yaw : -yaw;   // turned towards the middle: the light from the outer side
+    const c = medalCoin(side, sheen, Math.round(Math.max(0, towards) / 0.05) * 0.05, glow), h = c.width / 2, k = scale / MS;
+    const m = Lmul([1, 0, 0, 1, x, y], [k, 0, 0, k, -h * k, -h * k]);
+    const turn = { x, y, yaw, d: EYE * R_CREST * scale };
+    // turned: its back's edge showing on the far side, as thick as the recording's rim
+    if (Math.abs(yaw) > 0.02) LK.put(edgeBake(), m, alpha, '', false, { x, y, yaw, d: turn.d, z: -R_CREST * 0.17 * scale });
+    LK.put(c, m, alpha, '', false, turn);
   }
   // the tab: its two ends and a column of its middle (stretched to any width), cut from one drawn at TAB_REF wide
   const TAB_REF = 400, TAB_M = 26;
@@ -687,6 +852,15 @@
       g.fillStyle = cg; g.fillRect(bx - 2.5, 600, 5, 330);
     });
     haloBake(); tabBake();
+    // the white frame, in the trophy's sprite size (0.75 of it on the screen once settled): its top 92 px under the
+    // crown's top and 265 px wide on the screen, down behind the tab and the bar
+    { const t0 = TROPHY_TOP0(), fw = 265 / 0.75, ft = t0 + 92 / 0.75, fb = t0 + 262 / 0.75, lw = 7 / 0.75;
+      SPR.frame = bake(960 - fw / 2 - 20, ft - 20, fw + 40, fb - ft + 40, (g) => {
+        g.shadowColor = 'rgba(0,0,0,0.35)'; g.shadowBlur = 6; g.shadowOffsetY = 2;
+        const lg = g.createLinearGradient(0, ft, 0, fb); lg.addColorStop(0, '#ffffff'); lg.addColorStop(1, '#d5dbe6');
+        g.strokeStyle = lg; g.lineWidth = lw; g.lineJoin = 'miter';
+        g.beginPath(); g.moveTo(960 - fw / 2 + lw / 2, fb); g.lineTo(960 - fw / 2 + lw / 2, ft + lw / 2); g.lineTo(960 + fw / 2 - lw / 2, ft + lw / 2); g.lineTo(960 + fw / 2 - lw / 2, fb); g.stroke();
+      }); }
     for (const [s, w] of [[220, true], [120, true], [150, true], [230, true], [90, true]]) flareBake(s, w);
   }
   function bakeMoment(m) {
@@ -704,7 +878,8 @@
   // away, every 1/10 s as it sways, the frame showing the two either side of the moment mixed), each scaled as the frame
   // drew it and cut to the box its pixels keep to; the frame only shows one or two of them
   let TSPR = null;
-  const trophyRot = (T, tc) => -1.25 * (1 - eOut3(ramp(0.14, 0.8, T))) + 0.13 * Math.sin(T * 0.75) + 1.0 * eIn3(ramp(tc + 0.12, tc + 0.55, T));
+  const TROPHY_TOP0 = () => T_TOP + ((T3_FIT[MATCH.trophy || MATCH.comp] || T3_FIT.generic)[1] || 0);
+  const trophyRot = (T, tc) => -0.7 * (1 - eOut3(ramp(0.12, 0.8, T))) + 0.07 * Math.sin(T * 0.75) + 0.8 * eIn3(ramp(tc + 0.12, tc + 0.55, T));
   async function trophySprites(kind3, tc) {
     const T3 = window.TROPHY3D, t0 = performance.now();
     const fit = T3_FIT[kind3] || T3_FIT.generic;
@@ -748,8 +923,8 @@
   // The turns are never on the page themselves: the one (or two, mixed) for the moment is copied into one small canvas,
   // which is all the compositor sees. Each turn a layer of its own (93 of them, about 79 MB) froze the Streamer for
   // seconds at a time as each was handed to its GPU the first time it showed.
-  function trophyLayers(T, trA, rise) {
-    const L = TSPR.list, M = LT(0, rise);
+  function trophyLayers(T, trA, M) {
+    const L = TSPR.list;
     let i = 0; while (i < L.length - 1 && L[i + 1].t <= T) i++;
     const A = L[i], B = L[Math.min(i + 1, L.length - 1)];
     let top = A, under = null, f = 0;
@@ -773,40 +948,56 @@
 
   function popupLayers(m, T) {
     const K = KINDS[m.kind], tc = K.close;
-    // ---- where things are
-    const inK = eOutBack(ramp(0.06, 0.42, T), 1.3);
-    const sIn = lerp(1.9, 1, inK);
-    const openK = eInOut3(ramp(0.56, 0.84, T));
-    const closeK = eIn3(ramp(tc + 0.12, tc + 0.36, T));
-    const together = R_CREST * 0.97;
+    // ---- where things are, as the family's recording has them (measured frame by frame)
+    // in: the crests come in at once, big (2.4 times) and low, touching, and shrink to their size as they rise (0.3 s)
+    const big = Math.pow(1 - clamp(T / 0.3), 2.2);
+    const sc = 1 + 1.43 * big;
+    // then slide apart to the bar's ends, quick at first and easing in (0.47 s to 0.87 s)
+    const openK = 1 - Math.pow(1 - clamp((T - 0.465) / 0.405), 2);
+    // closing: back together in the middle, meeting in a flash of gold, then gone
+    const closeK = eIn3(ramp(tc + 0.12, tc + 0.33, T));
     const spread = clamp(openK - closeK, 0, 1);
-    const sc = T < 0.42 ? sIn : 1;
-    const lx = lerp(960 - together * sc, OPEN_L, spread), rx = lerp(960 + together * sc, OPEN_R, spread);
-    const endK = ramp(tc + 0.36, tc + 0.6, T);
-    const medScale = sc * lerp(1, 0.72, eIn3(endK));
-    const medAlpha = ramp(0.06, 0.14, T) * (1 - endK);
-    const rise = (1 - eOut3(ramp(0.14, 0.62, T))) * 300 + eIn3(ramp(tc + 0.15, tc + 0.55, T)) * 260;
-    const trA = ramp(0.14, 0.3, T) * (1 - ramp(tc + 0.3, tc + 0.55, T));
-    // ---- trophy, behind everything: the 3D model rises turning in, sways a little, and turns away as it sinks
+    // turned (yawAt): seen in perspective, so where they touch is each one's own reach towards the middle
+    const yawL = yawAt(T, tc, -1), yawR = yawAt(T, tc, 1);
+    const touch = R_CREST * sc * 0.985 * reach(yawL, 1);   // the home one's reach to the middle (the flash's height)
+    const lx = lerp(960 - touch, OPEN_L, spread), rx = lerp(960 + R_CREST * sc * 0.985 * reach(yawR, -1), OPEN_R, spread);
+    const cyM = lerp(930 + 95 * big, CY - 4, openK);
+    const endK = ramp(tc + 0.36, tc + 0.5, T);
+    const medScale = sc * lerp(1, 0.8, eIn3(endK));
+    const medAlpha = ramp(0, 0.012, T) * (1 - endK);
+    // ---- the trophy behind: up from below as they shrink, big and near, then standing back to its size behind the bar as
+    // they open (its crown's top from 752 to 680), the white frame swinging round into place behind it
     const kind3 = m.trophy || MATCH.trophy || MATCH.comp;
+    const back = eInOut3(ramp(0.45, 0.85, T));
+    const tS = lerp(1.41, 0.75, back);
+    const tY = lerp(752, 680, back) + (1 - eOut3(ramp(0.12, 0.3, T))) * 330 + eIn3(ramp(tc + 0.15, tc + 0.5, T)) * 320;
+    const trA = ramp(0.12, 0.2, T) * (1 - ramp(tc + 0.3, tc + 0.5, T));
+    const top0 = TROPHY_TOP0();
+    const MT = LM(LT(960, tY), [tS, 0, 0, tS, 0, 0], LT(-960, -top0));
+    const fIn = eOut3(ramp(0.2, 0.62, T)), fA = ramp(0.2, 0.3, T) * (1 - ramp(tc + 0.1, tc + 0.3, T)) * trA;
+    const MF = LM(MT, LT(960 + (1 - fIn) * 240, 0), [Math.max(0.05, fIn), 0, 0, 1, 0, 0], LT(-960, 0));
+    if (fA > 0.01 && SPR.frame) at(SPR.frame, MF, fA);
     if (trA > 0.01) {
-      if (TSPR) trophyLayers(T, trA, rise);
-      else at(SPR.tr2d, LT(0, rise), trA);
+      if (TSPR) trophyLayers(T, trA, MT);
+      else at(SPR.tr2d, MT, trA);
       // glints on the trophy's top and shoulders, following its size and its top
       const gl = [[-62, 18, 1.2], [0, 4, 2.4], [62, 18, 3.6], [-48, 140, 5.0], [55, 175, 0.6]];
       const gf = T3_FIT[kind3] || T3_FIT.generic, gs = sparkleBake(26 * Math.max(0.7, gf[2]));
       for (const [x, y, ph] of gl) {
         const a = Math.pow(Math.max(0, Math.sin(T * 2.1 + ph * 1.7)), 14) * 0.9 * trA;
-        if (a > 0.01) at(gs, LT(960 + x * gf[2], T_TOP + gf[3] + y * gf[2] + rise), a, 'lighter');
+        if (a > 0.01) at(gs, LM(MT, LT(960 + x * gf[2], top0 + gf[3] + y * gf[2]), [1 / tS, 0, 0, 1 / tS, 0, 0]), a, 'lighter');
       }
     }
-    // the light that comes with it
-    flareL(960, CY - 30, 220, 0.85 * Math.sin(PI * ramp(0, 0.5, T)));
-    const beam = Math.sin(PI * ramp(0.28, 0.72, T));
-    if (beam > 0.01) {
-      at(SPR.beamL, LK.I, beam, 'lighter');
-      at(SPR.beamC, LK.I, beam);
-      flareL(960 + 64, 640 + rise * 0.6, 120, 0.6 * beam, true);
+    // the lights: gold where the crests meet as they come in; a cool light on the frame's top corner as it swings round
+    const fl0 = 1 - ramp(0.03, 0.3, T);
+    if (fl0 > 0.01) at(flareBake(150, true)[0], [sc * 0.85, 0, 0, sc * 0.85, 960, cyM - touch * 0.78], 0.95 * fl0, 'lighter');
+    const cornerA = Math.sin(PI * ramp(0.24, 0.86, T)) * trA;
+    if (cornerA > 0.01) {
+      const fw = 265 / 0.75, ft = top0 + 92 / 0.75;
+      const cx0 = 960 + (1 - fIn) * 240 + Math.max(0.05, fIn) * (-fw / 2);
+      const P = [MT[0] * cx0 + MT[2] * ft + MT[4], MT[1] * cx0 + MT[3] * ft + MT[5]];
+      at(flareBake(120, false)[0], LT(P[0], P[1]), 0.85 * cornerA, 'lighter');
+      at(flareBake(120, false)[2], [1, 0, 0, 0.45, P[0], P[1]], 0.6 * cornerA, 'lighter');
     }
     // ---- what the tab and the bar say now
     let page = 0, flipK = -1, swapK = -1;
@@ -821,27 +1012,30 @@
     // the flip turns the bar (and its tab) over about its middle line
     let sy = 1, skew = 0, shade = 0;
     if (flipK >= 0) { sy = Math.abs(Math.cos(PI * flipK)); skew = -0.32 * Math.sin(PI * flipK); shade = Math.sin(PI * flipK); }
-    const tabRise = eOut3(ramp(0.8, 1.0, T));
+    const tabOpen = eOut3(ramp(0.56, 0.68, T));
     const tabGone = ramp(tc, tc + 0.15, T);
     const syc = Math.max(0.02, sy), G = [1, 0, 0, syc, 0, CY - CY * syc];
     // the tab (behind the bar, which hides its foot): on a change its words go, a light sweeps across, the new words come
     // in out of a blur
     let tw = TABW[tabKind], newKind = null;
     if (swapK >= 0) { newKind = K.pages[Math.min(page + 1, last)][0]; tw = lerp(TABW[tabKind], TABW[newKind], eInOut3(clamp((swapK - 0.25) / 0.5))); }
-    if (tabGone < 1 && openK > 0.6) {
-      const rr = tabRise * (1 - eIn3(tabGone));
-      if (rr > 0.01) {
+    const bx0 = Math.max(BAR_L, lx + R_CREST * 0.35 * medScale), bx1 = Math.min(BAR_R, rx - R_CREST * 0.35 * medScale);
+    if (tabGone < 1 && tabOpen > 0.01) {
+      const rr = 1;
+      const half = (tw / 2 + 24) * tabOpen, cx0 = Math.max(bx0, 960 - half), cx1 = Math.min(bx1, 960 + half);
+      if (cx1 - cx0 > 2) {
+        const top = CY - BAR_H / 2 - TAB_H, MG = G;
+        LK.clip('tab', Lmul(G, LT(cx0, top - 40)), cx1 - cx0, TAB_H + 40);
         tabLayers(G, tw, rr);
-        const top = CY - BAR_H / 2 - TAB_H + (1 - rr) * TAB_H, MG = Lmul(G, LT(0, (1 - rr) * TAB_H));
         if (swapK >= 0) {
           if (swapK < 0.38) { const a = 1 - swapK / 0.38; if (a > 0.01) at(tabContentBake(tabKind, m, 0), MG, a); }
           else { const k2 = (swapK - 0.38) / 0.62; if (k2 > 0.01) at(tabContentBake(newKind, m, blurLvl(8 * (1 - k2))), MG, k2); }
           tabSweep(G, tw, top, swapK);
         } else if (1 - tabGone > 0.01) at(tabContentBake(tabKind, m, blurLvl(6 * tabGone)), MG, 1 - tabGone);
+        LK.endClip();
       }
     }
     // the bar between the crests, opening out: its words, a shade as it flips, a sheen along it as it opens
-    const bx0 = Math.max(BAR_L, lx + R_CREST * 0.35), bx1 = Math.min(BAR_R, rx - R_CREST * 0.35);
     const barA = clamp(spread * 6) * (1 - endK);
     if (bx1 - bx0 >= 2 && barA > 0.002) {
       LK.clip('bar', Lmul(G, LT(bx0, CY - BAR_H / 2 - 2)), bx1 - bx0, BAR_H + 4);
@@ -856,23 +1050,19 @@
       LK.endClip();
     }
     // the V (or score) between the crests
-    const vIn = eOutBack(ramp(0.44, 0.6, T), 1.6) * (1 - ramp(tc + 0.05, tc + 0.2, T));
+    const vIn = eOutBack(ramp(0.44, 0.56, T), 1.6) * (1 - ramp(tc + 0.05, tc + 0.2, T));
     if (vIn > 0.01 && (mainKind === 'vs' || mainKind === 'score')) at(centreBake(mainKind, m), Lmul(G, [vIn, 0, 0, vIn, 960 - 960 * vIn, CY - CY * vIn]), 1);
-    // crests, in front: they turn in as they fly in, lean as they slide, rock gently while open, turn as they meet
-    const inTilt = (1 - eOutBack(ramp(0.06, 0.62, T), 1.4)) * 1.15;
-    const slide = Math.sin(PI * clamp(openK)) * 0.42 * (1 - closeK) + Math.sin(PI * clamp(closeK)) * 0.5;
-    const rock = 0.3 * Math.sin(T * 1.25) * ramp(0.9, 1.5, T) * (1 - ramp(tc, tc + 0.2, T));
-    const outTilt = eIn3(endK) * 1.2;
-    const tiltL = -inTilt - slide + rock - outTilt, tiltR = inTilt + slide - rock * 0.9 + outTilt;
-    const glow = 0.95 * Math.sin(PI * ramp(0.0, 0.75, T)) + 0.42 + 0.1 * Math.sin(T * 2.3) + 0.9 * Math.sin(PI * ramp(tc + 0.15, tc + 0.6, T));
+    // the crests, in front, turned as the recording's (yawAt)
+    const glow = 0.3 + 0.5 * Math.sin(PI * ramp(0.0, 0.6, T)) + 0.6 * Math.sin(PI * ramp(tc + 0.15, tc + 0.6, T));
     const sheenL = ramp(1.35, 2.1, T) + ramp(5.0, 5.75, T), sheenR = ramp(1.5, 2.25, T) + ramp(5.15, 5.9, T);
-    medalLayers('home', lx, CY, medScale, medAlpha, sheenL % 1 === 0 ? 0 : sheenL % 1, tiltL, Math.min(1.2, glow));
-    medalLayers('away', rx, CY, medScale, medAlpha, sheenR % 1 === 0 ? 0 : sheenR % 1, tiltR, Math.min(1.2, glow));
-    // flashes: as they arrive, and where they meet when it closes
-    flareL(960, CY, 150, 0.8 * Math.sin(PI * ramp(0.04, 0.3, T)));
-    const meet = Math.sin(PI * ramp(tc + 0.28, tc + 0.56, T));
-    flareL(960, CY - 10, 230, 0.95 * meet);
-    flareL(960, CY - 70, 90, 0.7 * Math.sin(PI * ramp(tc + 0.1, tc + 0.4, T)));
+    medalLayers('home', lx, cyM, medScale, medAlpha, sheenL % 1 === 0 ? 0 : sheenL % 1, yawL, Math.min(1.2, glow));
+    medalLayers('away', rx, cyM, medScale, medAlpha, sheenR % 1 === 0 ? 0 : sheenR % 1, yawR, Math.min(1.2, glow));
+    // where they meet as it closes: the gold flash
+    const meet = Math.sin(PI * ramp(tc + 0.26, tc + 0.54, T));
+    if (meet > 0.01) {
+      at(flareBake(150, true)[0], [1.5, 0, 0, 1.5, 960, CY - 40], 0.95 * meet, 'lighter');
+      flareL(960, CY - 60, 90, 0.75 * meet);
+    }
   }
 
   // ---------------------------------------------------------------- the frame: the layers placed for second t
@@ -880,7 +1070,7 @@
     LK.begin();
     for (const m of POP.moments) {
       const T = t - m.t0;
-      if (T >= -0.001 && T <= popLen(m)) popupLayers(m, T);
+      if (T >= -0.001 && T <= popLen(m)) popupLayers(m, warp(m.kind, T));
     }
     LK.end();
   }
@@ -894,12 +1084,14 @@
     for (const w of [500, 600, 700, 800]) await document.fonts.load(`${w} 40px Outfit`);
     for (const w of [600, 700, 800]) await document.fonts.load(`${w} 40px 'Barlow Condensed'`);
     for (const w of [600, 700]) await document.fonts.load(`${w} 40px 'KhandM'`, 'AZaz09&ØÖÉ');
+    await document.fonts.load('700 30px BarlowSC', 'AZaz09');   // the competition's pill
     await document.fonts.ready;
     const A = window.ASSET_URLS || {};
     // a crest or logo that will not come is left out (a plain coin, no logo) rather than stopping the pop-up
     const img = async (url) => { if (!url) return null; try { const im = new Image(); im.src = url; await im.decode(); return im; } catch (e) { return null; } };
     for (const side of ['home', 'away']) { const im = await img(A[side]); if (im) IMG[side] = im; }
     for (const [k, url] of Object.entries(A.logos || {})) { const im = await img(url); if (im) LOGO[k] = im; }
+    if (A.mark) { const im = await img(A.mark); if (im) LOGO.mark = im; }   // the competition's own: its logo, then its name
     if (POP.background !== 'none') { GL = groundLight(); buildCrowd(); buildSky(); }   // the live overlay draws no ground
     window.RIBBON_COLORS = [TEAMS.home.c1, TEAMS.away.c1];
     for (let i = 0; i < 50 && !window.TROPHY3D_READY; i++) await new Promise((r) => setTimeout(r, 100));
