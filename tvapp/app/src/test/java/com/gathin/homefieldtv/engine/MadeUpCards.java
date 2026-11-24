@@ -28,6 +28,13 @@ public final class MadeUpCards {
             {"n:1", "Fogbell News", "UK News", "501", "Fogbell Today|Weather Watch"},
     };
 
+    /** A schedule with these titles (the guide's builder is the engine's own), for tests and previews elsewhere. */
+    public static Guide.Schedule schedule(long[] start, long[] stop, String[] titles) {
+        Guide.Builder b = new Guide.Builder();
+        for (int i = 0; i < start.length; i++) b.add(start[i], stop[i], titles[i % titles.length], "Made up for the launcher's cards.");
+        return b.build();
+    }
+
     /** The channels in order, made the library's own with their guide. */
     public static List<Channel> load(Context c) {
         Sources.clear(c);

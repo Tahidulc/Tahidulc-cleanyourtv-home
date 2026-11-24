@@ -240,11 +240,18 @@ public class ChannelCardsTest {
         tv = Robolectric.buildActivity(TvActivity.class, play("c:4", "Kestrel Two", 104)).setup();
         TvActivity a = tv.get();
         idle();
-        // The PIN's pad over Home (shown), nothing playing.
+        // The PIN's pad, as from anywhere in the app; nothing playing.
         assertTrue(a.top() instanceof PinScreen);
         assertFalse("c:4".equals(playing(a)));
         assertEquals(View.VISIBLE, a.screens.getVisibility());
+        // Back from the pad: Home, as it is.
+        long t = android.os.SystemClock.uptimeMillis();
+        a.dispatchKeyEvent(new android.view.KeyEvent(t, t, android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_BACK, 0));
+        a.dispatchKeyEvent(new android.view.KeyEvent(t, t + 40, android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_BACK, 0));
+        idle();
+        assertTrue(a.top() instanceof HomeScreen);
         assertEquals(View.VISIBLE, a.homeScreen().view().getVisibility());
+        assertFalse("c:4".equals(playing(a)));
     }
 
     @Test public void anOldOrEmptyRequestOpensAsUsual() {
