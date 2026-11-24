@@ -37,9 +37,11 @@ import java.util.List;
  * material as before (Frost over the live picture).
  *
  * <pre>
- *   the channel        its logo alone, as the guide's channel cells have it (ChannelLook.cell: 150 x 150 at (88, +40),
- *                      in the logo's own colour); no number or name ("I don't want channels numbers now": the number
- *                      and name are the card's content description, and the number keys still go to a channel)
+ *   the channel        its logo, as the guide's channel cells have it (ChannelLook.cell: 150 x 150 at (88, +40), in
+ *                      the logo's own colour), and its name under it (20 px, centred, back since 3.9: "the channel
+ *                      name should be underneath the channel logo here like before"); no number ("I don't want
+ *                      channels numbers now": the number is in the content description, and the number keys still go
+ *                      to a channel)
  *   (no kicker)        no LIVE badge and no category since 3.7: the words start at the card's top
  *   the title          44 px bold, one line
  *   its line           "19:30 – 22:00", the bar (200 x 6) and what's left ("40 min left"), then the chips for the
@@ -62,6 +64,9 @@ final class InfoCard {
     static final float TITLE_Y = 80f, LINE_Y = 118f, DESC_Y = 151f;
     static final int DESC_LINES = 3;
     static final float LOGO_X = 88f, LOGO_W = 150f, LOGO_H = 104f, CELL_H = 150f, TEXT_X = 280f, TEXT_R = 1372f;
+    /** The channel's name under its logo: its baseline (design px from the card's top) and the room it is cut to,
+     *  centred under the logo and clear of the words at TEXT_X. */
+    static final float NAME_Y = 40f + 150f + 30f, NAME_W = 170f;
     /** What's next: its left, its width, its picture's height. */
     static final float NEXT_X = 1412f, NEXT_W = 420f, NEXT_H = 170f;
     /** The picture's cross-fade from one programme's to the next. */
@@ -86,7 +91,7 @@ final class InfoCard {
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), ring = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint wordsShade = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG), wordsFade = new Paint(Paint.DITHER_FLAG),
             nextShade = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG);
-    private final TextPaint titleP = Type.paint(44f, Type.BOLD, Look07.L1), kickP = Type.paint(20f, Type.SEMIBOLD, Look07.L2);
+    private final TextPaint titleP = Type.paint(44f, Type.BOLD, Look07.L1), nameP = Type.paint(20f, Type.SEMIBOLD, Look07.L2);
     private final TextPaint metaP = Type.clock(21f, Type.MEDIUM, Look07.L2), descP = Type.paint(21f, Type.REGULAR, Look07.L2);
     private final TextPaint chipP = Type.paint(16f, Type.BOLD, Look07.L1), nextLabelP = Type.label(Type.LABEL, Look07.L3);
     private final TextPaint nextTitleP = Type.paint(22f, Type.SEMIBOLD, Look07.L1), nextTimeP = Type.clock(18f, Type.MEDIUM, Look07.L3);
@@ -109,7 +114,7 @@ final class InfoCard {
     private String picFor = "", picUrl = "";
     private long picAt = -10_000L;
     private boolean fading;
-    private final TextFit titles = new TextFit(titleP, 64), kicks = new TextFit(kickP, 64), metas = new TextFit(metaP, 64),
+    private final TextFit titles = new TextFit(titleP, 64), names = new TextFit(nameP, 64), metas = new TextFit(metaP, 64),
             nextTitles = new TextFit(nextTitleP, 64), chips = new TextFit(chipP, 32);
 
     InfoCard(View owner) {
@@ -205,7 +210,7 @@ final class InfoCard {
         }
         boolean onPicture = shown > 0f;
         int quiet = onPicture ? ON_PICTURE_QUIET : Look07.L3, words = onPicture ? ON_PICTURE : Look07.L2;
-        kickP.setColor(words);
+        nameP.setColor(words);
         metaP.setColor(words);
         descP.setColor(onPicture ? ON_PICTURE_QUIET : Look07.L2);
         nextLabelP.setColor(onPicture ? ON_PICTURE_QUIET : Look07.L3);
@@ -236,11 +241,13 @@ final class InfoCard {
             shade(c, end, faces, shown);
         }
 
-        // The channel: its logo alone, as the guide's logo-only cells (no number, no name: they are the content description).
+        // The channel: its logo, as the guide's channel cells, and its name centred under it (no number).
         float lx = Ui.f(LOGO_X), ly = Ui.f(top + 40f);
         RectF lr = r;
         lr.set(lx, ly, lx + Ui.f(LOGO_W), ly + Ui.f(CELL_H));
         ChannelLook.cell(c, lr, Ui.f(Look07.R_CHANNEL), ch, 0f, 0, "", false, redraw);
+        float mid = Ui.f(LOGO_X + LOGO_W / 2f), room = Ui.f(NAME_W), nw = Math.min(names.width(name), room);
+        names.line(c, name, mid - nw / 2f, Ui.f(top + NAME_Y), room);
         describe(ctx, ch, name);
 
         // No kicker (no LIVE, no category: the family's ask, 24 Nov): the title starts at the top, the words moved up.

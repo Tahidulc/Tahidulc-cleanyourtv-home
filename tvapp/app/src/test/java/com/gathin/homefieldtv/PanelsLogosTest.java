@@ -118,6 +118,16 @@ public class PanelsLogosTest {
         assertTrue("left of what's next: " + out[PicFill.FR], out[PicFill.FR] <= InfoCard.NEXT_X - InfoCard.X);
     }
 
+    @Test public void theInfoCardsChannelNameSitsUnderItsLogoInsideTheCard() {
+        // "The channel name should be underneath the channel logo here like before" (3.9): under the cell, in the card,
+        // centred under the logo and clear of the words.
+        assertTrue("under the logo", InfoCard.NAME_Y - 20f > 40f + InfoCard.CELL_H);
+        assertTrue("in the card", InfoCard.NAME_Y + 8f < InfoCard.H);
+        float mid = InfoCard.LOGO_X + InfoCard.LOGO_W / 2f;
+        assertTrue("clear of the words", mid + InfoCard.NAME_W / 2f < InfoCard.TEXT_X);
+        assertTrue("inside the card's left", mid - InfoCard.NAME_W / 2f > InfoCard.X);
+    }
+
     @Test public void aCellCutShortShowsItsFaces() {
         // The picture made for a 900 px programme, faces at 560..700; 200 px of it on screen, words to 120.
         float x = PicFill.window(900, 200, 560, 700, 120, 8);
