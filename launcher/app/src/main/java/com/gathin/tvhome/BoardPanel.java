@@ -577,6 +577,47 @@ final class BoardPanel extends SportPanel {
         List<Row> looks = new ArrayList<>();
         for (BoardBug.Style st : BoardBug.Style.values()) looks.add(lookTile(st));
         for (int i = 0; i < looks.size(); i += 3) addLine(132, 3, looks.subList(i, Math.min(looks.size(), i + 3)));
+        // The family's own boards, their own group (the same on the phone): each drawn as it looks, OK to use it; the
+        // editor (Generate and Ask AI in it) over whatever is on.
+        heading("MY SCOREBOARDS");
+        List<Row> mine = new ArrayList<>();
+        for (com.gathin.broadcast.MyBoards.Saved sv : MyBoardStore.all(c)) mine.add(mineTile(sv));
+        for (int i = 0; i < mine.size(); i += 3) addLine(132, 3, mine.subList(i, Math.min(mine.size(), i + 3)));
+        Row editor = row("Scoreboard editor", false);
+        editor.words = () -> {
+            com.gathin.broadcast.MyBoards.Saved now = MyBoardStore.get(c, BoardCover.customId(c));
+            return (now == null ? "A new board" : "Edit " + now.name) + ": colours, layout, Generate, Ask AI · over what is on";
+        };
+        editor.ok = () -> {
+            hide();
+            BoardEditorTv.open(c, BoardCover.customId(c));
+        };
+        Row fresh = row("New scoreboard", false);
+        fresh.words = () -> mine.isEmpty() ? "Make your own board, or let Generate or Ask AI design one" : "Another of your own";
+        fresh.ok = () -> {
+            hide();
+            BoardEditorTv.open(c, null);
+        };
+        add(editor, fresh);
+        // Ask AI's key on this TV (the family's own Anthropic key: sent from the phone, or typed here), masked.
+        Row key = row("Ask AI key", false);
+        key.words = () -> com.gathin.broadcast.AiKey.has(c)
+                ? com.gathin.broadcast.AskAi.masked(com.gathin.broadcast.AiKey.get(c)) + " · OK to change it"
+                : "None: send it from the phone (Settings, Ask AI) or OK to type it · Generate works without one";
+        key.ok = () -> {
+            hide();
+            TvText.ask(c, "Your Anthropic API key (sk-ant-…)", "", true, k -> com.gathin.broadcast.AiKey.set(c, k), null);
+        };
+        Row model = row("Ask AI model", false);
+        model.words = () -> com.gathin.broadcast.AiKey.modelName(com.gathin.broadcast.AiKey.model(c)) + " · OK for the next";
+        model.ok = () -> {
+            String now = com.gathin.broadcast.AiKey.model(c);
+            String[][] all = com.gathin.broadcast.Claude.MODELS;
+            int i = 0;
+            for (int k = 0; k < all.length; k++) if (all[k][0].equals(now)) i = k;
+            com.gathin.broadcast.AiKey.setModel(c, all[(i + 1) % all.length][0]);
+        };
+        add(key, model);
         heading("LOGO COVER LOOK: WHITEBROOK ROAD SPORTS");
         markPreviews.clear();
         List<Row> channels = new ArrayList<>(), others = new ArrayList<>();
@@ -685,7 +726,7 @@ final class BoardPanel extends SportPanel {
         t.addView(name, nl);
         r.view = t;
         r.sub = name;
-        r.words = () -> (BoardCover.style(c) == style ? "✓  " : "") + style.label;
+        r.words = () -> (BoardCover.customId(c) == null && BoardCover.style(c) == style ? "✓  " : "") + style.label;
         r.ok = () -> {
             BoardCover.setStyle(c, style);
             // The cover in the scoreboard's colours follows the look chosen.
@@ -693,6 +734,31 @@ final class BoardPanel extends SportPanel {
             colours.style(style);
             for (LogoMark m : boardColoured) m.boardLook(colours.stripLook());
         };
+        return r;
+    }
+
+    /** One of My scoreboards, drawn on the made-up match, its name under it (a tick on the one in use); OK uses it. */
+    private Row mineTile(com.gathin.broadcast.MyBoards.Saved sv) {
+        Row r = new Row();
+        LinearLayout t = new LinearLayout(c);
+        t.setOrientation(LinearLayout.VERTICAL);
+        t.setGravity(Gravity.CENTER_HORIZONTAL);
+        t.setPadding(h.px(16), h.px(16), h.px(16), h.px(10));
+        FrameLayout stage = new FrameLayout(c);
+        BoardBug b = BoardEditorTv.board(c, sv.spec, h.px(36));
+        int bh = Math.round(h.px(36) * b.tall());
+        stage.addView(b, new FrameLayout.LayoutParams(-1, bh, Gravity.CENTER));
+        t.addView(stage, new LinearLayout.LayoutParams(-1, 0, 1f));
+        TextView name = h.text(17, semi, 0xE6FFFFFF);
+        name.setGravity(Gravity.CENTER);
+        name.setSingleLine(true);
+        LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(-1, -2);
+        nl.topMargin = h.px(8);
+        t.addView(name, nl);
+        r.view = t;
+        r.sub = name;
+        r.words = () -> (sv.id.equals(BoardCover.customId(c)) ? "✓  " : "") + sv.name;
+        r.ok = () -> BoardCover.setCustom(c, sv.id);
         return r;
     }
 
