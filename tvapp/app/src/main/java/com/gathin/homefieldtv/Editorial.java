@@ -136,7 +136,8 @@ final class Editorial extends View {
     private final Card07 posters = new Card07(Look07.R_POSTER), wides = new Card07(Look07.R_CARD), tiles = new Card07(Look07.R_CARD);
     private final Card07.Marks marks = new Card07.Marks();
     private final Shaders shaders = new Shaders();
-    private final Frost mat = new Frost(Look07.MAT);
+    /** The "All" card's glass over its frame. */
+    private final Paint glass = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     // The carousel card's words, laid out when it changes.
     private final Hero07.Mark mark = new Hero07.Mark(68f);
@@ -147,7 +148,7 @@ final class Editorial extends View {
     private Object wordsKey;
     private String note = "", noteWhy = "";
 
-    private final TextPaint headP, quietP, countP, factsP, storyP, kickP, nameP, numP, numLine, tileP, allP, noteP, whyP;
+    private final TextPaint headP, quietP, countP, factsP, storyP, kickP, nameP, numP, numLine, tileP, allP, noteP, whyP, peekP;
     private final Paint frame = new Paint(Paint.ANTI_ALIAS_FLAG), edge = new Paint(Paint.ANTI_ALIAS_FLAG),
             shade = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG), foot = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG),
             tileFoot = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG), fill = new Paint(Paint.ANTI_ALIAS_FLAG),
@@ -175,6 +176,8 @@ final class Editorial extends View {
         numLine.setLetterSpacing(-0.06f);
         numLine.setStyle(Paint.Style.STROKE);
         numLine.setStrokeWidth(Math.max(1.5f, Ui.f(3f)));
+        peekP = Type.paint(30f, Type.BOLD, Look07.L1);
+        peekP.setShadowLayer(Ui.f(14f), 0, Ui.f(2f), 0x99000000);
         tileP = Type.paint(30f, Type.BOLD, Look07.L1);
         tileP.setShadowLayer(Ui.f(12f), 0, Ui.f(2f), 0x80000000);
         allP = Type.paint(Type.H3, Type.BOLD, Look07.L1);
@@ -182,7 +185,8 @@ final class Editorial extends View {
         whyP = Type.paint(Type.SUB, Type.MEDIUM, Look07.L2);
         frame.setColor(0xFF101016);
         edge.setStyle(Paint.Style.STROKE);
-        dim.setColor(0x80000000);
+        dim.setColor(0x59000000);
+        glass.setColor(0x1FFFFFFF);
         // The carousel card's words' side: deep on the left, clear by 62 % of its width (over a unit width).
         shade.setShader(new LinearGradient(0, 0, 1, 0, new int[]{0xF208080E, 0xD908080E, 0x6608080E, 0x0008080E},
                 new float[]{0f, 0.35f, 0.7f, 1f}, Shader.TileMode.CLAMP));
@@ -195,7 +199,6 @@ final class Editorial extends View {
         Shadows.prepare(Look07.SH_HERO, HERO_R);
         Shadows.prepare(Look07.SH_BUTTON, 35f);
         Shadows.prepare(Look07.SH_GLASS, 13f);
-        Shadows.prepare(Look07.SH_PANEL, Look07.R_CARD);
         Pills.prepare();
     }
 
@@ -230,6 +233,7 @@ final class Editorial extends View {
         }
         hero.clear();
         hero.addAll(carousel);
+        for (Card c : hero) if (c.shortName.isEmpty()) c.shortName = Ui.fit(c.name, peekP, Ui.f(250f));
         heroAt = 0;
         for (int i = 0; i < hero.size() && heroWas != null; i++) if (key(hero.get(i)).equals(heroWas)) heroAt = i;
         heroX.jump(-heroAt * (HERO_W + HERO_GAP));
@@ -551,11 +555,13 @@ final class Editorial extends View {
             float away = Math.max(0f, Math.min(1f, (y.value() - 200f) / 380f));
             if (away < 0.999f) {
                 int a = Math.round(255 * (1f - away));
+                // Lite: no layer to fade it in (the graphics chip's quick path): it rises away whole.
+                boolean layer = a < 255 && !Motion.lite();
                 c.save();
                 c.translate(0, -risen);
-                if (a < 255) c.saveLayerAlpha(0, 0, w, Ui.f(DOTS_Y + 30f), a);
+                if (layer) c.saveLayerAlpha(0, 0, w, Ui.f(DOTS_Y + 30f), a);
                 moving |= drawHero(c, w);
-                if (a < 255) c.restore();
+                if (layer) c.restore();
                 c.restore();
             }
         }
@@ -568,6 +574,8 @@ final class Editorial extends View {
                 // Rows above the remote's fade as the page rises past them.
                 float fade = area == HERO || i >= row ? 1f : Math.max(0f, Math.min(1f, (top + hh - Ui.f(ROW_Y)) / Ui.f(220f)));
                 int alpha = Math.round(255 * fade);
+                // Lite: a row going is drawn whole until it is half gone, then not at all (no layer to fade it).
+                if (Motion.lite() && alpha < 255) alpha = alpha >= 128 ? 255 : 0;
                 if (alpha > 0) moving |= drawRow(c, rw, top, alpha, area == ROWS && i == row);
             }
             top += hh;
@@ -626,8 +634,9 @@ final class Editorial extends View {
             c.drawRoundRect(0, 0, w, h, rad, rad, fill);
         }
         if (!here) {
-            // The cards either side: quieter, so the eye stays on the remote's.
+            // The cards either side: quieter, so the eye stays on the remote's; the next one's name at its foot.
             c.drawRoundRect(0, 0, w, h, rad, rad, dim);
+            if (!card.shortName.isEmpty()) c.drawText(card.shortName, Ui.f(40f), h - Ui.f(46f), peekP);
             c.restore();
             return false;
         }
@@ -639,7 +648,7 @@ final class Editorial extends View {
         c.restore();
         c.save();
         c.scale(w, h);
-        c.drawRect(0, 0.45f, 1f, 1f, foot);
+        c.drawRoundRect(0, 0.45f, 1f, 1f, rad / w, rad / h, foot);
         c.restore();
         long now = SystemClock.uptimeMillis();
         float k = heroChanged < 0 ? 1f : Math.max(0f, Math.min(1f, (now - heroChanged - WORDS_DELAY) / (float) WORDS_MS));
@@ -741,6 +750,12 @@ final class Editorial extends View {
         return moving;
     }
 
+    /** Back from the marks' drift (Card07.begin moves what is drawn on a card a little as it lifts): a card's own ground. */
+    private static void undrift(Canvas c, Card07 cards) {
+        float k = cards.lifted();
+        if (k != 0f && !Motion.lite()) c.translate(-Ui.f(Look07.MARKS_DRIFT_X) * k, -Ui.f(Look07.MARKS_DRIFT_Y) * k);
+    }
+
     /** "3 / 40": where the remote is in the row's whole list. */
     private String count(Row rw) {
         if (countFor == rw && countAt == rw.focus) return countWords;
@@ -771,8 +786,10 @@ final class Editorial extends View {
         if (k >= rw.cards.size()) {
             // The end of a long list: "All 1,234" on a frosted card.
             cards.begin(c, x, yy, w, h, up, null);
-            r.set(0, 0, w, h);
-            mat.draw(c, r, Ui.f(Look07.R_POSTER), 1f);
+            c.save();
+            undrift(c, cards);
+            c.drawRoundRect(0, 0, w, h, Ui.f(Look07.R_POSTER), Ui.f(Look07.R_POSTER), glass);
+            c.restore();
             float aw = allP.measureText(rw.allWords);
             c.drawText(rw.allWords, (w - aw) / 2f, h / 2f, allP);
             Icons07.draw(c, Icons07.RIGHT, w / 2f, h / 2f + Ui.f(40f), Ui.f(30f), Look07.L2);
@@ -782,8 +799,10 @@ final class Editorial extends View {
         Card t = rw.cards.get(k);
         if (rw.kind == CategorySet.TILES && t.tile != null) {
             cards.begin(c, x, yy, w, h, up, null);
+            c.save();
+            undrift(c, cards);
             c.drawRoundRect(0, 0, w, h, Ui.f(Look07.R_CARD), Ui.f(Look07.R_CARD), t.tile);
-            Icons07.draw(c, Icons07.FILM, w - Ui.f(40f), Ui.f(38f), Ui.f(30f), 0x66FFFFFF);
+            c.restore();
             c.drawText(t.shortName, Ui.f(22f), h - Ui.f(26f), tileP);
             cards.end(c);
             return;
@@ -793,8 +812,9 @@ final class Editorial extends View {
         if (rw.kind == CategorySet.TILES) {
             // A category's tile: its first title's picture under its name.
             c.save();
+            undrift(c, cards);
             c.scale(w, h);
-            c.drawRect(0, 0, 1f, 1f, tileFoot);
+            c.drawRoundRect(0, 0, 1f, 1f, Ui.f(Look07.R_CARD) / w, Ui.f(Look07.R_CARD) / h, tileFoot);
             c.restore();
             c.drawText(t.shortName, Ui.f(22f), h - Ui.f(26f), tileP);
             cards.end(c);
@@ -803,7 +823,10 @@ final class Editorial extends View {
         if (b == null) {
             // No picture: its name on the card's own colour.
             fill.setColor(PosterArt.blank(t.name));
+            c.save();
+            undrift(c, cards);
             c.drawRoundRect(0, 0, w, h, Ui.f(Look07.R_POSTER), Ui.f(Look07.R_POSTER), fill);
+            c.restore();
             c.drawText(t.shortName, Ui.f(16f), h - Ui.f(t.progress >= 0f ? 32f : 22f), nameP);
         }
         marks.clear();
