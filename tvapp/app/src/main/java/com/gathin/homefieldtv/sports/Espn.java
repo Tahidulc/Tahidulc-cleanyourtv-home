@@ -166,7 +166,9 @@ public final class Espn {
         if ("in".equals(state)) {
             g.state = Game.LIVE;
             g.detail = type.optString("shortDetail", "LIVE");
-            g.halftime = type.optString("name").contains("HALFTIME");
+            // A break with no clock running: half time (extra time's too), the end of normal time before extra time, of extra
+            // time before a shootout (Whistle.atBreak, as the launcher's and the phone's scores read it).
+            g.halftime = com.gathin.broadcast.Whistle.atBreak(type.optString("name"));
         } else if ("pre".equals(state)) {
             g.state = Game.PRE;
             g.detail = when.format(DateTimeFormatter.ofPattern("HH:mm"));

@@ -52,6 +52,16 @@ public final class BoardClock {
         }
     }
 
+    /**
+     * Pure: a reading's copy with its half over as the whistle reaches the picture (Whistle): full time (ft) or half time,
+     * its score, clock and words as they were, the launcher's BoardCover.over.
+     */
+    public static Reading over(Reading r, boolean ft) {
+        Reading w = new Reading(r.seen, r.home, r.away, ft ? Game.POST : Game.LIVE, !ft, r.clockSec, r.detail);
+        w.since = r.since;
+        return w;
+    }
+
     /** Pure: a reading kept after the others (none out of order), its clock's first sight carried on while it has not moved. */
     public static void add(ArrayDeque<Reading> list, Reading r) {
         Reading last = list.peekLast();

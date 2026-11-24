@@ -110,11 +110,15 @@ final class BoardBug extends View {
 
     /** The words' white, a little short of pure white, and the quieter words. */
     static final int INK = 0xFFE6E9F2, SOFT = 0xFFA9B1D6;
-    private static final int NAVY = 0xFF0B1640, NAVY_DEEP = 0xFF070C26, CLOCK = 0xFF050816, ADDED = 0xFFC81E34,
+    private static final int NAVY = 0xFF0B1640, NAVY_DEEP = 0xFF070C26, CLOCK = 0xFF050816, ADDED = com.gathin.broadcast.AddedTime.RED,
             AMBER = 0xFFE8A33D, SCORE_TOP = 0xFF2443B4, SCORE_BOTTOM = 0xFF142A78, MINIMAL_GROUND = 0xFF070912,
             CRESTS_GROUND = 0xFF0A1238, STACKED_GROUND = 0xFF0E1330, GOALS = 0xFF1E2A66;
-    /** Card's white (a soft one, shaded to a light grey at its foot: it stays up all game) and its red. */
-    static final int CARD_TOP = 0xFFF1F3F7, CARD_FOOT = 0xFFD3D8E1, CARD_RED = 0xFFD7192F, CARD_RED_FOOT = 0xFF8E0B1D,
+    /**
+     * Card's white (a soft one, shaded to a light grey at its foot: it stays up all game) and its red: added time's one
+     * red (AddedTime.RED), the same as the +N tab, every look's clock in added time and the ADDED TIME pop-out, as the
+     * launcher's and the phone's boards have it.
+     */
+    static final int CARD_TOP = 0xFFF1F3F7, CARD_FOOT = 0xFFD3D8E1, CARD_RED = com.gathin.broadcast.AddedTime.RED,
             CARD_SOFT = 0xFFF6C9CF;
     /** Card's own blue in the middle (as the clubs' results cards have it); red only in added time. */
     static final int CARD_BLUE = 0xFF2A3DC9, CARD_BLUE_FOOT = 0xFF0F1B7E, CARD_BLUE_SOFT = 0xFFC3CBF4;
@@ -133,18 +137,21 @@ final class BoardBug extends View {
         boolean edgeLine;
         /** The corners' radius as a share of the height (0.5: a pill). */
         float round = 0.14f;
-        /** Added time's red (the clock's, Card's middle) and the added time's tab: 0 for the look's own, set on a custom board. */
-        int stoppage, added;
+        /**
+         * Added time's red (the clock's, Card's middle) and the added time's tab: AddedTime.RED on every look, a custom
+         * board's own (BoardSpec's stoppage and added, AddedTime.RED unless set) on one of My scoreboards.
+         */
+        int stoppage = ADDED, added = ADDED;
     }
 
-    /** Added time's red: a custom board's, else the look's own. */
-    private int stopRed(int own) {
-        return p.stoppage != 0 ? p.stoppage : own;
+    /** Added time's red as this board paints it now (the look's, or a custom board's): its clock, Card's middle, the tab. */
+    int stoppageRed() {
+        return p.stoppage;
     }
 
-    /** The added time's tab: a custom board's, else the look's own. */
-    private int tabRed(int own) {
-        return p.added != 0 ? p.added : own;
+    /** The added time's tab's red as this board paints it now. */
+    int addedRed() {
+        return p.added;
     }
 
     /**
@@ -1419,7 +1426,7 @@ final class BoardBug extends View {
         if (p.score0 == 0 && p.score1 == 0) return;
         // Card: its blue, turning red in added time.
         boolean red = style == Style.CARD && look.stoppage;
-        int a = red ? stopRed(CARD_RED) : p.score0, b = red ? (p.stoppage != 0 ? p.stoppage : CARD_RED_FOOT) : p.score1;
+        int a = red ? p.stoppage : p.score0, b = red ? p.stoppage : p.score1;
         if (scoreShade == null || shadeY != y || shadeH != h || shadeA != a || shadeB != b) {
             scoreShade = new LinearGradient(0, y, 0, y + h, a, b, Shader.TileMode.CLAMP);
             shadeY = y;
@@ -1484,7 +1491,7 @@ final class BoardBug extends View {
             cv.drawRect(x, y, x + w, y + h, fill);
         }
         // In added time: the clock's box red, steady.
-        pulse(cv, x, y, w, h, stopRed(0xFFE3061B), 60, 210);
+        pulse(cv, x, y, w, h, p.stoppage, 60, 255);
         int colour = "HT".equals(look.clock) ? AMBER : look.live ? p.clockInk : p.dim;
         if (look.added.isEmpty() || addedOutside) {
             float size = h * 0.44f * k;
@@ -1501,7 +1508,7 @@ final class BoardBug extends View {
         float start = x + (w - cw - aw - gap) / 2;
         words(cv, look.clock, start + cw / 2, y, h, cs * f, colour);
         float ax = start + cw + gap;
-        fill.setColor(stopRed(ADDED));
+        fill.setColor(p.stoppage);
         r.set(ax, y + h * 0.24f, ax + aw, y + h * 0.76f);
         cv.drawRoundRect(r, h * 0.08f, h * 0.08f, fill);
         words(cv, look.added, ax + aw / 2, y, h, as * f, INK);
@@ -1892,7 +1899,7 @@ final class BoardBug extends View {
     private void stackedClock(Canvas cv, float x, float w, float h, float k) {
         fill.setColor(p.clock != 0 ? p.clock : p.ground);
         cv.drawRect(x, 0, x + w, h, fill);
-        pulse(cv, x, 0, w, h, stopRed(0xFFE3061B), 60, 210);
+        pulse(cv, x, 0, w, h, p.stoppage, 60, 255);
         int colour = "HT".equals(look.clock) ? AMBER : look.live ? p.clockInk : p.dim;
         float cs = h * 0.3f * k;
         cs *= fitIn(look.clock, cs, w * 0.88f);
@@ -1902,7 +1909,7 @@ final class BoardBug extends View {
         }
         words(cv, look.clock, x + w / 2, h * 0.08f, h * 0.5f, cs, colour);
         float aw = Math.min(w * 0.88f, measure(look.added, h * 0.22f * k) + h * 0.3f * k);
-        fill.setColor(stopRed(ADDED));
+        fill.setColor(p.stoppage);
         r.set(x + (w - aw) / 2, h * 0.6f, x + (w + aw) / 2, h * 0.86f);
         cv.drawRoundRect(r, h * 0.05f, h * 0.05f, fill);
         words(cv, look.added, x + w / 2, h * 0.6f, h * 0.26f, h * 0.22f * k, INK);
@@ -2128,8 +2135,7 @@ final class BoardBug extends View {
     private void cardClockLine(Canvas cv, float x, float y, float w, float lh, float size, float addedSize) {
         String c = cardClock();
         if (c.isEmpty()) return;
-        // In added time the middle is red already: its clock's line beats a lighter red over it.
-        pulse(cv, x, y, w, lh, 0xFFFF5A6A, 0, 150);
+        // In added time the middle is red already (added time's one red): nothing more over its clock's line.
         // White on the blue (or red) while the game runs, at half time and at full time (amber would not read on it).
         int colour = look.live || "HT".equals(look.clock) || "FT".equals(look.clock) ? p.clockInk : look.stoppage ? CARD_SOFT : CARD_BLUE_SOFT;
         if (look.added.isEmpty() || addedOutside) {
@@ -2149,7 +2155,7 @@ final class BoardBug extends View {
         fill.setColor(0xFFFFFFFF);
         r.set(ax, y + lh * 0.22f, ax + aw, y + lh * 0.78f);
         cv.drawRoundRect(r, lh * 0.12f, lh * 0.12f, fill);
-        words(cv, look.added, ax + aw / 2f, y, lh, as * f, stopRed(CARD_RED));
+        words(cv, look.added, ax + aw / 2f, y, lh, as * f, p.stoppage);
     }
 
     /**
@@ -2172,7 +2178,7 @@ final class BoardBug extends View {
         // Out from behind the board.
         cv.clipRect(body, 0, getWidth(), getHeight());
         fill.setShader(null);
-        fill.setColor(tabRed(style == Style.CARD ? CARD_RED : ADDED));
+        fill.setColor(p.added);
         r.set(left, top, left + tw, top + th);
         cv.drawRoundRect(r, rad, rad, fill);
         // The minutes added running: a thin white line along its foot filling as they go (empty at the half's end, full
@@ -2269,7 +2275,7 @@ final class BoardBug extends View {
             float k2 = Math.min(1f, w * 0.9f / Math.max(1f, measure(under, bh * 0.62f)));
             // In added time a red pill beats behind its clock.
             float uw = measure(under, bh * 0.62f * k2), pad = bh * 0.22f;
-            pulse(cv, w / 2f - uw / 2f - pad, top - h * 0.04f + bh * 0.12f, uw + 2 * pad, bh * 0.76f, stopRed(0xFFE3061B), 70, 220, bh * 0.38f);
+            pulse(cv, w / 2f - uw / 2f - pad, top - h * 0.04f + bh * 0.12f, uw + 2 * pad, bh * 0.76f, p.stoppage, 70, 255, bh * 0.38f);
             words(cv, under, w / 2f, top - h * 0.04f, bh, bh * 0.62f * k2, clockInk);
             return;
         }
@@ -2280,12 +2286,12 @@ final class BoardBug extends View {
         x += a + h * 0.7f * k;
         float b = measure(m[1], h * 0.44f * k);
         // In added time a red pill beats behind its clock.
-        pulse(cv, x - h * 0.2f * k, h * 0.2f, b + h * 0.4f * k, h * 0.6f, stopRed(0xFFE3061B), 70, 220, h * 0.3f);
+        pulse(cv, x - h * 0.2f * k, h * 0.2f, b + h * 0.4f * k, h * 0.6f, p.stoppage, 70, 255, h * 0.3f);
         words(cv, m[1], x + b / 2, 0, h, h * 0.44f * k, clockInk);
         x += b + h * 0.5f * k;
         if (!m[2].isEmpty()) {
             float c = measure(m[2], h * 0.38f * k);
-            words(cv, m[2], x + c / 2, 0, h, h * 0.38f * k, stopRed(ADDED));
+            words(cv, m[2], x + c / 2, 0, h, h * 0.38f * k, p.stoppage);
         }
     }
 

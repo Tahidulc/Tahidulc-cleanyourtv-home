@@ -94,8 +94,8 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
     static final float TEXT = 0.86f, SHORT = 8f, STRIP_W = 15f;
     /** Each press of an arrow while moving, as a share of the screen; each step of a size. */
     static final float MOVE_STEP = 0.005f, SIZE_STEP = 1.08f;
-    /** Alert chips' colours, as the launcher's kindColour. */
-    static final int GOAL = 0xFF3DDC84, RED = 0xFFFF5A5F, SUB = 0xFF5CC8FF, ADDED = 0xFFE3061B;
+    /** Alert chips' colours, as the launcher's kindColour: the minutes added's in added time's one red (AddedTime.RED). */
+    static final int GOAL = 0xFF3DDC84, RED = 0xFFFF5A5F, SUB = 0xFF5CC8FF, ADDED = com.gathin.broadcast.AddedTime.RED;
 
     private final TvActivity tv;
     private final Handler h = new Handler(Looper.getMainLooper());
@@ -117,11 +117,18 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
     private Channel ch;
     private String chKey = "";
     private Game game;
-    private final ArrayDeque<BoardClock.Reading> readings = new ArrayDeque<>();
-    private final BoardClock.Steady steady = new BoardClock.Steady();
+    /**
+     * The game as the picture shows it (BoardTime): the readings kept, the clock as last shown, the clock set at a kick-off
+     * on the screen (OK at the card), and half and full time as the whistle reaches the picture (Whistle).
+     */
+    private final BoardTime time = new BoardTime();
+    private final ArrayDeque<BoardClock.Reading> readings = time.readings;
+    private final BoardClock.Steady steady = time.steady;
     private final int[] announced = new int[4];
-    /** The clock set at a kick-off on the screen (OK at the card): {base seconds, when, half}; null for none. */
-    private long[] anchor;
+    /** "Checking VAR" out beside the board, and when it comes off (VarCheck). */
+    private final BoardVar var = new BoardVar();
+    /** The check whose game was seen gone on past it (the commentary's next line), once each. */
+    private String varMovedKey;
     private long nextFind, nextPoll, nextSummary;
     private boolean finding, polling, summarising, firstSummary = true;
     /** When the scores last saw the game change (a goal, a card, the kick-off): "It's just happened" goes by it. */
@@ -323,6 +330,9 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         catchingUp = longAway;
         summaryCatchUp = longAway;
         readSinceStart = false;
+        // The channel's places read again (Settings may have put them back to the standard ones meanwhile): the board, and
+        // the strap folding into it, where the family put it.
+        place = null;
         tv.live.addListener(this);
         restyle(MyBoardStore.inUse(getContext()));
         Sfx.warm(getContext(), Sfx.SWISH, Sfx.SCORE, "goal-" + BoardPrefs.goalSound(getContext()));
@@ -404,6 +414,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             if (want != shownCustom) restyle(want);
         }
         show(now, playing);
+        varTick(now);
         // Caught up once a reading taken since coming back has been shown (what it brought was not popped up).
         if (catchingUp && readSinceStart) catchingUp = false;
     }
@@ -459,7 +470,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
     private void take(Game g, long now) {
         letGo();
         game = g;
-        anchor = BoardClock.anchorOf(BoardPrefs.anchor(getContext()), g.id);
+        time.anchor = BoardClock.anchorOf(BoardPrefs.anchor(getContext()), g.id);
         lastChange = now;
         bug.game(g.id);
         bug.competition(g.slug, boardComp(g));
@@ -473,10 +484,10 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
     /** The game let go (another channel, or its day done): what was kept of it too. */
     private void letGo() {
         game = null;
-        readings.clear();
-        steady.reset();
+        time.reset();
         Arrays.fill(announced, 0);
-        anchor = null;
+        var.off();
+        varMovedKey = null;
         shownScore = null;
         phaseWas = null;
         htSince = ftSince = -1;
@@ -552,7 +563,8 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             else if (last.halftime && r.state == Game.LIVE && !r.halftime) kickoffSeen(seen, true);
             if (last.home != r.home || last.away != r.away || last.state != r.state || last.halftime != r.halftime) changeSeen = seen;
         }
-        BoardClock.add(readings, r);
+        // Kept, and for the whistle: its flip (half time, full time) as it came; the board puts the channel's wait on it.
+        time.took(g, seen);
         SportsData.note(g, seen);
         game = g;
         readSinceStart = true;
@@ -561,6 +573,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
     private void summary() {
         summarising = true;
         Game g0 = game;
+        boolean live = g0.state == Game.LIVE;
         Exec.io(() -> {
             Espn.Summary s = null;
             try {
@@ -570,18 +583,47 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             }
             Espn.Summary got = s;
             long seen = System.currentTimeMillis();
+            // FotMob's status while the game is on (its own times give each half's length to the second: the whistle) and
+            // its flag on a VAR check; its once-a-minute read, shared with the game's page.
+            BoardTime.FotMobRead fm = null;
+            if (live) {
+                try {
+                    fm = BoardTime.readFotMob(g0);
+                } catch (RuntimeException | OutOfMemoryError ignored) {
+                    // read again next time
+                }
+            }
+            BoardTime.FotMobRead fotmob = fm;
             Exec.main(() -> {
                 summarising = false;
                 nextSummary = System.currentTimeMillis() + (g0.state == Game.LIVE ? SUMMARY_MS : 120_000L);
-                if (got == null || game == null || !game.id.equals(g0.id)) return;
+                if (game == null || !game.id.equals(g0.id)) return;
+                if (fotmob != null) fotmobRead(fotmob, seen);
+                if (got == null) return;
                 summarised(got, seen);
             });
         });
     }
 
+    /**
+     * FotMob's read for the board's game (main thread): its status for the whistle (as it came: the whistle puts the
+     * channel's wait on it), and its flag on a VAR check once the picture has reached the read (FotMob runs ahead).
+     */
+    void fotmobRead(BoardTime.FotMobRead fm, long seen) {
+        Game g = game;
+        if (g == null || fm == null) return;
+        long at = fm.at > 0 ? fm.at : seen;
+        time.fotmob(at, g.id, fm.status);
+        boolean flag = fm.varPending;
+        String id = g.id;
+        if (flag || var.isOut(id)) pending.add(id, stamp(g, at, -1), () -> var.flag(id, flag));
+    }
+
     /** The game's summary read at seen: the minutes added, the elevens, and what happened, each waiting for the picture. */
     void summarised(Espn.Summary s, long seen) {
         for (int i = 0; i < 4; i++) if (s.added[i] > 0) announced[i] = s.added[i];
+        // The referee plays at least the minutes added: the whistle never has a half over on the channel's clock before them.
+        if (game != null) time.added(game.id, announced);
         // The minutes added as this read had them: on the board once the picture reaches it (they give nothing else away).
         Game g0 = game;
         addedReads.add(new com.gathin.broadcast.AsSeen.Stamp(seen, phaseOf(g0), periodOf(g0), -1, -1, -1), announced.clone());
@@ -606,7 +648,17 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         }
         for (List<String[]> grp : SubsPage.group(subs)) pend(seen, subsDrop(grp), grp.get(0)[1]);
         if (BoardPrefs.varExplainedOn(getContext())) {
-            for (VarExplained.Seen v : VarExplained.scan(s.varLines)) {
+            List<VarExplained.Seen> seenVar = VarExplained.scan(s.varLines);
+            // The commentary gone on past a check read before (its next line is not VAR's): once the picture reaches this
+            // read, the check out beside the board is over (VarCheck); a check new in this read comes out first.
+            String check = null;
+            for (VarExplained.Seen v : seenVar) if (v != null && v.about != null) check = v.key;
+            if (check != null && varKeys.contains(check) && !check.equals(varMovedKey) && com.gathin.broadcast.VarCheck.movedOn(s.varLines)) {
+                varMovedKey = check;
+                String id = g0 == null ? null : g0.id;
+                if (id != null) pending.add(id, stamp(g0, seen, -1), () -> varOn(id));
+            }
+            for (VarExplained.Seen v : seenVar) {
                 if (v == null || !varKeys.add(v.key) || first) continue;
                 BoardDrop.Drop d = varDrop(v);
                 if (d != null) pend(seen, d, v.call != null ? v.call.minute : null);
@@ -754,10 +806,13 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         return d;
     }
 
-    /** The minutes added (an ADDED TIME alert, its +N counting up), in added time's red. */
+    /**
+     * The minutes added (an ADDED TIME alert, its +N counting up), in added time's one red as the board paints it: its tab's
+     * (AddedTime.RED, or one of My scoreboards' own), so the board and what comes out of it are the same red.
+     */
     BoardDrop.Drop addedDrop(int n) {
         if (n <= 0) return null;
-        BoardDrop.Drop d = own("ADDED TIME", ADDED);
+        BoardDrop.Drop d = own("ADDED TIME", bug.addedRed());
         d.addedMins = n;
         d.title = "+" + n + (n == 1 ? " minute" : " minutes");
         d.what = "ADDED TIME " + d.title;
@@ -874,7 +929,10 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             return;
         }
         long screenNow = now - waitMs();
-        BoardClock.Reading r = BoardClock.atScreen(readings, screenNow);
+        // The reading the screen has reached, with half time or full time as soon as the whistle reaches the picture
+        // (BoardTime: Whistle, as the launcher's board), never before the half's end; and the clock while the half runs.
+        BoardTime.Shown at = time.at(g.id, now, waitMs());
+        BoardClock.Reading r = at.r;
         if (r != null && r.halftime) {
             if (htSince < 0) htSince = now;
         } else {
@@ -892,16 +950,12 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             return;
         }
         BoardBug.Look l = r == null || r.state == Game.PRE ? preLook(g) : look(g, r);
-        if (l.live && r != null) {
-            // The clock: counted from the kick-off on the screen (OK at the card), the channel's own; else the scores',
-            // counting on through the minutes added too, never stopping or stepping back by a little.
-            double secs = BoardClock.anchoredSecs(anchor, now, r.detail);
-            if (secs < 0) secs = BoardClock.clockSecs(r, screenNow);
-            if (secs >= 0) l.clock = BoardClock.clockWords(steady.shown(g.id, r.detail, secs, now));
-        }
+        // The clock: counted from the kick-off on the screen (OK at the card), the channel's own; else the scores', counting
+        // on through the minutes added too, never stopping or stepping back by a little (BoardTime).
+        if (l.live && r != null && at.secs >= 0) l.clock = BoardClock.clockWords(at.secs);
         // Where the picture is (its clock the channel's own once set at kick-off, or the channel's delay set for it): what
         // waits for it (the minutes added, the summary's alerts) comes once it has reached it, never as the scores have it.
-        picture = picture(r, l.clock, now, anchor != null || InStep.own(c, chKey), waitMs());
+        picture = picture(r, l.clock, now, time.anchor != null || InStep.own(c, chKey), waitMs());
         BoardClock.Reading latest = readings.peekLast();
         if (latest != null && latest.state != Game.PRE) {
             picture.scoresHome = latest.home;
@@ -918,6 +972,8 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         pending.release(g.id, picture);
         if (r != null && r.state != Game.PRE) {
             if (shownScore != null && !shownScore.equals(l.score)) {
+                // The score changed on the board (a goal, or one ruled out): a VAR check out is over (VarCheck).
+                varOn(g.id);
                 int side = BoardClock.goalSide(shownScore, l.score);
                 if (side > 0 && !staleSinceStop(now) && !only) goalNow(side, l.score, r, now);
             }
@@ -1169,15 +1225,34 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
     }
 
     /**
-     * The board itself where it is now (inside its edge, with the step it takes against burn-in), on a 1920 x 1080 picture,
-     * for the strap to fold into; null before it is laid out.
+     * The board itself on a 1920 x 1080 picture, for the strap to fold into and the board to come back to: where this
+     * channel's places put it (the family's own from Move and resize first, else the last set on any channel, else the
+     * standard place), at the size set, with the step it takes against burn-in, whether the board is up now or away (half
+     * time resting, a pop-up, the live screen just back); never the strap page's own corner.
      */
-    private float[] boardAt() {
+    float[] boardAt() {
         int sw = getWidth(), sh = getHeight();
-        if (sw <= 0 || sh <= 0 || boardRect.width() <= 2 * edge || boardRect.height() <= 2 * edge) return null;
+        if (sw <= 0 || sh <= 0) {
+            // Not laid out yet: the place on the picture's own size.
+            sw = 1920;
+            sh = 1080;
+        }
+        int e = Math.max(2, Math.round(2f * sw / 1920f));
+        int[] r = placeOf(place(), sw, sh, bug.tall(), bug::natural);
+        int[] d = moving != 0 ? new int[]{0, 0} : BoardClock.drift(System.currentTimeMillis(), e);
         float k = 1920f / sw, kh = 1080f / sh;
-        return new float[]{(boardRect.left + edge + bug.getTranslationX()) * k, (boardRect.top + edge + bug.getTranslationY()) * kh,
-                (boardRect.width() - 2 * edge) * k, (boardRect.height() - 2 * edge) * kh};
+        return new float[]{(r[0] + d[0]) * k, (r[1] + d[1]) * kh, r[2] * k, r[3] * kh};
+    }
+
+    /**
+     * Pure: the board's place on a w x h screen from the channel's places p, as layoutAll puts it there: {x, y, width,
+     * height}; tall its look's height for the height set (Stacked's taller), natural its own width for a height.
+     */
+    static int[] placeOf(BoardPrefs.Place p, int w, int h, float tall, java.util.function.IntUnaryOperator natural) {
+        int bh = Math.max(8, Math.round(p.bh * h * tall));
+        int bw = Math.max(1, Math.min(Math.round(w * 0.5f), natural.applyAsInt(bh)));
+        int bx = Math.max(0, Math.min(Math.round(p.bx * w), w - bw)), by = Math.max(0, Math.min(Math.round(p.by * h), h - bh));
+        return new int[]{bx, by, bw, bh};
     }
 
     /** The classic line-ups (FotMob's elevens), once, from seven minutes before kick-off on the picture; or now, asked. */
@@ -1266,6 +1341,9 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         if (!d.lineups && !BoardPrefs.dropsOn(getContext())) return;
         // A goal is said once.
         if (d.key != null && !shown.add("drop|" + d.key)) return;
+        // Another event of the game (a card, a substitution, a goal, half or full time) while its VAR check is out or
+        // waiting: play went on, the check is over (VarCheck).
+        if (!"VAR".equals(d.chip) && d.addedMins <= 0 && !d.lineups && d.gameId != null) varOn(d.gameId);
         queuedAt.put(d, System.currentTimeMillis());
         if ("VAR".equals(d.chip)) {
             drops.addFirst(d);
@@ -1274,7 +1352,47 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             drops.addLast(d);
             while (drops.size() > 4) queuedAt.remove(drops.removeFirst());
         }
+        // A VAR decision while its check is out: the check turns into it now, not after the check's longest.
+        if ("VAR".equals(d.chip) && !d.varCheck && var.isOut(d.gameId) && drop.isOut()) {
+            hideDrop();
+            return;
+        }
         if (!dropping) nextDrop();
+    }
+
+    /**
+     * The game has gone on past its VAR check, as the picture has it (the commentary's next line, FotMob's flag gone,
+     * another event of the game, the score changing on the board): the check out comes off (VarCheck, never before its
+     * least), and one still waiting its turn is let go.
+     */
+    private void varOn(String gameId) {
+        if (gameId == null) return;
+        var.movedOn(gameId);
+        if (var.isOut(gameId)) return;
+        boolean gone = false;
+        for (Iterator<BoardDrop.Drop> it = drops.iterator(); it.hasNext(); ) {
+            BoardDrop.Drop q = it.next();
+            if (q.varCheck && gameId.equals(q.gameId)) {
+                it.remove();
+                queuedAt.remove(q);
+                gone = true;
+            }
+        }
+        if (gone) VarExplained.checkEnded(gameId, System.currentTimeMillis());
+    }
+
+    /** The VAR check out beside the board, each second: off as soon as it is over (VarCheck), or turned into its decision. */
+    private void varTick(long now) {
+        BoardDrop.Drop out = drop.isOut() ? drop.showing() : null;
+        if (out == null) var.off();
+        // None out, or the one out already going (hideDrop let it go).
+        if (out == null || !out.varCheck || !var.isOut(out.gameId)) return;
+        BoardDrop.Drop next = drops.peekFirst();
+        boolean decided = next != null && "VAR".equals(next.chip) && !next.varCheck && out.gameId != null && out.gameId.equals(next.gameId);
+        if (!var.over(now, decided)) return;
+        if (!decided) VarExplained.checkEnded(out.gameId, now);
+        var.off();
+        hideDrop();
     }
 
     /** Pure: the longest a pop-out beside a board bh high may be, within room. */
@@ -1317,6 +1435,9 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         // A VAR check out now turns over into its decision.
         if (out != null && out.varCheck && "VAR".equals(d.chip) && !d.varCheck) drop.turnTo(d);
         else drop.show(d);
+        // A check out from now until it is over (varTick: VarCheck), its longest at most.
+        if (d.varCheck) var.out(d.gameId, System.currentTimeMillis());
+        else var.off();
         h.removeCallbacks(hideDropRun);
         h.postDelayed(hideDropRun, d.varCheck ? VarExplained.CHECK_MAX_MS
                 : "VAR".equals(d.chip) ? Math.max(VarExplained.WHY_MS, drop.showFor(DROP_MS)) : drop.showFor(DROP_MS));
@@ -1326,6 +1447,8 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         h.removeCallbacks(hideDropRun);
         // A check whose decision is waiting: the decision turns it over in place.
         BoardDrop.Drop next = drops.peekFirst(), out = drop.showing();
+        // The check out goes (folded away, or turned into its decision): nothing more to wait for on it.
+        if (out != null && out.varCheck) var.off();
         if (out != null && out.varCheck && next != null && "VAR".equals(next.chip) && !next.varCheck) {
             nextDrop();
             return;
@@ -1424,9 +1547,8 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         BoardPrefs.Place p = place();
         edge = Math.max(2, Math.round(2f * sw / 1920f));
         bug.inset(edge);
-        int bh = Math.max(8, Math.round(p.bh * sh * bug.tall()));
-        int bw = Math.min(Math.round(sw * 0.5f), bug.natural(bh));
-        int bx = Math.max(0, Math.min(Math.round(p.bx * sw), sw - bw)), by = Math.max(0, Math.min(Math.round(p.by * sh), sh - bh));
+        int[] at = placeOf(p, sw, sh, bug.tall(), bug::natural);
+        int bx = at[0], by = at[1], bw = at[2], bh = at[3];
         boardH = Math.max(8, Math.round(p.bh * sh));
         int vw = bw + 2 * edge, vh = bh + 2 * edge;
         size(bug, vw, vh, bx - edge, by - edge);
@@ -1520,7 +1642,8 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         long pressed = System.currentTimeMillis();
         int d = InStep.justHappened(c, chKey, kickSeen);
         if (game != null) {
-            anchor = new long[]{kickSecond ? 45 * 60 : 0, pressed, kickSecond ? 2 : 1};
+            long[] anchor = new long[]{kickSecond ? 45 * 60 : 0, pressed, kickSecond ? 2 : 1};
+            time.anchor = anchor;
             BoardPrefs.setAnchor(c, BoardClock.anchorWords(game.id, anchor[0], anchor[1], (int) anchor[2]));
             steady.reset();
         }
@@ -2023,8 +2146,9 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         Context c = getContext();
         InStep.nudge(c, chKey, step * InStep.STEP_S);
         steady.reset();
-        if (anchor != null && game != null) {
-            anchor = BoardClock.moved(anchor, step * InStep.STEP_S * 1000L);
+        if (time.anchor != null && game != null) {
+            long[] anchor = BoardClock.moved(time.anchor, step * InStep.STEP_S * 1000L);
+            time.anchor = anchor;
             BoardPrefs.setAnchor(c, BoardClock.anchorWords(game.id, anchor[0], anchor[1], (int) anchor[2]));
         }
     }
