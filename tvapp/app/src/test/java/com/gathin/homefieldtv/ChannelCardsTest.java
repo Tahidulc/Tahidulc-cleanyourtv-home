@@ -235,6 +235,8 @@ public class ChannelCardsTest {
     @Test public void neverPastThePin() {
         Parental.setPin(app, "2468");
         Parental.lockChannel(app, by("c:4"), true);
+        // Homefield TV left since the PIN was typed: locked again.
+        Parental.relock();
         tv = Robolectric.buildActivity(TvActivity.class, play("c:4", "Kestrel Two", 104)).setup();
         TvActivity a = tv.get();
         idle();
