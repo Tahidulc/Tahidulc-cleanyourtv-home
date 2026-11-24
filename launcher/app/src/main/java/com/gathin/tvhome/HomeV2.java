@@ -124,6 +124,7 @@ final class HomeV2 {
     private static String railLabel(String pkg, String label) {
         if (pkg == null) return "ALL APPS";
         if (pkg.equals("ar.tvplayer.tv")) return "LIVE TV · ON NOW";
+        if (pkg.equals(HomefieldCards.PKG)) return "HOMEFIELD TV · YOUR CHANNELS NOW";
         if (pkg.contains("youtube")) return "YOUTUBE · CONTINUE WATCHING & RECOMMENDED";
         if (pkg.contains("debrid")) return "NEW RELEASES · JUST ADDED";
         return label.toUpperCase(Locale.ROOT) + " · POPULAR NOW";
@@ -152,6 +153,9 @@ final class HomeV2 {
          * age rating) and the streaming service's logo. */
         String duration, service, serviceId;
         List<String> specs = new ArrayList<>();
+        /** Homefield TV's cards (HomefieldCards): the channel's key, and its logo's colours for the chip under the picture. */
+        String key;
+        int[] badgeColours;
     }
 
     private static final int Z_TOP = 0, Z_RAIL = 1, Z_ROW = 2, Z_CATS = 3, Z_SCORES = 4, Z_MATCH = 5;
@@ -207,6 +211,8 @@ final class HomeV2 {
     private LinearLayout hSpecs;
     private Tile heroTile;
     final List<FrameLayout> railViews = new ArrayList<>();
+    /** Homefield TV's live TV cards for its row (read ahead, kept fresh, OK straight on to the channel). */
+    final HomefieldCards homefield = new HomefieldCards(this);
     /**
      * The dock layout (theme "home_dock", on unless turned off): no rail down the left; the rail's apps, in their own
      * colours, and the six sections in one glass dock along the foot, and the row of tiles the full width above it.
@@ -1828,6 +1834,8 @@ final class HomeV2 {
         main.postDelayed(warmPages, lite ? 6000 : 3000);
         // Rows age: what is on now and the apps' own rows are read again when Home comes back after a while (not under
         // a style, which reads its own; Home's row is read again when Home's own screen is chosen).
+        // Homefield TV's cards read again at once (a channel just watched there comes first), ready before the dock lands.
+        homefield.resume();
         Long at = skin == null ? rowsAt.get(mode) : null;
         if (at != null && System.currentTimeMillis() - at > 5 * 60_000L) {
             rowsAt.remove(mode);
@@ -1942,6 +1950,7 @@ final class HomeV2 {
         main.removeCallbacks(warmPages);
         main.removeCallbacks(shiftMesh);
         main.removeCallbacks(matchBack);
+        homefield.stop();
         if (match != null) match.stop();
         // A slower TV (lite_home) lets the trailer player's web process go with Home, so the app opened from it (TiviMate,
         // Debrid Stream) has the memory: on a TCL with 2.4 GB they were closed for it again and again, and the launcher
@@ -2679,6 +2688,8 @@ final class HomeV2 {
         if (i < 0 || i >= railViews.size()) return;
         railIdx = i;
         railSel = i;
+        // The dock next to Homefield TV: its cards read ahead, so they are there as it lands.
+        homefield.near(i);
         String p = (String) railViews.get(i).getTag();
         if (p == null) {
             // All apps: the same Apps page as the Apps box, showing as when the box is hovered; Right or OK goes in.
@@ -2938,6 +2949,7 @@ final class HomeV2 {
         List<Tile> already = rows.get(m);
         if (m.equals(mode) && already != null && already == shown && row.getChildCount() > 0) return;
         mode = m;
+        homefield.rowFor(m);
         int gen = ++generation;
         String railPkg = railSel >= 0 && railSel < railViews.size() ? (String) railViews.get(railSel).getTag() : null;
         label.setText(labelFor(m, railPkg));
@@ -2967,7 +2979,7 @@ final class HomeV2 {
                 // so it has its logo too. Not channels, apps, sport or YouTube's videos.
                 if (t.tmdbId == 0) {
                     boolean title = t.stream == null && t.icon == null && t.group == null && t.title != null
-                            && !m.contains("youtube") && !m.equals("ar.tvplayer.tv");
+                            && !m.contains("youtube") && !m.equals("ar.tvplayer.tv") && !m.equals(HomefieldCards.PKG);
                     int[] found = title ? findTitle(t.title, t.tv) : null;
                     if (found == null) continue;
                     t.tmdbId = found[0];
@@ -3138,6 +3150,7 @@ final class HomeV2 {
             bar.setBackgroundColor(0x40FFFFFF);
             View done = new View(a);
             done.setBackgroundColor(t.progressColour);
+            done.setTag("bar");
             bar.addView(done, new FrameLayout.LayoutParams(Math.round(px(TILE_W) * Math.min(1f, t.progress)), ViewGroup.LayoutParams.MATCH_PARENT));
             f.addView(bar, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(5), Gravity.BOTTOM));
         }
@@ -3154,8 +3167,11 @@ final class HomeV2 {
             ch.setScaleType(ImageView.ScaleType.FIT_START);
             LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(22));
             clp.bottomMargin = px(8);
+            // Homefield TV's cards: the logo on a chip of its own colour (ChannelTiles), its colours worked out if not given.
+            boolean chip = t.key != null;
+            if (chip) HomefieldCards.chip(this, ch, clp, t);
             cap.addView(ch, clp);
-            image(ch, t.badge, px(200));
+            image(ch, t.badge, px(200), chip ? () -> HomefieldCards.chipLoaded(this, ch, t) : null);
         }
         if (t.logo != null) {
             ImageView l = new ImageView(a);
@@ -3191,6 +3207,31 @@ final class HomeV2 {
             if (cap instanceof LinearLayout) fillCaption((LinearLayout) cap, t);
             if (zone == Z_ROW && i == rowIdx || zone != Z_ROW && i == 0) hero(t);
         }
+    }
+
+    /**
+     * Homefield TV's cards read again (HomefieldCards): kept for its row; on show, the same cards' bars move on in place,
+     * and other cards (a programme changed, a channel watched) fill the row unless the remote is on it (then they come
+     * the next time the row is shown).
+     */
+    void homefieldCards(List<Tile> fresh) {
+        List<Tile> had = rows.get(HomefieldCards.PKG);
+        boolean onShow = HomefieldCards.PKG.equals(mode) && skin == null && had != null && had == shown;
+        if (onShow && HomefieldCards.same(had, fresh)) {
+            for (int i = 0; i < had.size(); i++) had.get(i).progress = fresh.get(i).progress;
+            rowsAt.put(HomefieldCards.PKG, System.currentTimeMillis());
+            for (int i = 0; i < row.getChildCount(); i++) {
+                View v = row.getChildAt(i), done = v.findViewWithTag("bar");
+                if (!(v.getTag() instanceof Tile) || done == null) continue;
+                ViewGroup.LayoutParams lp = done.getLayoutParams();
+                lp.width = Math.round(px(TILE_W) * Math.min(1f, Math.max(0f, ((Tile) v.getTag()).progress)));
+                done.setLayoutParams(lp);
+            }
+            return;
+        }
+        rows.put(HomefieldCards.PKG, fresh);
+        rowsAt.put(HomefieldCards.PKG, System.currentTimeMillis());
+        if (HomefieldCards.PKG.equals(mode) && skin == null && zone != Z_ROW && page == null) fill(fresh, ++generation);
     }
 
     private void heroSoon() {
@@ -3699,6 +3740,11 @@ final class HomeV2 {
     /** One dock app's tiles: what it publishes to Android's TV rows, else what is popular on it from TMDB. */
     private List<Tile> app(String pkg) {
         if (pkg.equals("ar.tvplayer.tv")) return liveNow(false);
+        // Homefield TV: its own cards (recent channels, favourites, sport on now); an older one without them, its plain row.
+        if (pkg.equals(HomefieldCards.PKG)) {
+            List<Tile> cards = homefield.tiles();
+            if (cards != null) return cards;
+        }
         if (pkg.contains("debrid")) return titles(Trending.newReleases(tmdbKey, "GB"), null);
         List<Tile> out = new ArrayList<>();
         for (String[] r : published(pkg)) {
@@ -4480,6 +4526,8 @@ final class HomeV2 {
         if (ChannelTiles.haloed(url)) return ChannelTiles.halo(fetch(ChannelTiles.unmarked(url), width));
         if (ChannelTiles.marked(url)) return ChannelTiles.ready(fetch(ChannelTiles.unmarked(url), width));
         if (url.endsWith("#yt")) return video(url.substring(0, url.length() - 3), width);
+        // Homefield TV's card for a programme with no picture: the channel's logo on its own colour, drawn here.
+        if (url.startsWith(HomefieldCards.ART)) return HomefieldCards.art(url, width, this::fetch);
         if (url.startsWith("crest:")) return crests(url.substring(6), width);
         // Surprise me's moods: drawn here, not fetched.
         if (url.startsWith("mood:")) return MoodArt.draw(a, url, width);
@@ -4518,7 +4566,9 @@ final class HomeV2 {
             Bitmap b = BitmapFactory.decodeByteArray(data, 0, data.length, o);
             // lite_home: no wider than it is drawn. A picture twice its size on screen made the graphics chip read four
             // times its pixels every frame (ten posters at once), and took four times as long to hand over to it.
-            if (lite && b != null && b.getWidth() > width * 1.2f) {
+            // Homefield TV's cards (FIT): every picture decoded to the width it is drawn at.
+            boolean fit = url.endsWith(HomefieldCards.FIT) && b != null && b.getWidth() > width;
+            if (fit || lite && b != null && b.getWidth() > width * 1.2f) {
                 b = Bitmap.createScaledBitmap(b, width, Math.max(1, Math.round(b.getHeight() * width / (float) b.getWidth())), true);
             }
             if (url.contains("newchanlogos")) b = trim(b);

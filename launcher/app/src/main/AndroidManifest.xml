@@ -33,6 +33,14 @@
     <!-- YaOS (Yandex TV OS): HDMI, AV and the tuner all play in com.yandex.tv.live, whose activities require
          this permission (protection level normal, so it is granted at install). Ignored on other TVs. -->
     <uses-permission android:name="yandex.tv.permission.ACCESS_TV_SOURCE" />
+    <!-- Homefield TV's channel cards for its row on the dock (HomefieldCards, read from its ChannelCardsProvider): a
+         signature permission, so only apps signed with the same key read them. Declared here as Homefield TV declares it
+         (same name, same protection), so it is granted whichever of the two was installed first. -->
+    <permission
+        android:name="com.gathin.homefieldtv.permission.READ_CHANNEL_CARDS"
+        android:label="@string/app_name"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="com.gathin.homefieldtv.permission.READ_CHANNEL_CARDS" />
 
     <!-- Android 11+ package visibility: lets the launcher list the TV apps it shows as tiles, and the
          apps that declare a module card (docs/specs/card.md). -->
@@ -85,6 +93,8 @@
         <package android:name="com.xiaomi.mitv.settings" />
         <package android:name="com.tcl.settings" />
         <package android:name="com.amazon.tv.launcher" />
+        <!-- Homefield TV: its channel cards (provider) and OK on one straight on to the channel (PLAY_CHANNEL). -->
+        <package android:name="com.gathin.homefieldtv" />
         <!-- Coocaa OS sources for the Inputs menu (coocaa_sources); see CoocaaSources. -->
         <provider android:authorities="com.skyworth.tv.provider" />
         <provider android:authorities="com.skyworth.tv.sdk.provider" />

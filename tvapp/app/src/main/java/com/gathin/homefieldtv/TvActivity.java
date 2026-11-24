@@ -146,12 +146,16 @@ public final class TvActivity extends Activity {
         }
         handleCast(getIntent());
         handleReminder(getIntent());
+        // The TV launcher's channel card (PlayChannel): straight on to that channel, Home kept out of sight meanwhile.
+        boolean asked = PlayChannel.handle(this, getIntent(), true);
+        // The cards the launcher shows for this app (ChannelCards, served by ChannelCardsProvider) kept up to date.
+        ChannelCards.start(this);
         // Reminders' alarm made again (Android forgets it when the app is updated or stopped).
         ReminderAlarm.schedule(this);
         // Settings → General → Start on: Live TV, the guide, films or TV shows over Home (not over What's new, a cast or
-        // the channel a reminder's card was for, still waiting for the channels to be read).
+        // the channel a reminder's card or the launcher's card was for, still waiting for the channels to be read).
         // (Not in the JVM tests, which drive the screens from Home themselves; StartUp is tested on its own.)
-        if (fresh && top() instanceof HomeScreen && reminderKey == null && !Guard.underTest()) StartUp.open(this);
+        if (fresh && !asked && top() instanceof HomeScreen && reminderKey == null && !Guard.underTest()) StartUp.open(this);
     }
 
     /** The phone stopped what it sent: Home comes back without its mini TV playing, once. */
@@ -183,6 +187,7 @@ public final class TvActivity extends Activity {
         else leftForOwn = true;
         handleCast(intent);
         handleReminder(intent);
+        PlayChannel.handle(this, intent, false);
     }
 
     /** OK on a reminder's card: its channel full screen (once the playlists are in); an old one is let go. */

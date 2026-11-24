@@ -480,6 +480,17 @@ wordmark are Homefield; it carries no Sky logo or name.
   only addresses on that network: the channel is played only when this TV's own playlists have it (by its stream id,
   else its guide id, else its tidied name), with "Playing … from …" for a moment, and the phone's Stop lets go of it
   (back to Home). The phone's stream address and login are never used.
+- **From the TV launcher:** with the launcher's dock on Homefield TV, the row above it shows Homefield TV's own channel
+  cards, as it shows TiviMate's channels on now: the channels watched last on this TV (newest first, one row per
+  channel), the favourites, then the sport on now that the family can watch (live first), each with the programme's
+  picture, title, times and how far through. OK on a card opens Homefield TV straight on that channel, full screen with
+  its info card (`com.gathin.homefieldtv.action.PLAY_CHANNEL`, with the channel's key, its name and number as fallbacks:
+  PlayRequest), whether Homefield TV was running or not; Home is kept out of sight until the channel plays, and a
+  locked channel still asks for the PIN. The cards come from ChannelCardsProvider (`content://com.gathin.homefieldtv.cards/cards`),
+  read only by an app signed with Homefield TV's key (the signature permission `READ_CHANNEL_CARDS`, which both apps
+  declare): what ChannelCards last made a moment after the channels, the guide, the favourites or the channels watched
+  changed, kept in memory and in a small file (`files/channel_cards.json`), never the playlists. Locked and hidden
+  channels are never on them.
 
 ## How smooth it is
 
