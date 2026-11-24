@@ -606,7 +606,7 @@ public class TitleActivity extends AppCompatActivity {
             Vod.Item it = Vod.find(app, t.title, original, t.year, t.id, t.tv);
             List<Vod.Episode> eps = it != null && "series".equals(it.kind) ? Vod.episodes(app, it) : null;
             runOnUiThread(() -> {
-                if (isFinishing()) return;
+                if (gone()) return;
                 boolean has = it != null && (!"series".equals(it.kind) || (eps != null && !eps.isEmpty()));
                 found = has ? it : null;
                 foundEps = has ? eps : null;
@@ -658,7 +658,7 @@ public class TitleActivity extends AppCompatActivity {
     private void playFound(int[] episode) {
         if (found == null) {
             boolean torbox = TorBox.on(this);
-            new MaterialAlertDialogBuilder(this).setTitle(torbox ? "Not in your playlists or TorBox" : "Not in your playlists")
+            show(new MaterialAlertDialogBuilder(this).setTitle(torbox ? "Not in your playlists or TorBox" : "Not in your playlists")
                     .setMessage(torbox
                             ? "Homefield only plays films and series from your own playlists and the files already in your "
                                     + "TorBox, and none of them has " + t.title + ". Add a playlist that has it in Settings, "
@@ -666,7 +666,7 @@ public class TitleActivity extends AppCompatActivity {
                             : "Homefield only plays films and series from your own playlists (and your own TorBox files, "
                                     + "once its key is in Settings), and none of them has " + t.title
                                     + ". Add a playlist that has it in Settings, Live TV.")
-                    .setPositiveButton("OK", null).show();
+                    .setPositiveButton("OK", null));
             return;
         }
         if (!"series".equals(found.kind)) {
@@ -713,8 +713,8 @@ public class TitleActivity extends AppCompatActivity {
         }
         String[] names = new String[seasons.size()];
         for (int i = 0; i < names.length; i++) names[i] = seasons.get(i) > 0 ? "Season " + seasons.get(i) : "Episodes";
-        new MaterialAlertDialogBuilder(this).setTitle(t.title + (TorBox.from(found) ? " · from TorBox" : " · from your playlist"))
-                .setItems(names, (d, w) -> pickIn(eps, seasons.get(w))).show();
+        show(new MaterialAlertDialogBuilder(this).setTitle(t.title + (TorBox.from(found) ? " · from TorBox" : " · from your playlist"))
+                .setItems(names, (d, w) -> pickIn(eps, seasons.get(w))));
     }
 
     private void pickIn(List<Vod.Episode> eps, int season) {
@@ -726,8 +726,8 @@ public class TitleActivity extends AppCompatActivity {
             String own = e.title == null ? "" : e.title.trim();
             names[i] = "Episode " + e.number + (own.isEmpty() || own.equalsIgnoreCase(t.title) ? "" : " · " + own);
         }
-        new MaterialAlertDialogBuilder(this).setTitle(season > 0 ? t.title + " · Season " + season : t.title)
-                .setItems(names, (d, w) -> playEpisode(in.get(w), eps)).show();
+        show(new MaterialAlertDialogBuilder(this).setTitle(season > 0 ? t.title + " · Season " + season : t.title)
+                .setItems(names, (d, w) -> playEpisode(in.get(w), eps)));
     }
 
     private interface Chosen {
@@ -759,7 +759,7 @@ public class TitleActivity extends AppCompatActivity {
     private void rate() {
         String[] words = {"♥  Loved it", "👍  Liked it", "Not for me", "Clear"};
         int[] values = {2, 1, -1, 0};
-        new MaterialAlertDialogBuilder(this).setTitle("How was " + t.title + "?").setItems(words, (d, w) -> {
+        show(new MaterialAlertDialogBuilder(this).setTitle("How was " + t.title + "?").setItems(words, (d, w) -> {
             if (values[w] == 0) SyncStore.delete(this, "rating", t.key());
             else {
                 JSONObject r = new JSONObject();
@@ -771,7 +771,25 @@ public class TitleActivity extends AppCompatActivity {
                 SyncStore.put(this, "rating", t.key(), r);
             }
             paintButtons();
-        }).show();
+        }));
+    }
+
+    /** The page has closed (or is closing): nothing more is shown on it. */
+    private boolean gone() {
+        return isFinishing() || isDestroyed();
+    }
+
+    /**
+     * A dialog shown only while the page is still open: a search that finishes after the family has left the page (or
+     * the page was made again) would otherwise show it on a closed window and close the app (BadTokenException, 5.30).
+     */
+    private void show(MaterialAlertDialogBuilder b) {
+        if (gone() || getWindow() == null || getWindow().getDecorView().getWindowToken() == null) return;
+        try {
+            b.show();
+        } catch (android.view.WindowManager.BadTokenException ignored) {
+            // the window went between the check and the show: nothing to show it on
+        }
     }
 
     /** The official trailer on YouTube (the app if it's on the phone, else the browser). */

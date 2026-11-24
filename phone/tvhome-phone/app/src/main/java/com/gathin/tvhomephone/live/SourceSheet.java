@@ -224,7 +224,13 @@ public final class SourceSheet {
         BottomSheetBehavior<?> b = d.getBehavior();
         b.setSkipCollapsed(true);
         b.setState(BottomSheetBehavior.STATE_EXPANDED);
-        d.show();
+        // Only on a page still open (a search finishing after the family left it would close the app otherwise).
+        if (a.isFinishing() || a.isDestroyed()) return d;
+        try {
+            d.show();
+        } catch (android.view.WindowManager.BadTokenException gone) {
+            return d;
+        }
         // A tablet: a card in the middle of the screen rather than a sheet across its foot.
         com.gathin.tvhomephone.glass.Wide.card(d);
         return d;

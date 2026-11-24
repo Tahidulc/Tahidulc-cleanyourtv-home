@@ -771,3 +771,7 @@ upright, Live TV now goes: the picture, the programme's details straight under i
 Your channels and the guide. The details have no Watch button (a tap on a programme that's on now in the guide plays it),
 so the whole description shows; Remind me stays for one still to come. On its side the pane is the same: the picture, the
 details, then Recently watched.
+
+**A film or series page no longer closes the app (5.32).** A search for it in the playlists that finished after the page
+was left (or remade) tried to show its episodes, sources or "not in your playlists" on the closed page, and the app
+closed (BadTokenException in 5.30). Those now show only while the page is open.
