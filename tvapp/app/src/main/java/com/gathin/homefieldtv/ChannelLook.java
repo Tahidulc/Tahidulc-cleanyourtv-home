@@ -14,7 +14,7 @@ import com.gathin.homefieldtv.prefs.ChannelEdits;
  * A channel's cell, the logo alone, as the family asked ("I don't want channels numbers now. Also where the channel
  * logo is, I don't want a box around the logo and also get rid of the channel title and just stretch the logos to fill
  * the box but make it look good so it looks natural and not stretched"): wherever a channel's cell is drawn (the guide's
- * channel column, the mini guide, the channel list, the shelf guide's labels) it holds only the channel's logo, with no
+ * channel column, the channel list, the shelf guide's labels) it holds only the channel's logo, with no
  * number, no tile round it and no name, scaled up to fill the cell with the same room on every side (PAD of its shorter
  * side), centred, its own shape kept exactly (a wide logo fills the width, a tall one the height), read sharp from the
  * logo itself at the size drawn (Logos.drawCell: Pics' CELL modes). The channel's marks (▶ playing, its HD, the

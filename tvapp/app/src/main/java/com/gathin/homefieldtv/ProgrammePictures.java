@@ -17,7 +17,7 @@ import java.util.Map;
  * runs, by channel and programme start. Where Sky has none, searched wider (WiderPictures: TMDB by the programme's title,
  * the year or series its description gives and the channel's kind, off the main thread and spaced out); where nothing is
  * found, the channel's own picture (ONE_COLOUR: its logo on its own colour, drawn by Pics), so a programme is never
- * blank: in the guide's cells, the info card, the mini guide, the reminder's panel and every screen that asks here. A
+ * blank: in the guide's cells, the info card, the reminder's panel and every screen that asks here. A
  * screen asks only for what the remote has rested on (peek while it moves), so holding Down through the channels asks
  * for nothing; until a picture comes the screens draw the channel's logo on its tile. Main thread only.
  */

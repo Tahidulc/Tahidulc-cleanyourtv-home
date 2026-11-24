@@ -28,7 +28,7 @@ final class PicFill {
     static final int KIND = 0, K = 1, X = 2, Y = 3, FL = 4, FT = 5, FR = 6, FB = 7, FEATHER_L = 8, FEATHER_R = 9, SIZE = 10;
     static final float COVER = 0f, AMBIENT = 1f;
     /**
-     * A row's cell (the guide's, the mini guide's): its words (a title and a line of times) take about ROW_WORDS of its
+     * A row's cell (the guide's): its words (a title and a line of times) take about ROW_WORDS of its
      * height across at its left, as a share of it between ROW_ROOM_MIN and ROW_ROOM_MAX; its faces go from there to its
      * right (ROW_END), their middle half way.
      */
