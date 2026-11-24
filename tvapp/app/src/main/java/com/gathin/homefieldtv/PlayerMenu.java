@@ -39,8 +39,11 @@ final class PlayerMenu extends View {
     }
 
     private static final long IDLE_MS = 9000;
-    private static final int PICTURE = 0, DELAY = 1, TRACK = 2, ROWS = 3;
-    private static final String[] LABELS = {"Picture", "Sound delay", "Sound"};
+    private static final int PICTURE = 0, DELAY = 1, TRACK = 2, SUBS = 3, ROWS = 4;
+    private static final String[] LABELS = {"Picture", "Sound delay", "Sound", "Subtitles"};
+    /** The sound with no track chosen: the one the copy itself plays first. */
+    static final String AS_IT_COMES = "The film's sound, as it comes";
+    static final String NO_SUBS = "This copy has no subtitles of its own";
 
     private final Target target;
     private final Handler h = new Handler(Looper.getMainLooper());
@@ -138,6 +141,9 @@ final class PlayerMenu extends View {
             case DELAY:
                 PlayerPrefs.setDelayMs(c, PlayerPrefs.delayMs(c) + dir * PlayerPrefs.DELAY_STEP);
                 break;
+            case SUBS:
+                stepSubs(dir);
+                break;
             default:
                 stepTrack(dir);
         }
@@ -161,15 +167,69 @@ final class PlayerMenu extends View {
         return -1;
     }
 
+    /**
+     * The sound stepped through: the film's sound as it comes (no track chosen: the copy's own first), then each track. A
+     * copy with one track has nothing to step.
+     */
     private void stepTrack(int dir) {
         Player p = target.player();
         List<Tracks.Group> groups = audio();
         if (p == null || groups.size() < 2) return;
+        int at = chosenAudio(p) ? playing(groups) + 1 : 0, n = groups.size() + 1;
+        int next = ((at + dir) % n + n) % n;
+        androidx.media3.common.TrackSelectionParameters.Builder b = p.getTrackSelectionParameters().buildUpon()
+                .clearOverridesOfType(C.TRACK_TYPE_AUDIO);
+        if (next > 0) b.setOverrideForType(new TrackSelectionOverride(groups.get(next - 1).getMediaTrackGroup(), 0));
+        p.setTrackSelectionParameters(b.build());
+    }
+
+    /** Whether a sound track was chosen here (not the copy's own first). */
+    private static boolean chosenAudio(Player p) {
+        for (TrackSelectionOverride o : p.getTrackSelectionParameters().overrides.values()) {
+            if (o.getType() == C.TRACK_TYPE_AUDIO) return true;
+        }
+        return false;
+    }
+
+    /** The copy's own subtitles: Off, then each; none to step through for a copy with none. */
+    private List<Tracks.Group> subs() {
+        List<Tracks.Group> out = new ArrayList<>();
+        Player p = target.player();
+        if (p == null) return out;
+        for (Tracks.Group g : p.getCurrentTracks().getGroups()) {
+            if (g.getType() == C.TRACK_TYPE_TEXT && g.isSupported()) out.add(g);
+        }
+        return out;
+    }
+
+    private void stepSubs(int dir) {
+        Player p = target.player();
+        List<Tracks.Group> groups = subs();
+        if (p == null || groups.isEmpty()) return;
+        int at = p.getTrackSelectionParameters().disabledTrackTypes.contains(C.TRACK_TYPE_TEXT) ? 0 : playing(groups) + 1;
+        int n = groups.size() + 1, next = ((at + dir) % n + n) % n;
+        androidx.media3.common.TrackSelectionParameters.Builder b = p.getTrackSelectionParameters().buildUpon()
+                .clearOverridesOfType(C.TRACK_TYPE_TEXT);
+        if (next == 0) {
+            b.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true);
+        } else {
+            b.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                    .setOverrideForType(new TrackSelectionOverride(groups.get(next - 1).getMediaTrackGroup(), 0));
+        }
+        p.setTrackSelectionParameters(b.build());
+    }
+
+    private String subsValue() {
+        Player p = target.player();
+        List<Tracks.Group> groups = subs();
+        if (p == null || groups.isEmpty()) return NO_SUBS;
         int at = playing(groups);
-        int next = ((Math.max(0, at) + dir) % groups.size() + groups.size()) % groups.size();
-        Tracks.Group g = groups.get(next);
-        p.setTrackSelectionParameters(p.getTrackSelectionParameters().buildUpon()
-                .setOverrideForType(new TrackSelectionOverride(g.getMediaTrackGroup(), 0)).build());
+        if (at < 0 || p.getTrackSelectionParameters().disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)) return "Off";
+        Format f = groups.get(at).getTrackFormat(0);
+        String lang = f.label != null && !f.label.isEmpty() ? f.label
+                : f.language != null && !f.language.isEmpty() && !"und".equals(f.language)
+                ? new Locale(f.language).getDisplayLanguage(Locale.UK) : "Subtitles " + (at + 1);
+        return groups.size() > 1 ? lang + "  (" + (at + 1) + " of " + groups.size() + ")" : lang;
     }
 
     /** Pure: a sound track in words ("English · 5.1", "Track 2 · Stereo"). */
@@ -185,6 +245,8 @@ final class PlayerMenu extends View {
     private String trackValue() {
         List<Tracks.Group> groups = audio();
         if (groups.isEmpty()) return "None";
+        Player p = target.player();
+        if (groups.size() > 1 && p != null && !chosenAudio(p)) return AS_IT_COMES;
         int at = Math.max(0, playing(groups));
         String w = trackWords(groups.get(at).getTrackFormat(0), at);
         return groups.size() > 1 ? w + "  (" + (at + 1) + " of " + groups.size() + ")" : w;
@@ -200,7 +262,8 @@ final class PlayerMenu extends View {
         c.drawRoundRect(r, Ui.f(26), Ui.f(26), panel);
         c.drawRoundRect(r, Ui.f(26), Ui.f(26), edge);
         c.drawText("Picture and sound", x + Ui.f(36), y + Ui.f(64), title);
-        String[] values = {PlayerPrefs.ASPECT_NAMES[target.aspect()], PlayerPrefs.delayWords(PlayerPrefs.delayMs(ctx)), trackValue()};
+        String[] values = {PlayerPrefs.ASPECT_NAMES[target.aspect()], PlayerPrefs.delayWords(PlayerPrefs.delayMs(ctx)), trackValue(),
+                subsValue()};
         float ly = y + Ui.f(100);
         for (int i = 0; i < ROWS; i++) {
             r.set(x + Ui.f(18), ly, x + w - Ui.f(18), ly + lineH - Ui.f(12));
@@ -210,7 +273,7 @@ final class PlayerMenu extends View {
             }
             float base = ly + (lineH - Ui.f(12)) / 2f + Ui.f(10);
             c.drawText(LABELS[i], x + Ui.f(40), base, label);
-            String v = Ui.fit(values[i], value, Ui.f(330));
+            String v = Ui.fit(values[i], value, Ui.f(i == SUBS || i == TRACK ? 420 : 330));
             float vw = value.measureText(v);
             float right = x + w - Ui.f(64);
             c.drawText(v, right - vw, base, value);

@@ -125,6 +125,18 @@ public final class TvActivity extends Activity {
         Updates.folder(this);
         Updates.addListener(updates);
         Updates.check(this, null);
+        // Automatic updates: the update address looked at as the app opens (Settings › About › Updates).
+        AutoUpdate.opened(this, true);
+        // If something goes wrong: a line once when the app had a problem last time (its note in Settings › About).
+        Exec.io(() -> {
+            if (com.gathin.homefieldtv.engine.Problems.takeUntold() == null) return;
+            Exec.main(() -> {
+                if (!isFinishing()) {
+                    android.widget.Toast.makeText(this, "Homefield TV had a problem last time. Settings › About has a note of it.",
+                            android.widget.Toast.LENGTH_LONG).show();
+                }
+            });
+        });
         String[] news = Updates.whatsNew(this);
         if (news != null && reopenSettings < 0) push(new WhatsNewScreen(this, news[0], news[1]));
         // Started again for a new theme: back on Settings where it was chosen, its panel there at once.
@@ -138,7 +150,8 @@ public final class TvActivity extends Activity {
         ReminderAlarm.schedule(this);
         // Settings → General → Start on: Live TV, the guide, films or TV shows over Home (not over What's new, a cast or
         // the channel a reminder's card was for, still waiting for the channels to be read).
-        if (fresh && top() instanceof HomeScreen && reminderKey == null) StartUp.open(this);
+        // (Not in the JVM tests, which drive the screens from Home themselves; StartUp is tested on its own.)
+        if (fresh && top() instanceof HomeScreen && reminderKey == null && !Guard.underTest()) StartUp.open(this);
     }
 
     /** The phone stopped what it sent: Home comes back without its mini TV playing, once. */
@@ -162,6 +175,12 @@ public final class TvActivity extends Activity {
 
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
+        // Opened again from the TV's Home (Start on: Last channel plays it as the app comes back: onResume).
+        // A reminder's card or the phone's channel brings its own channel instead.
+        boolean own = intent == null || intent.hasExtra(ReminderCard.EXTRA_KEY) || intent.hasExtra(Cast.EXTRA_KEY)
+                || intent.hasExtra(Cast.EXTRA_STOP);
+        if (!own && Intent.ACTION_MAIN.equals(intent.getAction())) reopened = true;
+        else leftForOwn = true;
         handleCast(intent);
         handleReminder(intent);
     }
@@ -260,11 +279,29 @@ public final class TvActivity extends Activity {
         resumed = true;
         Cast.hold(this);
         Updates.resumed(this);
+        AutoUpdate.opened(this, false);
         nextMinute();
         Library.get(this).ensure();
         Catalog.get(this).ensure();
+        // Coming back (Settings → General → Start on: Last channel): the channel watched last, full screen with its card.
+        boolean back = stoppedAt > 0 && StartUp.playOnReturn(com.gathin.homefieldtv.prefs.General.start(this), reopened,
+                android.os.SystemClock.elapsedRealtime() - stoppedAt, leftForOwn);
+        reopened = false;
+        leftForOwn = false;
+        stoppedAt = 0;
+        if (back && StartUp.cameBack(this)) return;
         Screen t = top();
         if (t != null) t.shown();
+    }
+
+    /** Coming back: opened again from the TV's Home, when it went out of sight, whether to one of its own screens. */
+    private boolean reopened, leftForOwn;
+    private long stoppedAt;
+
+    /** One of its own screens over it (a film, Android's installer or file chooser, voice search): not a coming back. */
+    @Override public void startActivityForResult(Intent intent, int requestCode, Bundle options) {
+        leftForOwn = true;
+        super.startActivityForResult(intent, requestCode, options);
     }
 
     @Override protected void onPause() {
@@ -280,6 +317,7 @@ public final class TvActivity extends Activity {
 
     @Override protected void onStop() {
         super.onStop();
+        stoppedAt = android.os.SystemClock.elapsedRealtime();
         // Settings → Parental control: whatever the PIN opened is locked again once Homefield TV is left.
         if (!isChangingConfigurations()) com.gathin.homefieldtv.prefs.Parental.relock();
     }

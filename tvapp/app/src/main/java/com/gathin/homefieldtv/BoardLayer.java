@@ -803,7 +803,9 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         Game g = game;
         // Only over plain full-screen playback: covered, all of it away at once (BoardGate); the game is still followed.
         boolean clear = gate(now);
-        if (g == null || !playing || !BoardPrefs.on(c) && moving == 0) {
+        // Logo cover only: the cover over the channel's logo while the match is on, no scoreboard, nothing popping up.
+        boolean only = BoardPrefs.logoOnly(c);
+        if (g == null || !playing || !BoardPrefs.on(c) && !only && moving == 0) {
             if (moving == 0) {
                 boardUp(false);
                 logoUp(false);
@@ -851,12 +853,12 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             l.stoppage = BoardClock.inAddedTime(l.clock, r.detail);
             if (!l.added.isEmpty()) addedOut(BoardClock.periodOf(l.clock, r.detail), l.added);
         }
-        moments(r, screenNow, now, l.score);
+        if (!only) moments(r, screenNow, now, l.score);
         pending.release(g.id, picture);
         if (r != null && r.state != Game.PRE) {
             if (shownScore != null && !shownScore.equals(l.score)) {
                 int side = BoardClock.goalSide(shownScore, l.score);
-                if (side > 0 && !staleSinceStop(now)) goalNow(side, l.score, r, now);
+                if (side > 0 && !staleSinceStop(now) && !only) goalNow(side, l.score, r, now);
             }
             shownScore = l.score;
         }
@@ -872,8 +874,8 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         boolean want = moving == 1 || (phase == BoardClock.PRE || phase == BoardClock.UP) && !awayForPopup && !lineupsOn && !strapOver;
         if (awayForPopup) swishBack = true;
         layoutAll();
-        boardUp(want && clear);
-        logoUp(clear && (moving == 2 || phase != BoardClock.AWAY && BoardPrefs.logoOn(c)));
+        boardUp(want && clear && (!only || moving == 1));
+        logoUp(clear && (moving == 2 || phase != BoardClock.AWAY && (BoardPrefs.logoOn(c) || only)));
         logo.live = l.live;
         logo.invalidate();
         guard(now);
@@ -1140,7 +1142,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
                         shown.add(key);
                         drop(d);
                     } else if (asked) {
-                        card.note("No line-ups yet", "They come about an hour before kick-off");
+                        card.note("No line-ups yet", "The line-ups come about an hour before kick-off.");
                     }
                     return;
                 }
@@ -1475,6 +1477,23 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         return true;
     }
 
+    /**
+     * The bar's Scoreboard, on every channel: the scoreboard's menu, for the match on this channel when there is one ("No
+     * match on this channel now", "Reading the match" while it is looked for, "Reading the scores" until they come); what
+     * it sets is for every match.
+     */
+    void openMenu() {
+        if (menu.open) return;
+        menu.show();
+    }
+
+    /** Pure: the menu's line under its title, for a game (null: none found) and whether it is being looked for / read. */
+    static String menuLine(Game g, boolean finding, boolean read) {
+        if (g == null) return finding ? "Reading the match" : "No match on this channel now";
+        if (!read) return "Reading the scores";
+        return full(g.homeName, g.home) + " v " + full(g.awayName, g.away);
+    }
+
     boolean ok() {
         // Covered (a panel over the picture): the remote is the live screen's.
         if (covered) return false;
@@ -1785,6 +1804,12 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
 
         void ok() {
             Context c = getContext();
+            // What needs the match itself, with none on this channel now.
+            if (game == null && (at == R_NOW || at == R_MOVE || at == R_MOVE_LOGO || at == R_LINEUPS)) {
+                close();
+                card.note("No match on this channel now", "The match on this channel, when there is one");
+                return;
+            }
             switch (at) {
                 case R_NOW: {
                     int d = InStep.justHappened(c, chKey, changeSeen);
@@ -1839,7 +1864,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             float x = r.left + Ui.f(40);
             c.drawText("Scoreboard", x, r.top + Ui.f(70), titleP);
             Game g = game;
-            String sub = g == null ? "" : full(g.homeName, g.home) + " v " + full(g.awayName, g.away);
+            String sub = menuLine(g, finding, !readings.isEmpty());
             c.drawText(TextFit.fit(sub, subP, w - Ui.f(80)), x, r.top + Ui.f(110), subP);
             float y = r.top + Ui.f(140);
             for (int i = 0; i < ROWS.length; i++) {
@@ -1855,7 +1880,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
                 if (!v.isEmpty()) c.drawText(v, row.right - Ui.f(20) - value.measureText(v), base, value);
                 y += rowH;
             }
-            String tip = "Back to close · Left and Right to change";
+            String tip = "Back to close · Left and Right to change · these are for every match";
             c.drawText(tip, x, r.bottom - Ui.f(28), hint);
         }
     }

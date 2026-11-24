@@ -107,6 +107,14 @@ final class BoardPrefs {
         e.apply();
     }
 
+    /** Back to the standard places on every channel (Settings › More scoreboard settings). */
+    static void resetAllPlaces(Context c) {
+        SharedPreferences p = prefs(c);
+        SharedPreferences.Editor e = p.edit();
+        for (String k : p.getAll().keySet()) if (k.startsWith("place.")) e.remove(k);
+        e.apply();
+    }
+
     /** Back to the standard places for this channel (and the default for the rest). */
     static void resetPlace(Context c, String channelKey) {
         SharedPreferences.Editor e = prefs(c).edit().remove("place.last");
@@ -299,6 +307,15 @@ final class BoardPrefs {
 
     static void setLogoOn(Context c, boolean on) {
         prefs(c).edit().putBoolean("logo", on).apply();
+    }
+
+    /** Logo cover only: the cover over the channel's logo during a match, without the scoreboard (off as it comes). */
+    static boolean logoOnly(Context c) {
+        return prefs(c).getBoolean("logo_only", false);
+    }
+
+    static void setLogoOnly(Context c, boolean on) {
+        prefs(c).edit().putBoolean("logo_only", on).apply();
     }
 
     /** The board's clock as set at a kick-off on the screen (BoardClock.anchorWords), the last game's; null for none. */

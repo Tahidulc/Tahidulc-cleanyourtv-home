@@ -110,7 +110,7 @@ final class EditSettings implements SettingsScreen.Pages {
             case "appearance.logos":
                 out.add(MoreSettings.pick("lpriority", "Logos priority", PRIORITY[LogoPack.on() ? 0 : 1]));
                 out.add(RowList.Row.item("do:logos.refresh", "Refresh logos", LogoPack.status(tv)));
-                out.add(MoreSettings.pick("logos", "Behind logos", Logos.NAMES[Logos.behind()]));
+                out.add(MoreSettings.pick("logos", "Logo box colour", Logos.NAMES[Logos.behind()]));
                 out.add(RowList.Row.note("New logos: the tv-logo project's free logos (github.com/tv-logo/tv-logos), for your own "
                         + "viewing, fetched as they show; only where a channel's name surely matches one. A channel's own: hold OK "
                         + "on it in the TV guide, then Change logo."));
@@ -136,9 +136,11 @@ final class EditSettings implements SettingsScreen.Pages {
         int renamed = renamed().size();
         out.add(MoreSettings.page("channels.rename", "Rename channels", renamed == 0 ? "Give any channel a name of your own"
                 : count(renamed, "channel", "channels") + " renamed"));
+        // Merged channels (AddedSettings' page): the merges made by hand in the TV guide.
+        out.add(AddedSettings.mergedRow(tv));
         out.add(MoreSettings.pick("csort", "Channels sorting", ChannelEdits.SORT_NAMES[ChannelEdits.sort(tv)]));
-        out.add(RowList.Row.note("Hold OK on a channel in the TV guide to hide, rename or move it, or to pick its quality; on a "
-                + "category, to hide, rename, move or sort it."));
+        out.add(RowList.Row.note("Hold OK on a channel in the TV guide to hide, rename, move or merge it, or to pick its quality; "
+                + "on a category, to hide, rename, move or sort it."));
     }
 
     /** Appearance › TV guide: the other app's first rows, Homefield's guide rows, then the two pages to bring things back. */

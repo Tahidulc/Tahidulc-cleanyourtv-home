@@ -744,7 +744,10 @@ final class GameScreen extends Screen {
                 y += 48f;
                 shown++;
             }
-            if (shown == 0) c.drawText("The stats come once the game is on", x(left), Type.centred(noteP, x(y + 20f)), noteP);
+            if (shown == 0) {
+                c.drawText(g == null || g.state == Game.PRE ? "The stats come once it kicks off." : "No stats for this game.", x(left),
+                        Type.centred(noteP, x(y + 20f)), noteP);
+            }
             if (!d.momentum.isEmpty() && shown <= 6) momentum(c, d, left, w, Math.min(PANEL_Y + PANEL_H - 50f, Math.max(y + 60f, 880f)));
         }
 
@@ -769,7 +772,7 @@ final class GameScreen extends Screen {
             c.drawText(l.lineupTitle, x(left), Type.centred(headP, x(PANEL_Y + 33f)), headP);
             List<String[]> hs = l.home, as = l.away;
             if (hs.isEmpty() && as.isEmpty()) {
-                c.drawText("The line-ups come about an hour before kick-off", x(left), Type.centred(noteP, x(PANEL_Y + 74f)), noteP);
+                c.drawText("The line-ups come about an hour before kick-off.", x(left), Type.centred(noteP, x(PANEL_Y + 74f)), noteP);
                 return;
             }
             for (int i = 0; i < Math.max(hs.size(), as.size()) && i < 11; i++) {

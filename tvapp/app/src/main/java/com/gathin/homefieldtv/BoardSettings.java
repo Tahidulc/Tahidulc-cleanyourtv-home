@@ -20,6 +20,8 @@ final class BoardSettings {
     static void rows(Context c, List<RowList.Row> out) {
         out.add(RowList.Row.toggle("board", "Scoreboard", "Over a match you're watching, in step with your channel", BoardPrefs.on(c)));
         out.add(RowList.Row.toggle("logo", "Logo cover", "Over the channel's own logo while a match is on", BoardPrefs.logoOn(c)));
+        out.add(RowList.Row.toggle("logoonly", "Logo cover only", "The cover over the channel's logo, without the scoreboard",
+                BoardPrefs.logoOnly(c)));
         out.add(RowList.Row.item("look", "Look", BoardPrefs.style(c).label + "  ·  OK for the next"));
         out.add(RowList.Row.header("Alerts and pop-ups"));
         out.add(RowList.Row.toggle("drops", "Alerts beside the board", "Cards, substitutions, VAR, added time, half and full time",
@@ -31,7 +33,10 @@ final class BoardSettings {
         out.add(RowList.Row.header("Sounds"));
         out.add(RowList.Row.item("sound", "Goal sound", Sfx.goalName(BoardPrefs.goalSound(c)) + "  ·  OK for the next"));
         out.add(RowList.Row.toggle("swish", "Swishes", "As alerts slide out and the new score pops up", BoardPrefs.swishOn(c)));
-        out.add(RowList.Row.note("Over a match, hold OK for the scoreboard's menu: the look, timing, moving and sizing it and the logo cover."));
+        // More scoreboard settings (AddedSettings' page): what the scoreboard's own menu has, these for every match.
+        out.add(RowList.Row.item("page:other.scoreboard.more", "More scoreboard settings", "Look, timing, pop-ups, moving and sizing it"));
+        out.add(RowList.Row.note("The bar has Scoreboard on every channel, for the scoreboard's menu. Over a match, hold OK for it too: "
+                + "the look, timing, moving and sizing it and the logo cover."));
     }
 
     /** A row chosen: what it sets, changed (true), or not one of the page's (false). */
@@ -39,6 +44,7 @@ final class BoardSettings {
         switch (tag) {
             case "board": BoardPrefs.setOn(c, !BoardPrefs.on(c)); return true;
             case "logo": BoardPrefs.setLogoOn(c, !BoardPrefs.logoOn(c)); return true;
+            case "logoonly": BoardPrefs.setLogoOnly(c, !BoardPrefs.logoOnly(c)); return true;
             case "drops": BoardPrefs.setDropsOn(c, !BoardPrefs.dropsOn(c)); return true;
             case "var": BoardPrefs.setVarExplainedOn(c, !BoardPrefs.varExplainedOn(c)); return true;
             case "popup": BoardPrefs.setPopupStyle(c, BoardPrefs.nextPopup(BoardPrefs.popupStyle(c), 1)); return true;

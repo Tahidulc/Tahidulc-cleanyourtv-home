@@ -89,7 +89,8 @@ public class LookAndRemoteTest {
 
     @Test public void startingUp() {
         Context c = RuntimeEnvironment.getApplication();
-        assertEquals(General.START_HOME, General.start(c));
+        // As it comes: the last channel watched (the family asked for it as the app opens).
+        assertEquals(General.START_LIVE, General.start(c));
         assertFalse(General.onBoot(c));
         General.setStart(c, General.START_LIVE);
         assertEquals(General.START_LIVE, General.start(c));

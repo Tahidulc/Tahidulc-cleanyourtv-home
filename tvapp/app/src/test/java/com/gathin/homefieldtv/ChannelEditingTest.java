@@ -121,8 +121,9 @@ public class ChannelEditingTest {
         int at = t.indexOf("Kestrel One HD");
         assertTrue(at > 0);
         assertEquals(GuideMenu.SECTION, card.get(at).kind);
+        // 3.4: Merge with, after Move channel (Merges).
         assertEquals(Arrays.asList("Add to Favourites", "Block channel", "Hide channel", "Rename channel", "Change logo", "Move channel",
-                "Catch-up"), t.subList(at + 1, t.size()));
+                "Merge with", "Catch-up"), t.subList(at + 1, t.size()));
         // Rename channel is always there now (the old Channel names editor off too); the archive's card: no Move.
         ChannelEdits.setEditor(app, false);
         t = titles(GuideActions.card(app, kestrel, s, -1, false));

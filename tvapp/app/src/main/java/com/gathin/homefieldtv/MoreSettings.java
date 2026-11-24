@@ -42,7 +42,7 @@ final class MoreSettings implements SettingsScreen.Pages {
     /** The font sizes as the other app names them (Medium: as Homefield came). */
     static final String[] FONT_NAMES = {"Small", "Medium", "Large", "Extra large"};
     /** Where Homefield starts, as a choice of the screen it opens on (Live TV: the last channel turned on). */
-    static final String[] START_NAMES = {"Home", "Live TV, the last channel turned on", "TV guide", "Movies", "TV shows"};
+    static final String[] START_NAMES = {"Home", "Last channel", "TV guide", "Movies", "TV shows"};
     /** Panels timeout, sec: how long the channel banner stays (PlayerPrefs.BANNER_SECONDS). */
     static final String[] TIMEOUT_NAMES = {"Off", "3", "6", "10"};
     static final String[] POSTER_NAMES = {"Portrait", "Landscape"};
@@ -156,6 +156,7 @@ final class MoreSettings implements SettingsScreen.Pages {
             case "other.recording": RecordingsScreen.settingsRows(tv, out); break;
             case "other.vod":
                 out.add(tog("autonext", "Autoplay next episode", "", OtherPrefs.autoplayNext(tv)));
+                out.add(pick("skip", "Skip steps", OtherPrefs.SKIP_NAMES[OtherPrefs.skipIndex(tv)]));
                 break;
             case "other.scoreboard": BoardSettings.rows(tv, out); break;
             case "about": about(out); break;
@@ -263,6 +264,8 @@ final class MoreSettings implements SettingsScreen.Pages {
                 : Updates.checked(Updates.checkedAt(tv), System.currentTimeMillis(), java.time.ZoneId.systemDefault()));
         u.dot = Updates.waiting(tv);
         out.add(u);
+        // If something goes wrong (AddedSettings' page): the last problem noted, and how to send it.
+        out.add(AddedSettings.problemsRow());
         out.add(RowList.Row.note("Live TV, the guide, movies and TV shows come only from your own playlists, which stay on this TV "
                 + "in the app's own storage."));
         out.add(RowList.Row.header("Adding a login from a computer"));
@@ -285,6 +288,8 @@ final class MoreSettings implements SettingsScreen.Pages {
         String when = st == Updates.Stage.CHECKING ? "Looking for an update…"
                 : Updates.checked(Updates.checkedAt(tv), System.currentTimeMillis(), java.time.ZoneId.systemDefault());
         out.add(RowList.Row.item("do:check", "Check for updates", when));
+        // Automatic updates (AddedSettings' page): from an update address, every time it opens.
+        out.add(AddedSettings.autoRow(tv));
         if (o != null) {
             out.add(RowList.Row.header("Homefield TV " + o.name + " is ready"));
             String about = st == Updates.Stage.INSTALLING ? "Handing it to Android…"
@@ -447,7 +452,9 @@ final class MoreSettings implements SettingsScreen.Pages {
     @Override public SettingsScreen.Picker picker(String key) {
         switch (key) {
             case "start": return new SettingsScreen.Picker("Start on", START_NAMES, General.start(tv),
-                    "Used when Homefield TV starts afresh, not when you come back to it.");
+                    "Last channel (as it comes): the channel watched last plays full screen with its card as Homefield TV opens. "
+                            + "Also when you come back to Homefield TV, not only when it starts afresh. Never a locked channel, a "
+                            + "programme from catch-up or a film. The others: when it starts afresh.");
             case "text": return new SettingsScreen.Picker("Font size", FONT_NAMES, Look.textSize, "The screens start again in it.");
             case "posters": return new SettingsScreen.Picker("Posters", POSTER_NAMES, PosterArt.landscape ? 1 : 0,
                     "Landscape: each film's and show's wide picture with its title at the foot. On the film and TV show rows, "
@@ -458,13 +465,14 @@ final class MoreSettings implements SettingsScreen.Pages {
                     "Lite keeps the cards lifting and the pictures fading, without the cards' tilt and shine or the pictures "
                             + "changing behind while you move: smoother on a slower TV. On this TV Automatic is " + Motion.autoWords() + ".");
             case "rows": return new SettingsScreen.Picker("Rows in the guide", Look.ROWS_NAMES, Look.rows, null);
+            case "skip": return new SettingsScreen.Picker("Skip steps", OtherPrefs.SKIP_NAMES, OtherPrefs.skipIndex(tv),
+                    "How far a press of Left or Right goes in a film, an episode or catch-up; further the longer it is held. "
+                            + "Back leaves it.");
             case "clock": return new SettingsScreen.Picker("Clock", Look.CLOCK_NAMES, Look.clock, "The time in the screens' corners.");
             case "banner": return new SettingsScreen.Picker("Panels timeout, sec", TIMEOUT_NAMES, bannerIndex(),
                     "How long the channel's banner stays when you change channel.");
             case "tiles": return new SettingsScreen.Picker("Live TV's channel tiles", Look.TILES_NAMES, Look.logos ? 1 : 0, null);
-            case "logos": return new SettingsScreen.Picker("Behind logos", Logos.NAMES, Logos.behind(),
-                    "Logo's colour: each logo on a tile of its own colour. None: the logo alone, a soft glow behind a dark one. "
-                            + "Black tile: as before.");
+            case "logos": return new SettingsScreen.Picker("Logo box colour", Logos.NAMES, Logos.behind(), Logos.ABOUT);
             case "buffer.live": return new SettingsScreen.Picker("Buffer size", PlayerPrefs.BUFFER_NAMES, PlayerPrefs.buffer(tv, true),
                     PlayerPrefs.BUFFER_HINT);
             case "buffer.vod": {
@@ -542,6 +550,7 @@ final class MoreSettings implements SettingsScreen.Pages {
             case "times": Look.setTimes24(tv, i == 0); break;
             case "motion": Motion.set(tv, i); break;
             case "rows": Look.setRows(tv, i); break;
+            case "skip": OtherPrefs.setSkip(tv, i); break;
             case "clock": Look.setClock(tv, i); break;
             case "banner": PlayerPrefs.setBannerSeconds(tv, PlayerPrefs.BANNER_SECONDS[i]); break;
             case "tiles": Look.setLogos(tv, i == 1); break;

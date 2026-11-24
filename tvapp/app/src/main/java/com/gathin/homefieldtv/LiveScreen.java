@@ -737,7 +737,8 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
                     Rail.go(tv, Rail.MY_LIST, -1);
                     break;
                 case PlayerBar.SCOREBOARD:
-                    board.okLong();
+                    // On every channel: the scoreboard's menu, for the match on it when there is one.
+                    board.openMenu();
                     break;
                 case PlayerBar.SETTINGS:
                     tv.openSettings();
@@ -755,7 +756,8 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
         }
 
         @Override public boolean hasBoard() {
-            return board.hasGame();
+            // The bar has Scoreboard on every channel, for the scoreboard's menu (3.3's).
+            return true;
         }
 
         @Override public boolean canStartOver() {

@@ -578,7 +578,9 @@ public final class VodActivity extends Activity {
         long from = seekTo >= 0 ? seekTo : player.getCurrentPosition();
         if (repeat == 0 && seekTo < 0) seekSteps = 0;
         seekSteps++;
-        long step = seekSteps < 6 ? 10_000 : seekSteps < 16 ? 30_000 : seekSteps < 30 ? 60_000 : 300_000;
+        // Settings › VOD › Skip steps: the first presses its step, then further the longer it is held.
+        long first = com.gathin.homefieldtv.prefs.OtherPrefs.skipMs(this);
+        long step = seekSteps < 6 ? first : seekSteps < 16 ? Math.max(first, 30_000) : seekSteps < 30 ? Math.max(first, 60_000) : 300_000;
         long to = from + dir * step;
         if (to < 0) to = 0;
         if (dur > 0 && dur != C.TIME_UNSET && to > dur - 2000) to = dur - 2000;

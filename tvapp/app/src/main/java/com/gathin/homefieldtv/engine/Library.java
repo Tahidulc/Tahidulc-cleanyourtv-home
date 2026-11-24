@@ -93,6 +93,8 @@ public final class Library {
     }
 
     private Library(Context app) {
+        // Channels merged by hand find the channels they stand for by their keys here.
+        com.gathin.homefieldtv.prefs.Merges.lookup = this::exact;
         this.app = app;
     }
 
@@ -357,6 +359,17 @@ public final class Library {
      */
     public List<Channel> versions(Channel c) {
         if (c == null) return Collections.emptyList();
+        List<Channel> own = ownVersions(c);
+        // Channels merged into it by hand (Merges): their versions after its own, played when its own drop.
+        List<Channel> in = com.gathin.homefieldtv.prefs.Merges.standIns(c);
+        if (in.isEmpty()) return own;
+        List<Channel> out = new ArrayList<>(own);
+        for (Channel m : in) for (Channel v : ownVersions(m)) if (!out.contains(v)) out.add(v);
+        return Collections.unmodifiableList(out);
+    }
+
+    /** A channel's own quality versions, best first (one row per channel), else the channel alone. */
+    private List<Channel> ownVersions(Channel c) {
         Versions v = Versions.of(c);
         if (v == null) return Collections.singletonList(c);
         List<Channel> out = new ArrayList<>(v.all.length);
@@ -367,6 +380,18 @@ public final class Library {
 
     /** A channel's guide: its own; one row per channel, else one of its versions' (best first). At once. */
     public Guide.Schedule schedule(String key) {
+        Guide.Schedule s = ownSchedule(key);
+        if (s != null || key == null || !com.gathin.homefieldtv.prefs.Merges.any()) return s;
+        // None of its own: a channel merged into it by hand stands in (Merges).
+        Channel c = exact(key);
+        for (Channel m : com.gathin.homefieldtv.prefs.Merges.standIns(c == null ? null : row(c))) {
+            s = ownSchedule(m.key);
+            if (s != null) return s;
+        }
+        return null;
+    }
+
+    private Guide.Schedule ownSchedule(String key) {
         Map<String, Guide.Schedule> g = guide;
         Guide.Schedule s = g.get(key);
         if (s != null || key == null || !ChannelEdits.merging()) return s;

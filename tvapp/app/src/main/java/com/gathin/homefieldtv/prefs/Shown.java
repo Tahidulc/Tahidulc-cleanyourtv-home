@@ -86,7 +86,7 @@ public final class Shown {
 
         /** Whether a channel stays in Favourites and Recent (Shown.kept): not hidden by the family, nor locked away. */
         public boolean kept(Channel ch) {
-            return ch != null && !(hides && blocks(ch)) && !edits.hiddenOf(ch);
+            return ch != null && !(hides && blocks(ch)) && !edits.hiddenOf(ch) && !Merges.away(ch);
         }
 
         /** Whether a channel needs the PIN before it plays (Parental.blocks): it, its category, or one of its versions locked. */
@@ -100,7 +100,7 @@ public final class Shown {
 
         /** Whether nothing is hidden or locked away from the lists. */
         boolean everything() {
-            return hidden.isEmpty() && !(hides && pin && !open) && !edits.anyHidden();
+            return hidden.isEmpty() && !(hides && pin && !open) && !edits.anyHidden() && !Merges.any();
         }
 
         /** Whether it still says what is hidden and locked now. */
@@ -111,6 +111,7 @@ public final class Shown {
 
     /** What is hidden and locked now, for a list (see Filter). */
     public static Filter filter(Context c) {
+        Merges.load(c);
         int v = version.get();
         boolean open = Parental.open();
         return new Filter(v, Categories.hidden(c), Parental.lockedGroups(c), Parental.lockedChannels(c), Parental.hides(c),
@@ -126,7 +127,8 @@ public final class Shown {
     public static boolean kept(Context c, Channel ch) {
         if (ch == null) return false;
         ChannelEdits.load(c);
-        return !(Parental.hides(c) && Parental.blocks(c, ch)) && !ChannelEdits.hidden(ch);
+        Merges.load(c);
+        return !(Parental.hides(c) && Parental.blocks(c, ch)) && !ChannelEdits.hidden(ch) && !Merges.away(ch);
     }
 
     /**

@@ -118,4 +118,22 @@ public final class OtherPrefs {
     public static void setAutoplayNext(Context c, boolean on) {
         prefs(c).edit().putBoolean("vod.next", on).apply();
     }
+
+    /** Skip steps: how far a press of Left or Right goes in a film, an episode or a programme from catch-up (seconds). */
+    public static final int[] SKIP_S = {5, 10, 15, 20, 30, 60};
+    public static final String[] SKIP_NAMES = {"5 seconds", "10 seconds", "15 seconds", "20 seconds", "30 seconds", "1 minute"};
+
+    public static int skipIndex(Context c) {
+        int i = prefs(c).getInt("vod.skip", 1);
+        return i < 0 || i >= SKIP_S.length ? 1 : i;
+    }
+
+    /** A press's step in ms (10 s as it comes). */
+    public static long skipMs(Context c) {
+        return SKIP_S[skipIndex(c)] * 1000L;
+    }
+
+    public static void setSkip(Context c, int index) {
+        prefs(c).edit().putInt("vod.skip", Math.max(0, Math.min(SKIP_S.length - 1, index))).apply();
+    }
 }
