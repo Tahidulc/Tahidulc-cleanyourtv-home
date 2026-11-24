@@ -191,9 +191,10 @@ wordmark are Homefield; it carries no Sky logo or name.
   buttons"): pills of glass in two rows, each an icon, its name and what it is set to or where it goes, the remote's
   white: TV guide, Search, Channels list, History, Movies, TV shows, Recordings, My list and Settings, then Picture
   ("1920 × 1080"), Sound ("English · Stereo"), Audio offset, Subtitles, Display, Sleep timer, Favourites ("Add this
-  channel" or "Remove"), Channel (its options) and Exit; Up from their first row goes back to the cards. MENU brings up
-  the same overlay with the remote straight on the settings. There is no Scoreboard among them (holding OK over a match
-  opens the scoreboard's menu instead). Each of the picture's and sound's pills opens its list at the right, the card
+  channel" or "Remove"), Channel (its options) and Exit; Up from their first row goes back to the cards. MENU, or OK
+  held with a panel up, brings up the same overlay with the remote straight on the settings. There is no Scoreboard among
+  them: OK held on the plain picture brings up the scoreboard and logo menu (below), on every channel. Each of the
+  picture's and sound's pills opens its list at the right, the card
   staying: Picture opens Video tracks, the Picture quality (Adaptive, 4K, 1080p, 720p, SD, Data saver); Sound, Audio
   tracks: the stream's sound tracks, or Off; Audio offset the sound's delay for this channel, 50 ms a press either way,
   with Reset and Apply to all channels; Subtitles, Closed captions (below); Display, Display mode: the picture's shape
@@ -282,11 +283,27 @@ wordmark are Homefield; it carries no Sky logo or name.
   OK on a club opens the club's page: Right from a football game in Today goes on to its two clubs, Up from the top of a
   game's page to its two sides, and OK on a table's row; OK on a driver opens his page. Over a match in the player, the
   scoreboard: the game found from the channel and its guide, its clock set at kick-off with OK, alerts beside it, the
-  kick-off and after-goal pop-ups and the line-ups, a cover for the channel's logo, its menu from the player's bar
-  (Scoreboard), and a Scoreboard section in Settings. My scoreboards: the family's own boards (a BoardSpec, the same on
+  kick-off and after-goal pop-ups and the line-ups, and a cover for the channel's logo. Their menu is the TV launcher's
+  over TiviMate, as the family asked ("hold down ok when I'm in full screen on the homefield tv app and the scoreboard pop
+  up settings menu comes up ..., and then I can turn the scoreboard and logo on and off just like it is on tivimate"):
+  hold OK while a channel plays full screen with nothing over it, on every channel, over a match or not (with none, what
+  is set is kept for the next one: "No match on this channel now", "Reading the match", "Reading the scores"). Nowhere
+  else: with the info card, the overlay or another panel up OK held is the player's settings (as MENU), and in the guide
+  and catch-up it does what it did. A panel at the bottom centre in the launcher's dark blue, "Scoreboard and logo · Up and Down, Left and
+  Right, OK · Back to close" at its top, its lines in the launcher's "Label:  ‹  Value  ›": Scoreboard (off, as on
+  TiviMate: the board, what slides out beside it and its pop-ups away until it is on again, the game followed
+  underneath), Logo's cover, Scoreboard look, Move and resize the scoreboard and the logo's cover (Left and Right the
+  size, OK to move it with the arrows), Line-ups on screen (OK shows them now), My scoreboards (OK: the editor, Generate,
+  Ask AI), New scoreboard, Timing on this channel, A channel not lined up yet, It's just happened, Ask at each kick-off,
+  Alerts beside the board, VAR explained, Kick-off and goal pop-ups, Goal sound, Swishes and Back to the standard places
+  (this channel or every channel); at its right the logo's cover as it will look on a pitch's green, with the board's
+  looks either side of it under it. Up and Down along, Left and Right change, OK does it, Back closes it, and it closes
+  itself after 15 seconds without a key or as anything comes over the picture. It is the only place for these settings
+  (Settings has no Scoreboard page). Settings, Remote control, Player, Long OK can choose the player's settings or
+  another instead. My scoreboards: the family's own boards (a BoardSpec, the same on
   the phone and the TV launcher), drawn by the board in its base look, its pop-outs and the kick-off strap in its
-  colours; in the scoreboard's menu (OK held over the match, or the bar's Scoreboard) My scoreboards (Left and Right:
-  the look as chosen or one of them), Scoreboard editor and New scoreboard. The editor sits down the right over the
+  colours; in the scoreboard and logo menu My scoreboards (Left and Right: the look as chosen or one of them; OK: the
+  editor on the one in use) and New scoreboard. The editor sits down the right over the
   match, the board as it stands on a still of a made-up match at its top and the board over the match changing with it:
   which board, Rename, the layout, each colour (the swatches with the two clubs' colours first, hue, saturation and
   brightness, its hex), finish, typeface, crests, corners, border, the clubs' strips, accent line, how it reads (OK
@@ -497,25 +514,24 @@ wordmark are Homefield; it carries no Sky logo or name.
   it has come, or "On this TV"); Stream problems: reconnecting and the provider's adaptive stream. MENU while
   watching brings up the player's settings instead: their Display, Audio offset and Sound change the shape, the delay
   and the track for the channel, and their Settings opens this panel.
-  Remote control, Player: for live TV full screen, Up and Down, the channel keys' way round, OK and OK held, how long
+  Remote control, Player: for live TV full screen, Up and Down, the channel keys' way round, OK and OK held (as it comes
+  the scoreboard and logo menu, in plain playback only; once, OK held kept as the player's menu from before became the
+  scoreboard and logo menu), how long
   the number keys wait, the channel before, and the colour keys.
   Parental controls: a switch for a four-number PIN, asked before a locked category's or channel's programme plays
   (channels locked from Channel options on the player's bar), locked channels shown or hidden, and Settings locked too.
   Other: Search (Show search history, Show favorite channels first), Reminders (the ones set, soonest first, OK
   cancelling one, and whether their card may pop up over other apps), Recording (minutes before a programme starts and
   after it ends), VOD (Autoplay next episode; Skip steps: 5, 10 as it comes, 15, 20 or 30 seconds or a minute a press of
-  Left or Right in a film, an episode or catch-up) and Scoreboard (with Logo cover only: the cover over the channel's
-  logo without the scoreboard; My scoreboards: the one in use, or the look as chosen; and More scoreboard settings: the
-  look, timing for a channel not lined up yet, the pop-ups, the goal sound and Back to the standard places on every
-  channel, for every match), and Ask AI (the family's own Anthropic API key, typed once on the keyboard as dots, then
+  Left or Right in a film, an episode or catch-up) and Ask AI (the family's own Anthropic API key, typed once on the keyboard as dots, then
   shown masked, "sk-ant-••••••••abcd", kept only in the app's private preferences: never synced, backed up, logged or
   shown; Take the key away; the model: Claude Opus 5.5 as it comes, Sonnet 5.5 or Haiku 5.5; the requests go only to
   Anthropic's API, one at a time off the main thread. The phone's "Send key to the TVs" reaches the TV launcher: with no
   key of its own, Homefield TV takes it from the launcher on this TV as the page opens, and says so, or with Get the key
   from the TV launcher (its provider hands it to Homefield TV alone, signed with the launcher's key; the launcher 5.41
-  or later); after Take the key away only when asked). The player's bar has
-  Scoreboard on every channel, for the scoreboard's menu ("No match on this channel now", "Reading the match", "Reading
-  the scores" until there is one). The film player's Picture and sound has Sound (The film's sound, as it comes, or a
+  or later); after Take the key away only when asked). The scoreboard's and the logo's settings
+  are all in their menu over the player (hold OK while a channel plays full screen); the three switches kept before
+  (Scoreboard, Logo cover, Logo cover only) became its two, once, each showing what it showed. The film player's Picture and sound has Sound (The film's sound, as it comes, or a
   track) and Subtitles (Off, or the copy's own; "This copy has no subtitles of its own").
   About: the version; Logo packs' licences (the catalogue's packs and their terms); If something goes wrong (the last problem noted and the ones before it, each with when and where
   in the app's own code: "Crash in …", "Out of memory in …", "Froze for 7 s in …", "Trouble in the background (the app
