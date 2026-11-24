@@ -4,8 +4,9 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
+import android.graphics.RectF;
 import android.graphics.Shader;
-import android.os.SystemClock;
+import android.text.TextPaint;
 import android.view.KeyEvent;
 import android.view.View;
 import android.widget.FrameLayout;
@@ -17,7 +18,6 @@ import androidx.media3.common.TrackSelectionOverride;
 import androidx.media3.common.Tracks;
 
 import com.gathin.homefieldtv.engine.Channel;
-import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.prefs.Parental;
 import com.gathin.homefieldtv.prefs.PlayerPrefs;
@@ -29,35 +29,78 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * The player's bar, as the family's TiviMate has it (OK, then Down; or OK held, or MENU): round buttons along the foot
- * over the playback scrim, each an icon (40, centred on y 940) over its label (24): Search, Channels list, History,
- * Movies, TV shows, Recordings, My list, then the picture and the sound, whose labels are what they are set to now
- * ("1920 × 1080", "English / Stereo", "0 ms", the subtitles, "Normal", the sleep timer), then Add to favourites, the
- * Scoreboard (over a match), Channel options, Settings and Exit. Each takes 160 px, more for a long label (its words
- * and 32), from x 48; the remote's is in the focus circle (68) with its label white, and the row slides to keep it in
- * the middle, never past either end (48 to 1872).
+ * The player's settings, as the family chose them (the mock-up "C with programme pictures", then Down: "Then I press
+ * the down button again and it will take me to the settings buttons"): under the live overlay's info card, in the
+ * recently watched channels' place (Down past their second row; MENU, and Settings › Remote's player or channel menu,
+ * straight here), a line with "↑ Recently watched" at the left and "Settings" at the right, then every button as a
+ * pill of glass in two rows (1824 wide from x 48, 14 apart, 86 high, rounded 22; white at 10 % with a hairline at 8 %):
+ * its icon (30) at the left, its name (18, semibold) and under it what it is set to or where it goes (15, quiet); under
+ * the pills what the keys do. The remote's pill is white with dark ink and lifts toward you (Lift07, to 1.05).
  *
- * <p>The picture and sound buttons open their picker (PickerCard), the bar going while it is up:
  * <pre>
- *   Video tracks       a channel in several qualities (one row per channel): its Quality first, Best then each version
+ *   row one        TV guide (the tile that started the old row), Search, Channels list, History, Movies, TV shows,
+ *                  Recordings, My list, Settings: where to go
+ *   row two        this channel's picture and sound: Picture ("1920 × 1080"), Sound ("English · Stereo"), Audio offset
+ *                  ("0 ms"), Subtitles ("Off"), Display ("Normal"), Sleep timer ("Off"), Favourites ("Add this
+ *                  channel", "Remove"), Channel (its options), Exit
+ * </pre>
+ *
+ * No Scoreboard any more (the family's: holding OK over a match opens the scoreboard's menu instead). Catch-up's MENU
+ * brings the same pills up by themselves, over a scrim of their own and with nothing above them.
+ *
+ * <p>Left and Right along a row (stopping at its ends), Down to row two (the same column), Up back; Up from row one goes
+ * to the host (barUp, with the pill's middle: the live overlay's recently watched channels). The picture and sound
+ * pills open their picker (PickerCard), the pills going while it is up (its title in brackets):
+ * <pre>
+ *   Picture            a channel in several qualities (one row per channel): its Quality first, Best then each version
  *                      by its own name, the one playing ticked (OK plays it, kept for the channel); then the picture's
  *                      quality, as Settings → Player → Picture quality: Adaptive, 4K, 1080p, 720p, SD, Data saver
- *   Audio tracks       Off, or one of the stream's sound tracks ("English, Stereo")
+ *                      (Video tracks)
+ *   Sound              Off, or one of the stream's sound tracks ("English, Stereo") (Audio tracks)
  *   Audio offset       ‹ 0 ms › (50 ms a press, this channel's), Reset, Apply to all channels
- *   Closed captions    the subtitles: Off, From the channel, Automatic; a line on what the channel sends; their look
- *   Display mode       Normal, Full, Zoom, Zoom - 2.35:1, Reduced, 4:3, 16:9, 2.35:1 (this channel's); Apply to all
+ *   Subtitles          Off, From the channel, Automatic; a line on what the channel sends; their look (Closed captions)
+ *   Display            Normal, Full, Zoom, Zoom - 2.35:1, Reduced, 4:3, 16:9, 2.35:1 (this channel's); Apply to all
+ *                      (Display mode)
  *   Sleep timer        Off, 15, 30, 45, 60, 90, 120, 180, 240 min
- *   Channel options    Watch from the start, Lock this channel (with a PIN set): what OK held gave on the channel
+ *   Channel            Watch from the start, Lock this channel (with a PIN set) (Channel options)
  * </pre>
  * OK on a choice makes it and closes it all; the offset's buttons stay. Back closes it all. The screen does the rest
- * (Host.act).
+ * (Host.act). The names and values are made as the pills open and after a change, never while drawing.
  */
 final class PlayerBar extends FrameLayout implements PickerCard.Host {
     static final int SEARCH = 0, CHANNELS = 1, HISTORY = 2, MOVIES = 3, SHOWS = 4, RECORDINGS = 5, MY_LIST = 6, VIDEO = 7,
-            AUDIO = 8, OFFSET = 9, CAPTIONS = 10, DISPLAY = 11, SLEEP = 12, FAVOURITE = 13, SCOREBOARD = 14, OPTIONS = 15,
+            AUDIO = 8, OFFSET = 9, CAPTIONS = 10, DISPLAY = 11, SLEEP = 12, FAVOURITE = 13, GUIDE = 14, OPTIONS = 15,
             SETTINGS = 16, EXIT = 17, START_OVER = 18, LOCK = 19;
-    static final float ICON_Y = 940f, START_X = 48f, END_X = 1872f, SLOT = 160f, PAD = 32f, SCRIM_Y = 700f;
-    static final long SCROLL_MS = 150;
+    /** The pills in order, row one then row two (ROW each). */
+    static final int[] ORDER = {GUIDE, SEARCH, CHANNELS, HISTORY, MOVIES, SHOWS, RECORDINGS, MY_LIST, SETTINGS,
+            VIDEO, AUDIO, OFFSET, CAPTIONS, DISPLAY, SLEEP, FAVOURITE, OPTIONS, EXIT};
+    static final int ROW = (ORDER.length + 1) / 2;
+    /** Where the pills are (design px: across the overlay as its recent channels are, from where they start). */
+    static final float X = RecentGrid.X, W = RecentGrid.W, GAP = RecentGrid.GAP, TOP = RecentGrid.TOP;
+    static final float PILL_W = (W - (ROW - 1) * GAP) / ROW, PILL_H = 86f, PILL_R = 22f;
+    /** In a pill (design px from its top left, inside its hairline): the icon's middle, the words' left, their baselines. */
+    static final float ICON = 30f, ICON_X = 1f + 14f + ICON / 2f, WORDS_X = 1f + 14f + ICON + 12f, WORDS_PAD = 15f,
+            NAME_Y = 39f, VALUE_Y = 61f;
+    /** The line over the pills (its middle), the keys' line (its middle this far under them). */
+    static final float HEAD_Y = RecentGrid.HEAD_Y, HINT_BELOW = 50f;
+    /** The top of everything the pills bring (their line), for the subtitles to stay above. */
+    static final float HEAD_TOP = 688f;
+    /** The remote's pill: how much bigger, its shadow (0 14 34 at 55 %). */
+    static final float LIFT = 1.05f;
+    static final float[] SH_LIFT = {14f, 34f, 0f, 140f};
+    /** The pills' colours: glass and its hairline, white words and quiet ones; the remote's white with dark ink. */
+    static final int GLASS = 0x1AFFFFFF, EDGE = 0x14FFFFFF, WORDS = 0xFFFFFFFF, QUIET = 0x9EFFFFFF, ON = 0xFFFFFFFF,
+            INK = 0xFF111318, INK_QUIET = 0x9E111318;
+    /**
+     * The overlay's scrim: clear down to SCRIM_TOP, SCRIM_MID_A at SCRIM_MID, SCRIM_FOOT_A at the foot (the mock-up's 0,
+     * 60 % and 92 % at 30 %, 52 % and the foot). The live overlay's card draws it; the pills by themselves (catch-up's)
+     * draw their own.
+     */
+    static final float SCRIM_TOP = 324f, SCRIM_MID = 562f;
+    static final int SCRIM_MID_A = 0x99, SCRIM_FOOT_A = 0xEB;
+    static final String HEAD = "Settings", UP = "Recently watched",
+            KEYS_UP = "OK opens it · Left and Right along a row · Up from the first row back to recently watched",
+            KEYS_ALONE = "OK opens it · Left and Right along a row · Down to the second row";
     /** The sleep timer's choices (minutes; 0 off). */
     static final int[] SLEEP_MINUTES = {0, 15, 30, 45, 60, 90, 120, 180, 240};
 
@@ -65,17 +108,20 @@ final class PlayerBar extends FrameLayout implements PickerCard.Host {
         /** The channel the bar is for: the one playing. */
         Channel channel();
 
-        /** What the screen does: SEARCH, CHANNELS, HISTORY, MOVIES, SHOWS, RECORDINGS, MY_LIST, SCOREBOARD, SETTINGS, EXIT, START_OVER. */
+        /** What the screen does: GUIDE, SEARCH, CHANNELS, HISTORY, MOVIES, SHOWS, RECORDINGS, MY_LIST, SETTINGS, EXIT, START_OVER. */
         void act(int item);
-
-        /** Whether the scoreboard has a game (its button shows). */
-        boolean hasBoard();
 
         /** Whether the programme on now can be watched from its start. */
         boolean canStartOver();
 
-        /** Up off the bar (true when the screen took it: back to its overlay's tiles). */
-        boolean barUp();
+        /** Up off the first row, from the pill whose middle is design x (true when the screen took it: its recent channels). */
+        boolean barUp(float x);
+
+        /** Whether recently watched channels are above the pills (the live overlay's): the line over them says so. */
+        boolean recentsAbove();
+
+        /** Whether the pills are under the live overlay's card, which brings the scrim (else they bring their own). */
+        boolean underCard();
 
         /** The bar and its picker went (Back, or a choice made). */
         void closed();
@@ -85,13 +131,18 @@ final class PlayerBar extends FrameLayout implements PickerCard.Host {
     private final Host host;
     private final BarView bar;
     private final PickerCard picker;
-    private final List<Integer> items = new ArrayList<>();
-    private final List<String[]> labels = new ArrayList<>();
-    private final List<Float> widths = new ArrayList<>();
+    /** Each pill's name, value and icon, made by relabel(). */
+    private final String[] names = new String[ORDER.length], values = new String[ORDER.length];
+    private final int[] icons = new int[ORDER.length];
+    /** The pills as the lift knows them (one object each, kept). */
+    private static final Integer[] KEYS = new Integer[ORDER.length];
+
+    static {
+        for (int i = 0; i < ORDER.length; i++) KEYS[i] = i;
+    }
+
     private int focus, pickerFor = -1;
     private boolean open;
-    private float scroll, scrollFrom, scrollTo;
-    private long scrollAt;
 
     PlayerBar(TvActivity tv, Host host) {
         super(tv);
@@ -113,15 +164,27 @@ final class PlayerBar extends FrameLayout implements PickerCard.Host {
         return pickerFor >= 0;
     }
 
-    /** The bar in, the remote on its first button (Search). */
+    /** The item (ORDER's) of the pill the remote is on. */
+    int focusedItem() {
+        return ORDER[focus];
+    }
+
+    /** The pills in, the remote on the first (TV guide). */
     void open() {
+        openAt(0);
+    }
+
+    /** The pills in, the remote on row one's pill nearest design x (Down from the recent channels). */
+    void openNear(float x) {
+        openAt(RecentGrid.nearest(x, ROW));
+    }
+
+    private void openAt(int k) {
         open = true;
         pickerFor = -1;
         picker.setVisibility(GONE);
-        build();
-        focus = 0;
-        scroll = scrollFrom = scrollTo = target();
-        scrollAt = 0;
+        relabel();
+        focus = Math.max(0, Math.min(k, ORDER.length - 1));
         Fade.show(bar, true, 150);
         bar.invalidate();
     }
@@ -137,10 +200,10 @@ final class PlayerBar extends FrameLayout implements PickerCard.Host {
         }
     }
 
-    /** One of the pickers at once, without the bar (a colour key's Subtitles). */
+    /** One of the pickers at once, without the pills (a colour key's Subtitles). */
     void openPicker(int item) {
         open = true;
-        build();
+        relabel();
         bar.setVisibility(GONE);
         showPicker(item);
     }
@@ -150,124 +213,77 @@ final class PlayerBar extends FrameLayout implements PickerCard.Host {
         host.closed();
     }
 
-    // ---- the buttons ------------------------------------------------------------------------------------------------
+    // ---- the pills ------------------------------------------------------------------------------------------------
 
-    private void build() {
-        items.clear();
-        int[] all = {SEARCH, CHANNELS, HISTORY, MOVIES, SHOWS, RECORDINGS, MY_LIST, VIDEO, AUDIO, OFFSET, CAPTIONS, DISPLAY,
-                SLEEP, FAVOURITE, SCOREBOARD, OPTIONS, SETTINGS, EXIT};
-        for (int it : all) if (it != SCOREBOARD || host.hasBoard()) items.add(it);
-        relabel();
-    }
-
-    /** The labels again (a value changed), and each button's width from them. */
+    /** Every pill's name, value and icon again (as they open, and after a change). */
     private void relabel() {
-        labels.clear();
-        widths.clear();
-        for (int it : items) {
-            String[] l = label(it);
-            labels.add(l);
-            float tw = RoundButton.barLabelWidth(l[0], l[1]) / Ui.s;
-            widths.add(slot(tw));
-        }
+        for (int k = 0; k < ORDER.length; k++) label(ORDER[k], k);
+        bar.invalidate();
     }
 
-    /** Pure: a button's width (design pixels) for its label's width: 160, or the label and 32 when that is wider. */
-    static float slot(float labelWidth) {
-        return Math.max(SLOT, labelWidth + PAD);
-    }
-
-    /**
-     * Pure: the scroll that keeps the button centred at centre (from START_X) in the middle of the screen, never past
-     * the row's ends (total: the buttons' widths together).
-     */
-    static float scrollFor(float centre, float total) {
-        float max = Math.max(0f, START_X + total - END_X);
-        return Math.max(0f, Math.min(max, START_X + centre - 960f));
-    }
-
-    private float centre(int k) {
-        float x = 0f;
-        for (int i = 0; i < k; i++) x += widths.get(i);
-        return x + widths.get(k) / 2f;
-    }
-
-    private float total() {
-        float x = 0f;
-        for (float w : widths) x += w;
-        return x;
-    }
-
-    private float target() {
-        return items.isEmpty() ? 0f : scrollFor(centre(focus), total());
-    }
-
-    private String[] label(int it) {
+    private void label(int it, int k) {
         Context c = getContext();
         Channel ch = host.channel();
         String key = ch == null ? null : ch.key;
+        String name, value;
+        int icon;
         switch (it) {
-            case SEARCH: return new String[]{"Search", null};
-            case CHANNELS: return new String[]{"Channels list", null};
-            case HISTORY: return new String[]{"History", null};
-            case MOVIES: return new String[]{"Movies", null};
-            case SHOWS: return new String[]{"TV shows", null};
-            case RECORDINGS: return new String[]{"Recordings", null};
-            case MY_LIST: return new String[]{"My list", null};
+            case GUIDE: name = "TV guide"; value = "What's on"; icon = Dark.SHEET; break;
+            case SEARCH: name = "Search"; value = "Channels, films"; icon = Dark.SEARCH; break;
+            case CHANNELS: name = "Channels list"; value = "All channels"; icon = Dark.LIST; break;
+            case HISTORY: name = "History"; value = "Watched lately"; icon = Dark.HISTORY; break;
+            case MOVIES: name = "Movies"; value = "Films"; icon = Dark.CLAPPER; break;
+            case SHOWS: name = "TV shows"; value = "Series"; icon = Dark.STACK; break;
+            case RECORDINGS: name = "Recordings"; value = "From catch-up"; icon = Dark.RECORD; break;
+            case MY_LIST: name = "My list"; value = "Saved to watch"; icon = Dark.BOOKMARK; break;
+            case SETTINGS: name = "Settings"; value = "Homefield TV"; icon = Dark.GEAR; break;
             case VIDEO: {
                 String size = tv.live.sizeWords();
-                return new String[]{size.isEmpty() ? qualityName(PlayerPrefs.quality(c)) : size, null};
+                name = "Picture";
+                value = size.isEmpty() ? qualityName(PlayerPrefs.quality(c)) : size;
+                icon = Dark.VIDEO;
+                break;
             }
             case AUDIO: {
-                if (audioOff()) return new String[]{"Off", null};
+                name = "Sound";
                 Format f = tv.live.audioFormat();
-                return f == null ? new String[]{"Sound", null} : audioWords(f.language, f.label, f.channelCount);
+                if (audioOff()) {
+                    value = "Off";
+                } else if (f == null) {
+                    value = "As it comes";
+                } else {
+                    String[] w = audioWords(f.language, f.label, f.channelCount);
+                    value = w[1] == null ? w[0] : w[0] + " · " + w[1];
+                }
+                icon = Dark.SPEAKER;
+                break;
             }
-            case OFFSET: return new String[]{PlayerPrefs.offsetWords(PlayerPrefs.delayFor(c, key)), null};
-            case CAPTIONS: return new String[]{LiveSubs.MODES[LiveSubs.mode(c)], null};
-            case DISPLAY: return new String[]{PlayerPrefs.ASPECT_NAMES[PlayerPrefs.aspectFor(c, key)], null};
+            case OFFSET: name = "Audio offset"; value = PlayerPrefs.offsetWords(PlayerPrefs.delayFor(c, key)); icon = Dark.OFFSET; break;
+            case CAPTIONS: name = "Subtitles"; value = LiveSubs.MODES[LiveSubs.mode(c)]; icon = Dark.CAPTIONS; break;
+            case DISPLAY: name = "Display"; value = PlayerPrefs.ASPECT_NAMES[PlayerPrefs.aspectFor(c, key)]; icon = Dark.SHAPE; break;
             case SLEEP: {
                 long left = tv.sleepLeft();
-                return new String[]{left <= 0 ? "Off" : InfoCard.minutes(left), null};
+                name = "Sleep timer";
+                value = left <= 0 ? "Off" : InfoCard.minutes(left);
+                icon = left > 0 ? Dark.TIMER : Dark.TIMER_OFF;
+                break;
             }
             case FAVOURITE: {
                 boolean fav = ch != null && Library.get(c).isFavourite(ch);
-                return new String[]{fav ? "Remove from" : "Add to", "favourites"};
+                name = "Favourites";
+                value = fav ? "Remove" : "Add this channel";
+                icon = fav ? Dark.STAR : Dark.STAR_LINE;
+                break;
             }
-            case SCOREBOARD: return new String[]{"Scoreboard", null};
-            case OPTIONS: return new String[]{"Channel options", null};
-            case SETTINGS: return new String[]{"Settings", null};
-            default: return new String[]{"Exit", null};
+            case OPTIONS: name = "Channel"; value = "Options"; icon = Dark.OPTIONS; break;
+            default: name = "Exit"; value = "Close the app"; icon = Dark.EXIT; break;
         }
+        names[k] = name;
+        values[k] = value;
+        icons[k] = icon;
     }
 
-    private int icon(int it) {
-        switch (it) {
-            case SEARCH: return Dark.SEARCH;
-            case CHANNELS: return Dark.LIST;
-            case HISTORY: return Dark.HISTORY;
-            case MOVIES: return Dark.CLAPPER;
-            case SHOWS: return Dark.STACK;
-            case RECORDINGS: return Dark.RECORD;
-            case MY_LIST: return Dark.BOOKMARK;
-            case VIDEO: return Dark.VIDEO;
-            case AUDIO: return Dark.SPEAKER;
-            case OFFSET: return Dark.OFFSET;
-            case CAPTIONS: return Dark.CAPTIONS;
-            case DISPLAY: return Dark.SHAPE;
-            case SLEEP: return tv.sleepLeft() > 0 ? Dark.TIMER : Dark.TIMER_OFF;
-            case FAVOURITE: {
-                Channel ch = host.channel();
-                return ch != null && Library.get(getContext()).isFavourite(ch) ? Dark.STAR : Dark.STAR_LINE;
-            }
-            case SCOREBOARD: return RoundButton.SPORTS;
-            case OPTIONS: return Dark.OPTIONS;
-            case SETTINGS: return Dark.GEAR;
-            default: return Dark.EXIT;
-        }
-    }
-
-    /** Pure: a sound track as the bar's label writes it: {"English", "Stereo"} (its label when it has one). */
+    /** Pure: a sound track in words: {"English", "Stereo"} (its label when it has one). */
     static String[] audioWords(String language, String label, int channels) {
         String lang = label != null && !label.trim().isEmpty() ? label.trim()
                 : language != null && !language.isEmpty() && !"und".equals(language)
@@ -281,6 +297,11 @@ final class PlayerBar extends FrameLayout implements PickerCard.Host {
         return PlayerPrefs.QUALITY_NAMES[0];
     }
 
+    /** Tests and previews: pill k's name and value as drawn. */
+    String[] words(int k) {
+        return new String[]{names[k], values[k]};
+    }
+
     // ---- the remote -----------------------------------------------------------------------------------------------
 
     boolean key(int code) {
@@ -289,25 +310,29 @@ final class PlayerBar extends FrameLayout implements PickerCard.Host {
             picker.key(code);
             return true;
         }
+        int n = ORDER.length, row = focus / ROW, col = focus % ROW;
         switch (code) {
             case KeyEvent.KEYCODE_DPAD_LEFT:
-            case KeyEvent.KEYCODE_DPAD_RIGHT: {
-                int n = focus + (code == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1);
-                if (n < 0 || n >= items.size()) return true;
-                focus = n;
-                scrollFrom = scroll;
-                scrollTo = target();
-                scrollAt = Exec.inline ? 0 : SystemClock.uptimeMillis();
-                if (Exec.inline) scroll = scrollTo;
-                bar.invalidate();
+                if (col > 0) move(focus - 1);
                 return true;
-            }
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
+                if (col < ROW - 1 && focus + 1 < n) move(focus + 1);
+                return true;
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+                if (row == 0 && n > ROW) move(Math.min(focus + ROW, n - 1));
+                return true;
             case KeyEvent.KEYCODE_DPAD_UP:
-                if (host.barUp()) close();
+                if (row > 0) move(focus - ROW);
+                else if (host.barUp(RecentGrid.middle(col, ROW))) close();
                 return true;
             default:
                 return true;
         }
+    }
+
+    private void move(int to) {
+        focus = to;
+        bar.invalidate();
     }
 
     void ok() {
@@ -316,7 +341,7 @@ final class PlayerBar extends FrameLayout implements PickerCard.Host {
             picker.ok();
             return;
         }
-        int it = items.get(focus);
+        int it = ORDER[focus];
         switch (it) {
             case VIDEO:
             case AUDIO:
@@ -334,7 +359,6 @@ final class PlayerBar extends FrameLayout implements PickerCard.Host {
                 android.widget.Toast.makeText(getContext(), on ? ChannelEdits.name(ch) + " added to your favourites"
                         : ChannelEdits.name(ch) + " taken off your favourites", android.widget.Toast.LENGTH_SHORT).show();
                 relabel();
-                bar.invalidate();
                 return;
             }
             default:
@@ -577,40 +601,108 @@ final class PlayerBar extends FrameLayout implements PickerCard.Host {
         return w[1] == null ? w[0] : w[0] + ", " + w[1];
     }
 
+
     // ---- drawing --------------------------------------------------------------------------------------------------
 
-    /** The bar itself over the scrim. */
+    /** The overlay's scrim over a view h (screen px) high: made once a height by whoever draws it. */
+    static Shader scrim(float h) {
+        float top = Ui.f(SCRIM_TOP), mid = (Ui.f(SCRIM_MID) - top) / Math.max(1f, h - top);
+        return new LinearGradient(0, top, 0, h, new int[]{0, SCRIM_MID_A << 24, SCRIM_FOOT_A << 24},
+                new float[]{0f, Math.max(0.01f, Math.min(0.99f, mid)), 1f}, Shader.TileMode.CLAMP);
+    }
+
+    /** Pure: a colour part way (t, 0 to 1) from a to b, its alpha too. */
+    static int blend(int a, int b, float t) {
+        float k = Math.max(0f, Math.min(1f, t));
+        int out = 0;
+        for (int sh = 0; sh <= 24; sh += 8) {
+            int x = (a >>> sh) & 0xFF, y = (b >>> sh) & 0xFF;
+            out |= Math.round(x + (y - x) * k) << sh;
+        }
+        return out;
+    }
+
+    /** The pills, the line over them and the keys' line under them (over a scrim of their own when alone). */
     private final class BarView extends View {
-        private final Paint scrim = new Paint();
+        private final Paint scrimP = new Paint(), fill = new Paint(Paint.ANTI_ALIAS_FLAG), edge = new Paint(Paint.ANTI_ALIAS_FLAG),
+                chevron = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint headP = Type.paint(24f, Type.BOLD, Look07.L1), upP = Type.paint(20f, Type.REGULAR, QUIET);
+        private final TextPaint keysP = Type.paint(21f, Type.REGULAR, 0x99FFFFFF);
+        private final TextPaint nameP = Type.paint(18f, Type.SEMIBOLD, WORDS), valueP = Type.paint(15f, Type.REGULAR, QUIET);
+        private final TextFit nameFit = new TextFit(nameP, 32), valueFit = new TextFit(valueP, 32);
+        private final Lift07 lift = new Lift07();
+        private final RectF box = new RectF();
         private float scrimFor = -1f;
 
         BarView(Context c) {
             super(c);
+            edge.setStyle(Paint.Style.STROKE);
+            chevron.setStyle(Paint.Style.STROKE);
+            chevron.setStrokeCap(Paint.Cap.ROUND);
+            chevron.setStrokeJoin(Paint.Join.ROUND);
+            Shadows.prepare(SH_LIFT, PILL_R);
         }
 
         @Override protected void onDraw(Canvas c) {
             int w = getWidth(), hh = getHeight();
-            if (scrimFor != hh) {
-                scrim.setShader(new LinearGradient(0, Ui.f(SCRIM_Y), 0, hh, 0x00000000, 0xE6000000, Shader.TileMode.CLAMP));
-                scrimFor = hh;
+            if (!host.underCard()) {
+                if (scrimFor != hh) {
+                    scrimP.setShader(scrim(hh));
+                    scrimFor = hh;
+                }
+                c.drawRect(0, Ui.f(SCRIM_TOP), w, hh, scrimP);
             }
-            c.drawRect(0, Ui.f(SCRIM_Y), w, hh, scrim);
-            boolean moving = false;
-            if (scrollAt != 0) {
-                float k = Math.min(1f, (SystemClock.uptimeMillis() - scrollAt) / (float) SCROLL_MS);
-                scroll = scrollFrom + (scrollTo - scrollFrom) * Fade.EASE.getInterpolation(k);
-                if (k >= 1f) scrollAt = 0;
-                else moving = true;
+            boolean moving = lift.step(KEYS[focus]);
+            boolean above = host.recentsAbove();
+            // The line over the pills: back up to the recent channels at the left (when they are there), Settings at the right.
+            float cy = Ui.f(HEAD_Y), x = Ui.f(RecentGrid.TEXT_X);
+            if (above) {
+                chevron.setColor(QUIET);
+                chevron.setStrokeWidth(Math.max(1f, Ui.f(2.2f)));
+                Ui.chevron(c, x + Ui.f(11f), cy, Ui.f(5.5f), Ui.UP, chevron);
+                c.drawText(UP, x + Ui.f(22f + 10f), Type.centred(upP, cy), upP);
             }
-            float x = START_X - scroll;
-            for (int k = 0; k < items.size(); k++) {
-                float sw = widths.get(k), cx = x + sw / 2f;
-                x += sw;
-                if (cx + sw < 0f || cx - sw > 1920f) continue;
-                String[] l = labels.get(k);
-                RoundButton.bar(c, Ui.f(cx), Ui.f(ICON_Y), icon(items.get(k)), l[0], l[1], k == focus);
+            c.drawText(HEAD, Ui.f(RecentGrid.TEXT_R) - headP.measureText(HEAD), Type.centred(headP, cy), headP);
+            // The resting pills first, then the lifted one over them.
+            for (int pass = 0; pass < 2; pass++) {
+                for (int k = 0; k < ORDER.length; k++) {
+                    boolean up = Math.abs(lift.of(KEYS[k])) > 0.001f;
+                    if (up == (pass == 1)) drawPill(c, k);
+                }
             }
+            float foot = TOP + 2 * PILL_H + GAP;
+            c.drawText(above ? KEYS_UP : KEYS_ALONE, x, Type.centred(keysP, Ui.f(foot + HINT_BELOW)), keysP);
             if (moving) postInvalidateOnAnimation();
+        }
+
+        /** Pill k: its glass (white where the remote is, lifted), its icon, its name and what it is set to. */
+        private void drawPill(Canvas c, int k) {
+            float w = Ui.f(PILL_W), h = Ui.f(PILL_H), rad = Ui.f(PILL_R);
+            float x = Ui.f(PlayerBar.X + (k % ROW) * (PILL_W + GAP)), y = Ui.f(TOP + (k / ROW) * (PILL_H + GAP));
+            float up = Math.max(0f, lift.of(KEYS[k])), on = Math.min(1f, up);
+            c.save();
+            c.translate(x, y);
+            float sc = 1f + (LIFT - 1f) * up;
+            if (sc != 1f) c.scale(sc, sc, w / 2f, h / 2f);
+            box.set(0, 0, w, h);
+            if (on > 0.01f) Shadows.draw(c, box, rad, SH_LIFT, on);
+            fill.setColor(blend(GLASS, ON, on));
+            c.drawRoundRect(box, rad, rad, fill);
+            if (on < 0.99f) {
+                float sw = Math.max(1f, Ui.f(1f));
+                edge.setStrokeWidth(sw);
+                edge.setColor(Palette.alpha(EDGE, Math.round((EDGE >>> 24) * (1f - on))));
+                box.set(sw / 2f, sw / 2f, w - sw / 2f, h - sw / 2f);
+                c.drawRoundRect(box, rad, rad, edge);
+            }
+            int ink = blend(WORDS, INK, on);
+            RoundButton.glyph(c, icons[k], Ui.f(ICON_X), h / 2f, Ui.f(ICON), ink);
+            float tx = Ui.f(WORDS_X), room = w - tx - Ui.f(WORDS_PAD);
+            nameP.setColor(ink);
+            nameFit.line(c, names[k], tx, Ui.f(NAME_Y), room);
+            valueP.setColor(blend(QUIET, INK_QUIET, on));
+            valueFit.line(c, values[k], tx, Ui.f(VALUE_Y), room);
+            c.restore();
         }
     }
 }

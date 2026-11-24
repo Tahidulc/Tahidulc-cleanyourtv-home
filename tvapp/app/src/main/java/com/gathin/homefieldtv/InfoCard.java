@@ -26,8 +26,10 @@ import java.util.List;
 
 /**
  * The player's info card in the 07 look (the approved still 07c): a card 1824 x 322 from x 48, rounded 44, at the foot
- * (FOOT_Y 718: on INFO, after a channel change, and for the channel before or after on CH− and CH+) or at the top (TOP_Y
- * 40: OK's overlay, catch-up's). Behind its words, as the family asked ("when scrolling through and you see the
+ * (FOOT_Y 718: on INFO, after a channel change, and for the channel before or after on CH− and CH+), over the recently
+ * watched channels (STACK_Y 352: live TV's OK overlay, the family's "move the information panel to the bottom so if I
+ * press ok when watching a channel it will be at bottom", the channels and then the settings under it) or at the top
+ * (TOP_Y 40: catch-up's overlay). Behind its words, as the family asked ("when scrolling through and you see the
  * information panel like this, have a picture of the programme background on this"), the programme's own picture
  * fills the whole card (Pics.FILL_CARD: its faces whole, placed between the words and what's next), with a shade only
  * where the words are: from the left under the channel and the programme's words, ending a little past them, and from
@@ -59,6 +61,8 @@ import java.util.List;
  */
 final class InfoCard {
     static final float X = 48f, W = 1824f, H = 322f, FOOT_Y = 1080f - 40f - 322f, TOP_Y = 40f, RADIUS = 44f;
+    /** Live TV's OK overlay: the card's top, so it ends (674) a line above the recently watched channels (RecentGrid). */
+    static final float STACK_Y = 352f;
     /** Where the words stand in the card (design pixels from its top): the title's baseline, its line's middle and what
      *  it is about, moved up into the place the kicker had (no LIVE or category since 3.7), with room for three lines. */
     static final float TITLE_Y = 80f, LINE_Y = 118f, DESC_Y = 151f;

@@ -180,15 +180,18 @@ public class ThreeSixTest {
         assertEquals(passed, playing(a));
         press(a, KeyEvent.KEYCODE_DPAD_RIGHT);
         assertEquals(rested, playing(a));
-        // OK while watching live: the overlay with the row (TV guide, History, then the recent channels in 07); Right to
-        // the first channel and OK changes to it.
+        // OK while watching live: the overlay with the recent channels' cards (never the one playing), the remote on the
+        // newest; Right to the next, Left back, and OK changes to it.
         press(a, KeyEvent.KEYCODE_DPAD_CENTER);
-        PlayerTiles tiles = (PlayerTiles) field(a.top(), "tiles");
-        assertEquals(View.VISIBLE, tiles.getVisibility());
-        assertEquals(PlayerTiles.GUIDE, tiles.focus());
+        RecentGrid recents = (RecentGrid) field(a.top(), "recents");
+        assertEquals(View.VISIBLE, recents.getVisibility());
+        assertEquals(2, recents.count());
+        assertEquals(0, recents.focus());
         press(a, KeyEvent.KEYCODE_DPAD_RIGHT);
-        press(a, KeyEvent.KEYCODE_DPAD_RIGHT);
-        assertEquals(2, tiles.focus());
+        assertEquals(1, recents.focus());
+        assertEquals(ch.get(1).key, recents.focused().key);
+        press(a, KeyEvent.KEYCODE_DPAD_LEFT);
+        assertEquals(0, recents.focus());
         press(a, KeyEvent.KEYCODE_DPAD_CENTER);
         assertEquals(ch.get(4).key, playing(a));
     }

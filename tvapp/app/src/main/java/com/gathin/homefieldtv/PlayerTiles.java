@@ -21,15 +21,16 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The foot of the player's OK overlay, as the family's TiviMate draws it: over the playback scrim (black rising from y
- * 700 to about 90 % at the foot), the seek line across (80 to 1839 at y 777–782: the accent up to where the programme
- * is, grey after, the white knob at the join) and under it the row of tiles (240 x 178 from (82, 813), 254 apart): TV
- * guide, History, then the channels last watched, in the 07 look (3.4): each channel's tile its programme's own picture
- * filling it (Pics.FILL, its faces whole; asked for once the row rests), else its logo's own colour, with the channel's
- * logo alone on its colour at its top left (ChannelLook), the programme's title over a shade at its foot and how far
- * through it is along it. The tile the remote is on lifts toward you (Lift07) with a white ring, and the row slides so it
- * stays in the first place; under the row, on a channel, its programme's times and title with its playlist at the right,
- * else a chevron.
+ * Catch-up's row of tiles (CatchupScreen: peeking in under its transport, and Down brings it up in the transport's
+ * place; live TV's OK overlay has the recently watched channels' cards instead, RecentGrid), as the family's TiviMate
+ * draws it: over the playback scrim (black rising from y 700 to about 90 % at the foot), the seek line across (80 to
+ * 1839 at y 777–782: the accent up to where the programme is, grey after, the white knob at the join) and under it the
+ * row of tiles (240 x 178 from (82, 813), 254 apart): TV guide, History, then the channels last watched, in the 07 look
+ * (3.4): each channel's tile its programme's own picture filling it (Pics.FILL, its faces whole; asked for once the row
+ * rests), else its logo's own colour, with the channel's logo alone on its colour at its top left (ChannelLook), the
+ * programme's title over a shade at its foot and how far through it is along it. The tile the remote is on lifts toward
+ * you (Lift07) with a white ring, and the row slides so it stays in the first place; under the row, on a channel, its
+ * programme's times and title with its playlist at the right, else a chevron.
  *
  * <pre>
  *   set(recent, at)            the channels for the row (the one playing left out), the remote on tile at

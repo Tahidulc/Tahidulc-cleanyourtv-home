@@ -177,20 +177,28 @@ wordmark are Homefield; it carries no Sky logo or name.
   (OK then changes to it); Up and Down change channel (Settings, Remote can make them bring up the live screen's rows of
   channels instead, as Homefield TV came); Right goes back to the channel tuned to before (however briefly it played;
   again, back); the number keys go to a channel, the number typed in a box at the top right while it is typed. OK brings
-  up the overlay: the card at the top, a line across the foot for how far through the programme is, and a row of tiles
-  under it (TV guide, History, then the channels last watched, the newest first, up to ten, each once and never the one
-  playing, in 07: each tile its programme's picture filling it, the channel's logo alone on its colour at its top left,
-  the title and how far through along its foot, the remote's tile lifting with a white ring; under the row its
-  programme's times and title and its playlist; a channel joins the row once it has played 10 seconds, so going through
-  the channels with Up and Down doesn't fill it, as on the phones); Down from the tiles brings up the bar. OK held, or MENU, brings up the bar alone: round
-  buttons along the foot, each with its label (Search, Channels list, History, Movies, TV shows, Recordings, My list,
-  then Video tracks, Audio tracks, Audio offset, Closed captions, Display mode and Sleep timer labelled with what they are
-  set to, then Add to favourites, Scoreboard over a match, Channel options, Settings and Exit). Each of the picture's and
-  sound's buttons opens its list at the right: Video tracks is the Picture quality (Adaptive, 4K, 1080p, 720p, SD, Data
-  saver); Audio tracks the stream's sound tracks, or Off; Audio offset the sound's delay for this channel, 50 ms a press
-  either way, with Reset and Apply to all channels; Closed captions the subtitles (below); Display mode the picture's
-  shape for this channel or all of them (Normal, Full, Zoom, Zoom - 2.35:1, Reduced, 4:3, 16:9, 2.35:1); Sleep timer
-  stops the picture after 15 minutes to 4 hours; Channel options has Watch from the start and Lock this channel. Left
+  up the overlay, as the family chose it (the mock-up "C with programme pictures": "show 10 channels underneath the
+  information panel ... if I press ok when watching a channel it will be at bottom"): the picture darkening from the
+  middle down, the card low (from y 352, risen from the foot when it was up there) and under it "Recently watched" with
+  how many, then the channels last watched in two rows of five cards (the newest first, up to ten, each once and never
+  the one playing; a channel joins them once it has played 10 seconds, so going through the channels with Up and Down
+  doesn't fill them, as on the phones): each card its programme on now, the programme's own picture filling it (the
+  logo's own colour while it comes, or where there is none) under a dark shade from the left, the channel's logo on its
+  colour at the top left, the channel's name and the programme's title beside it, the time left at the foot and how far
+  through along it; the remote's card lifts with a white ring, its picture still seen. Left and Right go along a row,
+  Down to the second and Up back, and OK watches the channel. Down past the second row brings up the settings in the
+  cards' place, the card staying where it is ("Then I press the down button again and it will take me to the settings
+  buttons"): pills of glass in two rows, each an icon, its name and what it is set to or where it goes, the remote's
+  white: TV guide, Search, Channels list, History, Movies, TV shows, Recordings, My list and Settings, then Picture
+  ("1920 × 1080"), Sound ("English · Stereo"), Audio offset, Subtitles, Display, Sleep timer, Favourites ("Add this
+  channel" or "Remove"), Channel (its options) and Exit; Up from their first row goes back to the cards. MENU brings up
+  the same overlay with the remote straight on the settings. There is no Scoreboard among them (holding OK over a match
+  opens the scoreboard's menu instead). Each of the picture's and sound's pills opens its list at the right, the card
+  staying: Picture opens Video tracks, the Picture quality (Adaptive, 4K, 1080p, 720p, SD, Data saver); Sound, Audio
+  tracks: the stream's sound tracks, or Off; Audio offset the sound's delay for this channel, 50 ms a press either way,
+  with Reset and Apply to all channels; Subtitles, Closed captions (below); Display, Display mode: the picture's shape
+  for this channel or all of them (Normal, Full, Zoom, Zoom - 2.35:1, Reduced, 4:3, 16:9, 2.35:1); Sleep timer stops
+  the picture after 15 minutes to 4 hours; Channel's options are Watch from the start and Lock this channel. Left
   brings up the channel list over the picture: the channels of the group playing down the left (each its logo alone on
   its colour, then what's on with its times and bar), the programmes of the one the remote is on beside them, and its programme in a card at the top right; Left again opens the groups (the
   playlist, Favourites, All channels, then the family's groups), and OK plays a channel with the list staying. Left
@@ -198,9 +206,9 @@ wordmark are Homefield; it carries no Sky logo or name.
   brings up History, Right held the programme's description, Down held Search. Back goes to the TV guide with the
   channel in its picture; Back held stops the picture and goes Home. What is up goes after 10 seconds with no key. A
   stream that drops is tried on the same channel in another playlist, then again. Where the provider keeps the
-  programme on now in its archive (or the stream itself reaches back to its start), Channel options has Watch from the
-  start, as has the remote's rewind key.
-- **History:** Up held while watching, or History on the overlay's tiles and the bar: over the dimmed picture, the
+  programme on now in its archive (or the stream itself reaches back to its start), the Channel pill's options have
+  Watch from the start, as has the remote's rewind key.
+- **History:** Up held while watching, or History among the overlay's settings: over the dimmed picture, the
   programmes watched on this TV in the last seven days, day by day, each with its times, the time it was watched and the
   channel's logo and name (a programme counts once it has been watched for 10 seconds, and once however often). OK on
   one on now plays its channel; on one the archive keeps, plays it from its start; one that has ended with no archive
@@ -210,7 +218,7 @@ wordmark are Homefield; it carries no Sky logo or name.
   every channel: Off (as it starts), From the channel (the subtitles a channel sends: DVB subtitles where it puts them,
   its subtitle playlists, captions) or Automatic, made on the TV from what's said as it's said, a channel's own showing
   instead when it plainly sends some (a bare captions track every stream is given doesn't count). Chosen from the
-  player's bar (Closed captions, the one chosen ticked, with what the channel sends) or Settings, Live TV, with their
+  player's settings (Subtitles, the one chosen ticked, with what the channel sends) or Settings, Live TV, with their
   look (white with an outline, white on a black box, yellow) and size. The words keep about 40 letters to a line near the
   foot, move up above the info card and the overlay while they are up, and go while the channel lists and the live
   screen's rows are up. Automatic uses
@@ -242,8 +250,8 @@ wordmark are Homefield; it carries no Sky logo or name.
   brings up the row of tiles in the buttons' place, Up takes them away. Left and Right (and the rewind and fast forward
   keys) move it 10 seconds a press, more as they are held (30 seconds, a minute, three minutes), and the archive is asked
   for from there a moment after the remote rests; play/pause pauses. Up and Down change channel, live; CH+ and CH−
-  bring up a channel's card; OK held or MENU the player's bar. The bar you can move: OK brings the overlay up with the
-  remote on the seek line itself (its knob larger with a white ring), and Left or Right from the plain picture goes
+  bring up a channel's card; OK held or MENU the player's settings (their pills by themselves). The bar you can move:
+  OK brings the overlay up with the remote on the seek line itself (its knob larger with a white ring), and Left or Right from the plain picture goes
   straight there; Left and Right then move a spot along it (Skip steps a press, then faster as the key is held), a white
   bubble over the knob saying where (the time in the programme, and the clock then), OK jumps there, Back leaves it where
   the picture is, Down goes to the buttons and Up back. Back closes the overlay, then goes to the TV guide. It
@@ -486,9 +494,9 @@ wordmark are Homefield; it carries no Sky logo or name.
   Full, Zoom, Zoom - 2.35:1, Reduced, 4:3, 16:9, 2.35:1; a channel can keep its own); Sound: passed through or decoded,
   two speakers, languages and every channel's sound delay; Subtitles on live TV (Off, From the channel or Automatic),
   their look and size, and where the TV needs it the English speech model (downloaded from there on OK, with how far
-  it has come, or "On this TV"); Stream problems: reconnecting and the provider's adaptive stream. MENU (or OK held)
-  while watching brings up the player's bar instead: its Display mode, Audio offset and Audio tracks change the shape,
-  the delay and the track for the channel, and its Settings opens this panel.
+  it has come, or "On this TV"); Stream problems: reconnecting and the provider's adaptive stream. MENU while
+  watching brings up the player's settings instead: their Display, Audio offset and Sound change the shape, the delay
+  and the track for the channel, and their Settings opens this panel.
   Remote control, Player: for live TV full screen, Up and Down, the channel keys' way round, OK and OK held, how long
   the number keys wait, the channel before, and the colour keys.
   Parental controls: a switch for a four-number PIN, asked before a locked category's or channel's programme plays

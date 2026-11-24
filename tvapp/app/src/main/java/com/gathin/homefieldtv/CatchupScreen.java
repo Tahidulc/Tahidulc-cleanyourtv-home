@@ -39,9 +39,9 @@ import com.gathin.homefieldtv.engine.Library;
  * way, the archive asked for from there a moment after the remote rests; play/pause pauses; ◀◀ and ▶▶ in
  * the overlay the same, |◀ the programme's start (or the one before), ▶| the next one (or live), ⟲ from the start,
  * LIVE back to live. Up and Down change channel, live; CH+ and CH− show the next or previous channel's card (OK goes to
- * it); OK held or MENU the player's bar. Back closes the overlay, then goes to the TV guide with the programme still in
- * its picture; Back held stops the picture. When a programme ends it goes on into the next; at the live edge it is live
- * again (the live screen under this one).
+ * it); OK held or MENU the player's settings (PlayerBar's pills, by themselves here). Back closes the overlay, then goes
+ * to the TV guide with the programme still in its picture; Back held stops the picture. When a programme ends it goes on
+ * into the next; at the live edge it is live again (the live screen under this one).
  */
 final class CatchupScreen extends Screen implements LiveTv.Listener {
     static final long PANELS_MS = 10_000L, APPLY_MS = 700, HALF = 30 * 60_000L, HOUR = 3600_000L;
@@ -162,7 +162,8 @@ final class CatchupScreen extends Screen implements LiveTv.Listener {
         Fade.show(tiles, m == OVERLAY || m == TILES, 110);
         Fade.show(overlay, m != PLAIN && m != BAR, 130);
         if (m != PLAIN) h.postDelayed(hide, PANELS_MS);
-        float above = m == BANNER ? InfoCard.FOOT_Y - 16f : m == OVERLAY ? SEEK_Y - 40f : m == TILES || m == BAR ? PlayerTiles.SCRIM_Y + 40f : -1f;
+        float above = m == BANNER ? InfoCard.FOOT_Y - 16f : m == OVERLAY ? SEEK_Y - 40f : m == TILES ? PlayerTiles.SCRIM_Y + 40f
+                : m == BAR ? PlayerBar.HEAD_TOP - 16f : -1f;
         tv.live.subs.room(true, above);
         overlay.invalidate();
     }
@@ -550,6 +551,9 @@ final class CatchupScreen extends Screen implements LiveTv.Listener {
 
         @Override public void act(int item) {
             switch (item) {
+                case PlayerBar.GUIDE:
+                    tv.toGuide();
+                    break;
                 case PlayerBar.SEARCH:
                     tv.openSearch();
                     break;
@@ -585,15 +589,20 @@ final class CatchupScreen extends Screen implements LiveTv.Listener {
             }
         }
 
-        @Override public boolean hasBoard() {
-            return false;
-        }
-
         @Override public boolean canStartOver() {
             return true;
         }
 
-        @Override public boolean barUp() {
+        @Override public boolean barUp(float x) {
+            return false;
+        }
+
+        @Override public boolean recentsAbove() {
+            return false;
+        }
+
+        @Override public boolean underCard() {
+            // The pills by themselves here, over a scrim of their own.
             return false;
         }
 

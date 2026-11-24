@@ -41,10 +41,14 @@ import java.util.Map;
  *   Up / Down          the next / previous channel in the list (the card comes up on it; Settings → Remote can make
  *                      them open the live screen's rows of channels instead, as Homefield TV came)
  *   Right              the channel watched last (again: back to this one)
- *   OK                 the overlay: the card at the top, the seek line and the row of tiles (PlayerTiles: TV guide,
- *                      History, the channels watched last); Down from it, the bar (PlayerBar)
- *   OK held, MENU      the bar alone: Search … Exit, the picture and sound's pickers, Add to favourites, the scoreboard
- *                      (over a match), Channel options (from the start, lock): what OK held gave here before
+ *   OK                 the overlay, the family's mock-up "C with programme pictures": a scrim rising from the middle,
+ *                      the card low (InfoCard.STACK_Y 352, risen from the foot when it was there) and under it the ten
+ *                      channels watched last in two rows of five (RecentGrid: Left and Right along a row, Down to the
+ *                      second, OK watches one); Down past the second row, the settings in the channels' place, the
+ *                      card staying where it is (PlayerBar's pills: TV guide … Exit, the picture and sound's pickers;
+ *                      Up from their first row back to the channels). With no channel watched yet, the settings at once
+ *   MENU               that overlay with the remote straight on the settings (Settings → Remote's player and channel
+ *                      menus too); no Scoreboard among them (the family's: holding OK over a match opens its menu)
  *   Left               the channel list over the picture (ChannelList.OVERLAY); held, the opaque one with the picture
  *                      in a window (ChannelListScreen)
  *   Up held            History (HistoryScreen); Right held: the programme's description; Down held: Search
@@ -68,13 +72,13 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
     private int mode = NONE;
     /** The card's channel on CH+ and CH− (not the one playing); null: the one playing. */
     private Channel peek;
-    /** The bar came down from the overlay (Up goes back to its tiles), not by itself. */
-    private boolean barWithCard;
+    /** The bar's picker by itself (the Subtitles key's): no card and no pills with it. */
+    private boolean pickerAlone;
     /** Shown before (a screen over this one closed): no card coming up for it. */
     private boolean seen;
     private String digits = "";
     private Panels panels;
-    private PlayerTiles tiles;
+    private RecentGrid recents;
     private PlayerBar bar;
     private ChannelList list;
     private DialogCard dialog;
@@ -105,6 +109,13 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
     static final long POP_MS = 300;
     /** How far below its place it starts (design px: past the screen's foot), and how small. */
     static final float POP_RISE = 1080f - InfoCard.FOOT_Y + 28f, POP_SCALE = 0.92f;
+
+    /**
+     * The card's top in the OK overlay (design px): there at once, or rising from the foot to InfoCard.STACK_Y when OK
+     * comes while the information panel is up (moved as it is drawn: the Lite tier's too).
+     */
+    private final Glide rise = new Glide(RISE_MS);
+    static final long RISE_MS = 260;
 
     /** The information panel dropping away; the panels go once it is down. */
     private void drop() {
@@ -189,10 +200,10 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
         browse.addView(info, new FrameLayout.LayoutParams(-1, -1));
         browse.addView(rows, new FrameLayout.LayoutParams(-1, -1));
         browse.setVisibility(View.GONE);
-        tiles = new PlayerTiles(tv, tilesHost);
-        tiles.setVisibility(View.GONE);
         panels = new Panels(tv);
         panels.setVisibility(View.GONE);
+        recents = new RecentGrid(tv, recentsHost);
+        recents.setVisibility(View.GONE);
         list = new ChannelList(tv, ChannelList.OVERLAY, listHost);
         list.setVisibility(View.GONE);
         bar = new PlayerBar(tv, barHost);
@@ -200,8 +211,9 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
         dialog.setHost(this);
         root.addView(board, new FrameLayout.LayoutParams(-1, -1));
         root.addView(browse, new FrameLayout.LayoutParams(-1, -1));
-        root.addView(tiles, new FrameLayout.LayoutParams(-1, -1));
+        // The panels (the card and the overlay's scrim) under the recent channels and the settings' pills.
         root.addView(panels, new FrameLayout.LayoutParams(-1, -1));
+        root.addView(recents, new FrameLayout.LayoutParams(-1, -1));
         root.addView(list, new FrameLayout.LayoutParams(-1, -1));
         root.addView(bar, new FrameLayout.LayoutParams(-1, -1));
         root.addView(dialog, new FrameLayout.LayoutParams(-1, -1));
@@ -250,7 +262,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
         mode = NONE;
         peek = null;
         Fade.show(panels, false, 0);
-        tiles.setVisibility(View.GONE);
+        recents.setVisibility(View.GONE);
         list.setVisibility(View.GONE);
         browse.setVisibility(View.GONE);
     }
@@ -272,7 +284,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
 
     @Override void tick() {
         panels.invalidate();
-        tiles.invalidate();
+        recents.invalidate();
         list.refresh();
         info.invalidate();
         rows.invalidate();
@@ -286,7 +298,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
             rows.moved(-1, 0);
             info.show(browseChannel());
         }
-        if (mode == OVERLAY) tiles.set(Library.get(tv).recent(tv.live.channel()), tiles.focus());
+        if (mode == OVERLAY || mode == BAR) recents.set(Library.get(tv).recent(tv.live.channel()), recents.focus());
         panels.invalidate();
     }
 
@@ -310,9 +322,20 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
         if (m != BANNER) peek = null;
         if (m != BROWSE) h.removeCallbacks(askPicture);
         if (was == BAR && m != BAR) bar.close();
-        boolean card = m == BANNER || m == OVERLAY || m == DESC || m == BAR && barWithCard;
+        if (m != BAR) pickerAlone = false;
+        boolean stack = m == OVERLAY || m == BAR && !pickerAlone;
+        if (stack && was != OVERLAY && was != BAR) {
+            // The card low in the overlay: risen from the foot when the information panel was up, else there at once.
+            if (was == BANNER && !Exec.inline) {
+                rise.jump(InfoCard.FOOT_Y);
+                rise.to(InfoCard.STACK_Y);
+            } else {
+                rise.jump(InfoCard.STACK_Y);
+            }
+        }
+        boolean card = m == BANNER || m == DESC || stack;
         Fade.show(panels, card || !digits.isEmpty(), card ? 130 : 110);
-        Fade.show(tiles, m == OVERLAY, m == OVERLAY ? 0 : 110);
+        Fade.show(recents, m == OVERLAY, m == OVERLAY ? 130 : 110);
         Fade.show(list, m == LIST, m == LIST ? 0 : 110);
         Fade.show(browse, m == BROWSE, 220);
         switch (m) {
@@ -337,8 +360,8 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
             default:
                 break;
         }
-        // Subtitles: above the card or the bar while they are up, gone under the lists and rows.
-        float above = m == BANNER ? InfoCard.FOOT_Y - 16f : m == OVERLAY || m == BAR ? PlayerTiles.SCRIM_Y + 40f : -1f;
+        // Subtitles: above the card (at the foot, or the overlay's) while it is up, gone under the lists and rows.
+        float above = m == BANNER ? InfoCard.FOOT_Y - 16f : stack ? InfoCard.STACK_Y - 16f : -1f;
         tv.live.subs.room(m != LIST && m != BROWSE, above);
         panels.invalidate();
         board.coverChanged();
@@ -377,16 +400,35 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
         switched();
     }
 
-    /** The OK overlay: the card at the top, the seek line, the tiles. */
+    /**
+     * The OK overlay: the card low, the channels watched last under it, the remote on the newest; with none watched yet,
+     * the settings in their place.
+     */
     private void openOverlay() {
-        tiles.set(Library.get(tv).recent(tv.live.channel()), PlayerTiles.GUIDE);
+        recents.set(Library.get(tv).recent(tv.live.channel()), 0);
+        if (recents.count() == 0) {
+            openBar(false);
+            return;
+        }
         setMode(OVERLAY);
     }
 
-    /** The bar: down from the overlay (with its card), or by itself (OK held, MENU). */
+    /**
+     * The overlay with the remote straight on its settings, the first pill (MENU; Settings → Remote's player or channel
+     * menu; OK held as Settings → Remote gives it). The card always comes with them now: withCard is the old bar's ask
+     * and changes nothing.
+     */
     private void openBar(boolean withCard) {
-        barWithCard = withCard;
+        recents.set(Library.get(tv).recent(tv.live.channel()), 0);
+        pickerAlone = false;
         bar.open();
+        setMode(BAR);
+    }
+
+    /** Down past the recent channels: the settings in their place, the remote on the pill nearest design x. */
+    private void toSettings(float x) {
+        pickerAlone = false;
+        bar.openNear(x);
         setMode(BAR);
     }
 
@@ -566,7 +608,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
                 int dir = code == KeyEvent.KEYCODE_DPAD_UP ? -1 : 1;
                 if (mode == OVERLAY) {
                     poke();
-                    return tiles.key(code);
+                    return recents.key(code);
                 }
                 if (mode == BROWSE) browseStep(dir);
                 else if (mode == DESC) setMode(NONE);
@@ -578,7 +620,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
             case KeyEvent.KEYCODE_DPAD_RIGHT:
                 if (mode == OVERLAY) {
                     poke();
-                    return tiles.key(code);
+                    return recents.key(code);
                 }
                 if (mode == BROWSE) browseAlong(1);
                 else if (mode == DESC) setMode(NONE);
@@ -587,7 +629,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
             case KeyEvent.KEYCODE_DPAD_LEFT:
                 if (mode == OVERLAY) {
                     poke();
-                    return tiles.key(code);
+                    return recents.key(code);
                 }
                 if (mode == BROWSE) browseAlong(-1);
                 else if (mode == DESC) setMode(NONE);
@@ -632,7 +674,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
         }
         switch (mode) {
             case OVERLAY:
-                tiles.ok();
+                recents.ok();
                 return;
             case BROWSE:
                 tune(browseChannel());
@@ -696,7 +738,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
                 openBar(false);
                 return true;
             case RemoteKeys.SUBTITLES:
-                barWithCard = false;
+                pickerAlone = true;
                 bar.openPicker(PlayerBar.CAPTIONS);
                 setMode(BAR);
                 return true;
@@ -751,7 +793,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
         return true;
     }
 
-    // ---- what the bar, the tiles and the list ask ----------------------------------------------------------------
+    // ---- what the bar, the recent channels and the list ask ---------------------------------------------------
 
     /** The bar's own: what its buttons do here. */
     private final PlayerBar.Host barHost = new PlayerBar.Host() {
@@ -761,6 +803,10 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
 
         @Override public void act(int item) {
             switch (item) {
+                case PlayerBar.GUIDE:
+                    // The tile that started the old row: the TV guide, this channel in its picture.
+                    tv.toGuide();
+                    break;
                 case PlayerBar.SEARCH:
                     tv.openSearch();
                     break;
@@ -782,10 +828,6 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
                 case PlayerBar.MY_LIST:
                     Rail.go(tv, Rail.MY_LIST, -1);
                     break;
-                case PlayerBar.SCOREBOARD:
-                    // On every channel: the scoreboard's menu, for the match on it when there is one.
-                    board.openMenu();
-                    break;
                 case PlayerBar.SETTINGS:
                     tv.openSettings();
                     break;
@@ -801,18 +843,23 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
             }
         }
 
-        @Override public boolean hasBoard() {
-            // The bar has Scoreboard on every channel, for the scoreboard's menu (3.3's).
-            return true;
-        }
-
         @Override public boolean canStartOver() {
             return fromTheStart(tv.live.channel()) != null;
         }
 
-        @Override public boolean barUp() {
-            if (!barWithCard) return false;
-            openOverlay();
+        @Override public boolean barUp(float x) {
+            // Up from the first row: back to the recent channels, the remote on the second row's card nearest.
+            if (pickerAlone || recents.count() == 0) return false;
+            recents.focusNear(x);
+            setMode(OVERLAY);
+            return true;
+        }
+
+        @Override public boolean recentsAbove() {
+            return recents.count() > 0;
+        }
+
+        @Override public boolean underCard() {
             return true;
         }
 
@@ -821,34 +868,16 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
         }
     };
 
-    /** The overlay's tiles: the guide, History, a channel watched last. */
-    private final PlayerTiles.Host tilesHost = new PlayerTiles.Host() {
-        @Override public void openGuide() {
-            setMode(NONE);
-            tv.toGuide();
-        }
-
-        @Override public void openHistory() {
-            LiveScreen.this.openHistory();
-        }
-
+    /** The overlay's recent channels: OK watches one; Down past them, the settings. */
+    private final RecentGrid.Host recentsHost = new RecentGrid.Host() {
         @Override public void tune(Channel c) {
             LiveScreen.this.tune(c);
         }
 
-        @Override public boolean edge(int dir) {
-            // Down: the bar, the card staying.
-            if (dir == Ui.DOWN) openBar(true);
+        @Override public boolean edge(int dir, float x) {
+            // Down: the settings in the channels' place, the card staying; Up: nothing above but the card.
+            if (dir == Ui.DOWN) toSettings(x);
             return true;
-        }
-
-        @Override public float[] seek() {
-            Channel c = tv.live.channel();
-            Guide.Schedule s = c == null ? null : Library.get(tv).schedule(c.key);
-            long now = System.currentTimeMillis();
-            int i = s == null ? -1 : s.at(now);
-            float p = i < 0 ? 0f : LiveText.progress(now, s.start[i], s.stop[i]);
-            return new float[]{p, p, 1f};
         }
     };
 
@@ -905,7 +934,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
         return out;
     }
 
-    // ---- the cards: at the foot, at the top, the description, the number typed ----------------------------------------
+    // ---- the cards: at the foot, the overlay's, the description, the number typed ---------------------------------
 
     private final class Panels extends View {
         private final InfoCard card;
@@ -914,6 +943,8 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
         private final TextPaint descP = Type.paint(Type.BODY, Type.REGULAR, Look07.L2), nameP = Type.paint(19f, Type.SEMIBOLD, Look07.L2);
         private final TextPaint typedP = Type.paint(22f, Type.SEMIBOLD, Look07.L2), typedNumP = Type.clock(30f, Type.BOLD, Look07.L1);
         private final RectF r = new RectF();
+        private final Paint scrim = new Paint();
+        private float scrimFor = -1f;
         private String descKey = "";
         private StaticLayout descTitle, descText;
 
@@ -948,8 +979,17 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
                 moving |= popping;
                 // No key hints over the card (the family: "I don't want the overlay, channel list, options buttons"):
                 // OK, Left and MENU still do what they did.
-            } else if (mode == OVERLAY || mode == BAR && barWithCard) {
-                moving = card.draw(c, InfoCard.TOP_Y, playing, now, false, keptChips());
+            } else if (mode == OVERLAY || mode == BAR && !pickerAlone) {
+                // The OK overlay: the scrim rising from the middle, the card low over the recent channels or the
+                // settings (risen from the foot when it was there), its progress bar its own (no seek line).
+                int hh = getHeight();
+                if (scrimFor != hh) {
+                    scrim.setShader(PlayerBar.scrim(hh));
+                    scrimFor = hh;
+                }
+                c.drawRect(0, Ui.f(PlayerBar.SCRIM_TOP), getWidth(), hh, scrim);
+                moving = rise.step();
+                moving |= card.draw(c, rise.value(), playing, now, false, keptChips());
             } else if (mode == DESC && playing != null) {
                 drawDescription(c, playing, now);
             }

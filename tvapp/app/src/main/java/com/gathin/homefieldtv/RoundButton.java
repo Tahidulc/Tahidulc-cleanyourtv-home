@@ -6,14 +6,12 @@ import android.graphics.RectF;
 import android.text.TextPaint;
 
 /**
- * Round buttons, as the player's action bar, its transport row and a title's page draw them (positions in screen
- * pixels, sizes in design pixels; icons are Dark.icon's kinds, or SPORTS for SportsIcon's ball):
+ * Round buttons, as catch-up's transport row and a title's page draw them, and the icons alone (the player's settings
+ * pills, the rail, the keyboard, the top bar) (positions in screen pixels, sizes in design pixels; icons are Dark.icon's
+ * kinds, or SPORTS for SportsIcon's ball):
  *
  * <pre>
- *   bar(c, cx, cy, icon, label, focused)    an action-bar item: its icon (40) in the focus circle (68) where the remote is,
- *                                            its label under it (Type.CHIP, 48 below the icon's middle): TEXT1 where the
- *                                            remote is, TEXT2 otherwise. Items about BAR_PITCH (160) apart; a label can
- *                                            be the setting's value ("1920 × 1080", "Off")
+ *   glyph(c, icon, cx, cy, s, colour)        an icon alone, s across, in a colour
  *   transport(c, cx, cy, icon, focused)      play/pause and the skips: a 72 px circle of white at 8 %, or the 88 px focus
  *                                            circle where the remote is
  *   icon(c, cx, cy, icon, focused)           a title page's round icon buttons (72): white at 8.5 %, or the focus circle
@@ -24,14 +22,13 @@ import android.text.TextPaint;
 final class RoundButton {
     private RoundButton() {}
 
-    static final float BAR_FOCUS = 68f, BAR_ICON = 40f, BAR_LABEL = 48f, BAR_PITCH = 160f;
     static final float TRANSPORT = 72f, TRANSPORT_FOCUS = 88f, ICON = 72f;
     /** SportsIcon's ball, beside Dark's icons. */
     static final int SPORTS = -2;
 
     private static final Paint FILL = new Paint(Paint.ANTI_ALIAS_FLAG), STROKE = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final RectF R = new RectF();
-    private static TextPaint label, play;
+    private static TextPaint play;
     private static float madeFor;
 
     static {
@@ -42,9 +39,8 @@ final class RoundButton {
 
     private static void paints() {
         float k = Ui.s * com.gathin.homefieldtv.prefs.Look.text;
-        if (label != null && k == madeFor) return;
+        if (play != null && k == madeFor) return;
         madeFor = k;
-        label = Type.paint(Type.CHIP, Type.REGULAR, 0);
         play = Type.paint(Type.ROW, Type.MEDIUM, 0);
     }
 
@@ -55,39 +51,6 @@ final class RoundButton {
         FILL.setColor(colour);
         if (icon == SPORTS) SportsIcon.draw(c, cx, cy, s, STROKE, FILL);
         else Dark.icon(c, icon, cx, cy, s, STROKE, FILL);
-    }
-
-    static void bar(Canvas c, float cx, float cy, int icon, String text, boolean focused) {
-        paints();
-        if (focused) Focus.circle(c, cx, cy, Ui.f(BAR_FOCUS));
-        glyph(c, icon, cx, cy, Ui.f(BAR_ICON), focused ? Palette.TEXT1 : Palette.TEXT2);
-        if (text == null || text.isEmpty()) return;
-        label.setColor(focused ? Palette.TEXT1 : Palette.TEXT2);
-        String t = Ui.fit(text, label, Ui.f(BAR_PITCH + 40));
-        // The label's capitals start BAR_LABEL under the icon's middle (988 for an icon at 940, its foot at 1004).
-        c.drawText(t, cx - label.measureText(t) / 2f, labelBase(cy), label);
-    }
-
-    /** bar() with a label of two lines (the value labels "English / Stereo", "Add to / favourites"): 28 a line. */
-    static void bar(Canvas c, float cx, float cy, int icon, String line1, String line2, boolean focused) {
-        bar(c, cx, cy, icon, line1, focused);
-        if (line2 == null || line2.isEmpty()) return;
-        String t = Ui.fit(line2, label, Ui.f(BAR_PITCH + 40));
-        c.drawText(t, cx - label.measureText(t) / 2f, labelBase(cy) + Ui.f(BAR_LINE), label);
-    }
-
-    /** The second line of a bar's label sits this far under the first. */
-    static final float BAR_LINE = 28f;
-
-    private static float labelBase(float cy) {
-        return cy + Ui.f(BAR_LABEL) + label.getTextSize() * 0.711f;
-    }
-
-    /** A bar label's width (screen pixels), its longer line. */
-    static float barLabelWidth(String line1, String line2) {
-        paints();
-        float w = line1 == null ? 0f : label.measureText(line1);
-        return line2 == null ? w : Math.max(w, label.measureText(line2));
     }
 
     static void transport(Canvas c, float cx, float cy, int icon, boolean focused) {

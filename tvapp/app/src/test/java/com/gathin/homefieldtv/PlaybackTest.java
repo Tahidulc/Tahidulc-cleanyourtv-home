@@ -15,18 +15,27 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-/** The player's pure parts in TiviMate's way: the bar's widths and scroll, the lists' scroll, words, shapes, History. */
+/** The player's pure parts in TiviMate's way: the overlay's columns, the lists' scroll, words, shapes, History. */
 public class PlaybackTest {
-    @Test public void theBarsButtonsAreAtLeast160AndCentreTheRemotes() {
-        assertEquals(160f, PlayerBar.slot(100f), 0f);
-        // "Closed captions 1" (about 190 px): its words and 32.
-        assertEquals(222f, PlayerBar.slot(190f), 0f);
-        // At the start nothing moves; in the middle the remote's button is centred; never past the row's end.
-        assertEquals(0f, PlayerBar.scrollFor(80f, 3000f), 0f);
-        assertEquals(48f + 1500f - 960f, PlayerBar.scrollFor(1500f, 3000f), 0f);
-        assertEquals(48f + 3000f - 1872f, PlayerBar.scrollFor(2950f, 3000f), 0f);
-        // A row that fits never moves.
-        assertEquals(0f, PlayerBar.scrollFor(1700f, 1800f), 0f);
+    @Test public void theOverlaysColumnsLineUpAcrossTheRecentChannelsAndTheSettings() {
+        // Five cards across 1824 from x 48, 14 apart: each 353.6 wide.
+        assertEquals(48f + 353.6f / 2f, RecentGrid.middle(0, 5), 0.01f);
+        assertEquals(1872f - 353.6f / 2f, RecentGrid.middle(4, 5), 0.01f);
+        for (int k = 0; k < 5; k++) assertEquals(k, RecentGrid.nearest(RecentGrid.middle(k, 5), 5));
+        // Off either end: the end's column.
+        assertEquals(0, RecentGrid.nearest(-500f, 5));
+        assertEquals(4, RecentGrid.nearest(5000f, 5));
+        // Down from a card to the pill under its middle, and Up from a pill to the card over its middle.
+        assertEquals(9, PlayerBar.ROW);
+        assertEquals(0, RecentGrid.nearest(RecentGrid.middle(0, 5), PlayerBar.ROW));
+        assertEquals(4, RecentGrid.nearest(RecentGrid.middle(2, 5), PlayerBar.ROW));
+        assertEquals(8, RecentGrid.nearest(RecentGrid.middle(4, 5), PlayerBar.ROW));
+        assertEquals(2, RecentGrid.nearest(RecentGrid.middle(4, PlayerBar.ROW), 5));
+        // A pill's colours part way to the remote's: white glass to white, white words to dark ink.
+        assertEquals(PlayerBar.GLASS, PlayerBar.blend(PlayerBar.GLASS, PlayerBar.ON, 0f));
+        assertEquals(PlayerBar.ON, PlayerBar.blend(PlayerBar.GLASS, PlayerBar.ON, 1f));
+        assertEquals(PlayerBar.INK, PlayerBar.blend(PlayerBar.WORDS, PlayerBar.INK, 1f));
+        assertEquals(0x8DFFFFFF, PlayerBar.blend(0x1AFFFFFF, 0xFFFFFFFF, 0.5f));
     }
 
     @Test public void soundTracksAreWrittenAsTheBarWritesThem() {
