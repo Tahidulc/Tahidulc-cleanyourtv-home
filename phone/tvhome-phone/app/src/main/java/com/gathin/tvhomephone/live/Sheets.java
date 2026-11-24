@@ -126,6 +126,13 @@ final class Sheets {
             d[0].dismiss();
             m.similar(ch);
         });
+        // Its logo: one from the logo packs, or one made here (LogoPicker).
+        if (c instanceof android.app.Activity) {
+            action(c, box, R.drawable.live_ic_edit, R.string.live_logo_pick, () -> {
+                d[0].dismiss();
+                LogoPicker.open((android.app.Activity) c, ch);
+            });
+        }
         action(c, box, R.drawable.live_ic_info, R.string.live_channel_info, () -> {
             d[0].dismiss();
             m.info(ch);

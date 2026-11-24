@@ -365,6 +365,21 @@ public final class Library {
         com.gathin.tvhomephone.sync.SyncStartup.soon();
     }
 
+    /** The channels as last loaded (before merging), for laying picked logos over them again. */
+    private volatile List<Channel> lastRaw;
+    /** The playlist's own logo of each channel whose logo the family picked (by key): what the cache keeps. */
+    private volatile Map<String, String> ownLogos = Collections.emptyMap();
+
+    /** A channel's logo picked or let go (ChannelLogos): the channels again with it, off the main thread. */
+    void logosChanged() {
+        List<Channel> raw = lastRaw;
+        if (raw == null) return;
+        App.io.execute(() -> {
+            apply(raw, fingerprint, guideUrl, loadedAt);
+            changed();
+        });
+    }
+
     /** Channels were hidden or unhidden (Hidden): the lists again. */
     void hiddenChanged() {
         remask();
@@ -776,7 +791,11 @@ public final class Library {
             per.put(id, n == null ? 1 : n + 1);
         }
         perPlaylist = per;
-        List<Channel> list = merged(raw);
+        lastRaw = raw;
+        // The logos the family picked for their channels over the playlist's own (ChannelLogos; the cache keeps the own).
+        Map<String, String> ownLogo = new HashMap<>();
+        List<Channel> list = ChannelLogos.apply(app, merged(raw), ownLogo);
+        ownLogos = ownLogo;
         List<Channel> ch = Collections.unmodifiableList(new ArrayList<>(list));
         String[] low = new String[ch.size()];
         String[] hk = new String[ch.size()];
@@ -903,7 +922,8 @@ public final class Library {
                 rows.add(main);
                 rows.addAll(main.alternates);
                 for (Channel c : rows) {
-                    w.write(cell(c.key) + "\t" + cell(c.name) + "\t" + cell(c.group) + "\t" + cell(c.logo) + "\t" + cell(c.url) + "\t"
+                    String logo = c == main && ownLogos.containsKey(c.key) ? ownLogos.get(c.key) : c.logo;
+                    w.write(cell(c.key) + "\t" + cell(c.name) + "\t" + cell(c.group) + "\t" + cell(logo) + "\t" + cell(c.url) + "\t"
                             + cell(c.tvgId) + "\t" + cell(c.userAgent) + "\t" + cell(c.referrer) + "\t" + c.number + "\n");
                 }
             }

@@ -99,6 +99,45 @@ public final class AskAi {
         return board(a, match);
     }
 
+    // ---- a channel's logo ----------------------------------------------------------------------------------------------
+
+    /** The logo system prompt (fixed). */
+    public static String logoSystem() {
+        return "You design TV channel logos for a family's own TV and phone apps. Answer with one design as JSON in the schema "
+                + "given; the app draws it as a crisp see-through picture (there is no image model: only the parts below).\n\n"
+                + "text is the main words (at most 14 characters: the channel's name, a short form of it, or its initials); sub a "
+                + "short second line or \"\". layout: WORDMARK (the words in a line, a mark beside them), MONOGRAM (initials, "
+                + "square), STACKED (the words over the second line, from the left), BADGE (on a plate, a mark beside), "
+                + "ROUNDEL (initials in a ring, square). font: OUTFIT (geometric), KHAND (condensed, sporty), BARLOW (condensed), "
+                + "BARLOW_HEAVY (heavy condensed), BARLOW_SEMI, MONTSERRAT (wide, bold), INTER (neutral), RUBIK (rounded), SYSTEM. "
+                + "colours (\"#RRGGBB\"): ground fills the shape, or \"\" for none (the logo then sits on a dark tile); ink the "
+                + "words; accent the mark; sub the second line. shape: NONE, ROUNDED, PILL, CIRCLE, SHIELD, HEXAGON, SLANT. mark: "
+                + "one simple mark (NONE, STAR, BOLT, BALL, PLAY, WAVE, CHEVRON, CROWN, DIAMOND, SUN, HOUSE, RINGS) and markSide "
+                + "LEFT, TOP or RIGHT. italic leans the words; outline rings them in the accent.\n\n"
+                + "Design rules: it is seen small, on a TV across the room and in lists on a phone, so keep it bold and simple: "
+                + "words at least 4.5:1 on their ground (on a dark tile when there is none), two or three colours, one mark at "
+                + "most. Make it the family's own: never copy a real channel's or company's logo, colours-and-shape trade dress "
+                + "or slogan, and no other brand names. Set v to 1.";
+    }
+
+    /** The family's words and the channel (its name made plain, and its group), as the user's message. */
+    public static String logoUser(String words, String channel, String group) {
+        StringBuilder b = new StringBuilder();
+        String w = clean(words);
+        b.append("What we'd like: ").append(w.isEmpty() ? "A bold, simple logo for this channel." : w).append("\n\n");
+        b.append("The channel: ").append(clean(LogoDesigner.plain(channel)));
+        String g = clean(group);
+        if (!g.isEmpty()) b.append("\nIts group in our playlist: ").append(g);
+        return b.toString();
+    }
+
+    /** A channel logo designed by Claude: blocking (never the main thread). */
+    public static LogoSpec designLogo(Claude claude, String key, String model, String words, String channel, String group)
+            throws Claude.Failure {
+        JSONObject a = claude.ask(key, model, logoSystem(), logoUser(words, channel, group), LogoSpec.schema());
+        return LogoSpec.from(a);
+    }
+
     /** A key as Settings shows it: its start and its last four, the rest hidden. */
     public static String masked(String key) {
         String k = key == null ? "" : key.trim();
