@@ -824,6 +824,22 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
         }
     };
 
+    /** The chips as drawn: asked of the player at most twice a second (a frame of the card moving makes nothing). */
+    private List<String> chipsKept;
+    private long chipsAt = Long.MIN_VALUE;
+    private Channel chipsFor;
+
+    private List<String> keptChips() {
+        long now = android.os.SystemClock.uptimeMillis();
+        Channel ch = tv.live.channel();
+        if (chipsKept == null || ch != chipsFor || now - chipsAt >= 500 || Exec.inline) {
+            chipsKept = chips(tv.live);
+            chipsAt = now;
+            chipsFor = ch;
+        }
+        return chipsKept;
+    }
+
     /** The chips for the channel playing: the picture's quality, its frames a second, the sound (FHD, 50 FPS, STEREO). */
     static List<String> chips(LiveTv live) {
         List<String> out = new ArrayList<>(3);
@@ -871,7 +887,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
                 // The card for the channel shown (CH+ and CH−: another one), the mini guide round it, the keys' hints, and
                 // which channel is playing.
                 Channel ch = peek != null ? peek : playing;
-                moving = card.draw(c, InfoCard.FOOT_Y, ch, now, false, ch == playing ? chips(tv.live) : null);
+                moving = card.draw(c, InfoCard.FOOT_Y, ch, now, false, ch == playing ? keptChips() : null);
                 if (ch != settledOn) {
                     settledOn = ch;
                     settled = Exec.inline;
@@ -882,7 +898,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
                 MiniGuide.hints(c);
                 if (digits.isEmpty() && playing != null) mini.watching(c, "Watching", Words.number(Library.get(getContext()).number(playing)));
             } else if (mode == OVERLAY || mode == BAR && barWithCard) {
-                moving = card.draw(c, InfoCard.TOP_Y, playing, now, false, chips(tv.live));
+                moving = card.draw(c, InfoCard.TOP_Y, playing, now, false, keptChips());
             } else if (mode == DESC && playing != null) {
                 drawDescription(c, playing, now);
             }

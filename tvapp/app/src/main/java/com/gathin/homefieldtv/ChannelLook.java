@@ -56,6 +56,7 @@ final class ChannelLook {
     private static final Paint FILL = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG), EDGE = new Paint(Paint.ANTI_ALIAS_FLAG),
             RING = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final RectF R = new RectF(), O = new RectF(), B = new RectF();
+    private static float preparedFor = -1f;
     /** The name in a logo's place (a channel with no logo at all), and a mark's HD; made on first use (Type is ready). */
     private static TextPaint nameP, chipP;
     private static TextFit names;
@@ -118,6 +119,14 @@ final class ChannelLook {
      * marks in its right-hand corner.
      */
     static void cell(Canvas c, RectF cell, float radius, Channel ch, float up, int marks, String quality, boolean reserve, Runnable redraw) {
+        if (radius != preparedFor) {
+            // The shadows and the glow at the sizes a cell lifts through, made once (never while a cell lifts).
+            preparedFor = radius;
+            float design = radius / Ui.s;
+            Shadows.prepare(Look07.SH_CHANNEL, design);
+            Shadows.prepare(Look07.SH_CHANNEL_UP, design);
+            Shadows.prepare(Look07.GLOW_CHANNEL, design);
+        }
         float k = Math.max(0f, Math.min(1f, up));
         RectF r = lifted(cell, up, O);
         float rad = radius * (r.height() / Math.max(1f, cell.height()));

@@ -122,6 +122,11 @@ final class GuideScreen extends Screen implements GuideGrid.Host, GroupsPanel.Ho
         this.startCategory = category;
     }
 
+    /** Its page draws an opaque ground (its blurred picture) over the whole screen: the window's own isn't drawn under it. */
+    @Override boolean opaque() {
+        return true;
+    }
+
     @Override View build() {
         // No ground of its own: the window's (TvActivity) is the guide's, so the screen is filled once, not twice.
         FrameLayout f = new FrameLayout(tv);

@@ -113,7 +113,23 @@ final class RightPanel extends FrameLayout implements RowList.Host {
         return open > 0f && !closing;
     }
 
+    /**
+     * The lists laid out over the panel's page only (not the whole screen), so a frame of the rows moving redraws that and
+     * not the dimmed screen under it.
+     */
+    @Override protected void onLayout(boolean changed, int l, int t, int r, int b) {
+        super.onLayout(changed, l, t, r, b);
+        int left = Ui.px(x), right = Math.min(r - l, Ui.px(x + w - MARGIN) + Ui.px(SLIDE)), top = Ui.px(MARGIN) / 2,
+                bottom = b - t - Ui.px(MARGIN) / 2;
+        for (RowList list : lists) list.layout(left, top, Math.max(left + 1, right), Math.max(top + 1, bottom));
+        laidX = x;
+        laidW = w;
+    }
+
+    private float laidX = -1f, laidW = -1f;
+
     private void place() {
+        if (x != laidX || w != laidW) requestLayout();
         for (RowList l : lists) {
             // Inside the floating panel: 14 px in from its sides, under its title, above its foot.
             l.x = x + 14f;

@@ -370,7 +370,15 @@ wordmark are Homefield; it carries no Sky logo or name.
   Red, Brown, Blue grey, Grey or Black) with an accent (Blue as it comes, Red, Pink, Purple, Indigo, Cyan, Teal, Green,
   Lime, Yellow, Amber, Orange or Deep orange), each a disc, the pair in use ticked and named ("Indigo • Blue"); OK keeps
   one and the screens start again in it, back on Settings. The themes from before are gone: a TV that had one comes up
-  in Indigo • Blue. Then Posters (Portrait / Landscape) and Programme times (24-hour as it comes, or 12-hour).
+  in Indigo • Blue. Then Posters (Portrait / Landscape), Programme times (24-hour as it comes, or 12-hour) and
+  Animations: Automatic (as it comes), Full or Lite. Lite keeps the look and the motion (cards lift, rows slide,
+  pictures cross-fade) but leaves out what a slower TV's graphics chip finds hardest: the cards' tilt and the light
+  sweeping across them, a lifted card's picture drifting under its frame, and the page's big blurred picture changing
+  while the remote moves (its colour cross-fades instead, the picture comes in once the remote rests, and the frosted
+  panels take that colour meanwhile); the widest programme cells fade their picture into its own colour rather than a
+  blur of it. Automatic is Lite on a Mali-G52-class chip (the TCL), under 3 GB of memory, or when the first seconds of
+  moving measure over 18 ms a frame (once a build); else Full (the Google TV Streamer). The page says which it chose and
+  why.
   Channels & categories: One row per channel (merge qualities), on as it comes; Hidden channels (each hidden channel a
   line, a channel in several qualities hidden whole one line whose OK brings every version back, a version hidden by
   itself its own line; Show all channels); Manage categories (Show all categories, Hide all categories and each
@@ -407,6 +415,29 @@ wordmark are Homefield; it carries no Sky logo or name.
   only addresses on that network: the channel is played only when this TV's own playlists have it (by its stream id,
   else its guide id, else its tidied name), with "Playing … from …" for a moment, and the phone's Stop lets go of it
   (back to Home). The phone's stream address and login are never used.
+
+## How smooth it is
+
+Every screen is drawn to stay within 20 ms a frame on the TCL (50 a second, 60 where it can) while the remote moves:
+pictures read once at the size drawn (opaque ones in 16-bit colour), one shader each kept; shadows are small blurred
+sprites drawn as one nine-patch (their middle left out under an opaque box), never made while moving; a page's blurred
+ground is one draw (its dim composed into it); parts that don't move (a title's page ground, the club pages' grain, the
+tab bar's mark and clock, blocks of words) are kept and drawn in one call, faded as a whole; only what changes is drawn
+again (the tab bar's strip, Settings' panel, a side menu's rows), and a page fades in over the one it leaves without a
+second layer; the window's own ground isn't drawn under an opaque page or a full-screen channel. Every animation runs
+on the display's clock, so a frame missed skips ahead rather than slowing down.
+
+The memory log (Android/data/com.gathin.homefieldtv/files/memlog.txt) has, after each minute's memory line, a line of
+the frame times of each screen used that minute (Android's own measure of every frame drawn):
+
+```
+2026-11-18 20:31 frames motion=auto-lite Home n=812 p50=11.2 p95=19.8 over20=3.1% gpu95=9.0 | Guide n=140 p50=13.0 p95=22.4 over20=7.9% gpu95=12.1
+```
+
+motion: the tier (auto-lite, auto-full, lite, full); per screen: frames drawn, their median and 95th percentile (ms),
+the share over 20 ms, and the graphics chip's 95th percentile (Android 12 and later). `FrameCostTest` measures every
+screen's frame of motion on the JVM (drawing calls, bytes made, fill in whole screens, layers, perspective) in both
+tiers and keeps each within its budget.
 
 ## Getting a playlist on to a TV
 

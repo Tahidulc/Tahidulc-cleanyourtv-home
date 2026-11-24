@@ -14,7 +14,9 @@ import android.text.TextPaint;
  * focused, scale 1.12, rotateX 5° and rotateY -7° seen from 1200 px, its picture drifting under its frame, a sheen of
  * light sweeping across it, a deep soft shadow, a hairline of light round it; its caption dropping 22 px and turning
  * white). How far lifted is a Lift07's value, so it follows 07's springy ease on Glide. One painter serves a row of
- * cards of one size; nothing is made a frame once each picture has been drawn once (Shaders).
+ * cards of one size; nothing is made a frame once each picture has been drawn once (Shaders). In Motion's Lite tier a
+ * card lifts and grows the same but without the tilt in perspective, the sheen or the drift (the graphics chip's quick
+ * path: a plain scale, no gradient over it, the picture still under its frame).
  *
  * <pre>
  *   Card07 cards = new Card07(Look07.R_CARD);                    // R_POSTER for posters; with the view
@@ -100,11 +102,16 @@ final class Card07 {
         // The shadow: resting, then deep and soft as it lifts (under the grown card).
         r.set(x + w / 2f - w * grow / 2f, y + h / 2f - h * grow / 2f, x + w / 2f + w * grow / 2f, y + h / 2f + h * grow / 2f);
         float kk = Math.max(0f, Math.min(1f, k));
-        Shadows.draw(c, r, rad * grow, Look07.SH_CARD, 1f - kk);
+        // The card is opaque (its frame under its picture): the resting shadow's hidden middle is left out.
+        Shadows.under(c, r, rad * grow, Look07.SH_CARD, 1f - kk);
         Shadows.draw(c, r, rad * grow, Look07.SH_CARD_UP, kk);
+        boolean lite = Motion.lite();
         c.save();
         c.translate(x, y);
-        if (k != 0f) {
+        if (k != 0f && lite) {
+            // Lite: lifted toward you without the tilt (a plain scale: the chip's quick path, words and edges crisp).
+            c.scale(grow, grow, w / 2f, h / 2f);
+        } else if (k != 0f) {
             // Lifted toward you, tilted 5° about its width and -7° about its height, seen from 1200 px.
             tilt(k, Ui.f(Look07.CARD_PERSPECTIVE), tilt);
             m.setValues(tilt);
@@ -117,7 +124,7 @@ final class Card07 {
         if (pic != null) {
             // The picture, 14 px larger all round, drifting (-10, -4) under its still frame as it lifts.
             Paint p = shaders.paint(pic, w, h, Ui.f(Look07.CARD_BLEED));
-            float dx = Ui.f(Look07.CARD_DRIFT_X) * k, dy = Ui.f(Look07.CARD_DRIFT_Y) * k;
+            float dx = lite ? 0f : Ui.f(Look07.CARD_DRIFT_X) * k, dy = lite ? 0f : Ui.f(Look07.CARD_DRIFT_Y) * k;
             c.save();
             c.translate(dx, dy);
             c.drawRoundRect(-dx, -dy, w - dx, h - dy, rad, rad, p);
@@ -125,7 +132,7 @@ final class Card07 {
         } else {
             c.drawRoundRect(r, rad, rad, frame);
         }
-        if (kk > 0.004f) {
+        if (kk > 0.004f && !lite) {
             // The sheen: light at 115°, sweeping from -30 % to 8 % of the width as it fades in.
             if (w != sheenW || h != sheenH) {
                 sheenW = w;
@@ -142,13 +149,15 @@ final class Card07 {
             c.translate(sx, 0);
             c.drawRoundRect(-sx, 0, w - sx, h, rad, rad, sheen);
             c.restore();
+        }
+        if (kk > 0.004f) {
             // A hairline of light round it.
             edge.setStrokeWidth(Math.max(1f, Ui.f(1f)));
             edge.setColor(Palette.alpha(Look07.EDGE, Math.round((Look07.EDGE >>> 24) * kk)));
             c.drawRoundRect(r, rad, rad, edge);
         }
-        // The marks drift (7, -3) the other way.
-        c.translate(Ui.f(Look07.MARKS_DRIFT_X) * k, Ui.f(Look07.MARKS_DRIFT_Y) * k);
+        // The marks drift (7, -3) the other way (Full).
+        if (!lite) c.translate(Ui.f(Look07.MARKS_DRIFT_X) * k, Ui.f(Look07.MARKS_DRIFT_Y) * k);
     }
 
     void end(Canvas c) {

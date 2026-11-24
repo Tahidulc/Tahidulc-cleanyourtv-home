@@ -64,10 +64,15 @@ public final class Sources {
     }
 
     /** Every playlist, in the order added; the one set up before (Source's own) moved in as the first. */
+    /** The list as last read, and the saved words it was read from (the screens ask often: read again only when changed). */
+    private static String readFrom;
+    private static List<Entry> read;
+
     public static synchronized List<Entry> list(Context c) {
         SharedPreferences p = prefs(c);
         String raw = p.getString("list", null);
         if (raw == null) return new ArrayList<>();
+        if (raw.equals(readFrom) && read != null) return new ArrayList<>(read);
         List<Entry> out = new ArrayList<>();
         try {
             JSONArray a = new JSONArray(raw);
@@ -80,6 +85,8 @@ public final class Sources {
         } catch (JSONException ignored) {
             // none readable
         }
+        readFrom = raw;
+        read = new ArrayList<>(out);
         return out;
     }
 

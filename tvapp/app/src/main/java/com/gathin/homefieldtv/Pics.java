@@ -4,7 +4,9 @@ import android.content.ComponentCallbacks2;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.BitmapShader;
 import android.graphics.Canvas;
+import android.graphics.ComposeShader;
 import android.graphics.LinearGradient;
 import android.graphics.Matrix;
 import android.graphics.Paint;
@@ -130,6 +132,13 @@ final class Pics {
      * words' shade is drawn over it where the words are (PicTile.shade).
      */
     static final int FILL = 19, FILL_CARD = 20;
+    /**
+     * FILL and FILL_CARD as Motion's Lite tier makes them (kept apart from Full's, the tier changing): an ambient fill's
+     * ground is the picture's own colour rather than its blur, and its sharp picture's edges fade into that colour as it
+     * is drawn (no blur and no second full-size sheet while it is read: lighter on the TV's processor and memory). Asked
+     * for as FILL or FILL_CARD; Pics picks these itself.
+     */
+    static final int FILL_LITE = 24, FILL_CARD_LITE = 25;
     /**
      * CELL_COLOUR, CELL_NONE and CELL_BLACK are a channel's logo alone on its cell (ChannelLook), as large as w x h
      * allows at its own shape (the box is the cell less its room), read sharp from the logo itself at that size: on its
@@ -292,6 +301,7 @@ final class Pics {
 
     private static Bitmap want(String url, int w, int h, int mode, Runnable whenReady, boolean now) {
         if (url == null || url.isEmpty() || w <= 0 || h <= 0) return null;
+        if (Motion.lite() && (mode == FILL || mode == FILL_CARD)) mode = mode == FILL ? FILL_LITE : FILL_CARD_LITE;
         Key probe = probe(url, w, h, mode);
         Bitmap b = mem.get(probe);
         if (b != null) {
@@ -442,8 +452,8 @@ final class Pics {
             BitmapFactory.decodeStream(s, null, o);
         }
         if (o.outWidth <= 0 || o.outHeight <= 0) return null;
-        if (mode == BLUR) return blurred(in, o, w, h);
-        if (mode == FILL || mode == FILL_CARD) return filled(in, o, url, w, h, mode);
+        if (mode == BLUR) return blurred(in, url, o, w, h);
+        if (mode == FILL || mode == FILL_CARD || mode == FILL_LITE || mode == FILL_CARD_LITE) return filled(in, o, url, w, h, mode);
         if (mode == CELL_COLOUR || mode == CELL_NONE || mode == CELL_BLACK) {
             Bitmap logo = sharp(in, o, w, h);
             return logo == null ? null : Logos.cell(url, logo, w, h, mode);
@@ -759,7 +769,7 @@ final class Pics {
      * BLUR: the picture read at an eighth of w x h, filling it (its middle kept), stack-blurred once and its colour pushed
      * (Look07: blur 50, saturate 1.75, brightness 0.86); drawn at w x h it is the 07 page's blurred picture.
      */
-    private static Bitmap blurred(Source in, BitmapFactory.Options o, int w, int h) throws IOException {
+    private static Bitmap blurred(Source in, String url, BitmapFactory.Options o, int w, int h) throws IOException {
         int bw = Math.max(2, Math.round(w / (float) Look07.BLUR_DOWNSCALE)), bh = Math.max(2, Math.round(h / (float) Look07.BLUR_DOWNSCALE));
         int sample = 1;
         while (o.outWidth / (sample * 2) >= bw && o.outHeight / (sample * 2) >= bh) sample *= 2;
@@ -785,7 +795,33 @@ final class Pics {
         StackBlur.blur(px, bw, bh, Math.max(1, Math.round(sigma * 2.45f)));
         StackBlur.colour(px, Look07.BLUR_SATURATE, Look07.BLUR_BRIGHTNESS);
         out.setPixels(px, 0, bw, 0, 0, bw, bh);
+        TINTS.put(url, average(px));
         return out;
+    }
+
+    /** Each page picture's own colour (the average of its blurred copy), by its address, for Ground's Lite tint. */
+    private static final java.util.Map<String, Integer> TINTS = java.util.Collections.synchronizedMap(new java.util.LinkedHashMap<String, Integer>(64, 0.75f, true) {
+        @Override protected boolean removeEldestEntry(java.util.Map.Entry<String, Integer> e) {
+            return size() > 800;
+        }
+    });
+
+    /** A page picture's own colour once its blurred copy has been made (Ground, Lite), or 0 before. */
+    static int tintOf(String url) {
+        Integer c = url == null || url.isEmpty() ? null : TINTS.get(url);
+        return c == null ? 0 : c;
+    }
+
+    /** Pure: the average colour of some pixels (opaque). */
+    static int average(int[] px) {
+        long r = 0, g = 0, b = 0;
+        for (int c : px) {
+            r += (c >> 16) & 0xFF;
+            g += (c >> 8) & 0xFF;
+            b += c & 0xFF;
+        }
+        int n = Math.max(1, px.length);
+        return 0xFF000000 | (int) (r / n) << 16 | (int) (g / n) << 8 | (int) (b / n);
     }
 
     /** The ambient fill's blurred ground: its brightness and saturation (a little quieter than the sharp picture over it). */
@@ -811,7 +847,8 @@ final class Pics {
         float[] f = facesOf(url, src);
         float sw = src.getWidth(), sh = src.getHeight();
         float[] lay = new float[PicFill.SIZE];
-        PicFill.layout(sw / sh, f, w, h, mode == FILL_CARD, lay);
+        boolean card = mode == FILL_CARD || mode == FILL_CARD_LITE, lite = mode == FILL_LITE || mode == FILL_CARD_LITE;
+        PicFill.layout(sw / sh, f, w, h, card, lay);
         Bitmap out = Bitmap.createBitmap(w, h, Bitmap.Config.RGB_565);
         Canvas c = new Canvas(out);
         Paint p = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG);
@@ -819,7 +856,20 @@ final class Pics {
         float k = lay[PicFill.K] / sh;
         m.setScale(k, k);
         m.postTranslate(lay[PicFill.X], lay[PicFill.Y]);
-        if (lay[PicFill.KIND] == PicFill.AMBIENT) {
+        if (lay[PicFill.KIND] == PicFill.AMBIENT && lite) {
+            // Lite: the picture's own colour behind, the sharp picture over it, its edges faded into that colour as it
+            // is drawn (a mask composed with it: no blur, no second sheet).
+            c.drawColor(ambientColour(src));
+            BitmapShader sharp = new BitmapShader(src, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
+            sharp.setLocalMatrix(m);
+            float x0 = lay[PicFill.X], x1 = x0 + sw * k, fl = lay[PicFill.FEATHER_L], fr = lay[PicFill.FEATHER_R];
+            float w0 = Math.max(1f, x1 - x0), a = Math.max(0f, Math.min(0.49f, fl / w0)), b = Math.max(0f, Math.min(0.49f, fr / w0));
+            Shader mask = new LinearGradient(x0, 0, x1, 0, new int[]{a > 0f ? 0 : 0xFF000000, 0xFF000000, 0xFF000000, b > 0f ? 0 : 0xFF000000},
+                    new float[]{0f, Math.max(0.0001f, a), Math.min(0.9999f, 1f - b), 1f}, Shader.TileMode.CLAMP);
+            Paint q = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG);
+            q.setShader(new ComposeShader(sharp, mask, PorterDuff.Mode.DST_IN));
+            c.drawRect(Math.max(0f, x0), 0, Math.min(w, x1), h, q);
+        } else if (lay[PicFill.KIND] == PicFill.AMBIENT) {
             fillGround(c, src, w, h, p);
             // The sharp picture on a clear sheet of its own (the 16-bit picture has no clear), its edges feathered.
             Bitmap sheet = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
@@ -845,6 +895,17 @@ final class Pics {
         }
         src.recycle();
         return out;
+    }
+
+    /** Lite's ambient ground: the picture's own colour (its average, quietened as the blurred ground is). */
+    private static int ambientColour(Bitmap src) {
+        Bitmap one = Bitmap.createScaledBitmap(src, 4, 4, true);
+        int[] px = new int[16];
+        one.getPixels(px, 0, 4, 0, 0, 4, 4);
+        if (one != src) one.recycle();
+        int[] avg = {average(px)};
+        StackBlur.colour(avg, FILL_GROUND_SATURATE, FILL_GROUND_BRIGHT);
+        return avg[0] | 0xFF000000;
     }
 
     /** The ambient fill's ground: the picture covering w x h at an eighth of its size, stack-blurred once, drawn back up. */

@@ -84,6 +84,11 @@ final class TeamScreen extends Screen {
         took(s);
     }
 
+    /** Its page draws an opaque ground over the whole screen (the window's own isn't drawn under it). */
+    @Override boolean opaque() {
+        return true;
+    }
+
     @Override View build() {
         FrameLayout f = new FrameLayout(tv);
         page = new Page();
@@ -386,14 +391,28 @@ final class TeamScreen extends Screen {
             swap.to(1f);
         }
 
+        /** The ground, its grain and its vignette: three screens of fill that don't move, kept as one picture (Cached). */
+        private final Cached still = new Cached(true);
+        private final Cached.Painter paintStill = this::paintStill;
+
+        private void paintStill(Canvas c) {
+            int w = getWidth(), h = getHeight();
+            c.drawRect(0, 0, w, h, ground);
+            c.drawRect(0, 0, w, h, grain);
+            c.drawRect(0, 0, w, h, vignette);
+        }
+
+        @Override protected void onDetachedFromWindow() {
+            super.onDetachedFromWindow();
+            still.forget();
+        }
+
         @Override protected void onDraw(Canvas c) {
             boolean moving = pos.step();
             moving |= fade.step();
             moving |= swap.step();
             int w = getWidth(), h = getHeight();
-            c.drawRect(0, 0, w, h, ground);
-            c.drawRect(0, 0, w, h, grain);
-            c.drawRect(0, 0, w, h, vignette);
+            still.draw(c, w, h, ground.getShader(), Math.round(Ui.s * 1000f), paintStill, 1f, 0f);
             if (!cards.isEmpty() && art != null) {
                 float p = pos.value(), k = fade.value();
                 // The furthest first, so the nearer cards lie over them.

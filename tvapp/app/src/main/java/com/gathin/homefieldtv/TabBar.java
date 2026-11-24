@@ -86,6 +86,7 @@ final class TabBar extends View {
     private void paints() {
         if (madeFor == Ui.s && tabP != null) return;
         madeFor = Ui.s;
+        timeFor = -1;
         tabP = Type.paint(Type.TAB, Type.MEDIUM, Look07.L2);
         tabInk = Type.paint(Type.TAB, Type.SEMIBOLD, Look07.INK);
         brandP = Type.paint(Type.BRAND, Type.BOLD, Look07.L1);
@@ -312,6 +313,17 @@ final class TabBar extends View {
 
     // ---- drawing ----------------------------------------------------------------------------------------------------------
 
+    /**
+     * Only the shell's own strip along the top (the bar, its shadow, the back line), so a frame of the pill sliding
+     * redraws that strip and not the page under it (the TV redraws only what changed).
+     */
+    static final float HEIGHT = 200f;
+
+    @Override protected void onMeasure(int ws, int hs) {
+        super.onMeasure(ws, hs);
+        setMeasuredDimension(getMeasuredWidth(), Math.min(getMeasuredHeight(), Ui.px(HEIGHT)));
+    }
+
     @Override protected void onDraw(Canvas c) {
         paints();
         long t = SystemClock.uptimeMillis();
@@ -327,42 +339,59 @@ final class TabBar extends View {
         }
         int a = Math.round(255 * shown);
         moving |= pillX.step() | pillW.step() | lift.step();
-        // Homefield's mark and name.
+        long minute = System.currentTimeMillis() / 60_000L;
+        if (minute != timeFor) {
+            timeFor = minute;
+            time = Ui.cornerClock(System.currentTimeMillis());
+            timeW = clockP.measureText(time);
+        }
+        boolean tabs = back == null || active;
+        // The mark, the name, the clock and the bar's glass don't move as the pill slides: kept (Cached), drawn in one call,
+        // faded with the shell as the node's own opacity (nothing recorded again as it fades).
+        still.draw(c, getWidth(), getHeight(), null, Cached.key(minute, (tabs ? 1 : 2) + Math.round(Ui.s * 1000f) * 4L
+                + (long) Math.round(barW) * 1_000_000L), paintStill, a / 255f, 0f);
+        if (tabs) {
+            moving |= drawTabs(c, a, t);
+        } else {
+            moving |= drawBack(c, a);
+        }
+        if (moving) postInvalidateOnAnimation();
+    }
+
+    private final Cached still = new Cached(false);
+    private final Cached.Painter paintStill = this::paintStill;
+    private float timeW;
+
+    /** The shell's parts that stay still: Homefield's mark and name, the clock, and (the tabs) the bar's glass. */
+    private void paintStill(Canvas c) {
+        int a = still.alpha();
         float ms = Ui.f(Look07.MARK), mx = Ui.f(Look07.BRAND_X), my = Ui.f(Look07.BRAND_Y);
         mark.setAlpha(a);
         markInk.setAlpha(a);
         Dark.mark(c, mx, my, ms, mark, markInk);
         brandP.setAlpha(a);
         c.drawText("Homefield", mx + ms + Ui.f(Look07.BRAND_GAP), Type.centred(brandP, my + ms / 2f), brandP);
-        // The clock.
-        long minute = System.currentTimeMillis() / 60_000L;
-        if (minute != timeFor) {
-            timeFor = minute;
-            time = Ui.cornerClock(System.currentTimeMillis());
-        }
         if (!time.isEmpty()) {
             clockP.setAlpha(a);
-            c.drawText(time, Ui.f(1920f - Look07.CLOCK_RIGHT) - clockP.measureText(time), Ui.f(Look07.CLOCK_TOP + 31f), clockP);
+            c.drawText(time, Ui.f(1920f - Look07.CLOCK_RIGHT) - timeW, Ui.f(Look07.CLOCK_TOP + 31f), clockP);
         }
-        if (back != null && !active) {
-            moving |= drawBack(c, a);
-        } else {
-            moving |= drawTabs(c, a, t);
+        if (back == null || active) {
+            float top = Ui.f(Look07.BAR_TOP), h = Ui.f(Look07.BAR_H);
+            r.set(barX, top, barX + barW, top + h);
+            Frost.glass(c, r, h / 2f, a / 255f);
         }
-        if (moving) postInvalidateOnAnimation();
     }
 
     private boolean drawBack(Canvas c, int a) {
-        c.saveLayerAlpha(0, 0, getWidth(), Ui.f(Look07.TOP), a);
+        // Faded with the shell only while it fades (an offscreen pass otherwise wasted on every frame).
+        if (a < 255) c.saveLayerAlpha(0, 0, getWidth(), Ui.f(Look07.TOP), a);
         Pills.back(c, Ui.f(Look07.BACK_X), Ui.f(Look07.BACK_Y + 12f), back);
-        c.restore();
+        if (a < 255) c.restore();
         return false;
     }
 
     private boolean drawTabs(Canvas c, int a, long t) {
         float top = Ui.f(Look07.BAR_TOP), h = Ui.f(Look07.BAR_H);
-        r.set(barX, top, barX + barW, top + h);
-        Frost.glass(c, r, h / 2f, shown);
         // The pill: under the page's tab, or (the remote on the bar) under the remote's tab, lifted a little with its
         // shadow, sliding between tabs.
         float up = Math.max(0f, Math.min(1.1f, lift.value()));

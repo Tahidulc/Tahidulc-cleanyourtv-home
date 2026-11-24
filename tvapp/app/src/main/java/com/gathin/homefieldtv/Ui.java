@@ -79,11 +79,74 @@ final class Ui {
                 .build();
     }
 
+    /**
+     * A laid-out block of words at (x, y). On the TV's hardware canvas the block is kept, recorded once at its paint's
+     * colour made opaque (again only when that colour changes), its paint's opacity applied as the node's own as it fades,
+     * so a frame draws it in one call: no line laid out again and nothing made (a block with styled words otherwise makes
+     * its spans' lists every frame).
+     */
     static void draw(Canvas c, StaticLayout l, float x, float y) {
         c.save();
         c.translate(x, y);
-        l.draw(c);
+        if (android.os.Build.VERSION.SDK_INT >= 29 && c.isHardwareAccelerated()) KeptWords.draw(c, l);
+        else l.draw(c);
         c.restore();
+    }
+
+    /** The blocks of words drawn lately, each as a RenderNode recorded for its paint's opaque colour (main thread). */
+    @androidx.annotation.RequiresApi(29)
+    private static final class KeptWords {
+        static final int COUNT = 48;
+        static final StaticLayout[] layouts = new StaticLayout[COUNT];
+        static final int[] colours = new int[COUNT];
+        static final android.graphics.RenderNode[] nodes = new android.graphics.RenderNode[COUNT];
+        static final long[] used = new long[COUNT];
+        static long clock;
+
+        static void draw(Canvas c, StaticLayout l) {
+            int argb = l.getPaint().getColor(), colour = argb | 0xFF000000, alpha = argb >>> 24;
+            if (alpha == 0) return;
+            clock++;
+            int free = 0;
+            for (int i = 0; i < COUNT; i++) {
+                if (layouts[i] == l) {
+                    if (colours[i] != colour) record(i, l, colour);
+                    used[i] = clock;
+                    nodes[i].setAlpha(alpha / 255f);
+                    c.drawRenderNode(nodes[i]);
+                    return;
+                }
+                if (used[i] < used[free]) free = i;
+            }
+            layouts[free] = l;
+            record(free, l, colour);
+            used[free] = clock;
+            nodes[free].setAlpha(alpha / 255f);
+            c.drawRenderNode(nodes[free]);
+        }
+
+        private static void record(int i, StaticLayout l, int colour) {
+            android.graphics.RenderNode n = nodes[i];
+            if (n == null) {
+                n = new android.graphics.RenderNode("homefield-words");
+                n.setClipToBounds(false);
+                // Faded per word (its opacity on each), never through a layer of its own.
+                n.setHasOverlappingRendering(false);
+                nodes[i] = n;
+            }
+            n.setPosition(0, 0, Math.max(1, l.getWidth()), Math.max(1, l.getHeight()));
+            android.text.TextPaint p = l.getPaint();
+            int was = p.getColor();
+            p.setColor(colour);
+            android.graphics.RecordingCanvas rc = n.beginRecording();
+            try {
+                l.draw(rc);
+            } finally {
+                n.endRecording();
+                p.setColor(was);
+            }
+            colours[i] = colour;
+        }
     }
 
     static Paint stroke(int color, float width) {

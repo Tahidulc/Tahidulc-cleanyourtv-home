@@ -244,6 +244,14 @@ final class LiveTv {
         frameRate();
     }
 
+    /**
+     * Whether the live picture is up over the whole screen (its view shown, filling it): then nothing of the window's own
+     * ground can show (TvActivity leaves it undrawn under a screen over the picture).
+     */
+    boolean covering() {
+        return picture.getVisibility() == View.VISIBLE && picture.getAlpha() >= 0.999f && full();
+    }
+
     /** Whether the picture has the whole screen (its shape and the TV's refresh rate are Settings' only then). */
     private boolean full() {
         int lw = layer.getWidth() > 0 ? layer.getWidth() : layer.getResources().getDisplayMetrics().widthPixels;

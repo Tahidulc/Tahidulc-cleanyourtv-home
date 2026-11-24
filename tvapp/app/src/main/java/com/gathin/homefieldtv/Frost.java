@@ -26,13 +26,16 @@ import com.gathin.homefieldtv.engine.Exec;
  *   Frost.glass(c, rect, radius, 1f)                               the glass of the tab bar and the pills (no blur)
  * </pre>
  *
- * The material's fill is a gradient made when the panel's height changes (not each frame).
+ * The material's fill is a gradient made when the panel's height changes (not each frame). In Motion's Lite tier, while
+ * the ground shows its picture's colour (the remote moving), a panel has that colour behind its fill rather than a new
+ * picture each move.
  */
 final class Frost {
     /** The mock-ups' materials: Look07.GLASS, MAT or MAT_DARK. */
     final int kind;
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG), behind = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG),
-            solid = new Paint(Paint.ANTI_ALIAS_FLAG), light = new Paint(Paint.ANTI_ALIAS_FLAG), ring = new Paint(Paint.ANTI_ALIAS_FLAG);
+            solid = new Paint(Paint.ANTI_ALIAS_FLAG), light = new Paint(Paint.ANTI_ALIAS_FLAG), ring = new Paint(Paint.ANTI_ALIAS_FLAG),
+            tinted = new Paint(Paint.ANTI_ALIAS_FLAG);
     private float madeFor = -1f;
     private final RectF r = new RectF();
     private final float[] shadow;
@@ -71,14 +74,25 @@ final class Frost {
     void draw(Canvas c, RectF r, float radius, float alpha) {
         int a = Math.round(255 * Math.max(0f, Math.min(1f, alpha)));
         if (a <= 0) return;
-        Shadows.draw(c, r, radius, shadow, alpha);
+        // A panel (not glass) is opaque once whole: its shadow's middle, hidden under it, is left out.
+        if (kind != Look07.GLASS && a >= 255) Shadows.under(c, r, radius, shadow, alpha);
+        else Shadows.draw(c, r, radius, shadow, alpha);
         c.save();
         c.translate(r.left, r.top);
         made(r.height());
         this.r.set(0, 0, r.width(), r.height());
         Ground g = Ground.current();
-        BitmapShader under = g != null && g.showing() && kind != Look07.GLASS ? g.shader() : null;
-        if (under != null) {
+        boolean onGround = g != null && kind != Look07.GLASS && g.showing();
+        // Lite while the remote moves: the ground's colour behind the fill (nothing sampled; the picture once it rests).
+        int tint = onGround ? g.tintBehind() : 0;
+        BitmapShader under = onGround && tint == 0 ? g.shader() : null;
+        if (tint != 0) {
+            tinted.setColor(tint);
+            tinted.setAlpha(a);
+            c.drawRoundRect(this.r, radius, radius, tinted);
+            fill.setAlpha(a);
+            c.drawRoundRect(this.r, radius, radius, fill);
+        } else if (under != null) {
             // The ground's blurred picture, where it lies on the screen (the canvas is at the panel's corner).
             c.save();
             c.translate(-r.left, -r.top);
