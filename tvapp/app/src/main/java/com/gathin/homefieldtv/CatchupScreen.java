@@ -29,9 +29,14 @@ import com.gathin.homefieldtv.engine.Library;
  * circle); at the right, in a pill, ⟲ (from the start again), LIVE and the live dot; the row of tiles peeking in under
  * it. Down brings the tiles up (TV guide, History, the channels last watched) in place of the transport; Up goes back.
  *
- * <p>Keys (TiviMate's "Use RW/FF/Pause for seeking/pause while watching catch-up"; Homefield's Left and Right too):
- * Left and Right, rewind and fast forward move 10 seconds a press, more the longer they are held (30 seconds, a minute,
- * three minutes), the archive asked for from there a moment after the remote rests; play/pause pauses; ◀◀ and ▶▶ in
+ * <p>The bar you can move (3.4, the family's point 5): OK brings the overlay up with the remote on the seek line itself
+ * (lit, its knob larger with a ring), and Left or Right from the plain picture goes straight there. On it, Left and Right
+ * move the spot (Settings › VOD › Skip steps a press, 10 seconds as it comes, then 30 seconds, a minute and three minutes
+ * as the key stays down), a bubble over the knob says where (the time in the programme, and the clock then); OK jumps
+ * there; Back leaves it where the picture is. Down goes to the transport, Up from it back to the line.
+ *
+ * <p>Keys (TiviMate's "Use RW/FF/Pause for seeking/pause while watching catch-up"): rewind and fast forward move the same
+ * way, the archive asked for from there a moment after the remote rests; play/pause pauses; ◀◀ and ▶▶ in
  * the overlay the same, |◀ the programme's start (or the one before), ▶| the next one (or live), ⟲ from the start,
  * LIVE back to live. Up and Down change channel, live; CH+ and CH− show the next or previous channel's card (OK goes to
  * it); OK held or MENU the player's bar. Back closes the overlay, then goes to the TV guide with the programme still in
@@ -43,6 +48,8 @@ final class CatchupScreen extends Screen implements LiveTv.Listener {
     static final int PLAIN = 0, BANNER = 1, OVERLAY = 2, TILES = 3, BAR = 4;
     /** The transport and the right pill: their items, and where their middles are (design pixels). */
     static final int SKIP_BACK = 0, REWIND = 1, PLAY = 2, FORWARD = 3, SKIP_NEXT = 4, RESTART = 5, LIVE = 6;
+    /** The seek line itself, with the remote on it (Left and Right move the spot, OK jumps there). */
+    static final int SEEK = 7;
     static final float[] ITEM_X = {760f, 856f, 960f, 1064f, 1160f, 1660f, 1732f};
     static final float SEEK_Y = 863.5f, TRANSPORT_Y = 934f;
 
@@ -52,6 +59,8 @@ final class CatchupScreen extends Screen implements LiveTv.Listener {
     /** Where the remote has moved the line to and the picture hasn't gone yet (-1: not moving), which way, how many steps. */
     private long target = -1;
     private int dir, steps;
+    /** The spot moved on the seek line waits for OK (the rewind and fast forward keys' goes by itself). */
+    private boolean scrubbing;
     private int mode = PLAIN, focus = PLAY;
     /** The card's channel on CH+ and CH− (not the one playing); null: this one. */
     private Channel peek;
@@ -61,7 +70,7 @@ final class CatchupScreen extends Screen implements LiveTv.Listener {
     private final Handler h = new Handler(Looper.getMainLooper());
     private final Runnable apply = this::applyMove;
     private final Runnable hide = () -> {
-        if (!tv.live.held() && target < 0 && tv.live.state() != LiveTv.FAILED) setMode(PLAIN);
+        if (!tv.live.held() && target < 0 && !scrubbing && tv.live.state() != LiveTv.FAILED) setMode(PLAIN);
     };
     private final Runnable leave = () -> {
         if (tv.isTop(this)) tv.pop();
@@ -212,7 +221,7 @@ final class CatchupScreen extends Screen implements LiveTv.Listener {
                 return true;
             case KeyEvent.KEYCODE_DPAD_LEFT:
             case KeyEvent.KEYCODE_DPAD_RIGHT:
-                if (mode == OVERLAY) {
+                if (mode == OVERLAY && focus != SEEK) {
                     // Along the transport and the pill.
                     int n = focus + (code == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1);
                     if (n >= SKIP_BACK && n <= LIVE) focus = n;
@@ -220,7 +229,8 @@ final class CatchupScreen extends Screen implements LiveTv.Listener {
                     overlay.invalidate();
                     return true;
                 }
-                move(code == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1);
+                // The seek line: the spot moves, faster the longer the key is held; OK jumps there.
+                scrub(code == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1);
                 return true;
             case KeyEvent.KEYCODE_MEDIA_REWIND:
                 move(-1);
@@ -243,6 +253,14 @@ final class CatchupScreen extends Screen implements LiveTv.Listener {
                 if (e.getRepeatCount() == 0) tv.pop();
                 return true;
             case KeyEvent.KEYCODE_DPAD_DOWN:
+                if (mode == OVERLAY && focus == SEEK) {
+                    // From the line down to the transport (the spot moved is let go).
+                    unscrub();
+                    focus = PLAY;
+                    poke();
+                    overlay.invalidate();
+                    return true;
+                }
                 if (mode == OVERLAY) {
                     setMode(TILES);
                     return true;
@@ -251,7 +269,10 @@ final class CatchupScreen extends Screen implements LiveTv.Listener {
                 return true;
             case KeyEvent.KEYCODE_DPAD_UP:
                 if (mode == OVERLAY) {
+                    // From the transport up to the line.
+                    focus = SEEK;
                     poke();
+                    overlay.invalidate();
                     return true;
                 }
                 if (e.getRepeatCount() == 0) channel(-1);
@@ -296,6 +317,8 @@ final class CatchupScreen extends Screen implements LiveTv.Listener {
             return;
         }
         if (target >= 0) {
+            // OK on the line: the picture jumps to the spot.
+            scrubbing = false;
             applyMove();
             return;
         }
@@ -307,12 +330,17 @@ final class CatchupScreen extends Screen implements LiveTv.Listener {
             return;
         }
         if (mode != OVERLAY) {
-            focus = PLAY;
+            // The overlay with the remote on the seek line, to move it.
+            focus = SEEK;
             setMode(OVERLAY);
             return;
         }
         poke();
         switch (focus) {
+            case SEEK:
+                // Nothing moved yet: play or pause.
+                playPause();
+                break;
             case SKIP_BACK: {
                 long at = tv.live.shownAt();
                 long[] p = programme(at);
@@ -356,6 +384,13 @@ final class CatchupScreen extends Screen implements LiveTv.Listener {
             bar.back();
             return true;
         }
+        if (scrubbing) {
+            // Back leaves it: the spot let go, the picture where it is.
+            unscrub();
+            poke();
+            overlay.invalidate();
+            return true;
+        }
         if (mode != PLAIN) {
             setMode(PLAIN);
             return true;
@@ -376,6 +411,29 @@ final class CatchupScreen extends Screen implements LiveTv.Listener {
             setMode(OVERLAY);
         }
         overlay.invalidate();
+    }
+
+    /** The spot on the seek line moved, waiting for OK (the remote on the line, the overlay up). */
+    private void scrub(int d) {
+        scrubbing = true;
+        if (mode != OVERLAY) setMode(OVERLAY);
+        focus = SEEK;
+        move(d);
+        // Never by itself: OK jumps there.
+        h.removeCallbacks(apply);
+    }
+
+    /** The spot let go, the picture where it is. */
+    private void unscrub() {
+        scrubbing = false;
+        target = -1;
+        steps = 0;
+        h.removeCallbacks(apply);
+    }
+
+    /** Pure: how far the n-th press in a row moves the spot: the Skip step first, then 30 s, a minute, three minutes. */
+    static long step(int n, long first) {
+        return n <= 5 ? first : n <= 15 ? Math.max(first, 30_000L) : n <= 30 ? Math.max(first, 60_000L) : 180_000L;
     }
 
     /** The picture to time t now (live at the live edge). */
@@ -399,7 +457,7 @@ final class CatchupScreen extends Screen implements LiveTv.Listener {
         long from = target >= 0 ? target : tv.live.shownAt();
         if (target < 0 || d != dir) steps = 0;
         steps++;
-        long step = steps <= 5 ? 10_000L : steps <= 15 ? 30_000L : steps <= 30 ? 60_000L : 180_000L;
+        long step = step(steps, com.gathin.homefieldtv.prefs.OtherPrefs.skipMs(tv));
         long to = from + d * step;
         long earliest = tv.live.earliest(ch);
         if (earliest != Long.MAX_VALUE && to < earliest) to = earliest;
@@ -407,7 +465,7 @@ final class CatchupScreen extends Screen implements LiveTv.Listener {
         target = to;
         dir = d;
         h.removeCallbacks(apply);
-        if (!Exec.inline) h.postDelayed(apply, APPLY_MS);
+        if (!Exec.inline && !scrubbing) h.postDelayed(apply, APPLY_MS);
         if (mode != OVERLAY && mode != TILES) {
             focus = d < 0 ? REWIND : FORWARD;
             setMode(OVERLAY);
@@ -448,6 +506,25 @@ final class CatchupScreen extends Screen implements LiveTv.Listener {
         dir = -1;
         focus = REWIND;
         setMode(OVERLAY);
+    }
+
+    /** Previews and tests: the spot on the seek line moved to t, waiting for OK. */
+    void previewScrub(long t) {
+        setMode(OVERLAY);
+        scrubbing = true;
+        target = t;
+        dir = -1;
+        focus = SEEK;
+        overlay.invalidate();
+    }
+
+    /** Tests: where the spot is (-1: none), whether it waits for OK, where the remote is. */
+    long scrubTarget() {
+        return scrubbing ? target : -1;
+    }
+
+    int focusForTests() {
+        return focus;
     }
 
     /** Previews: the overlay with the remote on an item, or the tiles brought up (TILES). */
@@ -575,6 +652,49 @@ final class CatchupScreen extends Screen implements LiveTv.Listener {
             super(c);
             card = new InfoCard(this);
             line.setStyle(Paint.Style.STROKE);
+            ring.setStyle(Paint.Style.STROKE);
+        }
+
+        private final Paint ring = new Paint(Paint.ANTI_ALIAS_FLAG), knob = new Paint(Paint.ANTI_ALIAS_FLAG),
+                bubbleP = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint bubbleT = Type.paint(30f, Type.BOLD, Look07.INK), bubbleS = Type.paint(19f, Type.SEMIBOLD, 0xCC111111);
+        private final android.graphics.Path tip = new android.graphics.Path();
+        /** The bubble's words, made again only when the spot's second changes. */
+        private long bubbleFor = Long.MIN_VALUE;
+        private String bubbleTime = "", bubbleClock = "";
+
+        /**
+         * The remote on the seek line: the line lit, its knob larger with a white ring, and over it the bubble: the time
+         * in the programme ("12:34") and the clock then ("20:12"), its tip on the knob.
+         */
+        private void bubble(Canvas c, float share, long at, long[] p) {
+            float x0 = Ui.f(PlayerTiles.SEEK_X0), x1 = Ui.f(PlayerTiles.SEEK_X1), y = Ui.f(SEEK_Y);
+            float kx = x0 + (x1 - x0) * Math.max(0f, Math.min(1f, share));
+            knob.setColor(Look07.L1);
+            c.drawCircle(kx, y, Ui.f(14f), knob);
+            ring.setColor(Look07.L1);
+            ring.setStrokeWidth(Math.max(1f, Ui.f(3f)));
+            c.drawCircle(kx, y, Ui.f(22f), ring);
+            long sec = at / 1000;
+            if (sec != bubbleFor) {
+                bubbleFor = sec;
+                bubbleTime = clock(at - p[0]);
+                bubbleClock = LiveText.hm(at);
+            }
+            float tw = Math.max(bubbleT.measureText(bubbleTime), bubbleS.measureText(bubbleClock)) + Ui.f(40f);
+            float bh = Ui.f(78f), by = y - Ui.f(36f) - bh;
+            float bx = Math.max(x0 - Ui.f(20f), Math.min(x1 + Ui.f(20f) - tw, kx - tw / 2f));
+            r.set(bx, by, bx + tw, by + bh);
+            bubbleP.setColor(Look07.L1);
+            c.drawRoundRect(r, Ui.f(18f), Ui.f(18f), bubbleP);
+            tip.reset();
+            tip.moveTo(kx - Ui.f(11f), by + bh - 1f);
+            tip.lineTo(kx + Ui.f(11f), by + bh - 1f);
+            tip.lineTo(kx, by + bh + Ui.f(12f));
+            tip.close();
+            c.drawPath(tip, bubbleP);
+            c.drawText(bubbleTime, r.centerX() - bubbleT.measureText(bubbleTime) / 2f, by + Ui.f(38f), bubbleT);
+            c.drawText(bubbleClock, r.centerX() - bubbleS.measureText(bubbleClock) / 2f, by + Ui.f(64f), bubbleS);
         }
 
         @Override protected void onDraw(Canvas c) {
@@ -599,6 +719,7 @@ final class CatchupScreen extends Screen implements LiveTv.Listener {
             float[] sh = seekShares();
             Bars.seek(c, Ui.f(PlayerTiles.SEEK_X0), Ui.f(PlayerTiles.SEEK_X1), Ui.f(SEEK_Y), sh[0], sh[1], false);
             long[] p = programme(at);
+            if (focus == SEEK) bubble(c, sh[0], at, p);
             String t = clock(at - p[0]), total = " / " + clock(p[1] - p[0]);
             float base = Ui.f(947f), tx = Ui.f(PlayerTiles.SEEK_X0);
             timeP.setColor(Palette.TEXT1);

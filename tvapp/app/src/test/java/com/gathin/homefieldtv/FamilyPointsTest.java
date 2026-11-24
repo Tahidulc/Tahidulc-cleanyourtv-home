@@ -49,6 +49,18 @@ public class FamilyPointsTest {
         assertEquals("Dismiss", ReminderCard.Face.BUTTONS[ReminderCard.Face.DISMISS]);
     }
 
+    @Test public void theCatchUpBarMovesFasterTheLongerItIsHeld() {
+        // Skip steps (10 seconds as it comes) for the first presses, then 30 seconds, a minute and three minutes.
+        assertEquals(10_000L, CatchupScreen.step(1, 10_000L));
+        assertEquals(10_000L, CatchupScreen.step(5, 10_000L));
+        assertEquals(30_000L, CatchupScreen.step(6, 10_000L));
+        assertEquals(60_000L, CatchupScreen.step(16, 10_000L));
+        assertEquals(180_000L, CatchupScreen.step(31, 10_000L));
+        // A bigger Skip step stays at least that.
+        assertEquals(60_000L, CatchupScreen.step(7, 60_000L));
+        assertEquals(CatchupScreen.SEEK, 7);
+    }
+
     @Test public void remindAgainInFiveMinutesComesAgainThen() {
         long start = NOW + 60_000L;
         Reminders.Reminder r = new Reminders.Reminder("x:1", "Harbour TV", "", "The Long Tide", start, start + 3_600_000L);

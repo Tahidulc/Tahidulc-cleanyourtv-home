@@ -434,7 +434,14 @@ final class Pics {
         InputStream open() throws IOException;
     }
 
+    /**
+     * A channel's own picture (ProgrammePictures, for a programme nothing was found for): ON_COLOUR and its logo's address,
+     * drawn as the logo on its own colour at the size asked, so no programme is blank.
+     */
+    static final String ON_COLOUR = "on-colour:";
+
     private static Bitmap load(Key k) {
+        if (k.url.startsWith(ON_COLOUR)) return onColour(k.url.substring(ON_COLOUR.length()), k.w, k.h);
         Source src = source(k.url);
         if (src == null) return null;
         loads++;
@@ -930,6 +937,39 @@ final class Pics {
      * A channel logo read sharp for a cell's box w x h: sampled down only while both its sides stay at least the box's
      * (so even after its margins are trimmed it is drawn from enough pixels), in full colour; null when it can't be.
      */
+    /** The logo (read as any picture is) on its own colour, w x h: its colour's fall, the logo in the middle at half the height. */
+    private static Bitmap onColour(String logo, int w, int h) {
+        if (w < 2 || h < 2 || logo.isEmpty()) return null;
+        Bitmap mark = null;
+        Source src = source(logo);
+        if (src != null) {
+            try {
+                BitmapFactory.Options o = new BitmapFactory.Options();
+                o.inJustDecodeBounds = true;
+                try (InputStream s = src.open()) {
+                    BitmapFactory.decodeStream(s, null, o);
+                }
+                if (o.outWidth > 0 && o.outHeight > 0) mark = sharp(src, o, Math.max(1, w / 2), Math.max(1, h / 2));
+            } catch (IOException e) {
+                mark = null;
+            }
+        }
+        Logos.Tint t = mark == null ? Logos.Tint.WAITING : Logos.colours(logo, mark);
+        Bitmap out = Bitmap.createBitmap(w, h, Bitmap.Config.RGB_565);
+        android.graphics.Canvas c = new android.graphics.Canvas(out);
+        android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.DITHER_FLAG);
+        p.setShader(new android.graphics.LinearGradient(0, 0, w, h, t.rowTop, t.rowFoot, android.graphics.Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, w, h, p);
+        if (mark != null) {
+            float k = Math.min(w * 0.42f / mark.getWidth(), h * 0.46f / mark.getHeight());
+            float mw = mark.getWidth() * k, mh = mark.getHeight() * k;
+            android.graphics.RectF dst = new android.graphics.RectF((w - mw) / 2f, (h - mh) / 2f, (w + mw) / 2f, (h + mh) / 2f);
+            c.drawBitmap(mark, null, dst, new android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG));
+            mark.recycle();
+        }
+        return out;
+    }
+
     private static Bitmap sharp(Source in, BitmapFactory.Options o, int w, int h) throws IOException {
         int sample = 1;
         while (o.outWidth / (sample * 2) >= w && o.outHeight / (sample * 2) >= h) sample *= 2;

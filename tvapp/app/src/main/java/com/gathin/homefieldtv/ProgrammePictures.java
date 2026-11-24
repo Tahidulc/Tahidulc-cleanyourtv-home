@@ -14,9 +14,12 @@ import java.util.Map;
 
 /**
  * Programme pictures from Sky's public guide (SkyGuide) for the TV guide and the live screens, remembered while the app
- * runs, by channel and programme start. A screen asks only for what the remote has rested on (peek while it moves), so
- * holding Down through the channels asks for nothing; until a picture comes the screens draw the channel's logo on its
- * tile. Main thread only.
+ * runs, by channel and programme start. Where Sky has none, searched wider (WiderPictures: TMDB by the programme's title,
+ * the year or series its description gives and the channel's kind, off the main thread and spaced out); where nothing is
+ * found, the channel's own picture (ONE_COLOUR: its logo on its own colour, drawn by Pics), so a programme is never
+ * blank: in the guide's cells, the info card, the mini guide, the reminder's panel and every screen that asks here. A
+ * screen asks only for what the remote has rested on (peek while it moves), so holding Down through the channels asks
+ * for nothing; until a picture comes the screens draw the channel's logo on its tile. Main thread only.
  */
 final class ProgrammePictures {
     private ProgrammePictures() {}
@@ -30,6 +33,9 @@ final class ProgrammePictures {
         }
     };
     private static final Map<Key, List<Runnable>> waiting = new HashMap<>();
+    /** The channel's own picture given while the wider search was spaced out: asked again after RETRY_MS. */
+    private static final Map<Key, Long> retry = new HashMap<>();
+    static final long RETRY_MS = 90_000L;
 
     /** A programme by its channel's key and its start: looked up through one kept probe (a frame's cells make nothing). */
     private static final class Key {
@@ -86,7 +92,13 @@ final class ProgrammePictures {
         if (ch == null || s == null || i < 0 || i >= s.start.length) return "";
         Key k = probe(ch, s.start[i]);
         String had = known.get(k);
-        if (had != null) return had;
+        if (had != null) {
+            Long due = retry.isEmpty() ? null : retry.get(k);
+            if (due == null || System.currentTimeMillis() < due) return had;
+            // The wider search was spaced out last time: asked again (the picture there meanwhile stays drawn).
+            retry.remove(k);
+            known.remove(k);
+        }
         List<Runnable> w = waiting.get(k);
         if (w != null) {
             if (whenKnown != null && !w.contains(whenKnown)) w.add(whenKnown);
@@ -100,11 +112,36 @@ final class ProgrammePictures {
         // Sky's programme on at the time: now for the one on now, else a little into it (the two guides' times can differ).
         long at = s.start[i] <= now && now < s.stop[i] ? now : s.start[i] + Math.min(10 * 60_000L, (s.stop[i] - s.start[i]) / 2);
         Key kept = k;
+        Context app = c.getApplicationContext();
+        String title = s.title[i], desc = s.desc[i], name = ch.name, group = ch.group, own = ownPicture(ch);
         SkyGuide.picture(c, ch.name, at, s.title[i], url -> {
-            known.put(kept, url);
-            List<Runnable> done = waiting.remove(kept);
-            if (done != null) for (Runnable r : done) r.run();
+            if (url != null && !url.isEmpty()) {
+                done(kept, url);
+                return;
+            }
+            // Sky has none: searched wider off the main thread; else the channel's own picture (never blank).
+            com.gathin.homefieldtv.engine.Exec.io(() -> {
+                String found = com.gathin.homefieldtv.engine.WiderPictures.find(app, title, desc, name, group);
+                String use = found != null && !found.isEmpty() ? found : own;
+                com.gathin.homefieldtv.engine.Exec.main(() -> {
+                    if (found == null && !own.isEmpty()) retry.put(kept, System.currentTimeMillis() + RETRY_MS);
+                    done(kept, use);
+                });
+            });
         });
         return null;
+    }
+
+    private static void done(Key k, String url) {
+        known.put(k, url);
+        if (retry.size() > 500) retry.clear();
+        List<Runnable> w = waiting.remove(k);
+        if (w != null) for (Runnable r : w) r.run();
+    }
+
+    /** The channel's own picture, for a programme nothing else was found for: its logo on its colour ("" with no logo). */
+    static String ownPicture(Channel ch) {
+        String logo = ch == null ? "" : com.gathin.homefieldtv.engine.LogoPack.url(ch);
+        return logo == null || logo.isEmpty() ? "" : Pics.ON_COLOUR + logo;
     }
 }
