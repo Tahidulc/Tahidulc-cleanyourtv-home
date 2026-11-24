@@ -26,7 +26,7 @@ import java.util.Locale;
  *   appearance           TV guide › · Player › · Groups › · Logos › · Font size · Color theme › · Posters · Programme times
  *                        · Animations (Automatic, Full or Lite: Motion)
  *                        (TV guide, Groups and Logos are EditSettings' pages)
- *   appearance.player    Clock · Panels timeout, sec · Live TV's channel tiles
+ *   appearance.player    Live TV: Clock · Information panel stays for · Live TV's channel tiles
  *   playback             Buffer size · Decoder · Auto frame rate (AFR) · Audio passthrough · Tunneled playback; Picture;
  *                        Sound (Sound languages ›); Subtitles ›; Stream problems
  *   remote.player        OK · Long OK · Up / Down · Channel up and down · Number keys wait · The channel before; Color keys
@@ -67,7 +67,7 @@ final class MoreSettings implements SettingsScreen.Pages {
             case "general": return "General";
             case "general.sync": return "Sync";
             case "appearance": return "Appearance";
-            case "appearance.player": return "Player";
+            case "appearance.player": return "Live TV";
             case "theme": return "Color theme";
             case "playback": return "Playback";
             case "playback.subtitles": return "Subtitles";
@@ -105,7 +105,7 @@ final class MoreSettings implements SettingsScreen.Pages {
             case "start": return "general";
             case "text": case "posters": case "times": case "motion": return "appearance";
             case "rows": case "csort": case "editor": case "gstyle": return "appearance.guide";
-            case "clock": case "banner": case "tiles": return "appearance.player";
+            case "clock": case "banner": case "infostay": case "tiles": return "appearance.player";
             case "logos": case "lpriority": return "appearance.logos";
             case "subs.look": case "subs.size": return "playback.subtitles";
             case "updown": case "direction": case "ok": case "oklong": case "wait": case "previous": return "remote.player";
@@ -129,7 +129,8 @@ final class MoreSettings implements SettingsScreen.Pages {
             // Appearance › TV guide and › Logos: EditSettings' (with Hidden channels, Manage groups and the new logos).
             case "appearance.player":
                 out.add(pick("clock", "Clock", Look.CLOCK_NAMES[Look.clock]));
-                out.add(pick("banner", "Panels timeout, sec", TIMEOUT_NAMES[bannerIndex()]));
+                out.add(pick("infostay", "Information panel stays for",
+                        PlayerPrefs.INFO_NAMES[PlayerPrefs.indexOf(PlayerPrefs.INFO_SECONDS, PlayerPrefs.infoSeconds(tv))]));
                 out.add(pick("tiles", "Live TV's channel tiles", Look.TILES_NAMES[Look.logos ? 1 : 0]));
                 break;
             case "theme": return ThemeSettings.rows();
@@ -185,7 +186,7 @@ final class MoreSettings implements SettingsScreen.Pages {
     /** Appearance: the other app's sub-pages and settings, then Homefield's posters and programme times. */
     private void appearance(List<RowList.Row> out) {
         out.add(page("appearance.guide", "TV guide", ""));
-        out.add(page("appearance.player", "Player", ""));
+        out.add(page("appearance.player", "Live TV", "The clock, the information panel, the channel tiles"));
         out.add(page("appearance.groups", "Categories", ""));
         out.add(page("appearance.logos", "Logos", ""));
         out.add(pick("text", "Font size", FONT_NAMES[Look.textSize]));
@@ -471,6 +472,10 @@ final class MoreSettings implements SettingsScreen.Pages {
             case "clock": return new SettingsScreen.Picker("Clock", Look.CLOCK_NAMES, Look.clock, "The time in the screens' corners.");
             case "banner": return new SettingsScreen.Picker("Panels timeout, sec", TIMEOUT_NAMES, bannerIndex(),
                     "How long the channel's banner stays when you change channel.");
+            case "infostay": return new SettingsScreen.Picker("Information panel stays for", PlayerPrefs.INFO_NAMES,
+                    PlayerPrefs.indexOf(PlayerPrefs.INFO_SECONDS, PlayerPrefs.infoSeconds(tv)),
+                    "The channel's information panel pops up from the foot as Up and Down (or CH+ and CH−) change channel, "
+                            + "stays this long (each press starting it again), then drops away.");
             case "tiles": return new SettingsScreen.Picker("Live TV's channel tiles", Look.TILES_NAMES, Look.logos ? 1 : 0, null);
             case "logos": return new SettingsScreen.Picker("Logo box colour", Logos.NAMES, Logos.behind(), Logos.ABOUT);
             case "buffer.live": return new SettingsScreen.Picker("Buffer size", PlayerPrefs.BUFFER_NAMES, PlayerPrefs.buffer(tv, true),
@@ -553,6 +558,7 @@ final class MoreSettings implements SettingsScreen.Pages {
             case "skip": OtherPrefs.setSkip(tv, i); break;
             case "clock": Look.setClock(tv, i); break;
             case "banner": PlayerPrefs.setBannerSeconds(tv, PlayerPrefs.BANNER_SECONDS[i]); break;
+            case "infostay": PlayerPrefs.setInfoSeconds(tv, PlayerPrefs.INFO_SECONDS[i]); break;
             case "tiles": Look.setLogos(tv, i == 1); break;
             case "logos": Logos.setBehind(tv, i); break;
             case "buffer.live": PlayerPrefs.setBuffer(tv, true, i); break;

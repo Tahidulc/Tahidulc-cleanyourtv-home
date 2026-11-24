@@ -177,6 +177,22 @@ public class ThreeThreeTest {
         assertEquals("Today's matches come up here once they are read", SportsScreen.listWords(SportsScreen.TODAY, true, true, ""));
     }
 
+    @Test public void theInformationPanelStaysAsLongAsChosen() {
+        // 5 seconds as it comes; 3, 8, 10, 15 or until Back.
+        assertEquals(5, com.gathin.homefieldtv.prefs.PlayerPrefs.infoSeconds(app));
+        assertEquals("Until I press Back", com.gathin.homefieldtv.prefs.PlayerPrefs.INFO_NAMES[5]);
+        com.gathin.homefieldtv.prefs.PlayerPrefs.setInfoSeconds(app, 0);
+        assertEquals(0, com.gathin.homefieldtv.prefs.PlayerPrefs.infoSeconds(app));
+        com.gathin.homefieldtv.prefs.PlayerPrefs.setInfoSeconds(app, 15);
+        assertEquals(15, com.gathin.homefieldtv.prefs.PlayerPrefs.infoSeconds(app));
+        // Not one of the choices (an older setting): 5.
+        com.gathin.homefieldtv.prefs.PlayerPrefs.setInfoSeconds(app, 7);
+        assertEquals(5, com.gathin.homefieldtv.prefs.PlayerPrefs.infoSeconds(app));
+        com.gathin.homefieldtv.prefs.PlayerPrefs.setInfoSeconds(app, 5);
+        // It rises from below the screen's foot.
+        assertTrue(LiveScreen.POP_RISE > 1080f - InfoCard.FOOT_Y);
+    }
+
     @Test public void skipStepsAsChosen() {
         assertEquals(10_000L, OtherPrefs.skipMs(app));
         OtherPrefs.setSkip(app, 5);

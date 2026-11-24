@@ -44,7 +44,9 @@ wordmark are Homefield; it carries no Sky logo or name.
   on the plain row; Black tile, a black cell), its marks small and quiet in the cell's right-hand corner (▶ on the
   channel in the preview, the favourite's star, the archive's mark on one whose provider keeps an archive, HD); its
   programmes' cells each filled by the programme's own picture whatever their width, its faces whole (a cell too wide
-  for that has the picture blurred behind and sharp where the faces are; one the times cut shows the faces), with a soft
+  for that has the picture blurred behind and sharp where the faces are, the sharp picture feathered into it at both
+  its edges; one the times cut shows the faces; a picture's own black bars, pillarbox or letterbox, and a pixel or two
+  of its edge cropped before it is laid out, so no dark line runs through a cell), with a soft
   shade only under the title and times and a light fade under the line of how far through, the part already shown
   dimmer, the remote's cell lifted with a white ring (a programme with no picture in a plain cell); a bell on a
   programme with a reminder. The channel's number is still said by the guide for accessibility, and still typed to go
@@ -120,8 +122,11 @@ wordmark are Homefield; it carries no Sky logo or name.
   the programme's picture (Sky's public UK guide, else the channel's logo) over a card with its day, times and what it is
   about. Right goes to the days and Left back; OK plays a programme already shown from the archive, watches the one on
   now, or opens the small menu for one to come; OK held opens the whole menu.
-- **Live TV:** full screen, the picture alone. A channel changed to brings up the info card at the foot for the channel banner's
-  seconds (Settings, Player; 6 as it comes), and INFO brings it up too: a card in the playback panel's colour with the
+- **Live TV:** full screen, the picture alone. A channel changed to (Up, Down, CH+, CH−) brings up the info card at the
+  foot: it pops up from the screen's foot (rising and growing to its size with 07's springy ease, moved and scaled as it
+  is drawn: the Lite tier's too), stays for Settings, Live TV, Information panel stays for (3, 5 as it comes, 8, 10 or 15
+  seconds, or until Back; each further press starting it again) and drops back down; no key hints over it (OK, Left and
+  MENU still bring up the overlay, the channel list and the bar). INFO brings it up too: a card in the playback panel's colour with the
   channel's logo alone (as the guide's cells have it: no number or name, which talk-back says), the programme's title,
   the date and the clock, its times with a bar and the minutes left, the playlist and the group, chips for the picture and the sound as the player has them (FHD, 50 FPS, STEREO; the
   frames a second as the stream says them, else counted from the frames it shows over a few seconds and taken to the

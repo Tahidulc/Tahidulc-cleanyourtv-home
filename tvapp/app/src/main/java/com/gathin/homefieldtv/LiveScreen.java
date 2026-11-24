@@ -89,7 +89,36 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
     private final Map<String, Integer> rowOf = new HashMap<>();
     private int row, col;
     private final Handler h = new Handler(Looper.getMainLooper());
-    private final Runnable hide = () -> setMode(NONE);
+    /** The panels' wait over: the information panel drops away first (its pop), anything else goes at once. */
+    private final Runnable hide = () -> {
+        if (mode == BANNER && !Exec.inline) drop();
+        else setMode(NONE);
+    };
+
+    /**
+     * The information panel's pop (the family: "an animation ... where the panel pops up", and down again after the
+     * seconds chosen): 1 up, 0 below the screen's foot; it rises with 07's springy ease as it comes, and drops away before
+     * it goes. Moved and scaled as it is drawn (nothing else: the Lite tier's too).
+     */
+    private final Glide pop = new Glide(POP_MS, 100f).springy(Look07.BOUNCE, Look07.BOUNCE_KICK);
+    private boolean dropping;
+    static final long POP_MS = 300;
+    /** How far below its place it starts (design px: past the screen's foot), and how small. */
+    static final float POP_RISE = 1080f - InfoCard.FOOT_Y + 28f, POP_SCALE = 0.92f;
+
+    /** The information panel dropping away; the panels go once it is down. */
+    private void drop() {
+        h.removeCallbacks(hide);
+        dropping = true;
+        pop.to(0f);
+        panels.invalidate();
+    }
+
+    /** How long the information panel stays (ms; -1: until Back): Settings › Live TV. */
+    private long infoMs() {
+        int s = com.gathin.homefieldtv.prefs.PlayerPrefs.infoSeconds(tv);
+        return s <= 0 ? -1L : s * 1000L;
+    }
     private final Runnable digitsDone = this::tuneDigits;
     private final Runnable askPicture = this::askPicture;
     /** Automatic subtitles want the speech model: the family asked here first (LiveSubs). */
@@ -268,6 +297,16 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
         int was = mode;
         mode = m;
         h.removeCallbacks(hide);
+        if (m == BANNER) {
+            // Up from the foot as it comes (or back up while it was dropping); already up, it stays.
+            if (was != BANNER) pop.jump(0f);
+            dropping = false;
+            pop.to(1f);
+            if (Exec.inline) pop.jump(1f);
+        } else {
+            dropping = false;
+            pop.jump(1f);
+        }
         if (m != BANNER) peek = null;
         if (m != BROWSE) h.removeCallbacks(askPicture);
         if (was == BAR && m != BAR) bar.close();
@@ -277,7 +316,11 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
         Fade.show(list, m == LIST, m == LIST ? 0 : 110);
         Fade.show(browse, m == BROWSE, 220);
         switch (m) {
-            case BANNER:
+            case BANNER: {
+                long ms = infoMs();
+                if (ms > 0) h.postDelayed(hide, ms);
+                break;
+            }
             case OVERLAY:
             case BAR:
                 h.postDelayed(hide, PANELS_MS);
@@ -304,19 +347,16 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
     /** The panels' wait starts again (a key in them). */
     private void poke() {
         h.removeCallbacks(hide);
-        h.postDelayed(hide, mode == LIST ? LIST_MS : mode == DESC ? DESC_MS : mode == BROWSE ? BROWSE_MS : PANELS_MS);
+        long ms = mode == LIST ? LIST_MS : mode == DESC ? DESC_MS : mode == BROWSE ? BROWSE_MS : mode == BANNER ? infoMs() : PANELS_MS;
+        if (ms > 0) h.postDelayed(hide, ms);
     }
 
-    /** A channel changed to: the card at the foot for Settings → Player → Channel banner's seconds (none when Off). */
+    /**
+     * A channel changed to: the information panel pops up from the foot for Settings › Live TV › Information panel stays
+     * for (5 seconds as it comes; each further change starting it again), then drops away; or until Back.
+     */
     private void switched() {
-        int s = com.gathin.homefieldtv.prefs.PlayerPrefs.bannerSeconds(tv);
-        if (s <= 0) {
-            setMode(NONE);
-            return;
-        }
         setMode(BANNER);
-        h.removeCallbacks(hide);
-        h.postDelayed(hide, s * 1000L);
     }
 
     private Channel step(Channel from, int dir) {
@@ -696,6 +736,11 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
             setMode(mode);
             return true;
         }
+        if (mode == BANNER && !dropping && !Exec.inline) {
+            // The information panel drops away.
+            drop();
+            return true;
+        }
         if (mode != NONE) {
             setMode(NONE);
             return true;
@@ -892,7 +937,21 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
                 // The card for the channel shown (CH+ and CH−: another one), the mini guide round it, the keys' hints, and
                 // which channel is playing.
                 Channel ch = peek != null ? peek : playing;
+                // Its pop: risen from below the foot, a little smaller, as it comes; dropping away as it goes.
+                boolean popping = pop.step();
+                float k = pop.value();
+                if (dropping && !popping && k <= 0.02f) post(() -> {
+                    if (dropping && mode == BANNER) setMode(NONE);
+                });
+                int saved = c.save();
+                if (k < 0.999f || k > 1.001f) {
+                    float sc = POP_SCALE + (1f - POP_SCALE) * Math.min(1f, k);
+                    c.translate(0f, Ui.f(POP_RISE) * (1f - k));
+                    c.scale(sc, sc, getWidth() / 2f, Ui.f(1080f));
+                }
                 moving = card.draw(c, InfoCard.FOOT_Y, ch, now, false, ch == playing ? keptChips() : null);
+                c.restoreToCount(saved);
+                moving |= popping;
                 if (ch != settledOn) {
                     settledOn = ch;
                     settled = Exec.inline;
@@ -900,7 +959,8 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
                     postDelayed(rest, ProgrammePictures.REST_MS);
                 }
                 moving |= mini.draw(c, ch, playing, settled);
-                MiniGuide.hints(c);
+                // No key hints over the card (the family: "I don't want the overlay, channel list, options buttons"):
+                // OK, Left and MENU still do what they did.
                 if (digits.isEmpty() && playing != null) mini.watching(c, "Watching", Words.number(Library.get(getContext()).number(playing)));
             } else if (mode == OVERLAY || mode == BAR && barWithCard) {
                 moving = card.draw(c, InfoCard.TOP_Y, playing, now, false, keptChips());
