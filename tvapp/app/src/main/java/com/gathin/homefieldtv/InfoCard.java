@@ -40,12 +40,11 @@ import java.util.List;
  *   the channel        its logo alone, as the guide's channel cells have it (ChannelLook.cell: 150 x 150 at (88, +40),
  *                      in the logo's own colour); no number or name ("I don't want channels numbers now": the number
  *                      and name are the card's content description, and the number keys still go to a channel)
- *   the kicker         the red LIVE badge (from the archive: the catch-up mark) and where the channel is from ("Home •
- *                      UK Entertainment"), 20 px
+ *   (no kicker)        no LIVE badge and no category since 3.7: the words start at the card's top
  *   the title          44 px bold, one line
  *   its line           "19:30 – 22:00", the bar (200 x 6) and what's left ("40 min left"), then the chips for the
  *                      picture and the sound as the player has them (FHD, 50 FPS, STEREO); from the archive its length
- *   what it is about   21 px, two lines
+ *   what it is about   21 px, up to three lines
  *   what's next        at the right, 420 wide: "NEXT · 22:00", its picture (420 x 170, fitted round its faces:
  *                      PicTile), its title (22 px) and times
  * </pre>
@@ -58,6 +57,10 @@ import java.util.List;
  */
 final class InfoCard {
     static final float X = 48f, W = 1824f, H = 322f, FOOT_Y = 1080f - 40f - 322f, TOP_Y = 40f, RADIUS = 44f;
+    /** Where the words stand in the card (design pixels from its top): the title's baseline, its line's middle and what
+     *  it is about, moved up into the place the kicker had (no LIVE or category since 3.7), with room for three lines. */
+    static final float TITLE_Y = 80f, LINE_Y = 118f, DESC_Y = 151f;
+    static final int DESC_LINES = 3;
     static final float LOGO_X = 88f, LOGO_W = 150f, LOGO_H = 104f, CELL_H = 150f, TEXT_X = 280f, TEXT_R = 1372f;
     /** What's next: its left, its width, its picture's height. */
     static final float NEXT_X = 1412f, NEXT_W = 420f, NEXT_H = 170f;
@@ -212,7 +215,7 @@ final class InfoCard {
         int dw = Math.round(wordsRight - Ui.f(TEXT_X));
         if (i >= 0 && !s.desc[i].isEmpty()) {
             if (!ch.key.equals(descKey) || s.start[i] != descStart || descL == null || dw != descWidth) {
-                descL = lines(s.desc[i], descP, dw, 2, 1.42f / 1.21f);
+                descL = lines(s.desc[i], descP, dw, DESC_LINES, 1.42f / 1.21f);
                 descKey = ch.key;
                 descStart = s.start[i];
                 descWidth = dw;
@@ -240,22 +243,14 @@ final class InfoCard {
         ChannelLook.cell(c, lr, Ui.f(Look07.R_CHANNEL), ch, 0f, 0, "", false, redraw);
         describe(ctx, ch, name);
 
-        // The kicker: LIVE (or the archive's mark) and where the channel is from.
-        float x0 = Ui.f(TEXT_X), right = wordsRight, kcy = Ui.f(top + 55f), x = x0;
-        if (archived) {
-            Icons07.draw(c, Icons07.CATCHUP, x + Ui.f(11f), kcy, Ui.f(22f), Look07.AMBER);
-            x += Ui.f(22f + 12f);
-        } else if (i >= 0 && s.start[i] <= now && now < s.stop[i]) {
-            x += Pills.live(c, x, kcy) + Ui.f(12f);
-        }
-        String where = where(ctx, ch);
-        if (!where.isEmpty()) kicks.line(c, where, x, Type.centred(kickP, kcy), right - x);
+        // No kicker (no LIVE, no category: the family's ask, 24 Nov): the title starts at the top, the words moved up.
+        float x0 = Ui.f(TEXT_X), right = wordsRight, x;
 
         // The title.
-        titles.line(c, title, x0, Ui.f(top + 119f), right - x0);
+        titles.line(c, title, x0, Ui.f(top + TITLE_Y), right - x0);
 
         // Its line: the times, how far through and what's left (or the archive's length), the chips.
-        float cy = Ui.f(top + 157f), base = Type.centred(metaP, cy), gap = Ui.f(16f);
+        float cy = Ui.f(top + LINE_Y), base = Type.centred(metaP, cy), gap = Ui.f(16f);
         x = x0;
         if (i >= 0) {
             String span = Words.span(s.start[i], s.stop[i]);
@@ -293,7 +288,7 @@ final class InfoCard {
         }
 
         // What it is about, two lines.
-        if (hasDesc) Ui.draw(c, descL, x0, Ui.f(top + 190f));
+        if (hasDesc) Ui.draw(c, descL, x0, Ui.f(top + DESC_Y));
 
         // What's next: its time, its picture fitted round its faces, its title and times.
         int nx = s == null ? -1 : i >= 0 ? (i + 1 < s.start.length ? i + 1 : -1) : s.after(at);

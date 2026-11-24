@@ -25,13 +25,14 @@ import com.gathin.homefieldtv.prefs.ChannelEdits;
  * its own (Frost, 1130 x 330, rounded 34), the programme the remote is on:
  *
  * <pre>
- *   the kicker      the amber star for a favourite channel, then the playlist and the group ("Home  •  UK Sport"), 17 px
+ *   (no kicker)     no playlist or category line since 3.7 (a favourite's star is on its channel cell): the title
+ *                   starts at the panel's top
  *   the title       36 px bold, two lines at most
  *   its line        its times ("19:30 — 22:00"), for one on now a bar and the minutes left ("40 min"), the chips (HD or
  *                   4K as the channel's name says, the picture's frames a second for the channel playing or one seen
  *                   before: "50 FPS", its sound), and the catch-up mark for one the archive keeps (with its length for
  *                   one already shown); a bell and "Reminder set" for one to come with a reminder
- *   what it's about 20 px, three lines
+ *   what it's about 20 px, up to four lines
  *   its picture     at its own shape on the panel's right (587 x 330), fitted round its faces with its left edge faded
  *                   into the panel and nothing over it (PanelArt, Pics.PANEL), cross-fading as the remote moves; with
  *                   no picture the words take the whole panel
@@ -46,7 +47,7 @@ final class GuideBand extends View {
     /** The details' panel, and the picture's box across its right-hand part. */
     static final float CARD_X = 700f, CARD_W = 1130f, CARD_R = 34f, CARD_Y = PREVIEW_Y, CARD_B = PREVIEW_Y + PREVIEW_H, ART_W = 587f;
     /** The words: from x 736, 600 wide beside a picture (1058 without), the kicker's, the title's and the line's places. */
-    static final float TEXT_X = 736f, TEXT_W = 600f, TEXT_W_WIDE = 1058f, KICK_Y = 178f, TITLE_Y = 223f, TITLE_LINE = 39f;
+    static final float TEXT_X = 736f, TEXT_W = 600f, TEXT_W_WIDE = 1058f, KICK_Y = 178f, TITLE_Y = 186f, TITLE_LINE = 39f;
     /** The preview's shadow (0 24 50 black 50 %). */
     static final float[] SH_PREVIEW = {24f, 50f, 0f, 128f};
 
@@ -134,13 +135,7 @@ final class GuideBand extends View {
         int i = s != null && programme >= 0 && programme < s.start.length ? programme : -1;
         float tx = Ui.f(TEXT_X), tw = Ui.f(art.none() ? TEXT_W_WIDE : TEXT_W);
 
-        // The kicker: the favourite's star, the playlist and the group.
-        float kx = tx;
-        if (favourite) {
-            Icons07.draw(c, Icons07.STAR, kx + Ui.f(9f), Ui.f(KICK_Y - 6f), Ui.f(18f), Look07.AMBER);
-            kx += Ui.f(26f);
-        }
-        if (!group.isEmpty()) kicks.line(c, group, kx, Ui.f(KICK_Y), tw - (kx - tx));
+        // No kicker (no playlist or category line: the family's ask, 24 Nov): the title starts at the panel's top.
 
         // The title, two lines at most.
         String title = i >= 0 ? s.title[i] : ChannelEdits.name(ch);
@@ -193,7 +188,7 @@ final class GuideBand extends View {
             if (descL == null || w != descWidth || !ch.key.equals(descFor) || descStart != start) {
                 String d = s.desc[i];
                 descL = StaticLayout.Builder.obtain(d, 0, d.length(), descP, Math.max(1, w)).setAlignment(Layout.Alignment.ALIGN_NORMAL)
-                        .setLineSpacing(0f, 1.42f / 1.21f).setIncludePad(false).setMaxLines(3).setEllipsize(TextUtils.TruncateAt.END).build();
+                        .setLineSpacing(0f, 1.42f / 1.21f).setIncludePad(false).setMaxLines(4).setEllipsize(TextUtils.TruncateAt.END).build();
                 descFor = ch.key;
                 descStart = start;
                 descWidth = w;
