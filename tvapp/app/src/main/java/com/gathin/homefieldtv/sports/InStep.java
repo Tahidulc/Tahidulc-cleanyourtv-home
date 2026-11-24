@@ -68,7 +68,7 @@ public final class InStep {
         return prefs(c).getInt("d.last", DEFAULT_S);
     }
 
-    /** Settings › More scoreboard settings: that for every channel not lined up yet. */
+    /** The scoreboard and logo menu's "A channel not lined up yet": that for every channel not lined up yet. */
     public static void setUsual(Context c, int seconds) {
         prefs(c).edit().putInt("d.last", clamp(seconds)).apply();
     }

@@ -47,8 +47,12 @@ import java.util.Map;
  *                      second, OK watches one); Down past the second row, the settings in the channels' place, the
  *                      card staying where it is (PlayerBar's pills: TV guide … Exit, the picture and sound's pickers;
  *                      Up from their first row back to the channels). With no channel watched yet, the settings at once
+ *   OK held            the scoreboard and logo menu (BoardMenu, the launcher's over TiviMate: Scoreboard and Logo's
+ *                      cover on and off, then the rest of the board's settings), on every channel, only in plain
+ *                      playback with nothing over the picture; with a panel up, the settings as MENU gives them, as
+ *                      before (Settings → Remote → Long OK can choose another)
  *   MENU               that overlay with the remote straight on the settings (Settings → Remote's player and channel
- *                      menus too); no Scoreboard among them (the family's: holding OK over a match opens its menu)
+ *                      menus too); no Scoreboard among them (the family's: hold OK on the plain picture for its menu)
  *   Left               the channel list over the picture (ChannelList.OVERLAY); held, the opaque one with the picture
  *                      in a window (ChannelListScreen)
  *   Up held            History (HistoryScreen); Right held: the programme's description; Down held: Search
@@ -702,8 +706,18 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
 
     @Override void okLong() {
         if (dialog.showing() || mode == BAR || mode == LIST) return;
-        // TiviMate: OK held is the bar (its menu); Settings → Remote → OK held may give another.
+        // The scoreboard's menu, the editor or a move has the remote: held, OK does nothing more.
+        if (board.takesKeys()) return;
         int a = RemoteKeys.okLong(tv);
+        if (a == RemoteKeys.SCOREBOARD_MENU) {
+            // As it comes: the scoreboard and logo menu, as the launcher's over TiviMate, only in plain full-screen
+            // playback with nothing over the picture; with a panel up (the info card, the overlay, the rows, a number
+            // typed) OK held is the player's settings (openBar, as MENU), as it was before.
+            if (plain()) board.okLong();
+            else openBar(false);
+            return;
+        }
+        // Settings → Remote → OK held may give another: the player's settings (TiviMate's menu), the guide, a favourite.
         if (a == RemoteKeys.CHANNEL_MENU || a == RemoteKeys.PLAYER_MENU) openBar(false);
         else act(a);
     }

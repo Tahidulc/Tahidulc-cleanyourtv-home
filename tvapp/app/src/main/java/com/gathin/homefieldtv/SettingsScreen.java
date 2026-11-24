@@ -31,7 +31,7 @@ import java.util.List;
  *                      picture, sound, subtitles and stream settings under their section names
  *   Remote control     Player › (the keys while watching full screen)
  *   Parental controls  the switch, Change PIN, how locked channels show, Require PIN for: Settings, what is locked
- *   Other              Search ›, Reminders ›, Recording ›, VOD ›, then Homefield's Scoreboard ›
+ *   Other              Search ›, Reminders ›, Recording ›, VOD ›, then Homefield's Ask AI ›
  *   About              Version, Updates ›, Device name, then a few words about Homefield TV
  * </pre>
  *
@@ -111,7 +111,7 @@ final class SettingsScreen extends Screen implements SettingsPanel.Host, Keyboar
     private MoreSettings more;
     private ExtraSettings extra;
     private EditSettings edits;
-    /** 3.4's pages: If something goes wrong, Automatic updates, Merged channels, More scoreboard settings. */
+    /** 3.4's pages: If something goes wrong, Automatic updates, Merged channels, Ask AI. */
     private AddedSettings added;
     /** The pages open, the sections first. */
     private final List<String> pages = new ArrayList<>();

@@ -28,8 +28,8 @@ import java.util.function.Consumer;
  * The scoreboard editor over the match (My scoreboards), with the remote, as the TV launcher's (BoardEditorTv) and the
  * phone's: a panel down the right of the screen, the board as it stands drawn over a still of a match between two
  * invented clubs at its top, and the board over the match changing with it (BoardLayer.restyle) until it closes. Opened
- * from the scoreboard's menu (OK held over the match, or the player's bar's Scoreboard): Scoreboard editor (the board in
- * use, else the look's own colours) and New scoreboard.
+ * from the scoreboard and logo menu (OK held while a channel plays full screen: BoardMenu): OK on My scoreboards (the
+ * board in use, else the look's own colours) and New scoreboard.
  *
  * <p>Up and Down go along its lines, Left and Right change the one the remote is on, OK does it, Back goes back (and
  * closes it). The lines: which of My scoreboards (or a new one), Rename, the layout, each colour (OK for the colour's own

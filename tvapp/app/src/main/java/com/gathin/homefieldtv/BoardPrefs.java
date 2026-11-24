@@ -5,9 +5,10 @@ import android.content.SharedPreferences;
 import android.graphics.Typeface;
 
 /**
- * The scoreboard's settings in Homefield TV's player, as the launcher keeps them for its board over TiviMate: on or off,
- * its look (By competition unless picked), its size and its corner, the swishes; and the board's own lettering. Kept on
- * this TV.
+ * The scoreboard's settings in Homefield TV's player, as the launcher keeps them for its board over TiviMate: the board
+ * and the logo's cover on or off, its look (By competition unless picked), its size and its corner, the swishes; and the
+ * board's own lettering. Kept on this TV. All of them are set in the scoreboard and logo menu over the player (hold OK
+ * while a channel plays full screen: BoardMenu); Settings has no page for them.
  */
 final class BoardPrefs {
     private BoardPrefs() {}
@@ -107,7 +108,7 @@ final class BoardPrefs {
         e.apply();
     }
 
-    /** Back to the standard places on every channel (Settings › More scoreboard settings). */
+    /** Back to the standard places on every channel (the menu's Back to the standard places, Every channel). */
     static void resetAllPlaces(Context c) {
         SharedPreferences p = prefs(c);
         SharedPreferences.Editor e = p.edit();
@@ -126,12 +127,41 @@ final class BoardPrefs {
         return c.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 
+    /**
+     * The menu's "Scoreboard" switch, as the launcher's over TiviMate (BoardCover.boardShown): on, the board over a match;
+     * off, the board, what slides out beside it and its pop-ups (the strap, the kick-off's, the line-ups before kick-off)
+     * away until it is switched on again, the logo's cover staying as its own switch says, and the game followed
+     * underneath (its clock and score go on, so it comes back right). The phone's Scoreboard switch sets it too.
+     */
     static boolean on(Context c) {
-        return prefs(c).getBoolean("on", true);
+        return switched(c).getBoolean("on", true);
     }
 
     static void setOn(Context c, boolean on) {
-        prefs(c).edit().putBoolean("on", on).apply();
+        switched(c).edit().putBoolean("on", on).apply();
+    }
+
+    /** Set once the three switches kept before (Scoreboard, Logo cover, Logo cover only) became the menu's two (Nov 2026). */
+    private static final String TWO_SWITCHES = "two_switches";
+
+    /** The settings, with the three switches kept before made the two the menu has (once). */
+    private static SharedPreferences switched(Context c) {
+        SharedPreferences p = prefs(c);
+        if (!p.getBoolean(TWO_SWITCHES, false)) {
+            boolean[] two = twoSwitches(p.getBoolean("on", true), p.getBoolean("logo", true), p.getBoolean("logo_only", false));
+            p.edit().putBoolean("on", two[0]).putBoolean("logo", two[1]).remove("logo_only").putBoolean(TWO_SWITCHES, true).apply();
+        }
+        return p;
+    }
+
+    /**
+     * Pure: the menu's two switches {Scoreboard, Logo's cover} for the three kept before, showing what they showed: Logo
+     * cover only, the cover alone; the scoreboard off, nothing; else the board, with the cover if it was on.
+     */
+    static boolean[] twoSwitches(boolean on, boolean logo, boolean logoOnly) {
+        if (logoOnly) return new boolean[]{false, true};
+        if (!on) return new boolean[]{false, false};
+        return new boolean[]{true, logo};
     }
 
     /** The look (BoardBug.Style), By competition unless picked. */
@@ -315,22 +345,16 @@ final class BoardPrefs {
         prefs(c).edit().putBoolean("lineups", on).apply();
     }
 
-    /** The cover over the channel's own logo while the board is up: on unless off. */
+    /**
+     * The menu's "Logo's cover" switch (the launcher's logoOn): the cover over the channel's own logo while a match is on,
+     * with the scoreboard or without it (the scoreboard off and the cover on is what "Logo cover only" was). On unless off.
+     */
     static boolean logoOn(Context c) {
-        return prefs(c).getBoolean("logo", true);
+        return switched(c).getBoolean("logo", true);
     }
 
     static void setLogoOn(Context c, boolean on) {
-        prefs(c).edit().putBoolean("logo", on).apply();
-    }
-
-    /** Logo cover only: the cover over the channel's logo during a match, without the scoreboard (off as it comes). */
-    static boolean logoOnly(Context c) {
-        return prefs(c).getBoolean("logo_only", false);
-    }
-
-    static void setLogoOnly(Context c, boolean on) {
-        prefs(c).edit().putBoolean("logo_only", on).apply();
+        switched(c).edit().putBoolean("logo", on).apply();
     }
 
     /** The board's clock as set at a kick-off on the screen (BoardClock.anchorWords), the last game's; null for none. */

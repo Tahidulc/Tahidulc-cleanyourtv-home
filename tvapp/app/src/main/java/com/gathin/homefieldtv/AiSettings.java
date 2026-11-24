@@ -142,7 +142,7 @@ final class AiSettings {
         askedAt = 0;
     }
 
-    /** The line on another page that opens this one (Other, Scoreboard). */
+    /** The line on another page that opens this one (Other). */
     static RowList.Row row(Context c) {
         return RowList.Row.item("page:" + PAGE, "Ask AI", keyWords(c));
     }

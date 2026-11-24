@@ -32,7 +32,7 @@ import java.util.Locale;
  *   playback             Buffer size · Decoder · Auto frame rate (AFR) · Audio passthrough · Tunneled playback; Picture;
  *                        Sound (Sound languages ›); Subtitles ›; Stream problems
  *   remote.player        OK · Long OK · Up / Down · Channel up and down · Number keys wait · The channel before; Color keys
- *   other                Search › · Reminders › · Recording › · VOD › · Scoreboard ›
+ *   other                Search › · Reminders › · Recording › · VOD › · Ask AI ›
  *   about                Version · Updates ›, and a few words about Homefield TV
  * </pre>
  *
@@ -81,7 +81,6 @@ final class MoreSettings implements SettingsScreen.Pages {
             case "other.reminders": return "Reminders";
             case "other.recording": return "Recording";
             case "other.vod": return "VOD";
-            case "other.scoreboard": return "Scoreboard";
             case "about": return "About";
             case "about.updates": return "Updates";
             default: return "";
@@ -113,7 +112,6 @@ final class MoreSettings implements SettingsScreen.Pages {
             case "updown": case "direction": case "ok": case "oklong": case "wait": case "previous": return "remote.player";
             case "rec.before": case "rec.after": return "other.recording";
             case "ai.model": return "other.askai";
-            case "board.mine": return "other.scoreboard";
             case "x.lists.hours": return "playlists";
             case "x.guide.hours": case "x.shift": return "epg";
             case "x.mode": return "parental";
@@ -151,7 +149,8 @@ final class MoreSettings implements SettingsScreen.Pages {
                 out.add(page("other.reminders", "Reminders", ""));
                 out.add(page("other.recording", "Recording", ""));
                 out.add(page("other.vod", "VOD", ""));
-                out.add(page("other.scoreboard", "Scoreboard", ""));
+                // The scoreboard's and the logo's settings are all in their menu over the player (hold OK while a
+                // channel plays full screen: BoardMenu), as on the launcher over TiviMate; no page of their own here.
                 // Ask AI's key and model (AiSettings, AddedSettings' page): the scoreboard editor's and Change logo's.
                 out.add(AiSettings.row(tv));
                 break;
@@ -165,7 +164,6 @@ final class MoreSettings implements SettingsScreen.Pages {
                 out.add(tog("autonext", "Autoplay next episode", "", OtherPrefs.autoplayNext(tv)));
                 out.add(pick("skip", "Skip steps", OtherPrefs.SKIP_NAMES[OtherPrefs.skipIndex(tv)]));
                 break;
-            case "other.scoreboard": BoardSettings.rows(tv, out); break;
             case "about": about(out); break;
             case "about.updates": updates(out); break;
             default: break;
@@ -234,7 +232,7 @@ final class MoreSettings implements SettingsScreen.Pages {
                 PlayerPrefs.retries(tv))]));
         out.add(tog("hls", "The provider's adaptive stream", "HLS tried first for a channel given as MPEG-TS, kept only where it plays",
                 PlayerPrefs.hlsFirst(tv)));
-        out.add(RowList.Row.note("While watching, MENU (or OK held) brings up the player's bar: Display mode, Audio offset and Audio "
+        out.add(RowList.Row.note("While watching, MENU brings up the player's settings: Display mode, Audio offset and Audio "
                 + "tracks there are each channel's own. Changes here start with the next channel or film."));
     }
 
@@ -248,6 +246,14 @@ final class MoreSettings implements SettingsScreen.Pages {
         out.add(RowList.Row.note("The first one a channel or film has plays; at least one stays on."));
     }
 
+    /**
+     * Long OK as it comes, the scoreboard and logo menu: only while a channel plays full screen with nothing over it; with
+     * the info card, the overlay or another panel up, the player's settings, as MENU gives them (as Long OK was before).
+     */
+    static final String LONG_OK_NOTE = "The scoreboard and logo menu comes up only while a channel plays full screen with "
+            + "nothing over it, on every channel; with the info card or another panel up, Long OK brings up the player's "
+            + "settings, as MENU does.";
+
     /** Remote control › Player: the keys on full-screen live TV. */
     private void remote(List<RowList.Row> out) {
         out.add(pick("ok", "OK", RemoteKeys.ACTION_NAMES[RemoteKeys.ok(tv)]));
@@ -260,7 +266,7 @@ final class MoreSettings implements SettingsScreen.Pages {
         for (int i = 0; i < RemoteKeys.COLOUR_NAMES.length; i++) {
             out.add(pick("colour." + i, RemoteKeys.COLOUR_NAMES[i], RemoteKeys.ACTION_NAMES[RemoteKeys.colour(tv, i)]));
         }
-        out.add(RowList.Row.note("Over a match, Long OK opens the scoreboard's menu first."));
+        out.add(RowList.Row.note(LONG_OK_NOTE));
     }
 
     /** About: the version, Updates, and the few words Homefield's About had. */
@@ -282,7 +288,7 @@ final class MoreSettings implements SettingsScreen.Pages {
         out.add(RowList.Row.note("adb shell content insert --uri content://com.gathin.homefieldtv.setup/xtream "
                 + "--bind server:s:… --bind user:s:… --bind pass:s:…"));
         out.add(RowList.Row.header("The remote"));
-        out.add(RowList.Row.note("Add a channel to your favourites from the player's bar (OK held, or MENU). Type a channel's number "
+        out.add(RowList.Row.note("Add a channel to your favourites from the player's settings (MENU). Type a channel's number "
                 + "to go straight to it."));
         out.add(RowList.Row.note("Lettering: Inter, and Outfit on the scoreboard (both SIL Open Font License)."));
     }
@@ -390,8 +396,6 @@ final class MoreSettings implements SettingsScreen.Pages {
             if (LiveSettings.chosen(tv, t)) s.refresh();
         } else if (page.equals("other.reminders")) {
             if (ReminderSettings.chosen(tv, t)) s.refresh();
-        } else if (page.equals("other.scoreboard")) {
-            if (BoardSettings.chosen(tv, t)) s.refresh();
         } else if (page.equals("general.sync")) {
             if (SyncSettings.chosen(tv, t, () -> s.refresh())) s.refresh();
         }
@@ -528,7 +532,7 @@ final class MoreSettings implements SettingsScreen.Pages {
             case "ok": return new SettingsScreen.Picker("OK", actionNames(RemoteKeys.OK_ACTIONS),
                     PlayerPrefs.indexOf(RemoteKeys.OK_ACTIONS, RemoteKeys.ok(tv)), null);
             case "oklong": return new SettingsScreen.Picker("Long OK", actionNames(RemoteKeys.OK_LONG_ACTIONS),
-                    PlayerPrefs.indexOf(RemoteKeys.OK_LONG_ACTIONS, RemoteKeys.okLong(tv)), "Over a match, the scoreboard's menu first.");
+                    PlayerPrefs.indexOf(RemoteKeys.OK_LONG_ACTIONS, RemoteKeys.okLong(tv)), LONG_OK_NOTE);
             case "wait": return new SettingsScreen.Picker("Number keys wait", RemoteKeys.WAIT_NAMES,
                     PlayerPrefs.indexOf(RemoteKeys.WAITS_MS, RemoteKeys.waitMs(tv)), "Before changing channel.");
             case "previous": return new SettingsScreen.Picker("The channel before", RemoteKeys.PREVIOUS_NAMES, RemoteKeys.previous(tv), null);

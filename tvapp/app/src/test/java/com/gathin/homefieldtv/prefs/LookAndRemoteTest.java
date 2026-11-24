@@ -61,11 +61,13 @@ public class LookAndRemoteTest {
 
     @Test public void theRemotesKeys() {
         Context c = RuntimeEnvironment.getApplication();
-        // As TiviMate's remote: Up and Down change channel, Up to the next number; OK the overlay (BANNER), held the bar.
+        // As TiviMate's remote: Up and Down change channel, Up to the next number; OK the overlay (BANNER); held, the
+        // scoreboard and logo menu (as the launcher's over TiviMate), the bar still a choice.
         assertEquals(1, RemoteKeys.upDown(c));
         assertTrue(RemoteKeys.reversed(c));
         assertEquals(RemoteKeys.BANNER, RemoteKeys.ok(c));
-        assertEquals(RemoteKeys.CHANNEL_MENU, RemoteKeys.okLong(c));
+        assertEquals(RemoteKeys.SCOREBOARD_MENU, RemoteKeys.okLong(c));
+        assertEquals(RemoteKeys.SCOREBOARD_MENU, RemoteKeys.OK_LONG_ACTIONS[0]);
         assertEquals(1600, RemoteKeys.waitMs(c));
         // The colour keys, and the Last key always the channel before.
         assertEquals(RemoteKeys.GUIDE, RemoteKeys.action(c, KeyEvent.KEYCODE_PROG_RED));
@@ -84,7 +86,33 @@ public class LookAndRemoteTest {
         assertEquals(1, RemoteKeys.zapDir(-1, true));
         assertEquals(2, RemoteKeys.colourIndex(KeyEvent.KEYCODE_PROG_YELLOW));
         assertEquals(-1, RemoteKeys.colourIndex(KeyEvent.KEYCODE_0));
-        assertEquals(RemoteKeys.ACTION_NAMES.length, RemoteKeys.CHANNEL_MENU + 1);
+        assertEquals(RemoteKeys.ACTION_NAMES.length, RemoteKeys.SCOREBOARD_MENU + 1);
+    }
+
+    @Test public void okHeldMovesToTheScoreboardMenuOnce() {
+        Context c = RuntimeEnvironment.getApplication();
+        android.content.SharedPreferences p = c.getSharedPreferences("remote", Context.MODE_PRIVATE);
+        // Pure: the bar kept from before (OK held as it came) becomes the menu; any other choice stays.
+        assertEquals(RemoteKeys.SCOREBOARD_MENU, RemoteKeys.boardMenuOnce(RemoteKeys.CHANNEL_MENU));
+        assertEquals(RemoteKeys.PLAYER_MENU, RemoteKeys.boardMenuOnce(RemoteKeys.PLAYER_MENU));
+        assertEquals(RemoteKeys.GUIDE, RemoteKeys.boardMenuOnce(RemoteKeys.GUIDE));
+
+        // A TV from before with the bar stored: the scoreboard and logo menu from now on.
+        p.edit().clear().putInt("oklong", RemoteKeys.CHANNEL_MENU).commit();
+        assertEquals(RemoteKeys.SCOREBOARD_MENU, RemoteKeys.okLong(c));
+        assertEquals(RemoteKeys.SCOREBOARD_MENU, p.getInt("oklong", -1));
+        // Once only: the bar chosen again in Settings stays the bar.
+        RemoteKeys.setOkLong(c, RemoteKeys.CHANNEL_MENU);
+        assertEquals(RemoteKeys.CHANNEL_MENU, RemoteKeys.okLong(c));
+        assertEquals(RemoteKeys.CHANNEL_MENU, RemoteKeys.okLong(c));
+
+        // Another choice from before stays as it was.
+        p.edit().clear().putInt("oklong", RemoteKeys.GUIDE).commit();
+        assertEquals(RemoteKeys.GUIDE, RemoteKeys.okLong(c));
+        // A new TV: the menu.
+        p.edit().clear().commit();
+        assertEquals(RemoteKeys.SCOREBOARD_MENU, RemoteKeys.okLong(c));
+        p.edit().clear().commit();
     }
 
     @Test public void startingUp() {

@@ -8,16 +8,22 @@ import android.view.KeyEvent;
  * Settings → Remote, for live TV full screen: what Up and Down do (open the channel list, as it came, or change channel)
  * and which way channels go, what OK and OK held do, how long the number keys wait before changing channel, the key for
  * the channel before, and the four colour keys. The live screen asks action() for a key and does what it says.
+ *
+ * <p>OK held, as it comes: the scoreboard and logo menu (SCOREBOARD_MENU), the family's "hold down ok when I'm in full
+ * screen ... and the scoreboard pop up settings menu comes up ... just like it is on tivimate": only while a channel plays
+ * full screen with nothing over the picture; with a panel up (the info card, the overlay, the rows) it is the player's
+ * settings as MENU gives them, as OK held was before. Once, the player's menu kept from before (CHANNEL_MENU, what OK
+ * held came as) became the scoreboard and logo menu (okLong); any other choice stays, and that one can be chosen again.
  */
 public final class RemoteKeys {
     private RemoteKeys() {}
 
     /** What a key can do on live TV full screen. */
     public static final int NOTHING = 0, GUIDE = 1, LIST = 2, PREVIOUS = 3, FAVOURITE = 4, PLAYER_MENU = 5, SUBTITLES = 6,
-            START_OVER = 7, SEARCH = 8, BANNER = 9, SETTINGS = 10, CHANNEL_MENU = 11;
+            START_OVER = 7, SEARCH = 8, BANNER = 9, SETTINGS = 10, CHANNEL_MENU = 11, SCOREBOARD_MENU = 12;
     public static final String[] ACTION_NAMES = {"Nothing", "The guide", "The channel list", "The channel before",
             "Favourite on or off", "The player's menu", "Subtitles", "Watch from the start", "Search", "The banner",
-            "Settings", "The channel's menu"};
+            "Settings", "The channel's menu", "The scoreboard and logo menu"};
 
     /** The colour keys' choices, and what each does unless changed. */
     public static final int[] COLOUR_ACTIONS = {NOTHING, GUIDE, LIST, PREVIOUS, FAVOURITE, PLAYER_MENU, SUBTITLES, START_OVER, SEARCH, SETTINGS};
@@ -28,7 +34,7 @@ public final class RemoteKeys {
 
     /** OK and OK held, full screen: their choices (the first as it came). */
     public static final int[] OK_ACTIONS = {BANNER, LIST, GUIDE, PLAYER_MENU};
-    public static final int[] OK_LONG_ACTIONS = {CHANNEL_MENU, PLAYER_MENU, GUIDE, FAVOURITE};
+    public static final int[] OK_LONG_ACTIONS = {SCOREBOARD_MENU, CHANNEL_MENU, PLAYER_MENU, GUIDE, FAVOURITE};
 
     public static final String[] UPDOWN_NAMES = {"Open the channel list", "Change channel"};
     public static final String[] DIRECTION_NAMES = {"Up: the channel above in the list", "Up: the next number"};
@@ -73,12 +79,28 @@ public final class RemoteKeys {
         prefs(c).edit().putInt("ok", action).apply();
     }
 
+    /** What OK held does on live TV full screen: the scoreboard and logo menu unless another is chosen (see the class). */
     public static int okLong(Context c) {
-        return pick(prefs(c).getInt("oklong", CHANNEL_MENU), OK_LONG_ACTIONS);
+        SharedPreferences p = prefs(c);
+        if (!p.getBoolean(OK_LONG_BOARD, false)) {
+            // Once: the player's menu kept from before (OK held as it came) becomes the scoreboard and logo menu.
+            SharedPreferences.Editor e = p.edit().putBoolean(OK_LONG_BOARD, true);
+            if (p.contains("oklong")) e.putInt("oklong", boardMenuOnce(p.getInt("oklong", CHANNEL_MENU)));
+            e.apply();
+        }
+        return pick(p.getInt("oklong", SCOREBOARD_MENU), OK_LONG_ACTIONS);
     }
 
     public static void setOkLong(Context c, int action) {
-        prefs(c).edit().putInt("oklong", action).apply();
+        prefs(c).edit().putInt("oklong", action).putBoolean(OK_LONG_BOARD, true).apply();
+    }
+
+    /** Set once OK held kept from before was moved over to the scoreboard and logo menu (Nov 2026). */
+    static final String OK_LONG_BOARD = "oklong_board";
+
+    /** Pure: OK held's action after the one move to the scoreboard and logo menu: the player's menu as it came becomes it. */
+    static int boardMenuOnce(int stored) {
+        return stored == CHANNEL_MENU ? SCOREBOARD_MENU : stored;
     }
 
     public static int waitMs(Context c) {

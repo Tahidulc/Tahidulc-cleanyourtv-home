@@ -3,17 +3,14 @@ package com.gathin.homefieldtv;
 import android.content.Context;
 import android.widget.Toast;
 
-import com.gathin.broadcast.Sfx;
 import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.engine.Problems;
 import com.gathin.homefieldtv.prefs.ChannelEdits;
 import com.gathin.homefieldtv.prefs.Merges;
-import com.gathin.homefieldtv.sports.InStep;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -26,14 +23,12 @@ import java.util.Map;
  *   about.auto             About › Updates › Automatic updates: Off (updates only from a computer) or Every time it
  *                          opens, the Update address (empty: off), Check now, what stood in the way, the room on the TV
  *   channels.merged        Channels &amp; categories › Merged channels: each merge (OK to separate it), Separate all
- *   other.scoreboard.more  Other › Scoreboard › More scoreboard settings: the look, timing, pop-ups, moving and sizing it,
- *                          for every match (what the scoreboard's own menu sets over a match)
- *   other.askai            Other › Ask AI (and Scoreboard's line): the family's own Anthropic API key, masked, and the
- *                          model (AiSettings)
+ *   other.askai            Other › Ask AI: the family's own Anthropic API key, masked, and the model (AiSettings)
  *   about.logopacks        About › Logo packs' licences: the logo catalogue's packs and their terms (LogoPacks.LICENCES)
  * </pre>
  *
- * And the choice of My scoreboards in use (Other › Scoreboard's My scoreboards: the look as chosen, or one of them).
+ * The scoreboard's and the logo's settings have no page here: they are all in their menu over the player (hold OK while a
+ * channel plays full screen: BoardMenu), the family's "Yes get rid of this" for the Scoreboard page.
  */
 final class AddedSettings implements SettingsScreen.Pages {
     private final TvActivity tv;
@@ -44,12 +39,12 @@ final class AddedSettings implements SettingsScreen.Pages {
         this.s = s;
     }
 
-    /** The logo packs' licences' page, and My scoreboards' choice. */
-    static final String LICENCES = "about.logopacks", MINE = "board.mine";
+    /** The logo packs' licences' page. */
+    static final String LICENCES = "about.logopacks";
 
     @Override public boolean owns(String page) {
         return page.equals("about.problems") || page.equals("about.auto") || page.equals("channels.merged")
-                || page.equals("other.scoreboard.more") || page.equals(AiSettings.PAGE) || page.equals(LICENCES);
+                || page.equals(AiSettings.PAGE) || page.equals(LICENCES);
     }
 
     @Override public String title(String page) {
@@ -57,7 +52,6 @@ final class AddedSettings implements SettingsScreen.Pages {
             case "about.problems": return "If something goes wrong";
             case "about.auto": return "Automatic updates";
             case "channels.merged": return "Merged channels";
-            case "other.scoreboard.more": return "More scoreboard settings";
             case AiSettings.PAGE: return "Ask AI";
             case LICENCES: return "Logo packs' licences";
             default: return "";
@@ -94,7 +88,6 @@ final class AddedSettings implements SettingsScreen.Pages {
             case "about.problems": problems(out); break;
             case "about.auto": auto(out); break;
             case "channels.merged": merged(out); break;
-            case "other.scoreboard.more": board(out); break;
             case AiSettings.PAGE: AiSettings.rows(s, tv, out); break;
             case LICENCES: licences(out); break;
             default: break;
@@ -110,17 +103,6 @@ final class AddedSettings implements SettingsScreen.Pages {
             if (t.equals("Channel logo catalogue")) out.add(RowList.Row.header(t));
             else out.add(RowList.Row.note(t));
         }
-    }
-
-    // ---- My scoreboards' choice ----------------------------------------------------------------------------------------
-
-    /** The board in use, as Scoreboard's line says it. */
-    static String mineWords(Context c) {
-        String id = BoardPrefs.customId(c);
-        com.gathin.broadcast.MyBoards.Saved s = id == null ? null : MyBoardStore.get(c, id);
-        int n = MyBoardStore.all(c).size();
-        if (s != null) return s.name;
-        return n == 0 ? "None saved yet: make one over a match (hold OK, Scoreboard editor)" : "The look as chosen  ·  " + n + " saved";
     }
 
     private void problems(List<RowList.Row> out) {
@@ -181,34 +163,6 @@ final class AddedSettings implements SettingsScreen.Pages {
         return c == null ? "a channel not in your playlists now" : ChannelEdits.name(c);
     }
 
-    /** What the scoreboard's menu over a match sets, here for every match. */
-    private void board(List<RowList.Row> out) {
-        Context c = tv;
-        out.add(RowList.Row.header("Look"));
-        out.add(RowList.Row.item("b:look", "Look", BoardPrefs.style(c).label + "  ·  OK for the next"));
-        out.add(RowList.Row.toggle("b:logoonly", "Logo cover only", "The cover over the channel's logo, without the scoreboard",
-                BoardPrefs.logoOnly(c)));
-        out.add(RowList.Row.header("Timing"));
-        out.add(MoreSettings.pick("b.usual", "A channel not lined up yet", usualWords(InStep.usual(c))));
-        out.add(RowList.Row.toggle("b:ask", "Ask at each kick-off", "OK as it kicks off sets the clock with your channel's", InStep.asking(c)));
-        out.add(RowList.Row.header("Pop-ups"));
-        out.add(RowList.Row.item("b:popup", "Kick-off and goal pop-ups", BoardPrefs.popupWords(BoardPrefs.popupStyle(c)) + "  ·  OK for the next"));
-        out.add(RowList.Row.toggle("b:drops", "Alerts beside the board", "Cards, substitutions, VAR, added time, half and full time",
-                BoardPrefs.dropsOn(c)));
-        out.add(RowList.Row.toggle("b:lineups", "Line-ups before kick-off", "Both elevens, seven minutes before", BoardPrefs.lineupsOn(c)));
-        out.add(RowList.Row.item("b:sound", "Goal sound", Sfx.goalName(BoardPrefs.goalSound(c)) + "  ·  OK for the next"));
-        out.add(RowList.Row.header("Moving and sizing it"));
-        out.add(RowList.Row.item("b:reset", "Back to the standard places", "The scoreboard and the logo cover, on every channel"));
-        out.add(RowList.Row.note("Over a match, hold OK (or the bar's Scoreboard): Move the scoreboard, Scoreboard size, Move the logo "
-                + "cover, Logo cover size, and Timing for that channel. These are for every match."));
-    }
-
-    static final int[] USUAL = {0, 15, 30, 45, 60, 90, 120};
-
-    static String usualWords(int s) {
-        return s <= 0 ? "Live, no delay" : String.format(Locale.UK, "%d s behind live", s);
-    }
-
     // ---- OK on a line ----------------------------------------------------------------------------------------------------
 
     @Override public void chosen(String page, RowList.Row row) {
@@ -244,34 +198,6 @@ final class AddedSettings implements SettingsScreen.Pages {
                 s.refresh();
                 break;
             }
-            case "b:look": {
-                BoardBug.Style[] all = BoardPrefs.looks();
-                BoardBug.Style now = BoardPrefs.style(c);
-                int i = 0;
-                for (int k = 0; k < all.length; k++) if (all[k] == now) i = k;
-                BoardPrefs.setStyle(c, all[(i + 1) % all.length]);
-                s.refresh();
-                break;
-            }
-            case "b:logoonly": BoardPrefs.setLogoOnly(c, !BoardPrefs.logoOnly(c)); s.refresh(); break;
-            case "b:ask": InStep.setAsking(c, !InStep.asking(c)); s.refresh(); break;
-            case "b:popup": BoardPrefs.setPopupStyle(c, BoardPrefs.nextPopup(BoardPrefs.popupStyle(c), 1)); s.refresh(); break;
-            case "b:drops": BoardPrefs.setDropsOn(c, !BoardPrefs.dropsOn(c)); s.refresh(); break;
-            case "b:lineups": BoardPrefs.setLineupsOn(c, !BoardPrefs.lineupsOn(c)); s.refresh(); break;
-            case "b:sound": {
-                String now = BoardPrefs.goalSound(c);
-                int i = 0;
-                for (int k = 0; k < Sfx.GOALS.length; k++) if (Sfx.GOALS[k].equals(now)) i = k;
-                String next = Sfx.GOALS[(i + 1) % Sfx.GOALS.length];
-                BoardPrefs.setGoalSound(c, next);
-                Sfx.goal(c, next);
-                s.refresh();
-                break;
-            }
-            case "b:reset":
-                BoardPrefs.resetAllPlaces(c);
-                Toast.makeText(tv, "The scoreboard and the logo cover are back in their standard places", Toast.LENGTH_SHORT).show();
-                break;
             default:
                 break;
         }
@@ -281,31 +207,8 @@ final class AddedSettings implements SettingsScreen.Pages {
         switch (key) {
             case AiSettings.MODEL:
                 return AiSettings.picker(tv);
-            case MINE: {
-                java.util.List<com.gathin.broadcast.MyBoards.Saved> all = MyBoardStore.all(tv);
-                String[] names = new String[all.size() + 1];
-                names[0] = "The look as chosen (" + BoardPrefs.style(tv).label + ")";
-                int at = 0;
-                String id = BoardPrefs.customId(tv);
-                for (int i = 0; i < all.size(); i++) {
-                    names[i + 1] = all.get(i).name;
-                    if (all.get(i).id.equals(id)) at = i + 1;
-                }
-                return new SettingsScreen.Picker("My scoreboards", names, at, "Your own boards, from the scoreboard editor over a match "
-                        + "or the phone. Make or change one over a match: hold OK, Scoreboard editor.");
-            }
             case "auto.mode":
                 return new SettingsScreen.Picker("Automatic updates", AutoUpdate.NAMES, AutoUpdate.mode(tv), AutoUpdate.ABOUT[AutoUpdate.OFF]);
-            case "b.usual": {
-                String[] names = new String[USUAL.length];
-                int at = 0, now = InStep.usual(tv);
-                for (int i = 0; i < USUAL.length; i++) {
-                    names[i] = usualWords(USUAL[i]);
-                    if (Math.abs(USUAL[i] - now) < Math.abs(USUAL[at] - now)) at = i;
-                }
-                return new SettingsScreen.Picker("A channel not lined up yet", names, at,
-                        "How far behind the real game a channel's picture is taken to be until it is lined up at a kick-off.");
-            }
             default:
                 return null;
         }
@@ -316,17 +219,9 @@ final class AddedSettings implements SettingsScreen.Pages {
             case AiSettings.MODEL:
                 AiSettings.picked(tv, index);
                 break;
-            case MINE: {
-                java.util.List<com.gathin.broadcast.MyBoards.Saved> all = MyBoardStore.all(tv);
-                BoardPrefs.setCustom(tv, index <= 0 || index > all.size() ? null : all.get(index - 1).id);
-                break;
-            }
             case "auto.mode":
                 AutoUpdate.setMode(tv, index);
                 if (index == AutoUpdate.ON_OPEN && !AutoUpdate.address(tv).isEmpty()) AutoUpdate.check(tv, s::refresh);
-                break;
-            case "b.usual":
-                if (index >= 0 && index < USUAL.length) InStep.setUsual(tv, USUAL[index]);
                 break;
             default:
                 break;

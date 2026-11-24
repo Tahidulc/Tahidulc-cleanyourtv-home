@@ -74,11 +74,17 @@ import java.util.Set;
  * own logo, a cover (top right, where most broadcasters put theirs).
  *
  * <p>Where they sit: the standard places (the board top left over the broadcaster's own, the cover top right) until moved
- * for a channel; OK held over the match opens the menu (on or off, the look, My scoreboards, the scoreboard editor and a
- * new scoreboard, timing, move and size, the line-ups, the sounds). One of My scoreboards in use (MyBoardStore, a
- * BoardSpec) is drawn by the board in its base look, as the launcher's and the phone's boards draw it, the strap too;
- * the editor (BoardEditor) sits down the right over the match, the board changing with it as it is edited. Kind to the screen: once a minute both step a pixel or two round a circle, and after five minutes without a
- * goal they dim.
+ * for a channel. OK held while the channel plays full screen with nothing over it opens the scoreboard and logo menu
+ * (BoardMenu, the launcher's over TiviMate: "hold down ok when I'm in full screen ... and then I can turn the scoreboard
+ * and logo on and off just like it is on tivimate"), on every channel, over a match or not: Scoreboard and Logo's cover
+ * first, then the look, moving and sizing, the line-ups, My scoreboards (the editor, Generate, Ask AI) and a new one,
+ * timing, the alerts, VAR, the pop-ups, the sounds and the standard places. It is the only place for these settings.
+ * Scoreboard off is the launcher's boardShown: the board, what slides out beside it and its pop-ups away at once and until
+ * it is on again, the cover staying as its own switch says, the game followed underneath; Logo's cover off, the cover
+ * goes. One of My scoreboards in use (MyBoardStore, a BoardSpec) is drawn by the board in its base look, as the
+ * launcher's and the phone's boards draw it, the strap too; the editor (BoardEditor) sits down the right over the match,
+ * the board changing with it as it is edited. Kind to the screen: once a minute both step a pixel or two round a
+ * circle, and after five minutes without a goal they dim.
  *
  * <p>All of it shows only while the channel plays full screen with nothing over it (BoardGate: the live screen says
  * when, showOnlyWhen and coverChanged): the info card, the OK overlay, the bar, the channel list or anything else over
@@ -107,7 +113,13 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
     final BoardDrop drop;
     private final LogoCover logo;
     private final Card card;
-    private final Menu menu;
+    /** The scoreboard and logo menu (OK held in plain playback). */
+    final BoardMenu menu;
+    /** The menu's picture of the cover, and a board in the looks either side of the one now (for their strips' colours). */
+    private final CoverArt menuArt;
+    private BoardBug looks;
+    /** The menu's Back to the standard places: on every channel (else this one's). */
+    private boolean resetEvery;
     /** The scoreboard editor over the match (My scoreboards), down the right; the board shows the board being edited. */
     final BoardEditor editor;
     /** The custom board drawn now (null: the look as chosen): the one in use, or the editor's. */
@@ -191,7 +203,8 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         addView(bug, new LayoutParams(1, 1));
         card = new Card(tv);
         addView(card, new LayoutParams(-1, -1));
-        menu = new Menu(tv);
+        menuArt = new CoverArt(tv);
+        menu = new BoardMenu(tv, menuHost);
         addView(menu, new LayoutParams(-1, -1));
         editor = new BoardEditor(tv, new BoardEditor.Host() {
             @Override public void showing(com.gathin.broadcast.BoardSpec live) {
@@ -419,6 +432,8 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         }
         show(now, playing);
         varTick(now);
+        // The menu up as the match is found or read: its line under the title says so.
+        if (menu.open && !noteNow().equals(menuNote)) menu.refresh();
         // Caught up once a reading taken since coming back has been shown (what it brought was not popped up).
         if (catchingUp && readSinceStart) catchingUp = false;
     }
@@ -578,8 +593,9 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
     private void summary() {
         summarising = true;
         Game g0 = game;
-        // FotMob only while the game is on and the board shows it (its clock is what the whistle stops).
-        boolean live = g0.state == Game.LIVE && BoardPrefs.on(getContext());
+        // FotMob only while the game is on and the board or the cover shows (its clock is what the whistle stops; with
+        // the board switched off it goes on underneath, so it is right when it comes back).
+        boolean live = g0.state == Game.LIVE && (BoardPrefs.on(getContext()) || BoardPrefs.logoOn(getContext()));
         Exec.io(() -> {
             Espn.Summary s = null;
             try {
@@ -925,9 +941,10 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         Game g = game;
         // Only over plain full-screen playback: covered, all of it away at once (BoardGate); the game is still followed.
         boolean clear = gate(now);
-        // Logo cover only: the cover over the channel's logo while the match is on, no scoreboard, nothing popping up.
-        boolean only = BoardPrefs.logoOnly(c);
-        if (g == null || !playing || !BoardPrefs.on(c) && !only && moving == 0) {
+        // The menu's two switches, as the launcher's over TiviMate: Scoreboard off (boardShown), the cover alone (as its
+        // own switch says), nothing popping up, the game still followed underneath so it is right when it comes back.
+        boolean only = !BoardPrefs.on(c);
+        if (g == null || !playing) {
             if (moving == 0) {
                 boardUp(false);
                 logoUp(false);
@@ -974,7 +991,8 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             l.stoppage = BoardClock.inAddedTime(l.clock, r.detail);
             if (!l.added.isEmpty()) addedOut(BoardClock.periodOf(l.clock, r.detail), l.added);
         }
-        if (!only) moments(r, screenNow, now, l.score);
+        // Followed with the board off too (nothing popped up then), so nothing stale pops up when it is on again.
+        moments(r, screenNow, now, l.score, !only);
         pending.release(g.id, picture);
         if (r != null && r.state != Game.PRE) {
             if (shownScore != null && !shownScore.equals(l.score)) {
@@ -998,7 +1016,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         if (awayForPopup) swishBack = true;
         layoutAll();
         boardUp(want && clear && (!only || moving == 1));
-        logoUp(clear && (moving == 2 || phase != BoardClock.AWAY && (BoardPrefs.logoOn(c) || only)));
+        logoUp(clear && (moving == 2 || phase != BoardClock.AWAY && BoardPrefs.logoOn(c)));
         logo.live = l.live;
         logo.invalidate();
         guard(now);
@@ -1018,8 +1036,11 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         }
     }
 
-    /** The moments as the picture reaches them: the kick-off, half time, the second half, full time; the line-ups. */
-    private void moments(BoardClock.Reading r, long screenNow, long now, String score) {
+    /**
+     * The moments as the picture reaches them: the kick-off, half time, the second half, full time; the line-ups. Followed
+     * always; popped up (or out beside the board) only when pop (the board shown).
+     */
+    private void moments(BoardClock.Reading r, long screenNow, long now, String score, boolean pop) {
         Game g = game;
         if (g == null) return;
         Context c = getContext();
@@ -1029,7 +1050,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         if (!ph.isEmpty()) phaseWas = ph;
         String kind = was == null || ph.isEmpty() ? null : Moments.moment(was, ph);
         // Seen only now after the live screen was away too long (BoardGate): not popped up stale.
-        boolean stale = staleSinceStop(now);
+        boolean stale = staleSinceStop(now) || !pop;
         if (kind != null && !stale) {
             lastChange = now;
             int[] sc = "kickoff".equals(kind) || r == null ? null : new int[]{r.home, r.away};
@@ -1040,7 +1061,9 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             if ("ht".equals(ph)) drop(momentDrop("HALF TIME", score));
             else if ("ft".equals(ph)) drop(momentDrop("FULL TIME", score));
         }
-        if ("pre".equals(ph) && g.kickoff > 0 && BoardPrefs.lineupsOn(c) && Moments.lineupsDue(g.kickoff - screenNow)) lineups(false);
+        if (pop && "pre".equals(ph) && g.kickoff > 0 && BoardPrefs.lineupsOn(c) && Moments.lineupsDue(g.kickoff - screenNow)) {
+            lineups(false);
+        }
     }
 
     /** A goal on the screen: its moment on the board, its sound, and what it brings (the pop-up after it, or its scorer). */
@@ -1144,7 +1167,8 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
      */
     private void popup(String kind, int[] score, String scorer, String minute) {
         Game g = game;
-        if (g == null) return;
+        // The board's own pop-ups go with it: none while the menu's Scoreboard is off.
+        if (g == null || !BoardPrefs.on(getContext())) return;
         String key = g.id + "|" + kind + (score == null ? "" : "|" + score[0] + "-" + score[1]);
         if (shown.contains(key) || popupShowing()) return;
         if (!clear()) {
@@ -1173,7 +1197,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             JSONObject got = cfg;
             Exec.main(() -> {
                 popupMaking = false;
-                if (got == null || !started || popup != null) return;
+                if (got == null || !started || popup != null || !BoardPrefs.on(getContext())) return;
                 if (strap) clockFromBoard(got);
                 showPopup(BroadcastView.page(getContext(), strap ? "strap" : "kickoff", got, this::popupGone), strap ? "strap" : kind);
             });
@@ -1285,9 +1309,16 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             Exec.main(() -> {
                 lineupsMaking = false;
                 if (!started || game == null || !game.id.equals(g.id)) return;
+                // The scoreboard switched off meanwhile: only asked for (the menu's OK) do they come.
+                boolean boardOn = BoardPrefs.on(getContext());
+                if (!asked && !boardOn) return;
                 if (got == null) {
-                    // FotMob has none yet: ESPN's elevens beside the board, once (or now, asked).
+                    // FotMob has none yet: ESPN's elevens beside the board, once (or now, asked); none with it off.
                     BoardDrop.Drop d = lineupsDrop();
+                    if (d != null && !boardOn) {
+                        card.note("The line-ups go beside the scoreboard", "The scoreboard is off: switch it on to see them");
+                        return;
+                    }
                     if (d != null && (asked || !shown.contains(key))) {
                         shown.add(key);
                         drop(d);
@@ -1345,6 +1376,8 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
     void drop(BoardDrop.Drop d) {
         if (d == null) return;
         if (!d.lineups && !BoardPrefs.dropsOn(getContext())) return;
+        // What slides out beside the board goes with it: nothing queued while the menu's Scoreboard is off.
+        if (!BoardPrefs.on(getContext())) return;
         // A goal is said once.
         if (d.key != null && !shown.add("drop|" + d.key)) return;
         // Another event of the game (a card, a substitution, a goal, half or full time) while its VAR check is out or
@@ -1658,31 +1691,35 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
 
     // ---- the remote (the live screen asks first) ---------------------------------------------------------------------------
 
-    /** Whether a game was found for the channel playing (the player's bar then has a Scoreboard button). */
-    boolean hasGame() {
-        return game != null;
-    }
-
-    /** Whether the board has the remote now: its menu is up, or it is being moved. */
+    /** Whether the board has the remote now: its menu is up, the editor, or it is being moved. */
     boolean takesKeys() {
         return !covered && (moving != 0 || menu.open || editor.open);
     }
 
-    /** OK held over the match: the scoreboard's menu (true), or nothing to set (false: the live screen's own). */
-    boolean okLong() {
-        if (game == null || menu.open || editor.open) return false;
-        menu.show();
-        return true;
+    /** Whether the scoreboard and logo menu is up. */
+    boolean menuOpen() {
+        return menu.open;
+    }
+
+    /** What the menu's lines say now (its values as they stand). */
+    BoardMenu.MenuState menuState() {
+        return menuHost.state();
     }
 
     /**
-     * The bar's Scoreboard, on every channel: the scoreboard's menu, for the match on this channel when there is one ("No
-     * match on this channel now", "Reading the match" while it is looked for, "Reading the scores" until they come); what
-     * it sets is for every match.
+     * OK held while the channel plays full screen with nothing over it (the live screen says when): the scoreboard and logo
+     * menu, on every channel, over a match or not, as the launcher's holdInPlayer over TiviMate (with no match on the
+     * channel what it sets is kept for the next one: "No match on this channel now", "Reading the match", "Reading the
+     * scores" until there is one). False when it is up already, or the editor or a move has the remote (OK held does
+     * nothing more then).
      */
-    void openMenu() {
-        if (menu.open || editor.open) return;
+    boolean okLong() {
+        // The picture's state as it is now (a panel just gone, say), so the layer is there to draw the menu.
+        coverChanged();
+        if (covered || menu.open || editor.open || moving != 0) return false;
+        resetEvery = false;
         menu.show();
+        return true;
     }
 
     /** Pure: the menu's line under its title, for a game (null: none found) and whether it is being looked for / read. */
@@ -1765,7 +1802,6 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
 
     // ---- the cover over the channel's logo ---------------------------------------------------------------------------------
 
-    /** A plate in the board's own look over where the channel's logo is, the channel's own mark on it, LIVE under it. */
     /** The cover's logo is read at most this many pixels across (it is never drawn much larger on a 1080p picture). */
     static final int LOGO_MAX = 320;
 
@@ -1774,16 +1810,18 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         return Math.max(16, (int) Math.ceil(px / 16f) * 16);
     }
 
-    private final class LogoCover extends View {
-        boolean live, ringed;
+    /**
+     * The cover's drawing: a plate in the board's own look, the channel's own mark on it (else its name), LIVE under it
+     * while the match is, a white ring while it is being moved. The cover over the picture draws it, and the menu's picture
+     * of the cover the same, smaller.
+     */
+    static final class CoverArt {
         private final Paint ground = new Paint(Paint.ANTI_ALIAS_FLAG), ring = new Paint(Paint.ANTI_ALIAS_FLAG),
                 bmp = new Paint(Paint.FILTER_BITMAP_FLAG), pill = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final TextPaint name = new TextPaint(Paint.ANTI_ALIAS_FLAG), tag = new TextPaint(Paint.ANTI_ALIAS_FLAG);
         private final RectF r = new RectF();
-        private final Runnable again = this::invalidate;
 
-        LogoCover(Context c) {
-            super(c);
+        CoverArt(Context c) {
             ring.setStyle(Paint.Style.STROKE);
             ring.setColor(0xFFFFFFFF);
             name.setTypeface(BoardPrefs.outfit(c, 700));
@@ -1791,16 +1829,14 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             pill.setColor(0xFFE3061B);
         }
 
-        @Override protected void onDraw(Canvas cv) {
-            int w = getWidth(), hh = getHeight();
+        /** The cover w x hh at (0, 0) in look, for channel c (null: the plate alone), e its edge; again when its logo comes. */
+        void draw(Canvas cv, float w, float hh, BoardBug.StripLook look, Channel c, float e, boolean live, boolean ringed, Runnable again) {
             if (w <= 0 || hh <= 0) return;
-            BoardBug.StripLook look = bug.stripLook();
             ground.setColor(0xFF000000 | look.ground);
-            float e = edge, round = Math.min(hh, w) * Math.max(0.12f, look.round);
+            float round = Math.min(hh, w) * Math.max(0.12f, look.round);
             r.set(0, 0, w, hh);
             cv.drawRoundRect(r, round, round, ground);
             float tagH = live ? hh * 0.26f : 0f;
-            Channel c = ch;
             String url = c == null ? null : LogoPack.url(c);
             int bw = Math.max(1, Math.round(w - 4 * e - w * 0.16f)), bh = Math.max(1, Math.round(hh - 4 * e - tagH - hh * 0.12f));
             // Read at most LOGO_MAX across and in steps of 16 (a cover made bigger a press at a time reads its logo once, not
@@ -1833,6 +1869,22 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
                 r.set(e / 2f, e / 2f, w - e / 2f, hh - e / 2f);
                 cv.drawRoundRect(r, round, round, ring);
             }
+        }
+    }
+
+    /** The cover over where the channel's logo is (CoverArt), in the board's look now. */
+    private final class LogoCover extends View {
+        boolean live, ringed;
+        private final CoverArt art;
+        private final Runnable again = this::invalidate;
+
+        LogoCover(Context c) {
+            super(c);
+            art = new CoverArt(c);
+        }
+
+        @Override protected void onDraw(Canvas cv) {
+            art.draw(cv, getWidth(), getHeight(), bug.stripLook(), ch, edge, live, ringed, again);
         }
     }
 
@@ -1909,243 +1961,223 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         }
     }
 
-    // ---- the menu, OK held over the match ---------------------------------------------------------------------------------
+    // ---- the scoreboard and logo menu (BoardMenu): what its lines say and do -------------------------------------------------
 
-    static final int R_ON = 0, R_LOOK = 1, R_MINE = 2, R_EDIT = 3, R_NEW = 4, R_LOGO = 5, R_TIMING = 6, R_NOW = 7, R_MOVE = 8,
-            R_SIZE = 9, R_MOVE_LOGO = 10, R_LOGO_SIZE = 11, R_LINEUPS = 12, R_ALERTS = 13, R_POPUPS = 14, R_ASK = 15, R_SOUND = 16,
-            R_RESET = 17;
-    static final String[] ROWS = {"Scoreboard", "Look", "My scoreboards", "Scoreboard editor", "New scoreboard", "Logo cover", "Timing",
-            "It's just happened", "Move the scoreboard", "Scoreboard size", "Move the logo cover", "Logo cover size", "Show the line-ups",
-            "Alerts beside the board", "Kick-off and goal pop-ups", "Ask at each kick-off", "Goal sound", "Back to the standard places"};
-    /** The menu's rows in sight at once (it slides along the rest). */
-    static final int MENU_SHOWN = 15;
+    /** The menu's line under its title as it was last worked out (worked out again as the match is found or read). */
+    private String menuNote = "";
 
-    /** Pure: the first of the menu's rows in sight with the remote on row at (count rows, shown at once). */
-    static int menuFirst(int at, int count, int shown) {
-        return Math.max(0, Math.min(at - shown / 2, count - shown));
+    /** The line under the menu's title now: the match, or that there is none yet (what is set is kept for the next one). */
+    private String noteNow() {
+        String line = menuLine(game, finding, !readings.isEmpty());
+        return game == null ? line + "  ·  what you set here is kept for the next match" : line;
     }
 
-    /** My scoreboards' step: the look as chosen (-1) or one of the saved boards, step on from the one in use. */
+    /** The board's looks in the menu's order, the one step away from the look chosen (wrapping round). */
+    private BoardBug.Style lookAt(int step) {
+        BoardBug.Style[] all = BoardPrefs.looks();
+        BoardBug.Style now = BoardPrefs.style(getContext());
+        int i = 0;
+        for (int k = 0; k < all.length; k++) if (all[k] == now) i = k;
+        return all[Math.floorMod(i + step, all.length)];
+    }
+
+    /** The menu's My scoreboards: the look as chosen (none) or one of the saved boards, step on from the one in use. */
     private void stepMine(int step) {
         Context c = getContext();
         java.util.List<com.gathin.broadcast.MyBoards.Saved> all = MyBoardStore.all(c);
+        if (all.isEmpty()) return;
         String id = BoardPrefs.customId(c);
         int i = -1;
         for (int k = 0; k < all.size(); k++) if (all.get(k).id.equals(id)) i = k;
         int n = Math.floorMod(i + 1 + step, all.size() + 1) - 1;
         BoardPrefs.setCustom(c, n < 0 ? null : all.get(n).id);
         restyle(MyBoardStore.inUse(c));
-        mineLine = mineWords();
     }
 
-    /** My scoreboards' value as the menu shows it: worked out as it opens and as it changes (never while drawing). */
-    private String mineLine = "";
-
-    /** My scoreboards' value: the board in use, or the look. */
-    private String mineWords() {
-        Context c = getContext();
-        String id = BoardPrefs.customId(c);
-        com.gathin.broadcast.MyBoards.Saved s = id == null ? null : MyBoardStore.get(c, id);
-        int n = MyBoardStore.all(c).size();
-        if (n == 0) return "None saved yet";
-        return "‹  " + (s == null ? "The look as chosen" : s.name) + "  ›";
-    }
-
-    /** The scoreboard's settings over the match: Up and Down along them, Left and Right to change one, OK to do it. */
-    private final class Menu extends View {
-        boolean open;
-        int at;
-        private final Paint panel = Dark.fill(0xF20A0D1A), hi = Dark.fill(0x33FFFFFF), ringP = Dark.line(0xFFFFFFFF, 3f);
-        private final TextPaint titleP = Dark.text(40, 700, 0xFFFFFFFF), subP = Dark.text(24, 500, Dark.SOFT),
-                label = Dark.text(27, 500, 0xFFFFFFFF), value = Dark.text(27, 700, Dark.ACCENT), hint = Dark.text(22, 500, Dark.MUTED);
-        private final RectF r = new RectF(), rowR = new RectF();
-
-        Menu(Context c) {
-            super(c);
-            setVisibility(GONE);
-        }
-
-        void show() {
-            open = true;
-            at = 0;
-            mineLine = mineWords();
-            setVisibility(VISIBLE);
-            invalidate();
-        }
-
-        void close() {
-            open = false;
-            setVisibility(GONE);
-        }
-
-        boolean key(int code) {
-            switch (code) {
-                case KeyEvent.KEYCODE_DPAD_UP:
-                    at = (at + ROWS.length - 1) % ROWS.length;
-                    invalidate();
-                    return true;
-                case KeyEvent.KEYCODE_DPAD_DOWN:
-                    at = (at + 1) % ROWS.length;
-                    invalidate();
-                    return true;
-                case KeyEvent.KEYCODE_DPAD_LEFT:
-                    change(-1);
-                    return true;
-                case KeyEvent.KEYCODE_DPAD_RIGHT:
-                    change(1);
-                    return true;
-                default:
-                    // Channel up and down, the numbers: the live screen's own.
-                    return false;
+    /**
+     * The menu's Scoreboard switch, the launcher's boardShown: off, the board, what slides out beside it and its pop-ups
+     * (the strap, a moment's, the line-ups, one held back) away at once and until it is on again, the kick-off's card too;
+     * the cover stays as its own switch says and the game is followed underneath. On, the board comes back as it does.
+     */
+    void boardShown(boolean on) {
+        BoardPrefs.setOn(getContext(), on);
+        if (!on) {
+            held = null;
+            drops.clear();
+            queuedAt.clear();
+            h.removeCallbacks(nextDropRun);
+            h.removeCallbacks(hideDropRun);
+            h.removeCallbacks(strapWatch);
+            dropping = false;
+            restartUntil = 0;
+            varOut.off();
+            drop.gone();
+            if (popup != null) {
+                BroadcastView v = popup;
+                popup = null;
+                popupKind = "";
+                v.stop();
+                removeView(v);
             }
+            if (card.asking) card.away();
+            boardAway();
+        }
+        if (started) update();
+    }
+
+    private final BoardMenu.Host menuHost = new BoardMenu.Host() {
+        @Override public BoardMenu.MenuState state() {
+            Context c = getContext();
+            BoardMenu.MenuState m = new BoardMenu.MenuState();
+            m.boardShown = BoardPrefs.on(c);
+            m.logoOn = BoardPrefs.logoOn(c);
+            BoardBug.Style look = BoardPrefs.style(c);
+            m.look = look.label;
+            String id = BoardPrefs.customId(c);
+            com.gathin.broadcast.MyBoards.Saved mine = id == null ? null : MyBoardStore.get(c, id);
+            m.mine = mine == null ? "" : mine.name;
+            m.lookNow = shownCustom != null ? (mine != null ? mine.name : shownCustom.name) : look.label;
+            m.lookBefore = lookAt(-1).label;
+            m.lookAfter = lookAt(1).label;
+            BoardPrefs.Place p = place(), std = BoardPrefs.Place.standard();
+            m.boardSize = Math.round(p.bh / std.bh * 100);
+            m.logoSize = Math.round(p.lw / std.lw * 100);
+            m.lineups = BoardPrefs.lineupsOn(c);
+            int d = InStep.delay(c, chKey);
+            m.timing = d <= 0 ? "Live" : d + " s behind";
+            m.usual = BoardMenu.usualWords(InStep.usual(c));
+            m.ask = InStep.asking(c);
+            m.alerts = BoardPrefs.dropsOn(c);
+            m.var = BoardPrefs.varExplainedOn(c);
+            m.popups = BoardPrefs.popupWords(BoardPrefs.popupStyle(c));
+            m.sound = Sfx.goalName(BoardPrefs.goalSound(c));
+            m.swish = BoardPrefs.swishOn(c);
+            m.every = resetEvery;
+            m.live = game != null && logo.live;
+            m.channel = ch == null ? "" : ChannelEdits.name(ch);
+            menuNote = noteNow();
+            m.note = menuNote;
+            return m;
         }
 
-        private void change(int step) {
+        @Override public void step(int line, int step) {
             Context c = getContext();
-            switch (at) {
-                case R_ON: BoardPrefs.setOn(c, !BoardPrefs.on(c)); break;
-                case R_MINE: stepMine(step); break;
-                case R_LOGO: BoardPrefs.setLogoOn(c, !BoardPrefs.logoOn(c)); break;
-                case R_ALERTS: BoardPrefs.setDropsOn(c, !BoardPrefs.dropsOn(c)); break;
-                case R_POPUPS: BoardPrefs.setPopupStyle(c, BoardPrefs.nextPopup(BoardPrefs.popupStyle(c), step)); break;
-                case R_ASK: InStep.setAsking(c, !InStep.asking(c)); break;
-                case R_LOOK: {
-                    BoardBug.Style[] all = BoardPrefs.looks();
-                    BoardBug.Style now = BoardPrefs.style(c);
-                    int i = 0;
-                    for (int k = 0; k < all.length; k++) if (all[k] == now) i = k;
-                    BoardPrefs.setStyle(c, all[(i + step + all.length) % all.length]);
+            switch (line) {
+                case BoardMenu.M_BOARD: boardShown(!BoardPrefs.on(c)); return;
+                case BoardMenu.M_LOGO: BoardPrefs.setLogoOn(c, !BoardPrefs.logoOn(c)); break;
+                case BoardMenu.M_LOOK:
+                    BoardPrefs.setStyle(c, lookAt(step));
                     restyle(null);
-                    mineLine = mineWords();
                     break;
-                }
-                case R_TIMING: timing(step); break;
-                case R_SIZE: {
+                case BoardMenu.M_MOVE: {
                     float aspect = boardRect.height() > 0 ? boardRect.width() / (float) boardRect.height() * getHeight() / (float) Math.max(1, getWidth()) : 3f;
                     place().sizeBoard(step > 0 ? SIZE_STEP : 1f / SIZE_STEP, aspect);
                     BoardPrefs.setPlace(c, chKey, place());
                     break;
                 }
-                case R_LOGO_SIZE:
+                case BoardMenu.M_MOVE_LOGO:
                     place().sizeLogo(step > 0 ? SIZE_STEP : 1f / SIZE_STEP);
                     BoardPrefs.setPlace(c, chKey, place());
                     break;
-                case R_SOUND: {
+                case BoardMenu.M_LINEUPS: BoardPrefs.setLineupsOn(c, !BoardPrefs.lineupsOn(c)); break;
+                case BoardMenu.M_MINE: stepMine(step); break;
+                case BoardMenu.M_TIMING: timing(step); break;
+                case BoardMenu.M_USUAL: InStep.setUsual(c, BoardMenu.nextUsual(InStep.usual(c), step)); break;
+                case BoardMenu.M_ASK: InStep.setAsking(c, !InStep.asking(c)); break;
+                case BoardMenu.M_ALERTS: BoardPrefs.setDropsOn(c, !BoardPrefs.dropsOn(c)); break;
+                case BoardMenu.M_VAR: BoardPrefs.setVarExplainedOn(c, !BoardPrefs.varExplainedOn(c)); break;
+                case BoardMenu.M_POPUPS: BoardPrefs.setPopupStyle(c, BoardPrefs.nextPopup(BoardPrefs.popupStyle(c), step)); break;
+                case BoardMenu.M_SOUND: {
                     String now = BoardPrefs.goalSound(c);
                     int i = 0;
                     for (int k = 0; k < Sfx.GOALS.length; k++) if (Sfx.GOALS[k].equals(now)) i = k;
-                    String next = Sfx.GOALS[(i + step + Sfx.GOALS.length) % Sfx.GOALS.length];
+                    String next = Sfx.GOALS[Math.floorMod(i + step, Sfx.GOALS.length)];
                     BoardPrefs.setGoalSound(c, next);
                     Sfx.goal(c, next);
                     break;
                 }
+                case BoardMenu.M_SWISH: {
+                    boolean on = !BoardPrefs.swishOn(c);
+                    BoardPrefs.setSwishOn(c, on);
+                    BoardPrefs.setScoreSwishOn(c, on);
+                    break;
+                }
+                case BoardMenu.M_RESET: resetEvery = !resetEvery; return;
                 default:
+                    // New scoreboard and It's just happened: OK only.
                     return;
             }
-            update();
-            invalidate();
+            if (started) update();
+            else layoutAll();
         }
 
-        void ok() {
+        @Override public boolean ok(int line) {
             Context c = getContext();
             // What needs the match itself, with none on this channel now.
-            if (game == null && (at == R_NOW || at == R_MOVE || at == R_MOVE_LOGO || at == R_LINEUPS)) {
-                close();
+            if (game == null && (line == BoardMenu.M_NOW || line == BoardMenu.M_MOVE || line == BoardMenu.M_MOVE_LOGO
+                    || line == BoardMenu.M_LINEUPS)) {
+                menu.close();
                 card.note("No match on this channel now", "The match on this channel, when there is one");
-                return;
+                return true;
             }
-            switch (at) {
-                case R_EDIT:
+            switch (line) {
+                case BoardMenu.M_MOVE: menu.close(); startMove(1); return true;
+                case BoardMenu.M_MOVE_LOGO: menu.close(); startMove(2); return true;
+                case BoardMenu.M_LINEUPS: menu.close(); lineups(true); return true;
+                case BoardMenu.M_MINE:
                     // The board in use (or the look's own colours) in the editor, the board over the match changing with it.
-                    close();
+                    menu.close();
                     editor.show(BoardPrefs.customId(c), false);
-                    return;
-                case R_NEW:
-                    close();
+                    return true;
+                case BoardMenu.M_NEW:
+                    menu.close();
                     editor.show(null, true);
-                    return;
-                case R_NOW: {
+                    return true;
+                case BoardMenu.M_NOW: {
                     int d = InStep.justHappened(c, chKey, changeSeen);
                     steady.reset();
-                    close();
+                    menu.close();
                     card.note(d >= 0 ? "Lined up" : "Nothing to line up with",
                             d >= 0 ? InStep.words(d) + " · the scoreboard and alerts wait for your channel" : "Press it as a goal, a card or the kick-off shows");
-                    return;
+                    return true;
                 }
-                case R_MOVE: close(); startMove(1); return;
-                case R_MOVE_LOGO: close(); startMove(2); return;
-                case R_LINEUPS: close(); lineups(true); return;
-                case R_RESET:
-                    BoardPrefs.resetPlace(c, chKey);
+                case BoardMenu.M_TIMING:
+                    return true;
+                case BoardMenu.M_RESET:
+                    if (resetEvery) BoardPrefs.resetAllPlaces(c);
+                    else BoardPrefs.resetPlace(c, chKey);
                     place = null;
-                    update();
-                    invalidate();
-                    return;
-                case R_TIMING:
-                case R_SIZE:
-                case R_LOGO_SIZE:
-                    return;
+                    if (started) update();
+                    else layoutAll();
+                    card.note("Back in the standard places", "The scoreboard and the logo's cover, " + (resetEvery ? "on every channel" : "on this channel"));
+                    return true;
                 default:
-                    change(1);
+                    return false;
             }
         }
 
-        private String valueOf(int row) {
-            Context c = getContext();
-            switch (row) {
-                case R_ON: return BoardPrefs.on(c) ? "On" : "Off";
-                case R_MINE: return mineLine;
-                case R_EDIT: return BoardPrefs.customId(c) == null ? "Colours, finish, Generate, Ask AI" : "Edit the one in use";
-                case R_LOGO: return BoardPrefs.logoOn(c) ? "On" : "Off";
-                case R_ALERTS: return BoardPrefs.dropsOn(c) ? "On" : "Off";
-                case R_POPUPS: return "‹  " + BoardPrefs.popupWords(BoardPrefs.popupStyle(c)) + "  ›";
-                case R_ASK: return InStep.asking(c) ? "On" : "Off";
-                case R_LOOK: return "‹  " + BoardPrefs.style(c).label + "  ›";
-                case R_TIMING: {
-                    int d = InStep.delay(c, chKey);
-                    return "‹  Sooner   " + (d <= 0 ? "Live" : d + " s behind") + "   Later  ›";
-                }
-                case R_SIZE: return "‹  " + Math.round(place().bh / BoardPrefs.Place.standard().bh * 100) + "%  ›";
-                case R_LOGO_SIZE: return "‹  " + Math.round(place().lw / BoardPrefs.Place.standard().lw * 100) + "%  ›";
-                case R_SOUND: return "‹  " + Sfx.goalName(BoardPrefs.goalSound(c)) + "  ›";
-                default: return "";
+        @Override public void cover(Canvas cv, float w, float hh, int look) {
+            BoardBug.StripLook strip;
+            if (look == 0) {
+                strip = bug.stripLook();
+            } else {
+                // The board in the look either side of the one chosen, for its colours (never drawn itself).
+                if (looks == null) looks = new BoardBug(getContext());
+                looks.custom(null);
+                looks.style(lookAt(look));
+                Game g = game;
+                looks.competition(g == null ? null : g.slug, g == null ? null : boardComp(g));
+                strip = looks.stripLook();
             }
+            menuArt.draw(cv, w, hh, strip, ch, Math.max(2f, Ui.f(2)), game != null && logo.live, false, menu::invalidate);
         }
 
-        @Override protected void onDraw(Canvas c) {
-            float w = Ui.f(760), right = getWidth() - Ui.f(48), top = Ui.f(48), rowH = Ui.f(54);
-            int shownRows = Math.min(ROWS.length, MENU_SHOWN), first = menuFirst(at, ROWS.length, shownRows);
-            r.set(right - w, top, right, top + Ui.f(150) + rowH * shownRows + Ui.f(70));
-            c.drawRoundRect(r, Ui.f(30), Ui.f(30), panel);
-            float x = r.left + Ui.f(40);
-            c.drawText("Scoreboard", x, r.top + Ui.f(70), titleP);
-            Game g = game;
-            String sub = menuLine(g, finding, !readings.isEmpty());
-            c.drawText(TextFit.fit(sub, subP, w - Ui.f(80)), x, r.top + Ui.f(110), subP);
-            float y = r.top + Ui.f(140);
-            for (int i = first; i < first + shownRows; i++) {
-                RectF row = rowR;
-                row.set(r.left + Ui.f(20), y, r.right - Ui.f(20), y + rowH - Ui.f(6));
-                if (i == at) {
-                    c.drawRoundRect(row, Ui.f(14), Ui.f(14), hi);
-                    c.drawRoundRect(row, Ui.f(14), Ui.f(14), ringP);
-                }
-                float base = row.centerY() + Ui.f(10);
-                c.drawText(ROWS[i], x, base, label);
-                String v = valueOf(i);
-                if (!v.isEmpty()) {
-                    v = TextFit.fit(v, value, row.width() - Ui.f(60) - label.measureText(ROWS[i]));
-                    c.drawText(v, row.right - Ui.f(20) - value.measureText(v), base, value);
-                }
-                y += rowH;
-            }
-            // More rows above or below: a small chevron where the list goes on.
-            if (first > 0) Ui.chevron(c, r.centerX(), r.top + Ui.f(130), Ui.f(16), Ui.UP, hint);
-            if (first + shownRows < ROWS.length) Ui.chevron(c, r.centerX(), y + Ui.f(2), Ui.f(16), Ui.DOWN, hint);
-            String tip = "Back to close · Left and Right to change · these are for every match";
-            c.drawText(tip, x, r.bottom - Ui.f(28), hint);
+        @Override public float coverAspect() {
+            BoardPrefs.Place p = place();
+            int sw = getWidth() > 0 ? getWidth() : 1920, sh = getHeight() > 0 ? getHeight() : 1080;
+            return p.lw * sw / Math.max(1f, p.lh * sh);
         }
-    }
+    };
 
     /** Timing: the board (its clock, its score and its alerts) a step later (1) or sooner (-1), as the launcher's. */
     private void timing(int step) {
@@ -2160,6 +2192,29 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
     }
 
     // ---- previews ------------------------------------------------------------------------------------------------------------
+
+    /**
+     * Tests and previews: game g taken as the one found for the channel playing now, with the readings so far (as the
+     * scores' poll had them), and the board shown as the screen has it; not looked for or read again for a while.
+     */
+    void found(Game g, List<BoardClock.Reading> rs) {
+        Channel c = tv.live.channel();
+        long now = System.currentTimeMillis();
+        chKey = c == null ? "" : c.key;
+        ch = c;
+        place = null;
+        take(g, now);
+        for (BoardClock.Reading r : rs) BoardClock.add(readings, r);
+        nextFind = now + REFIND_MS;
+        nextPoll = now + POLL_IDLE_MS;
+        nextSummary = now + SUMMARY_MS;
+        if (started) update();
+    }
+
+    /** Whether the cover over the channel's logo is on the screen now. */
+    boolean coverUp() {
+        return logo.getVisibility() == VISIBLE;
+    }
 
     /** Previews: game g with these readings, as the screen shows it at now (delayS behind), what's out beside it, the menu. */
     void preview(Game g, List<BoardClock.Reading> rs, long now, int delayS, BoardDrop.Drop d, boolean withMenu, boolean withCard) {
@@ -2191,7 +2246,10 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             beside(drop.widthFor(d, b.height, shortRoom(b.height, sideMax)));
             drop.showNow(d, 0, 0f, 1f);
         }
-        if (withMenu) menu.show();
+        if (withMenu) {
+            resetEvery = false;
+            menu.show();
+        }
         if (withCard) card.ask(false);
     }
 }

@@ -197,15 +197,32 @@ public class MyScoreboardsTest {
     // ---- the menu and the editor ------------------------------------------------------------------------------------
 
     @Test public void theMenuHasMyScoreboardsTheEditorAndANewOne() {
-        List<String> rows = Arrays.asList(BoardLayer.ROWS);
-        assertEquals(BoardLayer.R_MINE, rows.indexOf("My scoreboards"));
-        assertEquals(BoardLayer.R_EDIT, rows.indexOf("Scoreboard editor"));
-        assertEquals(BoardLayer.R_NEW, rows.indexOf("New scoreboard"));
-        assertEquals(BoardLayer.R_RESET, rows.size() - 1);
-        // The rows slide so the remote's is in sight, within the screen.
-        assertEquals(0, BoardLayer.menuFirst(0, rows.size(), BoardLayer.MENU_SHOWN));
-        assertEquals(rows.size() - BoardLayer.MENU_SHOWN, BoardLayer.menuFirst(rows.size() - 1, rows.size(), BoardLayer.MENU_SHOWN));
-        assertTrue(150 + 54 * BoardLayer.MENU_SHOWN + 70 + 48 <= 1080);
+        String[] lines = BoardMenu.menuLines(new BoardMenu.MenuState());
+        assertEquals(BoardMenu.LINES, lines.length);
+        // My scoreboards (OK: the editor on the board in use, as the launcher's), then New scoreboard.
+        assertTrue(lines[BoardMenu.M_MINE].startsWith("My scoreboards:  ‹  None (the look above)  ›"));
+        assertTrue(lines[BoardMenu.M_MINE].endsWith("OK: the editor, Generate, Ask AI"));
+        assertTrue(lines[BoardMenu.M_NEW].startsWith("New scoreboard"));
+        assertTrue(lines[BoardMenu.M_RESET].startsWith("Back to the standard places"));
+        // The lines slide so the remote's is in sight when they don't all fit (a bigger text size).
+        assertEquals(0, BoardMenu.menuFirst(0, BoardMenu.LINES, 10));
+        assertEquals(BoardMenu.LINES - 10, BoardMenu.menuFirst(BoardMenu.LINES - 1, BoardMenu.LINES, 10));
+        assertEquals(0, BoardMenu.menuFirst(BoardMenu.LINES - 1, BoardMenu.LINES, BoardMenu.LINES));
+
+        // OK on My scoreboards: the editor on the board in use (the look's own colours with none); New scoreboard: a new one.
+        BoardLayer l = layer();
+        assertTrue(l.okLong());
+        l.menu.at = BoardMenu.M_MINE;
+        assertTrue(l.ok());
+        assertFalse(l.menuOpen());
+        assertTrue(l.editor.open);
+        assertEquals(BoardEditor.L_BOARD, l.editor.at);
+        assertTrue(l.back());
+        assertTrue(l.okLong());
+        l.menu.at = BoardMenu.M_NEW;
+        l.ok();
+        assertTrue(l.editor.open);
+        assertEquals(BoardEditor.L_BASE, l.editor.at);
     }
 
     private BoardLayer layer() {
@@ -343,13 +360,15 @@ public class MyScoreboardsTest {
         String a = MyBoardStore.add(app, "Alpha", spec("Alpha", 0xFF101010));
         BoardLayer l = layer();
         assertNull(BoardPrefs.customId(app));
-        // Settings' choice: the look, then each saved board.
-        AddedSettings.mineWords(app);
-        BoardPrefs.setCustom(app, a);
-        l.restyle(MyBoardStore.inUse(app));
+        // The menu's My scoreboards (the only place for it now): Right, the saved board; again, the look as chosen.
+        assertTrue(l.okLong());
+        l.menu.at = BoardMenu.M_MINE;
+        assertTrue(l.key(KeyEvent.KEYCODE_DPAD_RIGHT));
+        assertEquals(a, BoardPrefs.customId(app));
         assertEquals("Alpha", l.bug.custom().name);
-        BoardPrefs.setCustom(app, null);
-        l.restyle(null);
+        assertTrue(BoardMenu.menuLines(l.menuState())[BoardMenu.M_MINE].startsWith("My scoreboards:  ‹  Alpha  ›"));
+        l.key(KeyEvent.KEYCODE_DPAD_RIGHT);
+        assertNull(BoardPrefs.customId(app));
         assertNull(l.bug.custom());
         assertEquals(BoardPrefs.style(app), l.bug.style());
     }
