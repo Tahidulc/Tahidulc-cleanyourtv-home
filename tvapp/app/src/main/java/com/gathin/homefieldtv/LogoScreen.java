@@ -67,8 +67,8 @@ final class LogoScreen extends Screen {
     static final float FIELD_H = 64f, PACK_HEAD = 34f, CELL_W = 184f, CELL_H = 108f, CELL_NAME = 30f, CELL_GAP = 14f, PACK_GAP = 14f;
     /** The big logo's tile (Make my own, Ask AI), the strip's tiles, an ask's line. */
     static final float BIG_W = 640f, BIG_H = 290f, SMALL_W = 160f, SMALL_H = 92f, ASK_ROW = 58f;
-    /** The apps' dark tile a logo with no ground sits on (LogoSpec.under's). */
-    static final int DARK_TILE = 0xFF20232B;
+    /** The apps' dark tile a logo with no ground sits on (LogoSpec.under's); the card's deep ground under its frost. */
+    static final int DARK_TILE = 0xFF20232B, BASE = 0xE60E0E12;
     static final String PLAYLIST = ChannelEdits.LOGO_PLAYLIST;
     static final String NONE = "No new logo matches this channel's name. A channel renamed is matched by its new name, "
             + "then by the playlist's. Try the catalogue, or make your own.";
@@ -82,6 +82,8 @@ final class LogoScreen extends Screen {
     static final int MADE = 6;
 
     private final Channel ch;
+    /** Its name without the playlist's tags ("UK: Kestrel Sports 1 FHD" to "Kestrel Sports 1"): the catalogue's first search. */
+    private final String plainName;
     /** Opened beside the channel's menu, which stays on screen with its scrim (08c): no scrim of its own then. */
     boolean overMenu;
     private Card card;
@@ -126,7 +128,8 @@ final class LogoScreen extends Screen {
     LogoScreen(TvActivity tv, Channel ch) {
         super(tv);
         this.ch = ch;
-        this.query = LogoDesigner.plain(ChannelEdits.name(ch));
+        this.plainName = LogoDesigner.plain(ChannelEdits.name(ch));
+        this.query = plainName;
     }
 
     @Override View build() {
@@ -498,8 +501,8 @@ final class LogoScreen extends Screen {
         if (spec != null && art != null) {
             ai = spec;
             aiArt = art;
-            aiNote = "Claude's design: \"" + spec.text + (spec.sub.isEmpty() ? "" : " " + spec.sub) + "\", "
-                    + spec.layout.label.toLowerCase(Locale.UK) + " in " + spec.font.label + ". OK on Use this logo keeps it.";
+            aiNote = "\"" + spec.text + (spec.sub.isEmpty() ? "" : " " + spec.sub) + "\": a " + spec.layout.label.toLowerCase(Locale.UK)
+                    + " in " + spec.font.label + ", drawn by the TV. OK on Use this logo keeps it; ask again for another.";
             // The remote on Use this logo.
             askAt = 0;
             onTabs = false;
@@ -593,6 +596,9 @@ final class LogoScreen extends Screen {
             }
             float top0 = CARD_TOP;
             r.set(Ui.f(CARD_LEFT), Ui.f(top0), Ui.f(CARD_LEFT + CARD_W), Ui.f(top0 + CARD_H));
+            // A card this big over the guide: a deep ground under its frost, so the guide's words never read through it.
+            fill.setColor(BASE);
+            c.drawRoundRect(r, Ui.f(Look07.R_LOGO_CARD), Ui.f(Look07.R_LOGO_CARD), fill);
             frost.draw(c, r, Ui.f(Look07.R_LOGO_CARD), 1f);
             float tx = CARD_LEFT + PAD;
             c.drawText("CHANGE LOGO", Ui.f(tx), Ui.f(top0 + PAD + 18f), headP);
@@ -782,7 +788,7 @@ final class LogoScreen extends Screen {
             float left = CARD_LEFT + PAD, right = CARD_LEFT + CARD_W - PAD;
             float y = body + 6f;
             Bitmap big = madeAt < madeArt.size() ? madeArt.get(madeAt) : null;
-            drawBig(c, left, y, big, making ? "Drawing logos for " + LogoDesigner.plain(ChannelEdits.name(ch)) + "…" : "");
+            drawBig(c, left, y, big, making ? "Drawing logos for " + plainName + "…" : "");
             float ix = left + BIG_W + 32f, room = right - ix;
             if (madeAt < made.size()) {
                 LogoSpec s = made.get(madeAt);
@@ -794,7 +800,7 @@ final class LogoScreen extends Screen {
             }
             c.drawText("Left and Right: the next one", Ui.f(ix), Ui.f(y + 150f), aboutP);
             c.drawText("(fresh ones after the last)", Ui.f(ix), Ui.f(y + 176f), aboutP);
-            c.drawText(Ui.fit("OK: use it for " + ChannelEdits.name(ch), aboutP, Ui.f(room)), Ui.f(ix), Ui.f(y + 214f), aboutP);
+            c.drawText(Ui.fit("OK: use it for " + plainName, aboutP, Ui.f(room)), Ui.f(ix), Ui.f(y + 214f), aboutP);
             c.drawText("Drawn crisp at any size, kept on this TV", Ui.f(ix), Ui.f(y + 240f), aboutP);
             // The strip of all of them.
             float sy = y + BIG_H + 28f;
@@ -848,7 +854,7 @@ final class LogoScreen extends Screen {
             float ix = left + BIG_W + 32f, room = right - ix;
             c.drawText(ai != null ? "Claude's design" : "Ask Claude", Ui.f(ix), Ui.f(y + 40f), bigP);
             String n = aiNote.isEmpty() ? (AiKey.has(tv) ? "Pick a quick ask, or type your own words: Claude designs a logo for "
-                    + LogoDesigner.plain(ChannelEdits.name(ch)) + " and the TV draws it." : AiSettings.NO_KEY) : aiNote;
+                    + plainName + " and the TV draws it." : AiSettings.NO_KEY) : aiNote;
             if (note == null || !n.equals(noteFor)) {
                 note = Ui.layout(n, aboutP, Ui.px(room), 7);
                 noteFor = n;
@@ -859,7 +865,7 @@ final class LogoScreen extends Screen {
             float ry = y + BIG_H + 24f;
             int k = 0;
             if (ai != null) {
-                drawAskRow(c, "Use this logo for " + ChannelEdits.name(ch), ry, k == askAt && !onTabs, true);
+                drawAskRow(c, "Use this logo for " + plainName, ry, k == askAt && !onTabs, true);
                 ry += ASK_ROW;
                 k++;
             }

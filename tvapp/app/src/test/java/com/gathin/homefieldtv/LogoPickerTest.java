@@ -311,7 +311,7 @@ public class LogoPickerTest {
         assertFalse(asked.get(0).contains("sk-ant-"));
         assertNotNull(s.ai());
         assertEquals("FOGBELL", s.ai().text);
-        assertTrue(s.aiNote().startsWith("Claude's design"));
+        assertTrue(s.aiNote().contains("Use this logo"));
         // The remote on Use this logo: OK keeps it as this TV's own picture.
         press(a, KeyEvent.KEYCODE_DPAD_CENTER);
         idle();

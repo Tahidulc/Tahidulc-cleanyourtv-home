@@ -92,9 +92,7 @@ wordmark are Homefield; it carries no Sky logo or name.
   description), then under the channel's name TiviMate's Add to or Remove from Favourites, Block channel and Hide channel
   (out of every list at once: the guide, the channel lists, channel up and down, the numbers, search, Home's sections and
   the sports pages' Watch on), then Rename channel (always there: the keyboard over the guide, the name shown everywhere
-  and found by search with its old one too; Restore channel name), Change logo (the new logos found
-  for it, the best first, each on its tile with its country and kind, and the playlist's own; the one chosen kept for
-  that channel), Move channel (TiviMate's Manage positions: its row lifts in its group, or among the favourites, Up and
+  and found by search with its old one too; Restore channel name), Change logo (below), Move channel (TiviMate's Manage positions: its row lifts in its group, or among the favourites, Up and
   Down move it, OK puts it down and the group keeps that order, Sort channels then Manual; Back leaves it), Merge with
   (below) and Catch-up.
   Play/pause shows the description, Stop adds the channel to the favourites or takes it off, Back held goes back to the
@@ -118,6 +116,22 @@ wordmark are Homefield; it carries no Sky logo or name.
   channel, Rename channel and Change logo on it go on every version; a version hidden by itself before is only left out
   of its Quality. Settings, Channels & categories (or Appearance, TV guide), One row per channel (merge qualities): on
   as it comes; off, every version is a row of its own again.
+- **Change logo:** from a channel's hold-OK card in the guide, a frosted card beside the menu (from x 760, the whole
+  height) with four tabs, as the phone's logo picker: Found for it (the new logos found for it, the best first, each on
+  its tile with its country and kind, and the playlist's own; the one shown now ticked), Catalogue (the free logo packs,
+  TV Logos and iptv-org's database, searched by the channel's name without its tags, OK on the field for other words on
+  the on-screen keyboard; each pack's index read once a week with the generic user agent and kept small in the cache,
+  in memory only while the card is up; the results grouped by pack, each logo on its own cell colour as the guide's
+  cells have them, Left and Right along a pack), Make my own (wordmarks, monograms, badges, stacked and roundels drawn
+  from the channel's name and group, big with the others in a strip under it: Left and Right flip through them, fresh
+  ones after the last) and Ask AI (quick asks or the family's own words: Claude designs one with the family's own key,
+  Settings › Other › Ask AI, and the TV draws it; Use this logo). Up from the top of a tab goes to the tabs, Left and
+  Right change them, Down comes back; OK keeps one, Back leaves it as it was. A logo made here is kept as a see-through
+  PNG in the app's own files (`files/logos-made`, never in a backup; let go of once no channel uses it), one from the
+  catalogue by its address (TV Logos' by its path, as the new logos are); either goes on every version of the channel
+  and on a merge's kept channel, through the channel's edits as every choice does, and shows wherever its logo does:
+  the guide, the info card, the mini guide, the reminders and the TV launcher's cards (a made one through the cards'
+  provider, `content://com.gathin.homefieldtv.cards/logo/…`, read-only). One that can't be read is the playlist's.
 - **Merged channels:** Merge with, on a channel's hold-OK card in the guide, opens a panel at the right ("Choose another
   channel to merge it with"): the channels it most likely is first (the same name, then its category, then a name sharing
   its first word), Up and Down to the channel to keep, OK merges ("BBC One HD merged into BBC One"). The channel merged
@@ -256,7 +270,18 @@ wordmark are Homefield; it carries no Sky logo or name.
   game's page to its two sides, and OK on a table's row; OK on a driver opens his page. Over a match in the player, the
   scoreboard: the game found from the channel and its guide, its clock set at kick-off with OK, alerts beside it, the
   kick-off and after-goal pop-ups and the line-ups, a cover for the channel's logo, its menu from the player's bar
-  (Scoreboard), and a Scoreboard section in Settings. The scoreboard and the logo cover show only while the channel
+  (Scoreboard), and a Scoreboard section in Settings. My scoreboards: the family's own boards (a BoardSpec, the same on
+  the phone and the TV launcher), drawn by the board in its base look, its pop-outs and the kick-off strap in its
+  colours; in the scoreboard's menu (OK held over the match, or the bar's Scoreboard) My scoreboards (Left and Right:
+  the look as chosen or one of them), Scoreboard editor and New scoreboard. The editor sits down the right over the
+  match, the board as it stands on a still of a made-up match at its top and the board over the match changing with it:
+  which board, Rename, the layout, each colour (the swatches with the two clubs' colours first, hue, saturation and
+  brightness, its hex), finish, typeface, crests, corners, border, the clubs' strips, accent line, how it reads (OK
+  mends it), Generate (designed boards for the match or a mood, Left and Right, the one the remote is on shown on the
+  board, OK starts from it, Up for more), Ask AI (quick asks or the family's own words, typed on the keyboard at the
+  left of the picture; Claude's design taken in), Save, Save and use, Duplicate, Delete (OK twice: everywhere), Undo and
+  Use the look instead. Saved boards are the family's "myboard" items, in this app's sync store, so a board saved here
+  is on the phone and the other TVs after the next sync with the launcher on this TV, and theirs are here. The scoreboard and the logo cover show only while the channel
   plays full screen with nothing over it: the info card, the OK overlay, the bar, the channel list, a number being typed
   or any screen or panel over the picture (the guide's preview, Home, Settings) takes them away at once, and
   they come back with plain playback; their pop-ups wait for it, or are let go when stale (a kick-off after two minutes,
@@ -457,12 +482,17 @@ wordmark are Homefield; it carries no Sky logo or name.
   cancelling one, and whether their card may pop up over other apps), Recording (minutes before a programme starts and
   after it ends), VOD (Autoplay next episode; Skip steps: 5, 10 as it comes, 15, 20 or 30 seconds or a minute a press of
   Left or Right in a film, an episode or catch-up) and Scoreboard (with Logo cover only: the cover over the channel's
-  logo without the scoreboard; and More scoreboard settings: the look, timing for a channel not lined up yet, the
-  pop-ups, the goal sound and Back to the standard places on every channel, for every match). The player's bar has
+  logo without the scoreboard; My scoreboards: the one in use, or the look as chosen; and More scoreboard settings: the
+  look, timing for a channel not lined up yet, the pop-ups, the goal sound and Back to the standard places on every
+  channel, for every match), and Ask AI (the family's own Anthropic API key, typed once on the keyboard as dots, then
+  shown masked, "sk-ant-••••••••abcd", kept only in the app's private preferences: never synced, backed up, logged or
+  shown; Take the key away; the model: Claude Opus 5.5 as it comes, Sonnet 5.5 or Haiku 5.5; the requests go only to
+  Anthropic's API, one at a time off the main thread. The phone's "Send key to the TVs" reaches the TV launcher only, so
+  on Homefield TV it is typed here). The player's bar has
   Scoreboard on every channel, for the scoreboard's menu ("No match on this channel now", "Reading the match", "Reading
   the scores" until there is one). The film player's Picture and sound has Sound (The film's sound, as it comes, or a
   track) and Subtitles (Off, or the copy's own; "This copy has no subtitles of its own").
-  About: the version; If something goes wrong (the last problem noted and the ones before it, each with when and where
+  About: the version; Logo packs' licences (the catalogue's packs and their terms); If something goes wrong (the last problem noted and the ones before it, each with when and where
   in the app's own code: "Crash in …", "Out of memory in …", "Froze for 7 s in …", "Trouble in the background (the app
   carried on)"; Clear these notes; take a photo of them first to send; after a crash, out of memory or a freeze, "Homefield
   TV had a problem last time. Settings › About has a note of it." once as the app starts); and Updates: Check for

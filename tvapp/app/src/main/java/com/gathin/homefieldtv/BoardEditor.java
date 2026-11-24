@@ -626,15 +626,17 @@ final class BoardEditor extends FrameLayout implements Keyboard.Host {
         BoardSpec s = ed.live();
         words = lines();
         warn = ed.warning(brief);
-        title = id == null ? "Scoreboard editor" : "Editing " + s.name;
+        title = (id == null ? "Scoreboard editor" : "Editing " + s.name) + (mode == COLOUR_MODE ? "  ·  " + BoardSpec.label(ed.slot) : "");
         hints = typing ? "The keyboard: OK types, Done keeps it, Back leaves it"
                 : mode == COLOUR_MODE ? "Up and Down: swatch, hue, saturation, brightness  ·  Left and Right change it  ·  Back: done"
                 : mode == IDEAS_MODE ? "Left and Right: the ideas  ·  OK: start from it  ·  Up: more ideas  ·  Back: done"
                 : mode == ASK_MODE ? "Up and Down, OK to ask Claude  ·  Back: done"
                 : "Up and Down, Left and Right, OK  ·  Back to close";
-        preview.custom(s);
-        place(preview, PX + PAD + BOARD_X, PY + STAGE_Y + BOARD_Y, BOARD_H);
         boolean ideasUp = mode == IDEAS_MODE;
+        // The idea the remote is on is shown on the boards while the ideas are up (OK starts from it).
+        BoardSpec shown = ideasUp && !ideas.isEmpty() ? ideas.get(Math.floorMod(ideaAt, ideas.size())) : s;
+        preview.custom(shown);
+        place(preview, PX + PAD + BOARD_X, PY + STAGE_Y + BOARD_Y, BOARD_H);
         float cell = (STAGE_W - (IDEAS - 1) * 8f) / IDEAS;
         for (int i = 0; i < IDEAS; i++) {
             BoardBug b = ideaBugs[i];
@@ -645,7 +647,7 @@ final class BoardEditor extends FrameLayout implements Keyboard.Host {
             placeIn(b, x + 8f, PY + STAGE_Y + STAGE_H + 18f, IDEA_BOARD, cell - 16f);
         }
         panel.invalidate();
-        host.showing(s);
+        host.showing(shown);
     }
 
     /** A board at (x, y), h high (its look's own tallness), as wide as its words (design pixels). */
@@ -683,7 +685,7 @@ final class BoardEditor extends FrameLayout implements Keyboard.Host {
 
     /** The panel down the right: its title, the still with the board on it, the ideas' names, the note, the lines, the hints. */
     private final class Panel extends View {
-        private final Paint ground = Dark.fill(0xF20C1024), edge = Dark.line(0x33FFFFFF, 1.5f), hi = Dark.fill(0x33FFFFFF),
+        private final Paint ground = Dark.fill(0xFF0C1024), edge = Dark.line(0x33FFFFFF, 1.5f), hi = Dark.fill(0x33FFFFFF),
                 ring = Dark.line(0xFFFFFFFF, 3f), cellP = Dark.fill(0x14FFFFFF), bmp = new Paint(Paint.FILTER_BITMAP_FLAG),
                 sheet = Dark.fill(0xF20C1024);
         private final TextPaint titleP = Dark.text(28, 700, 0xFFFFFFFF), subP = Dark.text(17, 500, 0x99FFFFFF),
