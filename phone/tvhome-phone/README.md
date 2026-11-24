@@ -837,3 +837,9 @@ and the picture shrinks in place. Sideways it already stayed put.
 scoreboard, the cover over the channel's logo, the ad break and the kick-off pages had slipped under the picture's
 touch layer, so holding them to move them or tapping twice for Move and resize did nothing. They are put just over that
 layer again, found rather than counted, so a view added under it can't push them back under.
+
+**The programme's picture behind the folded band (5.37).** Scrolled down the guide upright, the band under the top bar
+(the channel line, the small picture and the category row) sits on the programme's own picture, the one the programme
+panel shows, shaded behind the words and fading softly into the guide; with no picture for the programme, in the
+panel's colour. It comes in as the picture shrinks and goes as it opens out, follows the channel and the programme,
+and on a tablet held upright the band does the same.
