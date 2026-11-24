@@ -577,7 +577,8 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
     private void summary() {
         summarising = true;
         Game g0 = game;
-        boolean live = g0.state == Game.LIVE;
+        // FotMob only while the game is on and the board shows it (its clock is what the whistle stops).
+        boolean live = g0.state == Game.LIVE && BoardPrefs.on(getContext());
         Exec.io(() -> {
             Espn.Summary s = null;
             try {
