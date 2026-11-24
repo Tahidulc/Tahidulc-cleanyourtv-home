@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Live TV held upright: the picture kept in sight as the guide scrolls, shrinking to a small preview (Pin). -->
+<resources>
+    <string name="tv07_pin_live">LIVE</string>
+    <string name="tv07_pin_open">Show the picture and the programme\'s details</string>
+    <string name="tv07_pin_open_named">%1$s, %2$s. Show the picture and the programme\'s details</string>
+</resources>

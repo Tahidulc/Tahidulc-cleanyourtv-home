@@ -2,13 +2,17 @@ package com.gathin.tvhomephone.live;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.graphics.Canvas;
+import android.graphics.Matrix;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.os.Bundle;
 import android.view.MotionEvent;
 import android.view.VelocityTracker;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
+import android.view.ViewParent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.OverScroller;
 
@@ -24,6 +28,11 @@ import androidx.core.view.ViewCompat;
  * the guide's rows up folds it first; pulling them down at their top unfolds it. Sideways drags are left to the guide
  * and the categories, and the picture keeps its own swipes. The header and the body scroll together as one column (the
  * body as tall as the whole, as an app bar's scrolling view is), so nothing is laid out again while it moves.
+ * <p>
+ * Over the header there can be a pin (the guide's picture: Pin), which scrolls away with it as before, or, while it is
+ * kept (a channel playing in it), stays at the top: what is under it folds away beneath it, then it shrinks, following
+ * the finger, to its compact height and the guide comes up under it; back down, it grows again before the rest comes
+ * back. It only moves and scales (Shrinking), so that too is drawing alone.
  */
 @SuppressLint("ViewConstructor")
 final class Fold extends ViewGroup implements NestedScrollingParent3 {
@@ -32,12 +41,22 @@ final class Fold extends ViewGroup implements NestedScrollingParent3 {
         void onFold(int shown);
     }
 
-    private final View header, body;
+    /** A pin that shrinks as it is kept (Pin). */
+    interface Shrinking {
+        /** Its height shrunk as far as it goes, for the width it was last measured at (px). */
+        int compactHeight();
+
+        /** As it shows now: how far it has shrunk (0 as laid out, 1 compact) and how much of its height shows (px). */
+        void shrink(float by, int shown);
+    }
+
+    private final View pin, header, body;
+    private final Shrinking shrinking;
     private final NestedScrollingParentHelper nested = new NestedScrollingParentHelper(this);
     private final OverScroller scroller;
     private final int slop, minFling, maxFling;
-    private final Rect hit = new Rect();
     private final int[] spare = new int[2];
+    private final RectF box = new RectF();
     private View picture;
     private Listener listener;
     private VelocityTracker tracker;
@@ -46,9 +65,20 @@ final class Fold extends ViewGroup implements NestedScrollingParent3 {
     private boolean canDrag, dragging, rebase, flinging;
     private float downX, downY, lastY, flingVelocity;
     private int range, lastShown = -1;
+    /** The pin is wanted kept in sight (a channel plays in it). */
+    private boolean pinned;
+    /** As last laid out: the pin's height and the header's, and how much of the pin stays (0: none, it scrolls away). */
+    private int pinH, headH, keep;
 
     Fold(Context c, View header, View body) {
+        this(c, null, header, body);
+    }
+
+    /** pin: over the header (null for none); kept in sight while setPinned, shrinking as it implements Shrinking. */
+    Fold(Context c, View pin, View header, View body) {
         super(c);
+        this.pin = pin;
+        this.shrinking = pin instanceof Shrinking ? (Shrinking) pin : null;
         this.header = header;
         this.body = body;
         ViewConfiguration vc = ViewConfiguration.get(c);
@@ -58,6 +88,8 @@ final class Fold extends ViewGroup implements NestedScrollingParent3 {
         scroller = new OverScroller(c);
         addView(header);
         addView(body);
+        // Last: drawn over the header folding away under it, and the first to be touched.
+        if (pin != null) addView(pin);
     }
 
     void setListener(Listener l) { listener = l; }
@@ -68,8 +100,23 @@ final class Fold extends ViewGroup implements NestedScrollingParent3 {
     /** Folded away (or settling that way). */
     boolean isShut() { return shut; }
 
-    /** How much of the header shows now. */
+    /** How much more there is to fold now (the body runs on under the screen's foot by this much). */
     int shown() { return Math.max(0, range - getScrollY()); }
+
+    /**
+     * Keeps the pin in sight (true: a channel plays in it) or lets it scroll away with the header (false: nothing plays,
+     * so nothing changes from before).
+     */
+    void setPinned(boolean on) {
+        if (pinned == on) return;
+        pinned = on;
+        requestLayout();
+    }
+
+    /** The pin is kept in sight (or will be, once laid out). */
+    boolean keeping() {
+        return pinned && pin != null && pin.getVisibility() != GONE;
+    }
 
     /** Folds it away or opens it, gliding there when animate. */
     void setShut(boolean on, boolean animate) {
@@ -117,6 +164,32 @@ final class Fold extends ViewGroup implements NestedScrollingParent3 {
         return Math.round(150 * (1 + Math.min(1f, Math.abs(distance) / (float) range)));
     }
 
+    /** Pure: how much of a pin pinH tall stays in sight (its compact height, never more than all of it); 0 when not kept. */
+    static int keep(boolean kept, int pinH, int compact) {
+        if (!kept || pinH <= 0 || compact <= 0) return 0;
+        return Math.min(compact, pinH);
+    }
+
+    /** Pure: how far it folds: the pin's height and the header's, less what of the pin stays. */
+    static int range(int pinH, int headH, int keep) {
+        return Math.max(0, pinH + headH - keep);
+    }
+
+    /**
+     * Pure: how much of a kept pin shows, scrolled by scrolled: all of it while the header under it folds away, then less
+     * as the guide comes up under it, down to keep.
+     */
+    static int pinShown(int scrolled, int pinH, int headH, int keep) {
+        if (keep <= 0) return pinH;
+        return clamp(pinH + headH - scrolled, Math.min(keep, pinH), pinH);
+    }
+
+    /** Pure: how far a pin showing shown of pinH has shrunk toward keep: 0 (all of it) to 1 (compact). */
+    static float shrunk(int shown, int pinH, int keep) {
+        if (keep <= 0 || pinH <= keep) return 0f;
+        return Math.max(0f, Math.min(1f, (pinH - shown) / (float) (pinH - keep)));
+    }
+
     private static int clamp(int v, int lo, int hi) {
         return Math.max(lo, Math.min(hi, v));
     }
@@ -125,29 +198,68 @@ final class Fold extends ViewGroup implements NestedScrollingParent3 {
 
     @Override protected void onMeasure(int widthSpec, int heightSpec) {
         int w = MeasureSpec.getSize(widthSpec), h = MeasureSpec.getSize(heightSpec);
-        int ws = MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY);
-        header.measure(ws, MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED));
-        body.measure(ws, MeasureSpec.makeMeasureSpec(h, MeasureSpec.EXACTLY));
+        int ws = MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY), free = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED);
+        int k = 0;
+        if (pin != null && pin.getVisibility() != GONE) {
+            pin.measure(ws, free);
+            k = keep(pinned, pin.getMeasuredHeight(), shrinking == null ? pin.getMeasuredHeight() : shrinking.compactHeight());
+        }
+        keep = k;
+        header.measure(ws, free);
+        // Kept, the pin's compact height stays over the guide: the body ends at the screen's foot when folded.
+        body.measure(ws, MeasureSpec.makeMeasureSpec(Math.max(0, h - k), MeasureSpec.EXACTLY));
         setMeasuredDimension(w, h);
     }
 
     @Override protected void onLayout(boolean changed, int l, int t, int r, int b) {
-        int w = r - l, h = b - t, hh = header.getVisibility() == GONE ? 0 : header.getMeasuredHeight();
-        header.layout(0, 0, w, hh);
-        body.layout(0, hh, w, hh + h);
-        if (hh != range) {
+        int w = r - l, ph = pin == null || pin.getVisibility() == GONE ? 0 : pin.getMeasuredHeight();
+        int hh = header.getVisibility() == GONE ? 0 : header.getMeasuredHeight();
+        if (ph > 0) pin.layout(0, 0, w, ph);
+        header.layout(0, ph, w, ph + hh);
+        body.layout(0, ph + hh, w, ph + hh + body.getMeasuredHeight());
+        pinH = ph;
+        headH = hh;
+        int now = range(ph, hh, keep);
+        if (now != range) {
             int was = range;
-            range = hh;
-            scrollTo(0, refold(getScrollY(), was, hh, shut));
+            range = now;
+            scrollTo(0, refold(getScrollY(), was, now, shut));
             // Settling: on to the same end, as it now is.
             if (!scroller.isFinished()) settle(shut);
         }
+        place();
         tell();
     }
 
     @Override protected void onScrollChanged(int l, int t, int oldl, int oldt) {
         super.onScrollChanged(l, t, oldl, oldt);
+        place();
         tell();
+    }
+
+    /** How much of the pin and the header together shows at the top. */
+    private int visible() {
+        return Math.max(0, pinH + headH - getScrollY());
+    }
+
+    /** The pin where it shows: kept at the top as the rest scrolls (only moved and scaled), or scrolling with it. */
+    private void place() {
+        if (pin == null || pinH <= 0) return;
+        int s = getScrollY();
+        pin.setTranslationY(keep > 0 ? s : 0);
+        int ps = pinShown(s, pinH, headH, keep);
+        if (shrinking != null) shrinking.shrink(shrunk(ps, pinH, keep), ps);
+    }
+
+    /** Kept, the header folds away beneath the pin: drawn only under what shows of the pin. */
+    @Override protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
+        if (child != header || keep <= 0 || pinH <= 0) return super.drawChild(canvas, child, drawingTime);
+        int s = getScrollY();
+        canvas.save();
+        canvas.clipRect(0, s + pinShown(s, pinH, headH, keep), getWidth(), s + getHeight());
+        boolean more = super.drawChild(canvas, child, drawingTime);
+        canvas.restore();
+        return more;
     }
 
     private void tell() {
@@ -282,15 +394,27 @@ final class Fold extends ViewGroup implements NestedScrollingParent3 {
 
     // ---- dragging the header itself ----------------------------------------------------------------------------
 
-    /** Whether a touch at x, y (this view's own) is on the header as it shows, and not on the picture. */
+    /** Whether a touch at x, y (this view's own) is on the header (or the pin) as it shows, and not on the picture. */
     private boolean onHeader(float x, float y) {
-        if (range <= 0 || y >= shown()) return false;
-        if (picture != null && picture.isShown()) {
-            picture.getDrawingRect(hit);
-            offsetDescendantRectToMyCoords(picture, hit);
-            if (hit.contains((int) x, (int) (y + getScrollY()))) return false;
+        if (range <= 0 || y >= visible()) return false;
+        return !onPicture(x, y);
+    }
+
+    /** Whether x, y (this view's own) is on the picture as it is drawn (moved and scaled as it may be). */
+    private boolean onPicture(float x, float y) {
+        if (picture == null || !picture.isShown()) return false;
+        box.set(0, 0, picture.getWidth(), picture.getHeight());
+        View v = picture;
+        while (v != this) {
+            Matrix m = v.getMatrix();
+            if (!m.isIdentity()) m.mapRect(box);
+            box.offset(v.getLeft(), v.getTop());
+            ViewParent p = v.getParent();
+            if (!(p instanceof View)) return false;
+            v = (View) p;
+            box.offset(-v.getScrollX(), -v.getScrollY());
         }
-        return true;
+        return box.contains(x, y);
     }
 
     @Override public boolean onInterceptTouchEvent(MotionEvent e) {
@@ -407,7 +531,11 @@ final class Fold extends ViewGroup implements NestedScrollingParent3 {
 
     /** Something in the folded part asked to be seen (TalkBack's show on screen, a focus moving there): it opens. */
     @Override public boolean requestChildRectangleOnScreen(View child, Rect r, boolean immediate) {
-        if (child == header && getScrollY() > 0 && r.top < getScrollY()) {
+        int s = getScrollY();
+        // The header's own top hidden: scrolled up past it, or beneath the pin kept over it; a pin not kept, scrolled away.
+        boolean hidden = child == header ? r.top + pinH < s + (keep > 0 ? pinShown(s, pinH, headH, keep) : 0)
+                : child == pin && keep <= 0 && r.top < s;
+        if (s > 0 && hidden) {
             setShut(false, !immediate);
             return true;
         }

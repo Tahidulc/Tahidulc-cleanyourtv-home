@@ -59,8 +59,10 @@ import java.util.TimeZone;
  * ones first); on a tablet on its side they can stay docked beside the guide, the button tucking them away and back as
  * it was last left. Above the grid the chosen
  * programme's details. Held upright, all that sits between the top bar and the guide folds away (Fold): a swipe up
- * gives the guide the whole height and a swipe down at its top brings it back; the picture plays on out of sight, and
- * opens again when a channel is played. Folded, a later programme tapped shows its sheet in place of the details.
+ * gives the guide the whole height and a swipe down at its top brings it back. While a channel plays in the guide's
+ * picture, the picture stays in sight (Pin): the rest folds away beneath it, then it shrinks to a small preview at the
+ * top (a tap there is full screen) and grows again as the guide is scrolled back; with nothing playing it folds away
+ * with the rest. Folded, a later programme tapped shows its sheet in place of the details.
  * Tap a channel (or a programme that is on) to watch it in the guide's own picture, with sound (Inline): on a phone held
  * upright a 16:9 picture at the top with the guide still there under it, on a tablet held upright beside the details,
  * and on a tablet on its side in the pane beside the grid. Tap it again, its full screen button or swipe up for full
@@ -139,6 +141,8 @@ public class LiveTvFragment extends Fragment {
     private FrameLayout body;
     /** Upright: the picture, Your channels, the categories and the details over the guide, folding away (null on its side). */
     private Fold fold;
+    /** Upright: the picture (on a tablet, with the details beside it) over the rest, kept in sight while it plays (Fold). */
+    private Pin pin;
     private GuideGrid grid;
     private Details details;
     private Inline inline;
@@ -171,6 +175,7 @@ public class LiveTvFragment extends Fragment {
             if (details != null) details.refresh();
             if (inline != null) inline.refresh();
             if (recents != null) recents.tick();
+            if (pin != null) pin.refresh();
             if (sport != null && sport.getVisibility() == View.VISIBLE) sport.load();
             listAdapter.notifyItemRangeChanged(0, listAdapter.getItemCount());
             h.postDelayed(this, 60_000);
@@ -229,11 +234,10 @@ public class LiveTvFragment extends Fragment {
         inline = new Inline(c, lib, mode == COMPACT);
         inline.setListener(inlineListener());
         if (mode == COMPACT) {
-            // Upright phones: the picture across the top, over the guide, when something has been played.
-            LinearLayout.LayoutParams ip = new LinearLayout.LayoutParams(-1, -2);
-            ip.setMargins(Ui.dp(c, 12), Ui.dp(c, 6), Ui.dp(c, 12), Ui.dp(c, 4));
-            head.addView(inline, ip);
-            inline.setVisibility(View.GONE);
+            // Upright phones: the picture across the top, over the guide, when something has been played; while it
+            // plays, kept in sight as the guide scrolls, shrinking to a small preview (Pin).
+            pin = new Pin(c, lib, inline, this::unfold);
+            pin.setVisibility(View.GONE);
         }
         buildStrip(c);
         if (mode == SIDE) {
@@ -274,9 +278,8 @@ public class LiveTvFragment extends Fragment {
             band.addView(inline, new LinearLayout.LayoutParams(iw, iw * 9 / 16));
             details = new Details(c, lib, false, Integer.MAX_VALUE);
             band.addView(details, new LinearLayout.LayoutParams(0, -2, 1f));
-            LinearLayout.LayoutParams bandP = new LinearLayout.LayoutParams(-1, -2);
-            bandP.setMargins(Ui.dp(c, 12), Ui.dp(c, 6), Ui.dp(c, 12), Ui.dp(c, 8));
-            head.addView(band, bandP);
+            // Kept in sight while it plays, the details giving way as the picture shrinks (Pin); a little in from the edges.
+            pin = new Pin(c, lib, inline, band, details, this::unfold);
             headTail(c, head);
         } else {
             LinearLayout content = new LinearLayout(c);
@@ -333,7 +336,7 @@ public class LiveTvFragment extends Fragment {
             guideCol.setOrientation(LinearLayout.VERTICAL);
             guideCol.addView(guideBar, new LinearLayout.LayoutParams(-1, Ui.dp(c, 52)));
             guideCol.addView(body, new LinearLayout.LayoutParams(-1, 0, 1f));
-            fold = new Fold(c, head, guideCol);
+            fold = new Fold(c, pin, head, guideCol);
             fold.setPicture(inline);
             fold.setListener(shown -> {
                 centre(favHint);
@@ -1192,9 +1195,10 @@ public class LiveTvFragment extends Fragment {
             layDock(false);
             nowButton.setVisibility(View.GONE);
             details.setVisibility(View.GONE);
-            if (band != null) band.setVisibility(View.GONE);
+            if (band != null) pin.setVisibility(View.GONE);
             if (side != null) side.setVisibility(View.GONE);
-            if (mode == COMPACT && !inline.live()) inline.setVisibility(View.GONE);
+            if (mode == COMPACT && !inline.live()) pin.setVisibility(View.GONE);
+            syncPin();
             shownGroups = null;
             return;
         }
@@ -1248,9 +1252,25 @@ public class LiveTvFragment extends Fragment {
     private void showInline() {
         if (mode != COMPACT) return;
         boolean on = inlineShown();
-        if (on == (inline.getVisibility() == View.VISIBLE)) return;
-        inline.setVisibility(on ? View.VISIBLE : View.GONE);
+        if (on == (pin.getVisibility() == View.VISIBLE)) return;
+        pin.setVisibility(on ? View.VISIBLE : View.GONE);
         setStrip(stripAdapter.favs);
+        syncPin();
+    }
+
+    /**
+     * Upright: the picture kept in sight over the guide while a channel plays in it (Pin), the channel beside its small
+     * preview as it is now; with nothing playing it folds away with the rest, as before.
+     */
+    private void syncPin() {
+        if (fold == null || pin == null) return;
+        fold.setPinned(Pin.kept(inline.live(), pin.getVisibility() == View.VISIBLE));
+        pin.refresh();
+    }
+
+    /** The small preview's channel tapped: the picture and the details open out again. */
+    private void unfold() {
+        if (fold != null) fold.setShut(false, true);
     }
 
     private void openInline(boolean open) {
@@ -1295,8 +1315,9 @@ public class LiveTvFragment extends Fragment {
         details.setVisibility(searching || sp || (mode == COMPACT && listView) ? View.GONE : View.VISIBLE);
         // The pane stays while a search runs when it is playing (to watch while looking).
         boolean pane = !searching || inline.live();
-        if (band != null) band.setVisibility(pane ? View.VISIBLE : View.GONE);
+        if (band != null) pin.setVisibility(pane ? View.VISIBLE : View.GONE);
         if (side != null) side.setVisibility(pane ? View.VISIBLE : View.GONE);
+        syncPin();
         if (searching) favHint.setVisibility(View.GONE);
     }
 
@@ -1480,8 +1501,10 @@ public class LiveTvFragment extends Fragment {
         // The ground takes the new picture soon after it starts.
         h.removeCallbacks(sample);
         h.postDelayed(sample, 2_500);
-        // Folded away: it opens again to show the picture asked for.
-        if (fold != null) fold.setShut(false, true);
+        // Folded away with nothing kept in sight: it opens again to show the picture asked for. Kept (Pin), it plays on
+        // where it is, small over the guide still where it was.
+        syncPin();
+        if (fold != null && !fold.keeping()) fold.setShut(false, true);
     }
 
     /**
@@ -1548,6 +1571,11 @@ public class LiveTvFragment extends Fragment {
             @Override public void onShowing(Channel ch) {
                 if (lib.ready() && grid.channels().contains(ch)) selectNow(ch);
                 showRecents();
+                syncPin();
+            }
+
+            @Override public void onLive(boolean live) {
+                syncPin();
             }
         };
     }

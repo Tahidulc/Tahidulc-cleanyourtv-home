@@ -3,12 +3,14 @@ package com.gathin.tvhomephone.live;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.res.ColorStateList;
+import android.graphics.Outline;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewOutlineProvider;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
@@ -27,7 +29,8 @@ import com.gathin.tvhomephone.R;
  * one shared player (Playback), so full screen takes the same stream over and gives it back. Tap for its controls (the
  * channel and what's on, ✕, full screen), double tap or pinch between Fit and Fill, swipe up for full screen, left for
  * the next channel and right for the one before. Stopped (the tab left, or the ✕), it shows the channel's logo with a
- * play button: a tap plays it again.
+ * play button: a tap plays it again. Held upright it stays in sight as the guide scrolls (Pin), shrinking to a small
+ * preview, where a tap is full screen.
  */
 @SuppressLint({"ViewConstructor", "ClickableViewAccessibility"})
 final class Inline extends FrameLayout implements Playback.Host {
@@ -43,6 +46,9 @@ final class Inline extends FrameLayout implements Playback.Host {
 
         /** Another channel is in the picture (the full screen changed channel before handing it back). */
         void onShowing(Channel ch);
+
+        /** A stream is open here now (live), or no longer. */
+        default void onLive(boolean live) {}
     }
 
     private static final long CONTROLS_MS = 3500;
@@ -64,6 +70,12 @@ final class Inline extends FrameLayout implements Playback.Host {
     private Channel ch;
     private Aspect aspect = Aspect.defaultFor(true);
     private boolean controls = true, quiet;
+    /** Shrunk to the small preview (Pin): a tap is full screen, and its controls stay away. */
+    private boolean compact;
+    /** As last told (onLive). */
+    private boolean wasLive;
+    /** Its corners, in its own (unscaled) pixels: rounder as it shrinks, so they look the same (Pin). */
+    private float corner;
     private final Runnable hideControls = () -> controls(false);
     private final Runnable hideZoom = () -> zoomLabel(false);
 
@@ -76,6 +88,12 @@ final class Inline extends FrameLayout implements Playback.Host {
         store = Aspect.prefs(c);
         // A rounded picture that stands off the ground (07's cards), black behind the stream.
         setBackground(Ui.round(c, 0xFF000000, upright ? 18 : 16));
+        corner = Ui.dp(c, upright ? 18 : 16);
+        setOutlineProvider(new ViewOutlineProvider() {
+            @Override public void getOutline(View v, Outline o) {
+                o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), corner);
+            }
+        });
         setClipToOutline(true);
         setElevation(Ui.dp(c, 6));
 
@@ -176,6 +194,25 @@ final class Inline extends FrameLayout implements Playback.Host {
         return pb.isFront(this) && ch != null && pb.live(ch);
     }
 
+    /** Its corners' radius in its own pixels (Pin, as it shrinks: only its outline, nothing drawn again). */
+    void corner(float px) {
+        if (px == corner) return;
+        corner = px;
+        invalidateOutline();
+    }
+
+    /** Shrunk to the small preview (Pin): a tap goes full screen, and the controls (too small to use) go away. */
+    void setCompact(boolean on) {
+        if (compact == on) return;
+        compact = on;
+        // Put away in a moment (this can come in the middle of laying out, as the guide folds).
+        if (on && controls) h.post(hideControls);
+    }
+
+    boolean compact() {
+        return compact;
+    }
+
     @Override protected void onMeasure(int widthSpec, int heightSpec) {
         if (upright) {
             int w = MeasureSpec.getSize(widthSpec);
@@ -256,6 +293,11 @@ final class Inline extends FrameLayout implements Playback.Host {
 
     private void tapped() {
         if (ch == null) return;
+        // Small, over the guide: full screen, as the picture's full screen button.
+        if (compact && live()) {
+            if (listener != null) listener.onFullScreen();
+            return;
+        }
         if (!live() || pb.paused()) {
             resume();
             return;
@@ -321,13 +363,18 @@ final class Inline extends FrameLayout implements Playback.Host {
         message.setVisibility(m.isEmpty() ? GONE : VISIBLE);
         play.setVisibility(ch != null && (!open || paused) && s != Playback.FAILED ? VISIBLE : GONE);
         cover.setVisibility(open && pb.firstFrame() ? GONE : VISIBLE);
-        full.setVisibility(ch != null && controls ? VISIBLE : GONE);
-        bar.setVisibility(ch != null && controls ? VISIBLE : GONE);
+        full.setVisibility(ch != null && controls && !compact ? VISIBLE : GONE);
+        bar.setVisibility(ch != null && controls && !compact ? VISIBLE : GONE);
         // The pane's ✕ stops what plays; upright, it puts the picture away whatever it's doing.
         close.setVisibility(upright || open ? VISIBLE : GONE);
         setKeepScreenOn(open && !paused);
         h.removeCallbacks(hideControls);
         if (controls && open && !paused) h.postDelayed(hideControls, CONTROLS_MS);
+        boolean now = live();
+        if (now != wasLive) {
+            wasLive = now;
+            if (listener != null) listener.onLive(now);
+        }
     }
 
     private void controls(boolean on) {
@@ -359,7 +406,7 @@ final class Inline extends FrameLayout implements Playback.Host {
             }
 
             @Override public void onPinch(float scale) {
-                if (!live()) return;
+                if (!live() || compact) return;
                 float s = Math.max(0.85f, Math.min(1.2f, scale));
                 video.setScaleX(s);
                 video.setScaleY(s);
@@ -367,7 +414,7 @@ final class Inline extends FrameLayout implements Playback.Host {
 
             @Override public void onPinchEnd(float scale) {
                 video.animate().scaleX(1f).scaleY(1f).setDuration(150).start();
-                if (!live()) return;
+                if (!live() || compact) return;
                 Aspect a = aspect.pinched(scale);
                 if (a != aspect) setAspect(a);
             }

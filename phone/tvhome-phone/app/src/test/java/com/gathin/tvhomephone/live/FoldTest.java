@@ -69,4 +69,75 @@ public class FoldTest {
         assertEquals(300, Fold.settleMs(4000, 1000));
         assertEquals(0, Fold.settleMs(10, 0));
     }
+
+    // ---- the picture kept in sight (Pin) -------------------------------------------------------------------------
+
+    /** The picture 600 tall over 900 of details and the rest, kept down to 300. */
+    private static final int PIN = 600, HEAD = 900, KEEP = 300;
+
+    @Test public void nothingPlayingNothingIsKept() {
+        // Not kept: it folds away with the rest, as before (the whole of both).
+        assertEquals(0, Fold.keep(false, PIN, KEEP));
+        assertEquals(PIN + HEAD, Fold.range(PIN, HEAD, 0));
+        assertEquals(0f, Fold.shrunk(Fold.pinShown(1200, PIN, HEAD, 0), PIN, 0), 0f);
+        // No picture at all (gone), or nothing to shrink to: nothing kept either.
+        assertEquals(0, Fold.keep(true, 0, KEEP));
+        assertEquals(0, Fold.keep(true, PIN, 0));
+        assertEquals(HEAD, Fold.range(0, HEAD, 0));
+    }
+
+    @Test public void keptItStopsAtItsSmallHeight() {
+        assertEquals(KEEP, Fold.keep(true, PIN, KEEP));
+        assertEquals(PIN + HEAD - KEEP, Fold.range(PIN, HEAD, KEEP));
+        // Never more kept than there is of it.
+        assertEquals(200, Fold.keep(true, 200, KEEP));
+        assertEquals(0f, Fold.shrunk(200, 200, 200), 0f);
+    }
+
+    @Test public void theRestFoldsAwayBeneathItFirst() {
+        // While the details and the rest fold away, all of the picture shows and it hasn't shrunk.
+        for (int s : new int[]{0, 1, 450, 899, 900}) {
+            assertEquals(PIN, Fold.pinShown(s, PIN, HEAD, KEEP));
+            assertEquals(0f, Fold.shrunk(Fold.pinShown(s, PIN, HEAD, KEEP), PIN, KEEP), 0f);
+        }
+    }
+
+    @Test public void thenItShrinksWithTheFingerToItsSmallSize() {
+        // Past the rest: the guide comes up under it as it shrinks.
+        assertEquals(450, Fold.pinShown(1050, PIN, HEAD, KEEP));
+        assertEquals(0.5f, Fold.shrunk(450, PIN, KEEP), 1e-6f);
+        assertEquals(KEEP, Fold.pinShown(1200, PIN, HEAD, KEEP));
+        assertEquals(1f, Fold.shrunk(KEEP, PIN, KEEP), 0f);
+        // Folded all it goes (or past, settling): no smaller.
+        assertEquals(KEEP, Fold.pinShown(5000, PIN, HEAD, KEEP));
+        assertEquals(1f, Fold.shrunk(Fold.pinShown(5000, PIN, HEAD, KEEP), PIN, KEEP), 0f);
+    }
+
+    @Test public void scrolledBackItGrowsAgainBeforeTheRestComesBack() {
+        float small = Fold.shrunk(Fold.pinShown(1200, PIN, HEAD, KEEP), PIN, KEEP);
+        float half = Fold.shrunk(Fold.pinShown(1050, PIN, HEAD, KEEP), PIN, KEEP);
+        float whole = Fold.shrunk(Fold.pinShown(900, PIN, HEAD, KEEP), PIN, KEEP);
+        assertTrue(small > half && half > whole);
+        assertEquals(0f, whole, 0f);
+        // All the way back: as it was.
+        assertEquals(PIN, Fold.pinShown(0, PIN, HEAD, KEEP));
+    }
+
+    @Test public void withNothingUnderItItShrinksAtOnce() {
+        // Your channels, Recently watched and the details all gone: the picture alone.
+        assertEquals(PIN - KEEP, Fold.range(PIN, 0, KEEP));
+        assertEquals(PIN, Fold.pinShown(0, PIN, 0, KEEP));
+        assertEquals(450, Fold.pinShown(150, PIN, 0, KEEP));
+    }
+
+    @Test public void keptOrLetGoFoldedItStaysFolded() {
+        // Folded with nothing kept, then a channel plays and the picture is kept: still folded, at its small size.
+        int was = Fold.range(PIN, HEAD, 0), now = Fold.range(PIN, HEAD, KEEP);
+        assertEquals(now, Fold.refold(was, was, now, true));
+        assertEquals(KEEP, Fold.pinShown(now, PIN, HEAD, KEEP));
+        // It stops playing (full screen took it, the tab left): folded still, the picture folded away too.
+        assertEquals(was, Fold.refold(now, now, was, true));
+        // Open stays open either way.
+        assertEquals(0, Fold.refold(0, was, now, false));
+    }
 }
