@@ -32,7 +32,9 @@ import androidx.core.view.ViewCompat;
  * Over the header there can be a pin (the guide's picture: Pin), which scrolls away with it as before, or, while it is
  * kept (a channel playing in it), stays at the top: what is under it folds away beneath it, then it shrinks, following
  * the finger, to its compact height and the guide comes up under it; back down, it grows again before the rest comes
- * back. It only moves and scales (Shrinking), so that too is drawing alone.
+ * back. It only moves and scales (Shrinking), so that too is drawing alone. Behind a kept pin there can be something
+ * of its own (Shrinking.behind: PinBackdrop, the programme's picture behind the folded band), the first child, drawn
+ * under the header and the guide, kept at the top as the pin is (only moved; the pin fades it as it shrinks).
  */
 @SuppressLint("ViewConstructor")
 final class Fold extends ViewGroup implements NestedScrollingParent3 {
@@ -48,10 +50,21 @@ final class Fold extends ViewGroup implements NestedScrollingParent3 {
 
         /** As it shows now: how far it has shrunk (0 as laid out, 1 compact) and how much of its height shows (px). */
         void shrink(float by, int shown);
+
+        /**
+         * What stands behind it as it is kept (PinBackdrop: the programme's picture behind the folded band), under the
+         * header and the guide too, kept at the top with it; null for nothing. Its height is its own, its alpha the pin's
+         * to set as it shrinks.
+         */
+        default View behind() {
+            return null;
+        }
     }
 
     private final View pin, header, body;
     private final Shrinking shrinking;
+    /** Behind the kept pin and the guide's top (Shrinking.behind), or null. */
+    private final View behind;
     private final NestedScrollingParentHelper nested = new NestedScrollingParentHelper(this);
     private final OverScroller scroller;
     private final int slop, minFling, maxFling;
@@ -79,6 +92,7 @@ final class Fold extends ViewGroup implements NestedScrollingParent3 {
         super(c);
         this.pin = pin;
         this.shrinking = pin instanceof Shrinking ? (Shrinking) pin : null;
+        this.behind = shrinking == null ? null : shrinking.behind();
         this.header = header;
         this.body = body;
         ViewConfiguration vc = ViewConfiguration.get(c);
@@ -86,6 +100,8 @@ final class Fold extends ViewGroup implements NestedScrollingParent3 {
         minFling = vc.getScaledMinimumFlingVelocity();
         maxFling = vc.getScaledMaximumFlingVelocity();
         scroller = new OverScroller(c);
+        // First: under everything else.
+        if (behind != null) addView(behind);
         addView(header);
         addView(body);
         // Last: drawn over the header folding away under it, and the first to be touched.
@@ -208,6 +224,11 @@ final class Fold extends ViewGroup implements NestedScrollingParent3 {
         header.measure(ws, free);
         // Kept, the pin's compact height stays over the guide: the body ends at the screen's foot when folded.
         body.measure(ws, MeasureSpec.makeMeasureSpec(Math.max(0, h - k), MeasureSpec.EXACTLY));
+        // Last: its height follows the pin's and what is at the guide's top.
+        if (behind != null && behind.getVisibility() != GONE) {
+            behind.forceLayout();
+            behind.measure(ws, MeasureSpec.makeMeasureSpec(h, MeasureSpec.AT_MOST));
+        }
         setMeasuredDimension(w, h);
     }
 
@@ -215,6 +236,7 @@ final class Fold extends ViewGroup implements NestedScrollingParent3 {
         int w = r - l, ph = pin == null || pin.getVisibility() == GONE ? 0 : pin.getMeasuredHeight();
         int hh = header.getVisibility() == GONE ? 0 : header.getMeasuredHeight();
         if (ph > 0) pin.layout(0, 0, w, ph);
+        if (behind != null && behind.getVisibility() != GONE) behind.layout(0, 0, w, behind.getMeasuredHeight());
         header.layout(0, ph, w, ph + hh);
         body.layout(0, ph + hh, w, ph + hh + body.getMeasuredHeight());
         pinH = ph;
@@ -244,8 +266,10 @@ final class Fold extends ViewGroup implements NestedScrollingParent3 {
 
     /** The pin where it shows: kept at the top as the rest scrolls (only moved and scaled), or scrolling with it. */
     private void place() {
-        if (pin == null || pinH <= 0) return;
         int s = getScrollY();
+        // What stands behind it: at the top whatever shows (the pin fades it in and out).
+        if (behind != null) behind.setTranslationY(s);
+        if (pin == null || pinH <= 0) return;
         pin.setTranslationY(keep > 0 ? s : 0);
         int ps = pinShown(s, pinH, headH, keep);
         if (shrinking != null) shrinking.shrink(shrunk(ps, pinH, keep), ps);

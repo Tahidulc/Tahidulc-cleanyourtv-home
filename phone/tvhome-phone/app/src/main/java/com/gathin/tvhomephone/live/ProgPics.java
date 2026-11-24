@@ -36,6 +36,8 @@ import java.util.concurrent.TimeUnit;
  *            colours behind, the sharp picture over them with its inner edges feathered into them)
  *   PANEL    the programme's panel upright: the same, its faces in the part right of its words (PicFill.PANEL_ROOM)
  *   HEADER   the programme's panel in the pane: the picture across its top, faces whole, fading to nothing at its foot
+ *   BAND     the folded band over the guide held upright (band(room): PinBackdrop): as PANEL, its faces right of the
+ *            channel line's words (room of its width)
  *   LOGO     a channel's logo, as large as fits w x h at its own shape (the panel's and the cells' stand-in)
  * </pre>
  *
@@ -47,6 +49,17 @@ final class ProgPics {
     private ProgPics() {}
 
     static final int FILL = 1, PANEL = 2, HEADER = 3, LOGO = 4;
+    /**
+     * BAND + the share of its width its words take at its left, in hundredths (band()): the folded band over the guide
+     * held upright (PinBackdrop), laid out as the panel is, its faces right of the words (under the small picture on a
+     * phone, beside the channel's line on a tablet).
+     */
+    static final int BAND = 100;
+
+    /** The mode for a band whose words take room (0 to 1) of its width at its left. */
+    static int band(float room) {
+        return BAND + Math.max(1, Math.min(99, Math.round(room * 100)));
+    }
     private static final int THREADS = 2, QUEUE_MAX = 40;
 
     /**
@@ -260,6 +273,7 @@ final class ProgPics {
         float[] lay = new float[PicFill.SIZE];
         if (mode == PANEL) PicFill.layout(sw / sh, box, w, h, PicFill.PANEL_ROOM, 1f, true, lay);
         else if (mode == HEADER) PicFill.layout(sw / sh, box, w, h, 0f, 1f, true, lay);
+        else if (mode > BAND) PicFill.layout(sw / sh, box, w, h, (mode - BAND) / 100f, 1f, true, lay);
         else PicFill.row(sw / sh, box, w, h, lay);
         // Its own colours: a few pixels of it, a little quieter (drawn up smooth, a clean ground with no faces).
         Bitmap small = Bitmap.createScaledBitmap(src, 8, 3, true);

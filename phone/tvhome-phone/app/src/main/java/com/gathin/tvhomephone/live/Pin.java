@@ -27,8 +27,18 @@ import com.gathin.tvhomephone.R;
  * band's picture at its left, the details beside it giving way to the same. Back down, it grows again. A tap on the small
  * picture is full screen; on the channel beside it, the picture and the details open out again.
  * <p>
+ * Folded, the band under the top bar (the channel line, the small picture and the categories' row under them) sits on
+ * the programme's own picture (the family's ask, 24 Nov: "the background should be programme background. If there's no
+ * background for the programme, just have the colour of the panel instead"): PinBackdrop, the picture of what is on now
+ * on the channel playing, shaded behind the words and fading into the guide, coming in as the picture shrinks and going
+ * as it grows. Pin tells it the channel and the programme (refresh: as a channel plays, each minute, and as each
+ * programme ends) and where the channel line's words are; Fold keeps it at the top, under everything. On a tablet the
+ * band's glass is its own view under the band, giving way to the programme's picture as it comes in (only while there
+ * is one: looked for, the glass stays).
+ * <p>
  * Only the same views move and scale, so the player is never made again and the stream never buffers again, and nothing
- * is laid out while it moves. With nothing playing it isn't kept, and folds away with the rest as before.
+ * is laid out while it moves: the programme's picture and the tablet's glass only fade. With nothing playing it isn't
+ * kept, and folds away with the rest as before (and nothing is behind it).
  */
 @SuppressLint("ViewConstructor")
 final class Pin extends FrameLayout implements Fold.Shrinking {
@@ -48,12 +58,22 @@ final class Pin extends FrameLayout implements Fold.Shrinking {
     static final float DETAILS_GONE_AT = 0.45f;
     /** The picture's corners, as it is and small (dp, as they look). */
     static final float CORNER_SMALL_DP = 12;
+    /** Written again this long after a programme ends (so the next one is on by then). */
+    static final long ENDED_SLACK_MS = 500;
 
     private final Library lib;
     private final Inline picture;
     /** On a tablet: the band (the picture with the details beside it) and its details; null on a phone. */
     private final LinearLayout band;
     private final View details;
+    /** On a tablet: the band's glass, under it, giving way to the programme's picture as it shrinks; null on a phone. */
+    private final View glass;
+    /** The programme's picture behind the folded band (Fold keeps it at the top, under the guide's top too). */
+    private final PinBackdrop backdrop;
+    /** As last faded: how much of the programme's picture shows (0 to 1). */
+    private float backdropShown;
+    /** The programme on now ends: what's on, and the picture behind, as the next one begins. */
+    private final Runnable ended = this::refresh;
     private final LinearLayout info;
     private final FrameLayout logoBox;
     private final ImageView logo;
@@ -83,16 +103,31 @@ final class Pin extends FrameLayout implements Fold.Shrinking {
     /** A tablet held upright: band (the picture and details beside it, a panel of glass) across the top. */
     Pin(Context c, Library lib, Inline picture, LinearLayout band, View details, Runnable open) {
         this(c, lib, picture, band, details, open, 12, 6, 12, 8);
+        // The band's glass under it, its own view, so it can give way to the programme's picture as it shrinks (only its
+        // alpha changing); the band over it at the same height, casting no shadow of its own.
+        glass.setBackground(band.getBackground());
+        band.setBackground(null);
+        glass.setElevation(band.getElevation());
+        addView(glass, new LayoutParams(0, 0));
         addView(band, new LayoutParams(-1, -2));
-        // The band clipped to what shows of it as it shrinks, its corners round (its glass and its shadow with it).
+        // Both clipped to what shows of the band as it shrinks, its corners round (the glass's shadow with it).
         float r = Ui.dp(c, 24);
-        band.setOutlineProvider(new ViewOutlineProvider() {
+        glass.setOutlineProvider(new ViewOutlineProvider() {
             @Override public void getOutline(View v, Outline o) {
                 int h = bandShown < 0 ? v.getHeight() : Math.min(v.getHeight(), bandShown);
                 o.setRoundRect(0, 0, v.getWidth(), Math.max(0, h), r);
             }
         });
+        glass.setClipToOutline(true);
+        band.setOutlineProvider(new ViewOutlineProvider() {
+            @Override public void getOutline(View v, Outline o) {
+                int h = bandShown < 0 ? v.getHeight() : Math.min(v.getHeight(), bandShown);
+                o.setRoundRect(0, 0, v.getWidth(), Math.max(0, h), r);
+                o.setAlpha(0f);
+            }
+        });
         band.setClipToOutline(true);
+        backdrop.setOnFilled(() -> glassFor(backdropShown));
         // Over the band's glass (which stands off the ground), not under it.
         info.setElevation(band.getElevation() + Ui.dp(c, 1));
         addView(info, new LayoutParams(0, 0));
@@ -105,6 +140,13 @@ final class Pin extends FrameLayout implements Fold.Shrinking {
         this.picture = picture;
         this.band = band;
         this.details = details;
+        if (band == null) {
+            glass = null;
+        } else {
+            glass = new View(c);
+            glass.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+        }
+        backdrop = new PinBackdrop(c, this);
         padL = Ui.dp(c, l);
         padT = Ui.dp(c, t);
         padR = Ui.dp(c, r);
@@ -254,6 +296,8 @@ final class Pin extends FrameLayout implements Fold.Shrinking {
             full = padT + picture.getMeasuredHeight() + padB;
         } else {
             band.measure(MeasureSpec.makeMeasureSpec(inner, MeasureSpec.EXACTLY), free);
+            glass.measure(MeasureSpec.makeMeasureSpec(band.getMeasuredWidth(), MeasureSpec.EXACTLY),
+                    MeasureSpec.makeMeasureSpec(band.getMeasuredHeight(), MeasureSpec.EXACTLY));
             full = padT + band.getMeasuredHeight() + padB;
         }
         pw = picture.getMeasuredWidth();
@@ -288,6 +332,7 @@ final class Pin extends FrameLayout implements Fold.Shrinking {
             y = padT;
         } else {
             band.layout(padL, padT, padL + band.getMeasuredWidth(), padT + band.getMeasuredHeight());
+            glass.layout(band.getLeft(), band.getTop(), band.getRight(), band.getBottom());
             // Shrinks toward its top left, where it is in the band.
             picture.setPivotX(0);
             x = padL + band.getPaddingLeft() + cw + gap;
@@ -295,6 +340,8 @@ final class Pin extends FrameLayout implements Fold.Shrinking {
         }
         picture.setPivotY(0);
         info.layout(x, y, x + info.getMeasuredWidth(), y + info.getMeasuredHeight());
+        // The programme's picture behind: its shade strongest behind the channel's words.
+        backdrop.words(x, x + info.getMeasuredWidth());
         // Laid out again (turned, or the details changed): as it was shrunk, on the new sizes.
         float was = by;
         by = -1f;
@@ -327,16 +374,64 @@ final class Pin extends FrameLayout implements Fold.Shrinking {
             removeCallbacks(refresher);
             post(refresher);
         }
+        // The programme's picture behind the band, coming in with it (none while it is open).
+        backdropShown = PinBackdrop.alpha(by);
+        backdrop.fade(backdropShown);
         if (band != null) {
             float d = detailsAlpha(by);
             details.setAlpha(d);
             details.setImportantForAccessibility(d > 0f ? IMPORTANT_FOR_ACCESSIBILITY_AUTO : IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+            glassFor(backdropShown);
             int bs = by <= 0f ? -1 : shown - padT - padB;
             if (bs != bandShown) {
                 bandShown = bs;
                 band.invalidateOutline();
+                glass.invalidateOutline();
             }
         }
+    }
+
+    /** A tablet's glass under the band: giving way to the programme's picture as much as it shows (when it has one). */
+    private void glassFor(float shown) {
+        if (glass == null) return;
+        float g = glassAlpha(shown, backdrop.filled());
+        if (glass.getAlpha() != g) glass.setAlpha(g);
+        int v = g > 0f ? VISIBLE : INVISIBLE;
+        if (glass.getVisibility() != v) glass.setVisibility(v);
+    }
+
+    /** Pure: a tablet's glass as the programme's picture behind shows by shown (0 to 1): all of it while there's none. */
+    static float glassAlpha(float shown, boolean filled) {
+        return filled ? 1f - Math.max(0f, Math.min(1f, shown)) : 1f;
+    }
+
+    @Override public View behind() {
+        return backdrop;
+    }
+
+    /** The categories' row under the small picture: the programme's picture goes on behind it. */
+    void under(View v) {
+        backdrop.under(v);
+    }
+
+    /** Hidden (nothing open in it, or a search without it): nothing behind it either; shown again as it is shrunk. */
+    @Override public void setVisibility(int v) {
+        int was = getVisibility();
+        super.setVisibility(v);
+        if (backdrop == null || was == v) return;
+        if (v != VISIBLE) {
+            backdropShown = 0f;
+            backdrop.fade(0f);
+            glassFor(0f);
+        } else {
+            // Faded again for where it is, the next time it is placed.
+            by = -1f;
+        }
+    }
+
+    @Override protected void onDetachedFromWindow() {
+        removeCallbacks(ended);
+        super.onDetachedFromWindow();
     }
 
     /** Below what shows of it (shrunk, the guide is there) isn't its own; within it, the rest folded beneath isn't touched. */
@@ -371,10 +466,17 @@ final class Pin extends FrameLayout implements Fold.Shrinking {
 
     // ---- the channel beside the small picture ---------------------------------------------------------------------
 
-    /** What plays now, its logo, what's on and how far in (as a channel plays, and as the minute moves on). */
+    /**
+     * What plays now, its logo, what's on and how far in, and the programme's picture behind (as a channel plays, as the
+     * minute moves on, and as each programme ends).
+     */
     void refresh() {
         Channel c = picture.channel();
-        if (c == null) return;
+        removeCallbacks(ended);
+        if (c == null) {
+            backdrop.show(null, null, 0L);
+            return;
+        }
         Context ctx = getContext();
         int n = lib.number(c);
         put(name, n > 0 ? n + "  " + c.name : c.name);
@@ -398,6 +500,11 @@ final class Pin extends FrameLayout implements Fold.Shrinking {
         Guide.Schedule s = lib.schedule(c.key);
         long now = System.currentTimeMillis();
         int at = s == null ? -1 : s.at(now);
+        // Looked for only while there is a picture here to keep.
+        backdrop.show(getVisibility() == VISIBLE ? c : null, s, now);
+        // Again as this programme ends (or the next begins), not up to a minute after.
+        long next = PinBackdrop.nextChange(s, now);
+        if (next > now) postDelayed(ended, next - now + ENDED_SLACK_MS);
         if (at >= 0 && !s.title[at].isEmpty()) {
             put(title, s.title[at]);
             line.setVisibility(Theme.progress ? VISIBLE : INVISIBLE);

@@ -25,7 +25,8 @@ import com.google.android.material.button.MaterialButton;
  * how far in, Watch as a white pill and the rest as glass. Behind it the programme's own picture, as Homefield TV's panel
  * has it (Art): upright, filling the rounded panel with its faces whole and clear on the right, the words down the left
  * over a soft shade that ends before the faces; in the pane (on its side, a tablet), across its top, fading into the
- * pane over the channel's line. With no picture, the channel's logo on its colour.
+ * pane over the channel's line. With no picture, the channel's logo on its colour. Which of these, and the channel's
+ * colour, are ProgGround's, shared with the folded band over the guide (PinBackdrop), so both fall back alike.
  */
 @SuppressLint("ViewConstructor")
 final class Details extends LinearLayout {
@@ -327,6 +328,8 @@ final class Details extends LinearLayout {
                 pic = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG | android.graphics.Paint.FILTER_BITMAP_FLAG),
                 rim = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
         private final android.graphics.RectF box = new android.graphics.RectF(), logoBox = new android.graphics.RectF();
+        /** The channel's own colours (ProgGround.channel), top and foot. */
+        private final int[] cols = new int[2];
         private final float radius, pad;
         private final Runnable redraw = this::invalidateSelf;
         private int shadeTop, shadeFoot;
@@ -358,14 +361,15 @@ final class Details extends LinearLayout {
             String url = artUrl;
             int w = b.width(), h = b.height();
             ProgPics.Made m = url == null || url.isEmpty() ? null : ProgPics.get(getContext(), url, w, h, ProgPics.PANEL, redraw);
-            if (m != null && m.b != null) {
+            int kind = ProgGround.of(url, m);
+            if (kind == ProgGround.PICTURE) {
                 draw.place(box, m, wordsEnd, pad);
                 draw.fill(cv, box, radius, m);
-            } else if (m != null && m != ProgPics.NONE) {
+            } else if (kind == ProgGround.COLOUR) {
                 plain.setColor(m.colour | 0xFF000000);
                 cv.drawRoundRect(box, radius, radius, plain);
                 draw.facesAt(box.right);
-            } else if ("".equals(url) || m == ProgPics.NONE) {
+            } else if (kind == ProgGround.CHANNEL) {
                 if (!logo(cv, box, wordsEnd, box.right)) glassOnly(cv, b);
             } else {
                 glassOnly(cv, b);
@@ -389,7 +393,8 @@ final class Details extends LinearLayout {
             box.set(b.left, b.top, b.right, b.top + hb);
             String url = artUrl;
             ProgPics.Made m = url == null || url.isEmpty() ? null : ProgPics.get(getContext(), url, b.width(), hb, ProgPics.HEADER, redraw);
-            if (m != null && m.b != null) {
+            int kind = ProgGround.of(url, m);
+            if (kind == ProgGround.PICTURE) {
                 pic.setShader(m.shader());
                 cv.save();
                 cv.translate(box.left, box.top);
@@ -397,8 +402,8 @@ final class Details extends LinearLayout {
                 cv.drawRoundRect(0, 0, box.width(), box.height() + radius, radius, radius, pic);
                 cv.restore();
                 pic.setShader(null);
-            } else if ((m != null && m != ProgPics.NONE) || "".equals(url) || m == ProgPics.NONE) {
-                int col = m != null && m != ProgPics.NONE ? m.colour : 0;
+            } else if (kind == ProgGround.COLOUR || kind == ProgGround.CHANNEL) {
+                int col = kind == ProgGround.COLOUR ? m.colour : 0;
                 if (col != 0) fade(cv, col, col);
                 else logo(cv, box, box.left, box.right);
             }
@@ -429,14 +434,8 @@ final class Details extends LinearLayout {
         private boolean logo(android.graphics.Canvas cv, android.graphics.RectF r, float from, float to) {
             Context c = getContext();
             String url = ch.logo;
-            int top, foot;
-            if (url.isEmpty()) {
-                top = foot = GuideLook.nameColour(ch.name);
-            } else {
-                int[] cols = LogoTiles.now(c, url);
-                top = cols[0];
-                foot = cols[1];
-            }
+            ProgGround.channel(c, ch, cols);
+            int top = cols[0], foot = cols[1];
             if (top == 0 && foot == 0) return false;
             if (compact) {
                 plain.setColor(top | 0xFF000000);

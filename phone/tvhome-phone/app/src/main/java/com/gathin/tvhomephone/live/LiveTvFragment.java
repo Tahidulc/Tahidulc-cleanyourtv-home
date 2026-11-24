@@ -62,7 +62,9 @@ import java.util.TimeZone;
  * gives the guide the whole height and a swipe down at its top brings it back. While a channel plays in the guide's
  * picture, the picture stays in sight (Pin): the rest folds away beneath it, then it shrinks to a small preview at the
  * top (a tap there is full screen) and grows again as the guide is scrolled back; with nothing playing it folds away
- * with the rest. Folded, a later programme tapped shows its sheet in place of the details.
+ * with the rest. Folded, the band with the channel line, the small picture and the categories' row sits on the
+ * programme's own picture (PinBackdrop: "the background should be programme background", else the panel's colour),
+ * fading into the guide. Folded, a later programme tapped shows its sheet in place of the details.
  * Tap a channel (or a programme that is on) to watch it in the guide's own picture, with sound (Inline): on a phone held
  * upright a 16:9 picture at the top with the guide still there under it, on a tablet held upright beside the details,
  * and on a tablet on its side in the pane beside the grid. Tap it again, its full screen button or swipe up for full
@@ -336,6 +338,8 @@ public class LiveTvFragment extends Fragment {
             guideCol.setOrientation(LinearLayout.VERTICAL);
             guideCol.addView(guideBar, new LinearLayout.LayoutParams(-1, Ui.dp(c, 52)));
             guideCol.addView(body, new LinearLayout.LayoutParams(-1, 0, 1f));
+            // Folded, the programme's picture behind the small one goes on behind the categories' row (PinBackdrop).
+            pin.under(guideBar);
             fold = new Fold(c, pin, head, guideCol);
             fold.setPicture(inline);
             fold.setListener(shown -> {
