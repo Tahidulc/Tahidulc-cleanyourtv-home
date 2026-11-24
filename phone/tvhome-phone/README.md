@@ -825,3 +825,10 @@ can come from a catalogue of logo packs or be made here (offline or with Ask AI)
 **Channels in the playlist's order again (5.34).** With one row per channel (5.33), a channel in several qualities stood
 where its best version is in the playlist, so channels whose HD or FHD copy sits further down moved out of order. Each
 row now stands where the first of its versions stands, whichever version it plays.
+
+**What's playing stays in sight down the guide (5.35).** Upright on a phone, the picture of the channel playing stays
+at the top as the guide scrolls: the details, Recently watched and Your channels fold away under it, then it shrinks to
+a small tile on the right with the channel, LIVE, the programme and its progress beside it. Tap the small picture for
+full screen, or the channel line to open everything out again; another channel tapped meanwhile plays in the small
+picture. The stream never restarts as it shrinks or grows. On a tablet upright the picture and details stay in sight
+and the picture shrinks in place. Sideways it already stayed put.
