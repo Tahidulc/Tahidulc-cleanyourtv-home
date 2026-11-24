@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The scoreboard editor, My scoreboards, Ask AI and the channel logo catalogue (the AI designer). -->
+<resources>
+    <string name="live_my_boards">My scoreboards</string>
+    <string name="live_board_editor">Scoreboard editor (make, generate, Ask AI)</string>
+    <string name="live_logo_pick">Channel logo (catalogue, make my own)</string>
+</resources>

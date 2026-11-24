@@ -594,17 +594,46 @@ final class BoardCover {
         setStyle(c, all[(style(c).ordinal() + 1) % all.length]);
     }
 
-    /** A look chosen: the board drawn in it at once where it is up (no coming in again). */
+    /** A look chosen: the board drawn in it at once where it is up (no coming in again); a custom board let go. */
     static void setStyle(Context c, BoardBug.Style s) {
-        prefs(c).edit().putString("style", s.name()).apply();
+        prefs(c).edit().putString("style", s.name()).remove("custom").apply();
         // The tennis, boxing or UFC board up takes the look too.
         SportCover.restyle(c);
         if (bug != null && !adjusting) {
+            bug.custom(null);
             bug.style(s);
             layout(c);
         } else {
             restyle();
         }
+    }
+
+    /** The family's own board in use (My scoreboards: its id), or null for the look as chosen. */
+    static String customId(Context c) {
+        return prefs(c).getString("custom", null);
+    }
+
+    /** The custom board in use (MyBoardStore), or null. */
+    static com.gathin.broadcast.BoardSpec custom(Context c) {
+        return MyBoardStore.inUse(c);
+    }
+
+    /**
+     * One of My scoreboards in use (its id), drawn at once where the board is up; null lets it go (back to the look as
+     * chosen). The editor's preview: the same, with the spec as it stands (custom(c, spec)).
+     */
+    static void setCustom(Context c, String id) {
+        if (id == null || id.isEmpty()) prefs(c).edit().remove("custom").apply();
+        else prefs(c).edit().putString("custom", id).apply();
+        showCustom(c, custom(c));
+    }
+
+    /** A spec drawn on the board where it is up (the editor's live look; null: the board as chosen again). */
+    static void showCustom(Context c, com.gathin.broadcast.BoardSpec spec) {
+        if (bug == null || adjusting) return;
+        if (spec == null) bug.style(style(c));
+        bug.custom(spec);
+        layout(c);
     }
 
     /** The look step looks along: on (step 1) or back (-1). */
@@ -2854,6 +2883,7 @@ final class BoardCover {
         edge = Math.max(2, Math.round(2f * sw / 1920f));
         bug = new BoardBug(c);
         bug.style(style(c));
+        bug.custom(custom(c));
         bug.inset(edge);
         stats = new BoardStats(c);
         drop = new BoardDrop(c);
@@ -5714,6 +5744,7 @@ final class BoardCover {
      * arrows move or size, OK the next part, Back keeps the places; the rest (the volume) go on to the TV.
      */
     static boolean key(KeyEvent e) {
+        if (BoardEditorTv.showing()) return BoardEditorTv.key(e);
         if (menuWin != null) return menuKey(e);
         if (!adjusting && ClassicIntro.key(e)) return true;
         if (!adjusting && fourKKey(e)) return true;
@@ -5931,6 +5962,8 @@ final class BoardCover {
         /** The channel's own pop-ups covered (BugCover), and whether this TV can watch for them at all. */
         boolean popUps = true, popUpsPossible = true;
         String look = "", logoLook = "", what = "", tag = "", note = "", style = "", showing = "", seeing = "", ground = "Plate";
+        /** The family's own board in use (My scoreboards), "" for none. */
+        String mine = "";
         /** The channel on now ("" when not known), its mode and its own look, in words. */
         String channel = "", channelMode = "As the rest", channelLook = "As the rest";
     }
@@ -5956,7 +5989,8 @@ final class BoardCover {
                 "Picture tag:  ‹  " + m.tag + "  ›",
                 "Logo's background:  ‹  " + m.ground + "  ›" + (!"Plate".equals(m.ground) && !m.seeing.isEmpty() ? "  ·  " + m.seeing : ""),
                 "Find the channel's scoreboard:  ‹  " + (m.find ? "On" : "Off") + "  ›  ·  OK: look again now",
-                "Line-ups on screen:  ‹  " + (m.lineups ? "On" : "Off") + "  ›"};
+                "Line-ups on screen:  ‹  " + (m.lineups ? "On" : "Off") + "  ›",
+                "My scoreboards:  ‹  " + (m.mine.isEmpty() ? "None (the look above)" : m.mine) + "  ›  ·  OK: the editor, Generate, Ask AI"};
     }
 
     /** The menu's state now. */
@@ -5967,6 +6001,8 @@ final class BoardCover {
         m.popUpsPossible = ScreenShots.available();
         m.logoOn = logoNow(c);
         m.look = style(c).label;
+        com.gathin.broadcast.MyBoards.Saved mineNow = MyBoardStore.get(c, customId(c));
+        m.mine = mineNow == null ? "" : mineNow.name;
         m.logoLook = lookNow(c).label;
         // What the cover on this channel is drawn in: its own look, else the general one.
         m.sportsLook = lookNow(c).sports();
@@ -6262,6 +6298,11 @@ final class BoardCover {
                 if (!ChannelSight.on(c)) ChannelSight.setOn(c, true);
                 ChannelSight.lookAgain(c);
                 break;
+            case M_MINE:
+                // The scoreboard editor over the match, on the board in use (else a new one).
+                closeMenu();
+                BoardEditorTv.open(c, customId(c));
+                return;
             default:
                 menuStep(c, menuAt, 1);
         }
@@ -6315,6 +6356,9 @@ final class BoardCover {
             case M_LINEUPS:
                 setLineupsOn(c, !lineupsOn(c));
                 break;
+            case M_MINE:
+                stepMine(c, step);
+                break;
             default:
                 break;
         }
@@ -6325,8 +6369,19 @@ final class BoardCover {
      * covered, the cover, the looks, what is on, the name, the tag, see-through, find, line-ups.
      */
     static final int M_HAND = 0, M_CHANNEL = 1, M_CHANNEL_LOGO = 2, M_MOVE = 3, M_BOARD = 4, M_POP_UPS = 5, M_LOGO = 6, M_LOOK = 7,
-            M_LOGO_LOOK = 8, M_WHAT = 9, M_NAME = 10, M_TAG = 11, M_GROUND = 12, M_FIND = 13, M_LINEUPS = 14;
-    private static final int MENU_LINES = 15;
+            M_LOGO_LOOK = 8, M_WHAT = 9, M_NAME = 10, M_TAG = 11, M_GROUND = 12, M_FIND = 13, M_LINEUPS = 14, M_MINE = 15;
+    private static final int MENU_LINES = 16;
+
+    /** The hold-OK menu's My scoreboards: on to the next saved board (or back), "none" between the last and the first. */
+    private static void stepMine(Context c, int step) {
+        java.util.List<com.gathin.broadcast.MyBoards.Saved> all = MyBoardStore.all(c);
+        if (all.isEmpty()) return;
+        String now = customId(c);
+        int i = -1;
+        for (int k = 0; k < all.size(); k++) if (all.get(k).id.equals(now)) i = k;
+        int n = Math.floorMod(i + 1 + step, all.size() + 1) - 1;
+        setCustom(c, n < 0 ? null : all.get(n).id);
+    }
 
     static boolean menuShowing() {
         return menuWin != null;

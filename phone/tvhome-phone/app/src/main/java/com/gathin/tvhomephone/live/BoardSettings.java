@@ -47,6 +47,7 @@ public final class BoardSettings {
         LinearLayout styles = new LinearLayout(c);
         hs.addView(styles);
         java.util.List<android.view.View> frames = new java.util.ArrayList<>();
+        Runnable[] mine = new Runnable[1];
         for (OverlayBug.Style st : OverlayBug.Style.values()) {
             LinearLayout one = choice(c, st.label, ScoreBoard.style(c) == st);
             OverlayBug b = new OverlayBug(c);
@@ -58,11 +59,18 @@ public final class BoardSettings {
             one.setOnClickListener(v -> {
                 ScoreBoard.setStyle(c, st);
                 for (android.view.View f : frames) f.setSelected(f == v);
+                if (mine[0] != null) mine[0].run();
             });
             frames.add(one);
             styles.addView(one, spaced(c));
         }
         col.addView(hs, new LinearLayout.LayoutParams(-1, -2));
+        // The family's own boards, their own group beside the looks (the editor, Generate, Ask AI), and Ask AI's key.
+        mine[0] = MyBoardsRow.addTo(a, col, null, null, () -> {
+            for (android.view.View f : frames) f.setSelected(false);
+        });
+        if (ScoreBoard.customId(c) != null) for (android.view.View f : frames) f.setSelected(false);
+        MyBoardsRow.aiSettings(a, col);
 
         // Tennis, boxing and UFC: their board in the look chosen, tried here for a few seconds with one moment.
         col.addView(sub(c, c.getString(R.string.live81_try_title)));

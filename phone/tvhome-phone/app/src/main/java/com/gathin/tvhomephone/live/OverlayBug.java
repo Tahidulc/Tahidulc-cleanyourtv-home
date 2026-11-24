@@ -120,7 +120,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         dp = c.getResources().getDisplayMetrics().density;
         blueTop = c.getColor(R.color.bug_blue_top);
         blueBottom = c.getColor(R.color.bug_blue_bottom);
-        text.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
+        text.setTypeface(plainFace);
         text.setFontFeatureSettings("tnum");
         setLayerType(LAYER_TYPE_HARDWARE, null);
         p = paletteNow();
@@ -185,6 +185,34 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         boolean sheen, edgeLine;
         /** The corners' radius as a share of the height (0.5: a pill). */
         float round = 0.2f;
+        /** Added time's red (the clock's, Card's middle) and the added time's tab: AddedTime.RED but on a custom board. */
+        int stoppage = ADDED, added = TAB_RED;
+    }
+
+    /**
+     * A custom board's palette (BoardSpec): its base look's, with the spec's colours, corners, finish and strips; the
+     * base draws it, so every moment over the board comes with it.
+     */
+    private static Palette palette(com.gathin.broadcast.BoardSpec s, int blueTop, int blueBottom) {
+        Palette p = palette(Style.of(s.base.name()), blueTop, blueBottom);
+        p.ground = s.panel;
+        p.groundFoot = s.groundFoot();
+        p.comp = s.comp;
+        p.score0 = s.score;
+        p.score1 = s.scoreFoot;
+        p.clock = s.base == com.gathin.broadcast.BoardSpec.Base.MINIMAL ? 0 : s.clock;
+        p.ink = s.text;
+        p.scoreInk = s.scoreText;
+        p.clockInk = s.clockText;
+        p.dim = s.dim;
+        p.round = s.radius;
+        p.sheen = s.sheen();
+        p.edgeLine = false;
+        p.strips = s.strips && s.base != com.gathin.broadcast.BoardSpec.Base.CLUB;
+        p.stoppage = s.stoppage;
+        p.added = s.added;
+        if (s.base == com.gathin.broadcast.BoardSpec.Base.MINIMAL) p.score0 = p.score1 = 0;
+        return p;
     }
 
     private static Palette palette(Style s, int blueTop, int blueBottom) {
@@ -300,6 +328,27 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         invalidate();
     }
 
+    /** One of the family's own boards (My scoreboards), drawn in its base look; null for the chosen look as it is. */
+    private com.gathin.broadcast.BoardSpec custom;
+    private final Typeface plainFace = Typeface.create(Typeface.DEFAULT, Typeface.BOLD);
+
+    /** A custom board over the look (its base takes the look's place), or null to go back to the look itself. */
+    void custom(com.gathin.broadcast.BoardSpec s) {
+        if (s == null && custom == null) return;
+        // The same board, already in its base look (a look chosen since takes it back).
+        if (s != null && custom != null && style == Style.of(s.base.name()) && s.toJson().equals(custom.toJson())) return;
+        custom = s == null ? null : s.copy();
+        if (custom != null) style = Style.of(custom.base.name());
+        text.setTypeface(custom == null ? plainFace : com.gathin.broadcast.BoardPaint.typeface(getContext(), custom.font));
+        p = paletteNow();
+        requestLayout();
+        invalidate();
+    }
+
+    com.gathin.broadcast.BoardSpec custom() {
+        return custom;
+    }
+
     // ---- the competitions' own looks (CompBug) -----------------------------------------------------------------------
 
     /** The game's competition's look (By competition draws it), its name, the clubs' names, its logo in its own colours. */
@@ -386,6 +435,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
     /** Its colours now: a competition look's own (it draws its grounds itself), else its look's. */
     private Palette paletteNow() {
         CompBug.Kind k = kind();
+        if (k == null && custom != null) return palette(custom, blueTop, blueBottom);
         if (k == null) return palette(style, blueTop, blueBottom);
         Palette c = palette(Style.CLASSIC, blueTop, blueBottom);
         int[] st = CompBug.strip(k);
@@ -866,10 +916,17 @@ final class OverlayBug extends View implements BurnGuard.Dims {
     /** Its strips' look, made again only when its own look changes. */
     StripLook stripLook() {
         CompBug.Kind k = kind();
-        if (strip == null || stripFor != style || stripKind != k) {
+        if (strip == null || stripFor != style || stripKind != k || stripCustom != custom) {
             strip = k != null ? compStrip(k) : strip(style, p);
+            if (k == null && custom != null) {
+                // A custom board's pop-outs in its own panel, words and score cell.
+                strip.ground = custom.panel;
+                strip.light = custom.light();
+                strip.block = (custom.score >>> 24) == 0xFF ? custom.score : strip.block;
+            }
             stripFor = style;
             stripKind = k;
+            stripCustom = custom;
         }
         return strip;
     }
@@ -887,6 +944,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
     }
 
     private CompBug.Kind stripKind;
+    private com.gathin.broadcast.BoardSpec stripCustom;
     private StripLook strip;
     private Style stripFor;
 
@@ -1211,6 +1269,10 @@ final class OverlayBug extends View implements BurnGuard.Dims {
             cv.drawRoundRect(r, rad, rad, edge);
             edge.setStyle(Paint.Style.FILL);
         }
+        if (custom != null && ck == null) {
+            com.gathin.broadcast.BoardPaint.accentLine(cv, fill, custom, w, h);
+            com.gathin.broadcast.BoardPaint.border(cv, edge, custom, w, h, rad, r);
+        }
         cv.restore();
         if (tab > 0 && !look.added.isEmpty()) addedTab(cv, w, full, h);
         else if (tab > 0) pensTab(cv, w, full, h);
@@ -1305,6 +1367,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
     /** A side's crest in its own place on the board, that place kept for the burst. */
     private void drawCrest(Canvas cv, boolean home, Bitmap crest, float x, float y, float size) {
         crestSeen[home ? 0 : 1].set(x, y, x + size, y + size);
+        if (custom != null) com.gathin.broadcast.BoardPaint.crestBack(cv, fill, custom, x, y, size);
         drawImage(cv, crest, x, y, size);
     }
 
@@ -1422,7 +1485,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         if (p.score0 == 0 && p.score1 == 0) return;
         // Card: its blue, turning red in added time: added time's one red, flat, as the tab and the ADDED TIME pop-out.
         boolean red = style == Style.CARD && look.stoppage;
-        int a = red ? CARD_RED : p.score0, b = red ? CARD_RED : p.score1;
+        int a = red ? p.stoppage : p.score0, b = red ? p.stoppage : p.score1;
         if (scoreShade == null || shadeY != y || shadeH != h || shadeA != a || shadeB != b) {
             scoreShade = new LinearGradient(0, y, 0, y + h, a, b, Shader.TileMode.CLAMP);
             shadeY = y;
@@ -1496,7 +1559,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
             cv.drawRect(x, y, x + w, y + h, fill);
         }
         // In added time: the clock's box beats red, about once a second.
-        pulse(cv, x, y, w, h, com.gathin.broadcast.AddedTime.RED, 60, 255);
+        pulse(cv, x, y, w, h, p.stoppage, 60, 255);
         int colour = "HT".equals(look.clock) ? AMBER : look.live ? p.clockInk : p.dim;
         if (!addedInside()) {
             words(cv, look.clock, x + w / 2, y, h, h * 0.44f * k, colour);
@@ -1506,7 +1569,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         float start = x + (w - cw - aw - h * 0.15f) / 2;
         words(cv, look.clock, start + cw / 2, y, h, h * 0.44f * k, colour);
         float ax = start + cw + h * 0.15f;
-        fill.setColor(ADDED);
+        fill.setColor(p.stoppage);
         r.set(ax, y + h * 0.24f, ax + aw, y + h * 0.76f);
         cv.drawRoundRect(r, h * 0.08f, h * 0.08f, fill);
         words(cv, look.added, ax + aw / 2, y, h, h * 0.34f * k, 0xFFFFFFFF);
@@ -1615,7 +1678,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
             float k2 = Math.min(1f, w * 0.9f / Math.max(1f, measure(under, bh * 0.62f)));
             // In added time a red pill beats behind its clock.
             float uw = measure(under, bh * 0.62f * k2), pad = bh * 0.22f;
-            pulse(cv, w / 2f - uw / 2f - pad, top - h * 0.04f + bh * 0.12f, uw + 2 * pad, bh * 0.76f, com.gathin.broadcast.AddedTime.RED, 70, 255, bh * 0.38f);
+            pulse(cv, w / 2f - uw / 2f - pad, top - h * 0.04f + bh * 0.12f, uw + 2 * pad, bh * 0.76f, p.stoppage, 70, 255, bh * 0.38f);
             int ink = "HT".equals(look.clock) ? AMBER : p.clockInk;
             words(cv, under, w / 2f, top - h * 0.04f, bh, bh * 0.62f * k2, ink);
             return;
@@ -1627,13 +1690,13 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         x += a + h * 0.7f * k;
         float b = measure(m[1], h * 0.44f * k);
         // In added time a red pill beats behind its clock.
-        pulse(cv, x - h * 0.2f * k, h * 0.2f, b + h * 0.4f * k, h * 0.6f, com.gathin.broadcast.AddedTime.RED, 70, 255, h * 0.3f);
+        pulse(cv, x - h * 0.2f * k, h * 0.2f, b + h * 0.4f * k, h * 0.6f, p.stoppage, 70, 255, h * 0.3f);
         int clockInk = "HT".equals(look.clock) ? AMBER : flash > 0 ? (flashSide == 1 ? look.homeColour : look.awayColour) : p.clockInk;
         words(cv, m[1], x + b / 2, 0, h, h * 0.44f * k, clockInk);
         x += b + h * 0.5f * k;
         if (!m[2].isEmpty()) {
             float c = measure(m[2], h * 0.38f * k);
-            words(cv, m[2], x + c / 2, 0, h, h * 0.38f * k, look.f1 ? p.dim : ADDED);
+            words(cv, m[2], x + c / 2, 0, h, h * 0.38f * k, look.f1 ? p.dim : p.stoppage);
         }
     }
 
@@ -1799,7 +1862,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
     private void stackedClock(Canvas cv, float x, float w, float h, float k) {
         fill.setColor(p.clock != 0 ? p.clock : p.ground);
         cv.drawRect(x, 0, x + w, h, fill);
-        pulse(cv, x, 0, w, h, com.gathin.broadcast.AddedTime.RED, 60, 255);
+        pulse(cv, x, 0, w, h, p.stoppage, 60, 255);
         int colour = "HT".equals(look.clock) ? AMBER : look.live ? p.clockInk : p.dim;
         if (!addedInside()) {
             words(cv, look.clock, x + w / 2, 0, h, h * 0.3f * k, colour);
@@ -1807,7 +1870,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         }
         words(cv, look.clock, x + w / 2, h * 0.08f, h * 0.5f, h * 0.3f * k, colour);
         float aw = measure(look.added, h * 0.22f * k) + h * 0.3f;
-        fill.setColor(ADDED);
+        fill.setColor(p.stoppage);
         r.set(x + (w - aw) / 2, h * 0.6f, x + (w + aw) / 2, h * 0.86f);
         cv.drawRoundRect(r, h * 0.05f, h * 0.05f, fill);
         words(cv, look.added, x + w / 2, h * 0.6f, h * 0.26f, h * 0.22f * k, 0xFFFFFFFF);
@@ -2137,7 +2200,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         fill.setColor(0xFFFFFFFF);
         r.set(ax, y + lh * 0.2f, ax + aw, y + lh * 0.8f);
         cv.drawRoundRect(r, h * 0.05f, h * 0.05f, fill);
-        words(cv, look.added, ax + aw / 2f, y, lh, as * s, CARD_RED);
+        words(cv, look.added, ax + aw / 2f, y, lh, as * s, p.stoppage);
     }
 
     /**
@@ -2156,7 +2219,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         cv.save();
         // Behind the board until it has slid out.
         cv.clipRect(bodyW, 0, full, h);
-        int red = TAB_RED;
+        int red = p.added;
         fill.setShader(null);
         fill.setColor(red);
         r.set(x, y, x + tw, y + th);

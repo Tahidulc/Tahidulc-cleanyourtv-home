@@ -499,6 +499,20 @@ public final class BroadcastData {
      * screen {x, y, w, h} (the strap folds into it) and the ground's weather ("9° · light rain", or ""). For the looks
      * whose boards are drawn as the competitions' are (CompBug) and the 3D kits, what their boards show as well (strapBoard).
      */
+    /**
+     * The strap for one of the family's own boards (BoardSpec, My scoreboards): Classic's strap in its colours, corners
+     * and lettering (strap.js S.custom), folding into it; its sound is Classic's. A null spec is the look's own strap.
+     */
+    public static JSONObject strap(String kind, Match m, int[] score, String scorer, String minute, String look, float[] board,
+                                   String weather, BoardSpec custom) throws JSONException {
+        if (custom == null) return strap(kind, m, score, scorer, minute, look, board, weather);
+        JSONObject o = strap(kind, m, score, scorer, minute, "CLASSIC", board, weather);
+        o.put("look", "CUSTOM");
+        o.put("sfx", "strap-classic");
+        o.put("custom", custom.strapJson());
+        return o;
+    }
+
     public static JSONObject strap(String kind, Match m, int[] score, String scorer, String minute, String look, float[] board,
                                    String weather) throws JSONException {
         JSONObject o = kickoff(kind, m, score, scorer, minute);

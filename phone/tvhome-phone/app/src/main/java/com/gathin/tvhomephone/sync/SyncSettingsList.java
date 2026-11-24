@@ -35,6 +35,7 @@ final class SyncSettingsList {
             {"captions.live", "subtitles", "auto_live", "b"},
             {"board.cover", "score_overlay", "cover", "b"},
             {"board.style", "score_overlay", "style", "s"},
+            {"board.custom", "score_overlay", "custom", "s"},
             {"board.logo", "score_overlay", "logo", "s"},
             {"board.subs", "score_overlay", "subs", "b"},
             {"board.fotmob", "score_overlay", "fotmob", "b"},

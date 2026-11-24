@@ -775,3 +775,23 @@ details, then Recently watched.
 **A film or series page no longer closes the app (5.32).** A search for it in the playlists that finished after the page
 was left (or remade) tried to show its episodes, sources or "not in your playlists" on the closed page, and the app
 closed (BadTokenException in 5.30). Those now show only while the page is open.
+
+**Your own scoreboards, designed with you or by AI, and channel logos from the packs or made here.** The scoreboard
+editor opens from the player's scoreboard menu (Scoreboard editor) while the match plays, the board on the picture
+changing as you edit, and from the scoreboard settings (My scoreboards, New scoreboard). Pick a layout (one of the nine
+palette looks), then every colour from swatches, the two clubs' own colours, a hex or hue, saturation and brightness
+sliders; the finish (gloss, flat, frosted), typeface (the bundled fonts), crests (as they are, on a disc, in a ring),
+corners, border, the clubs' strips and an accent line. A line says when something would be hard to read on a TV and
+one tap mends it. Generate makes stylish boards from the match, its competition or a mood (night match, retro,
+minimal, bold), six at a time; Ask AI sends your words and the match's clubs and competition to Claude with your own
+Anthropic API key and draws its design. Save it with a name; rename, duplicate or delete it (hold it). My scoreboards
+is a group of its own beside the looks, in Settings and the player's menu, and goes to the paired TVs (and comes back
+from them) with the rest of what is synced; the goal, the pop-outs, added time and the kick-off strap all take it.
+Ask AI's key is added in the scoreboard settings (Ask AI: masked, kept only on this device, never synced or backed up),
+with the model (Claude Opus 5.5 to start) and Send key to the TVs. A channel's logo: hold the channel (or the player's
+menu, Channel logo) for its picker: the logo catalogue searches the free logo packs (TV Logos and iptv-org's database)
+by its name, grouped by pack, each on its cell colour, one tap to use; Make my own draws wordmarks and monograms from
+its name, and Ask AI designs one (the app draws it from a design, crisp and see-through: no image model); the
+playlist's own logo is a tap away, and the packs' licences are under the picker. Tests: the spec read safely, the
+generator's contrast rules, Ask AI's requests and every kind of answer against a fake server, the logo packs' indexes
+and search, and the logo designs.

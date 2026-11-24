@@ -314,7 +314,7 @@ final class ClassicIntro {
         m.homeBoardName = g.homeName == null ? "" : g.homeName;
         m.awayBoardName = g.awayName == null ? "" : g.awayName;
         return BroadcastData.strap(kind, m, score, scorer, minute, BroadcastData.strapLook(BoardCover.style(c).name(), g.slug, g.league),
-                BoardCover.boardRect1920(), "kickoff".equals(kind) ? MatchExtras.weatherNow(c, g) : "");
+                BoardCover.boardRect1920(), "kickoff".equals(kind) ? MatchExtras.weatherNow(c, g) : "", BoardCover.custom(c));
     }
 
     /** Whether one of them is on the screen now. */

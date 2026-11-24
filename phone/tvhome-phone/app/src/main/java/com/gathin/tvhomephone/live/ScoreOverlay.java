@@ -915,9 +915,19 @@ final class ScoreOverlay implements ScoreBoard.Source {
         if (started) intro.goal(g, side);
     }
 
+    /** The scoreboard editor's board as it stands, on the board over the picture now (null: back to the board as chosen). */
+    void previewBoard(com.gathin.broadcast.BoardSpec s) {
+        if (s == null) {
+            restyle();
+            return;
+        }
+        board.bug.custom(s);
+        place();
+    }
+
     /** The look or the logo's cover changed in Options. */
     void restyle() {
-        board.bug.style(ScoreBoard.style(a));
+        ScoreBoard.dress(board.bug, a);
         cover.look(lookHere());
         place();
         if (started && lookHere() != LogoCover.Look.OFF) {

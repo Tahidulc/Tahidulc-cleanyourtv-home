@@ -36,6 +36,7 @@ Every synced thing is one item:
 | `livecat` | `groups` / `channels` | `{hidden: [category], favs: [category]}` / `{hidden: {channel key: name}}` |
 | `resume` | `mv:` or `tv:` + the title's name made plain | `{tv, name, year, alt, tmdb, s, e, pos, dur, at, poster, title}` |
 | `setting` | the setting's name (`posters.landscape`) | `{v: value, t: "b" boolean, "i" int, "l" long or "s" text}` |
+| `myboard` | `b` and 12 hex digits (made where it was first saved) | `{name, spec: the board's design (BoardSpec), at}`: one of My scoreboards; the TV launcher keeps them as its own (MyBoardStore) |
 
 ## Endpoints on each TV (all POST, JSON, `X-Token` from pairing)
 
@@ -52,6 +53,9 @@ call `/sync` on another TV without a token only from an address it knows as one 
 - `POST /play` `{"id", "tv", "title"}` → opens the title on that TV in the licensed streaming app that carries it in
   the UK (else its store, else a note on screen); 409 when the TV is off.
 - `POST /tmdb` `{}` → `{"key"}`: the TV's TMDB key, so the phone can read TMDB without its own (kept on the phone).
+- `POST /ai/key` `{"key", "model"}` → `{"ok"}`: the family's Anthropic API key for Ask AI and the model chosen, sent by
+  Settings, Ask AI, Send key to the TVs; kept in the launcher's own private storage, never synced on, logged or shown
+  ("" takes it away). Like the logins, it crosses the home network over this link.
 
 The phone syncs with every paired TV when it opens, a few seconds after each change it makes, and every 15 minutes
 (WorkManager). A TV syncs with the other TVs ten seconds after a local change and every ten minutes. Homefield TV syncs
@@ -92,13 +96,16 @@ and passes them on like the rest.
 |---|---|---|
 | `posters.landscape` | `posters`: `landscape` | `look`: `posters_wide` (shows the next time it opens) |
 | `board.on`, `board.lineups` | `score_overlay`: `on`, `lineups` | `scoreboard`: `on`, `lineups` |
-| `board.cover`, `board.style`, `board.logo`, `board.subs`, `board.fotmob`, `board.seethrough` | `score_overlay`: the same names (`see_through`) | |
+| `board.cover`, `board.style`, `board.custom`, `board.logo`, `board.subs`, `board.fotmob`, `board.seethrough` | `score_overlay`: the same names (`see_through`; `custom`: the id of the board of My scoreboards in use) | |
 | `subs.on`, `subs.langs`, `subs.size`, `subs.look`, `subs.hi`, `subs.auto`, `captions.live` | `subtitles`: `on`, `langs`, `size`, `look`, `hi`, `auto`, `auto_live` | |
 | `sports.kind.<kind>` | `sports_kinds`: each alert kind's switch | |
 
 What belongs to one device stays on it: its theme, picture quality (Adaptive or fixed), buffer, decoder, screen and
 where the scoreboard and logo sit, the bedtime, and **TorBox's key, which is never synced**: TorBox is added on each
-device that uses it, and its key goes nowhere but TorBox. The TMDB key comes from a TV's `/tmdb` as before.
+device that uses it, and its key goes nowhere but TorBox. The TMDB key comes from a TV's `/tmdb` as before. **Ask AI's
+Anthropic key is never synced either**: typed on each device (or sent to the paired TVs from the phone by hand, `/ai/key`),
+kept in its own private preferences (`ai_key`), and it goes nowhere but Anthropic's API. The channel logos picked on a
+phone stay on that phone.
 
 **Who gets the logins.** A `playlist` item is the only kind that carries a secret. The launcher takes and gives it
 only to a caller with a token: a paired phone or tablet (its pairing token) or Homefield TV on the same TV (below).
