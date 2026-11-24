@@ -193,7 +193,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
 
             @Override public void closed() {
                 restyle(MyBoardStore.inUse(getContext()));
-                update();
+                if (started) update();
             }
         });
         addView(editor, new LayoutParams(-1, -1));
