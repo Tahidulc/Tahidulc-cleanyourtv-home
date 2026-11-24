@@ -13,6 +13,11 @@ public final class RecentChannels {
 
     /** The most the row shows. */
     public static final int MAX = 10;
+    /**
+     * A channel counts as watched once it has played this long (as the phone's Recently watched and the TV's History), so
+     * going through channels with Up and Down doesn't fill the row with every channel passed.
+     */
+    public static final long COUNT_MS = 10_000L;
 
     /** The keys after a channel was watched: it first, once; past MAX + 1 the oldest go. */
     public static List<String> add(List<String> keys, String key) {

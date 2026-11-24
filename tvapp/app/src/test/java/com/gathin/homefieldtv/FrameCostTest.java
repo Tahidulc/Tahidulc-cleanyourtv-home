@@ -240,7 +240,8 @@ public class FrameCostTest {
         measure("Guide: channels" + tier, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_UP, 8);
         measure("Guide: times" + tier, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_LEFT, 4);
 
-        // A channel playing: CH+ through the channels (the info card's picture cross-fading), Down through the mini guide.
+        // A channel playing: CH+ through the channels (the info card's picture cross-fading), Down and Up changing channel
+        // (the information panel alone popping up: no Change channel panel since 3.6).
         a.home();
         idle();
         Exec.inline = true;
@@ -248,7 +249,7 @@ public class FrameCostTest {
         idle();
         Exec.inline = false;
         taps("Live: info card (CH+)" + tier, KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_CHANNEL_DOWN, 4);
-        taps("Live: mini guide" + tier, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_UP, 4);
+        taps("Live: Up and Down (info card)" + tier, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_UP, 4);
 
         // The channel list (Left held over the picture): down its rows.
         FrameMeter.down(a, KeyEvent.KEYCODE_DPAD_LEFT, 0);

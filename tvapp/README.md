@@ -51,14 +51,16 @@ wordmark are Homefield; it carries no Sky logo or name.
   at a time and Movies' and TV Shows' pills.
 
 - **TV guide:** as the family's other app has it. At the top left the preview, 640 by 360, playing the channel last
-  watched (or the programme from the archive Back came from); to its right, on a panel of its own, the programme the
+  watched (or the programme from the archive Back came from), its picture clean: no name or "playing" box over it (3.6);
+  to its right, on a frosted panel of its own (frosted glass over the page's blurred picture: in the Lite tier too,
+  once the remote rests), the programme the
   remote is on: its title, a star for a favourite channel, its times ("10:00 — 11:00") with a bar and the minutes left
   for one on now ("16 min"), the picture's frames a second for the channel playing ("50 FPS", or as last seen on a
   channel watched before), the playlist and the group at the right, and all it says about it; behind the words, across
   the panel's right-hand part, the programme's picture (Sky's public UK guide; where it has none, searched wider: TMDB
   by the programme's title tidied, the year or series its description gives and the channel's kind, off the main thread
   and a search at most every second or so; else the channel's logo on its own colour, so no programme is blank: the
-  same in the guide's cells, the info card, the mini guide and the reminder's panel), faded into the panel from the left and the foot, cross-fading to the next programme's as
+  same in the guide's cells, the info card and the reminder's panel), faded into the panel from the left and the foot, cross-fading to the next programme's as
   the remote moves (Left, Right, Up, Down), the pictures either side read ahead. Under it the date and the clock in the light
   accent, the times every half hour and a dot at the time now; then a row a channel, 88 high: its cell the channel's
   logo alone (no number, no tile round it and no name), as large as the cell allows with the same room all round and its
@@ -101,7 +103,7 @@ wordmark are Homefield; it carries no Sky logo or name.
   player and MENU held opens Search; the number keys go to a channel. Back comes back to the programmes on now, then
   opens the groups, then the drawer, then leaves the guide.
 - **One row per channel:** a playlist that lists a channel in several qualities ("ITV 1 FHD", "ITV 1 HD", "ITV 1 SD")
-  shows it once, everywhere a list of channels shows (the guide and its shelves, the channel list, the mini guide, Up and
+  shows it once, everywhere a list of channels shows (the guide and its shelves, the channel list, Up and
   Down, CH+ and CH−, search, Home's On now), under its name without the quality ("ITV 1"), with its best version's
   programmes and logo. Its versions are found once a load, off the main thread: in the same category, by the guide id
   they share, else by the name with its quality tags (FHD, HD, SD, UHD, 4K, HEVC, H.265, 50 FPS, a "+" after one) and
@@ -155,15 +157,18 @@ wordmark are Homefield; it carries no Sky logo or name.
   usual rate: 24, 25, 30, 50 or 60, left out until they are known, and kept for each channel), two lines about it and
   what's next, and behind it all the programme's own picture filling the whole card (its faces whole, between the words
   and what's next, a shade only under the words and what's next; the plain card for a programme with none), cross-fading
-  as Up, Down, CH+, CH− and INFO bring up another channel's card, the channels either side read ahead. Over it at the top
-  right the mini guide: five channels' rows, each the channel's logo alone on its colour beside its programme, the
-  picture filling the programme's part under its title, times and what's left. CH+ and CH− bring up the next or previous channel's card without leaving the channel
+  as Up, Down, CH+, CH− and INFO bring up another channel's card, the channels either side read ahead. The card comes up
+  alone: nothing else over the picture (3.6 took away the Change channel panel at the top right, and the "Watching"
+  box with the channel's number over it). CH+ and CH− bring up the next or previous channel's card without leaving the channel
   (OK then changes to it); Up and Down change channel (Settings, Remote can make them bring up the live screen's rows of
-  channels instead, as Homefield TV came); Right goes back to the channel watched last; the number keys go to a channel,
-  the number in a box at the top right. OK brings up the overlay: the card at the top, a line across the foot for how
-  far through the programme is, and a row of tiles under it (TV guide, History, then the channels last watched in 07:
-  each tile its programme's picture filling it, the channel's logo alone on its colour at its top left, the title and
-  how far through along its foot, the remote's tile lifting with a white ring); Down from the tiles brings up the bar. OK held, or MENU, brings up the bar alone: round
+  channels instead, as Homefield TV came); Right goes back to the channel tuned to before (however briefly it played;
+  again, back); the number keys go to a channel, the number typed in a box at the top right while it is typed. OK brings
+  up the overlay: the card at the top, a line across the foot for how far through the programme is, and a row of tiles
+  under it (TV guide, History, then the channels last watched, the newest first, up to ten, each once and never the one
+  playing, in 07: each tile its programme's picture filling it, the channel's logo alone on its colour at its top left,
+  the title and how far through along its foot, the remote's tile lifting with a white ring; under the row its
+  programme's times and title and its playlist; a channel joins the row once it has played 10 seconds, so going through
+  the channels with Up and Down doesn't fill it, as on the phones); Down from the tiles brings up the bar. OK held, or MENU, brings up the bar alone: round
   buttons along the foot, each with its label (Search, Channels list, History, Movies, TV shows, Recordings, My list,
   then Video tracks, Audio tracks, Audio offset, Closed captions, Display mode and Sleep timer labelled with what they are
   set to, then Add to favourites, Scoreboard over a match, Channel options, Settings and Exit). Each of the picture's and
@@ -428,7 +433,8 @@ wordmark are Homefield; it carries no Sky logo or name.
   pictures cross-fade) but leaves out what a slower TV's graphics chip finds hardest: the cards' tilt and the light
   sweeping across them, a lifted card's picture drifting under its frame, and the page's big blurred picture changing
   while the remote moves (its colour cross-fades instead, the picture comes in once the remote rests, and the frosted
-  panels take that colour meanwhile); the widest programme cells fade their picture into its own colour rather than a
+  panels take that colour meanwhile, then are frosted glass over the picture again once it is in: 3.6 mended the guide's
+  information panel staying on a flat wash of that colour); the widest programme cells fade their picture into its own colour rather than a
   blur of it. Automatic is Lite on a Mali-G52-class chip (the TCL), under 3 GB of memory, or when the first seconds of
   moving measure over 18 ms a frame (once a build); else Full (the Google TV Streamer). The page says which it chose and
   why.

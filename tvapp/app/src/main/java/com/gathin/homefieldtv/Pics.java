@@ -126,7 +126,7 @@ final class Pics {
     static final int PANEL = 18;
     static final float PANEL_FADE = 0.3f, PANEL_RADIUS = 34f / 330f;
     /**
-     * FILL is a programme's picture filling a whole cell of any size, w x h (the guide's cells, the mini guide's), its
+     * FILL is a programme's picture filling a whole cell of any size, w x h (the guide's cells, the recent channels' tiles), its
      * faces whole (PicFill: covering, else the ambient fill: the picture blurred behind and sharp where its faces are);
      * FILL_CARD the same for the info card, its faces between its words and what's next. Opaque, nothing darkened: the
      * words' shade is drawn over it where the words are (PicTile.shade).

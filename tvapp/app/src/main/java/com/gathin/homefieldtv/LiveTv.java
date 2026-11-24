@@ -36,6 +36,7 @@ import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.History;
 import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.engine.Names;
+import com.gathin.homefieldtv.engine.RecentChannels;
 import com.gathin.homefieldtv.engine.Streams;
 import com.gathin.homefieldtv.engine.Versions;
 import com.gathin.homefieldtv.prefs.Abr;
@@ -538,7 +539,7 @@ final class LiveTv {
         hlsRefused = false;
         asHls = Streams.looksHls(stream().url);
         videoW = videoH = rawW = rawH = 0;
-        Library.get(app).watched(c);
+        tunedTo(c);
         if (!where.isEmpty()) {
             layout();
             picture.setVisibility(View.VISIBLE);
@@ -549,6 +550,35 @@ final class LiveTv {
         }
         ensure();
         prepare();
+    }
+
+    // ---- the recent channels: a channel counts once it has played RecentChannels.COUNT_MS -------------------------------
+
+    /** The channel tuned to that is still to count as watched (null: none, or counted). */
+    private Channel counting;
+    private final Runnable count = this::count;
+
+    /**
+     * A channel tuned to: the last one and the one before it kept at once (Start on, Right); it joins the recent channels
+     * only once it has played RecentChannels.COUNT_MS, so Up and Down through the channels don't fill the row.
+     */
+    private void tunedTo(Channel c) {
+        Library.get(app).tuned(c);
+        counting = c;
+        h.removeCallbacks(count);
+        h.postDelayed(count, RecentChannels.COUNT_MS);
+    }
+
+    private void count() {
+        Channel c = counting;
+        if (c == null || cur == null || !cur.key.equals(c.key)) return;
+        if (state != PLAYING) {
+            // Still starting or dropped: counted once it plays.
+            h.postDelayed(count, 2_000L);
+            return;
+        }
+        counting = null;
+        Library.get(app).watched(c);
     }
 
     /** Let go of the stream (another screen, a film, the TV leaving the app); the channel is kept for next time. */
@@ -571,6 +601,9 @@ final class LiveTv {
         subs.detach();
         h.removeCallbacks(historyTick);
         historyKey = null;
+        // Let go before it counted: not one of the recent channels.
+        h.removeCallbacks(count);
+        counting = null;
         // Films play with every channel's sound offset.
         PlayerPrefs.useDelay(app, null);
         if (player != null) {
@@ -723,7 +756,7 @@ final class LiveTv {
             cur = c;
             ladder = null;
             retries = 0;
-            Library.get(app).watched(c);
+            tunedTo(c);
             PlayerPrefs.useDelay(app, c.key);
         }
         inWindow = false;

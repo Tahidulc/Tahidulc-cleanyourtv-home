@@ -17,7 +17,7 @@ import com.gathin.homefieldtv.engine.LogoPack;
  * (Sky's public guide, through ProgrammePictures), its faces found once as it is read (Faces, kept with it in Pics).
  *
  * <pre>
- *   fill     a programme's cell of any size (the guide's cells, the mini guide's, the info card): the picture takes up
+ *   fill     a programme's cell of any size (the guide's cells, the info card): the picture takes up
  *            the whole cell, as the family asked ("take up the whole panel no matter what size it is"), its faces whole
  *            (PicFill: covering, or for a cell too wide and short for that the ambient fill), made once at the cell's
  *            size (Pics.FILL; a cell cut by the guide's edges shows a window of the picture made for its whole width, on
