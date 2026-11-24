@@ -158,10 +158,6 @@ public final class ChannelEdits {
         Library.get(c).editsChanged();
     }
 
-    /** How many channels the family renamed (each key once). */
-    static int renamedCount(Context c) {
-        return state(c).names.size();
-    }
 
     // ---- the order --------------------------------------------------------------------------------------------------
 

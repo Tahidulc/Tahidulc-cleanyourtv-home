@@ -18,7 +18,6 @@
     <string name="ps_theme_primary">Primary colour</string>
     <string name="ps_theme_accent">Accent colour</string>
     <string name="ps_theme_line">The primary colour is the pages\' ground and the panels; the accent is what\'s on now in Live TV. Homefield • Amber is the look the app came in. Kept on this phone, as each TV keeps its own.</string>
-    <string name="ps_theme_named">%1$s, %2$s</string>
     <string name="ps_times">Programme times</string>
     <string name="ps_times_24">24-hour · 19:40</string>
     <string name="ps_times_12">12-hour · 7.40pm</string>

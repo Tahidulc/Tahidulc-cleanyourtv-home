@@ -771,3 +771,22 @@ upright, Live TV now goes: the picture, the programme's details straight under i
 Your channels and the guide. The details have no Watch button (a tap on a programme that's on now in the guide plays it),
 so the whole description shows; Remind me stays for one still to come. On its side the pane is the same: the picture, the
 details, then Recently watched.
+
+**Homefield TV's customisation on the phone and tablet.** Settings has Homefield TV's choices, the phone's way.
+Appearance: the colour theme (the same 12 primaries and 13 accents as discs, Homefield • Amber being the app's look as it
+was; a tinted primary colours every page's ground and the panels, the accent what's on now; kept on this phone), Programme
+times (24-hour as it comes, or 12-hour, for every programme time in Live TV, the guide, the details and the player), Guide
+style (Grid or List, as Live TV's top bar switches it), Progress bars, and Behind logos (moved here from Live TV).
+Channels & categories: One row per channel (merge qualities, on as it comes: a channel's FHD, HD and SD in one category
+are one row under its name without the quality, its best played, and the Quality picked from its menu or the player's
+options is kept for it), Hidden channels, Manage categories (now with Rename category, its playlist's name again, each
+category's Sort channels, and Move to drag them into an order of their own), Rename channels (the renamed ones, then every
+channel, found by either name), Channels sorting (by order in playlist, name, number or Manual) and Categories sorting.
+Reminders lists the programmes and games to be reminded of, here or on the family's other devices, each with Cancel. Live
+TV's Open on Live TV is now Open on: Home, Live TV, Films and TV, or Sports (the old switch carried over). A channel held
+in the guide adds Quality, Rename channel (Restore channel name), Change logo (its own, its other versions', its copies'
+in the other playlists, or Sky's) and Move channel (drag it in its category, which becomes Manual); a category held adds
+Rename, its playlist's name and Sort channels. Programme times, progress bars, one row per channel and Channels sorting go
+to the family's other phones and tablets with the other settings; names, logos and orders stay on each phone, as on the
+TVs. Left out as only a TV's: frame-rate matching, passthrough, tunnelled playback, the Lite animations and the remote's
+keys; and font size (the phone follows Android's own).
