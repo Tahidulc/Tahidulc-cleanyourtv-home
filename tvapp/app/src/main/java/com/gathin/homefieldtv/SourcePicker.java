@@ -27,8 +27,10 @@ import java.util.Locale;
  * mark the logos of the picture, its HDR and its sound as its name says them (4K Ultra HD, Dolby Vision, Dolby Atmos…)
  * and the file's kind, under it the file's name and size. Two ways: before playing (choose: every copy, the best first
  * and marked the best match, the remote on it; OK plays the one chosen, the rest kept as its backups in their order,
- * Back goes back), and while a film plays (open, Up: a panel on the right, the one playing ticked; OK plays the one
- * chosen from the same moment, Back shuts it; it goes by itself after a while untouched).
+ * Back goes back), and while a film plays (open: the player's Sources, or Up on the plain picture; a card at the right,
+ * the one playing ticked "Playing"; OK plays the one chosen from the same moment, Back shuts it; it goes by itself after a
+ * while untouched). In the 07 look of the player's pickers: a card of 07's dark material, rounded 40, the remote's row
+ * white with dark words, its marks' logos inked dark on it.
  */
 final class SourcePicker extends View {
     interface Pick {
@@ -38,7 +40,8 @@ final class SourcePicker extends View {
     /** The marks' own colours (neither service's): TorBox's green, the playlists' blue; the headings' lighter ones. */
     static final int TORBOX = 0xFF0E9F6E, IPTV = 0xFF3B5BDB, TORBOX_SOFT = 0xFF5EE0B0, IPTV_SOFT = 0xFF91A7FF;
     private static final long IDLE_MS = 20_000;
-    private static final float X = 1130f, W = 730f, TOP = 70f, BOTTOM = 1010f, HEAD = 128f, ROW = 100f, GROUP = 46f, FOOT = 64f;
+    private static final float X = 1032f, W = 840f, TOP = 48f, BOTTOM = 1032f, HEAD = 138f, ROW = 100f, GROUP = 46f, FOOT = 64f,
+            RADIUS = 40f;
     /** Before playing: wider and in the middle, nothing playing behind it. */
     private static final float CHOOSE_X = 260f, CHOOSE_W = 1400f;
 
@@ -53,8 +56,12 @@ final class SourcePicker extends View {
     private final Handler h = new Handler(Looper.getMainLooper());
     private final Runnable idle = this::close;
     private final Mark mark = new Mark();
-    private final Paint panel = Dark.fill(Palette.PANEL);
+    private final Frost card = new Frost(Look07.MAT_DARK);
+    private final Paint panel = Dark.fill(Palette.PANEL), lit = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint chip = Dark.line(0x66FFFFFF, 1.5f), tick = Dark.line(Dark.TEXT, 3.2f);
+    /** The logos on the remote's white row: inked dark. */
+    private final android.graphics.ColorFilter ink = new android.graphics.PorterDuffColorFilter(Look07.INK,
+            android.graphics.PorterDuff.Mode.SRC_IN);
     private final TextPaint title = Type.paint(Type.PICKER, Type.MEDIUM, Palette.TEXT1), sub = Dark.text(22, 500, Dark.MUTED);
     private final TextPaint chipP = Dark.text(20, 700, Dark.SOFT), status = Dark.text(22, 700, Dark.TEXT);
     private final TextPaint detail = Dark.text(21, 500, Dark.MUTED), hint = Dark.text(21, 500, Dark.MUTED);
@@ -83,6 +90,8 @@ final class SourcePicker extends View {
         super(c);
         setVisibility(GONE);
         setFocusable(false);
+        Shadows.prepare(Look07.SH_PANEL, RADIUS);
+        Shadows.prepare(Look07.SH_ROW, Look07.R_ROW);
         torboxHead.setLetterSpacing(0.08f);
         iptvHead.setLetterSpacing(0.08f);
     }
@@ -321,15 +330,21 @@ final class SourcePicker extends View {
         if (!open || lines.isEmpty()) return;
         float x = Ui.f(choosing ? CHOOSE_X : X), w = Ui.f(choosing ? CHOOSE_W : W);
         r.set(x, Ui.f(TOP), x + w, Ui.f(BOTTOM));
-        // As the panels draw a list: the panel's colour (over a film, the playback panels'), corners of 16.
-        panel.setColor(choosing ? Palette.PANEL : Palette.PLAYBACK);
-        c.drawRoundRect(r, Ui.f(16), Ui.f(16), panel);
+        // As the player's pickers: a card of 07's dark material over the film (before playing, the panel's colour).
+        Shadows.draw(c, r, Ui.f(RADIUS), Look07.SH_PANEL, 1f);
+        if (choosing) {
+            panel.setColor(Palette.PANEL);
+            c.drawRoundRect(r, Ui.f(RADIUS), Ui.f(RADIUS), panel);
+        } else {
+            card.draw(c, r, Ui.f(RADIUS), 1f);
+        }
         title.setColor(Palette.TEXT1);
-        c.drawText(choosing ? "Choose a source" : "Play from", x + Ui.f(36), Ui.f(TOP + 62), title);
+        c.drawText(choosing ? "Choose a source" : "Sources", x + Ui.f(48), Ui.f(TOP + 70), title);
         String count = choosing
                 ? plays.size() + " sources  ·  the best first  ·  the others stay as backups: change between them while it plays"
-                : plays.size() + " copies  ·  " + (plays.get(0).torbox ? "TorBox's first" : "your playlist's first");
-        c.drawText(Ui.fit(count, sub, w - Ui.f(72)), x + Ui.f(36), Ui.f(TOP + 98), sub);
+                : plays.size() + " copies  ·  " + (plays.get(0).torbox ? "TorBox's first" : "your playlist's first")
+                + "  ·  another carries on from here";
+        c.drawText(Ui.fit(count, sub, w - Ui.f(96)), x + Ui.f(48), Ui.f(TOP + 108), sub);
 
         // The list scrolled so that the line the remote is on stays in sight.
         float listTop = TOP + HEAD, listBottom = BOTTOM - FOOT, room = listBottom - listTop;
@@ -360,7 +375,7 @@ final class SourcePicker extends View {
             ly += lh;
         }
         c.restore();
-        c.drawText(choosing ? "OK plays it  ·  Back goes back" : "OK plays it from here  ·  Back closes", x + Ui.f(36),
+        c.drawText(choosing ? "OK plays it  ·  Back goes back" : "OK plays it from here  ·  Back closes", x + Ui.f(48),
                 Ui.f(BOTTOM - 26), hint);
     }
 
@@ -371,39 +386,49 @@ final class SourcePicker extends View {
 
     private void drawCopy(Canvas c, int index, boolean on, float x, float w, float y) {
         Catalog.Play p = plays.get(index);
-        r.set(x + Ui.f(18), Ui.f(y + 4), x + w - Ui.f(18), Ui.f(y + ROW - 4));
-        // Where the remote is: the focus pill (the accent at 37.5 %).
-        if (on) Focus.pill(c, r);
-        float left = x + Ui.f(40), right = x + w - Ui.f(40);
+        r.set(x + Ui.f(22), Ui.f(y + 4), x + w - Ui.f(22), Ui.f(y + ROW - 4));
+        // Where the remote is: 07's white row (its words dark), lifted on a soft shadow.
+        if (on) {
+            Shadows.draw(c, r, Ui.f(Look07.R_ROW), Look07.SH_ROW, 1f);
+            lit.setColor(Look07.FOCUS_FILL);
+            c.drawRoundRect(r, Ui.f(Look07.R_ROW), Ui.f(Look07.R_ROW), lit);
+        }
+        float left = x + Ui.f(44), right = x + w - Ui.f(44);
         float cy = Ui.f(y + 38);
         float mx = left + mark.draw(c, left, cy, Ui.f(38), p.torbox, p.playlist, Ui.f(240));
         // Its picture's, HDR's and sound's logos (and its file's kind) beside the mark, as far as there is room.
         String flag = index == playing ? "Playing" : playing < 0 && index == 0 && plays.size() > 1 ? "Best match" : "";
-        float room = right - (flag.isEmpty() ? 0f : best.measureText(flag) + Ui.f(60));
+        // The marks have the line's whole width; what it is (Playing, Best match) is at the end of the line under them.
+        float room = right, fy = Ui.f(y + 74);
         for (String m : marks(p)) {
             float mw = markWidth(m);
             if (mx + Ui.f(12) + mw > room) break;
-            drawMark(c, m, mx + Ui.f(12), cy);
+            drawMark(c, m, mx + Ui.f(12), cy, on);
             mx += Ui.f(12) + mw;
         }
         if (flag.equals("Best match")) {
             float tw = best.measureText(flag);
-            c.drawText(flag, right - tw, cy + Ui.f(8), best);
+            best.setColor(on ? Look07.INK2 : Dark.MUTED);
+            c.drawText(flag, right - tw, fy + Ui.f(8), best);
         }
         if (index == playing) {
-            // The one playing: a tick and its word at the line's end.
+            // The one playing: a tick and its word at the line's end (07's green, dark on the white row).
             String word = "Playing";
             float tw = status.measureText(word);
-            c.drawText(word, right - tw, cy + Ui.f(8), status);
+            status.setColor(on ? Look07.INK : Dark.TEXT);
+            c.drawText(word, right - tw, fy + Ui.f(8), status);
             float tx = right - tw - Ui.f(30);
             check.reset();
-            check.moveTo(tx - Ui.f(10), cy + Ui.f(1));
-            check.lineTo(tx - Ui.f(2), cy + Ui.f(9));
-            check.lineTo(tx + Ui.f(12), cy - Ui.f(9));
+            check.moveTo(tx - Ui.f(10), fy + Ui.f(1));
+            check.lineTo(tx - Ui.f(2), fy + Ui.f(9));
+            check.lineTo(tx + Ui.f(12), fy - Ui.f(9));
+            tick.setColor(on ? Look07.INK : Look07.GREEN);
             c.drawPath(check, tick);
         }
         String d = detail(p);
-        if (!d.isEmpty()) c.drawText(Ui.fit(d, detail, right - left), left, Ui.f(y + 80), detail);
+        detail.setColor(on ? Look07.INK2 : Dark.MUTED);
+        float flagW = flag.isEmpty() ? 0f : (flag.equals("Playing") ? status : best).measureText(flag) + Ui.f(64);
+        if (!d.isEmpty()) c.drawText(Ui.fit(d, detail, right - left - flagW), left, Ui.f(y + 80), detail);
     }
 
     private static final float MARK_H = 34f;
@@ -417,10 +442,13 @@ final class SourcePicker extends View {
         return markP.measureText(m) + bh * 0.56f;
     }
 
-    /** A mark in its outlined box, MARK_H tall, from x, centred on cy: its logo in white, or its words. */
-    private void drawMark(Canvas c, String m, float x, float cy) {
+    /** A mark in its outlined box, MARK_H tall, from x, centred on cy: its logo in white (dark on the white row), or its words. */
+    private void drawMark(Canvas c, String m, float x, float cy, boolean on) {
         float bh = Ui.f(MARK_H), w = markWidth(m);
         logoBox.set(x, cy - bh / 2f, x + w, cy + bh / 2f);
+        markLine.setColor(on ? 0xB3111111 : 0xBFFFFFFF);
+        markP.setColor(on ? Look07.INK : 0xFFFFFFFF);
+        logoPaint.setColorFilter(on ? ink : null);
         c.drawRoundRect(logoBox, bh * 0.2f, bh * 0.2f, markLine);
         int logo = logo(m);
         Bitmap b = logo == 0 ? null : bitmap(logo);

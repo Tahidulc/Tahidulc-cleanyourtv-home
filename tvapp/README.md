@@ -412,14 +412,47 @@ wordmark are Homefield; it carries no Sky logo or name.
   Change source while it plays; Back goes back to the page. With one source it plays straight away. Resume and Continue
   watching carry on straight away from the copy it was started on (the others after it), and the next episode starts
   straight away from its best copy, as on the phone.
-- **Player:** the playback bar, in the dark look of catch-up's (a scrim from the foot, the amber knob with pause or
-  play in it, the time watched under it, the next episode on a dark card at the end of one). OK pauses and plays, Left and Right go back and on (faster when held), Back keeps the
-  place, and a series goes on to the next episode. It plays from every copy there is, the best first, tried in turn:
-  the family's own TorBox files of the film or episode first (all of them found before anything plays, unless Settings
-  put them last), then the playlists' copies. Over the title, where it is playing from: TorBox's green mark with a
-  cloud, or the playlist's blue one with a screen and the playlist's name, and what the copy's name says ("1080p ·
-  MKV"). Up lists every copy as Choose a source does, the one playing ticked; another one chosen carries on from the
-  same moment.
+- **Player:** films and episodes in the 07 look of the live player ("improve the player whilst watching movies and TV
+  shows to have all the features you'd expect and you can choose different sources, subtitles with open subtitles
+  support"). OK brings up the overlay: the title (and S1 E3 · the episode's name, or a film's year, length and kind) and
+  the clock at the top; at the foot where it plays from (TorBox's green mark or the playlist's blue one, chips for its
+  picture, HDR and sound, "1 of 3 sources"), the seek line with the time gone, the length and when it ends ("ends
+  22:41"), the transport (◀◀ ⏯ ▶▶, a series' |◀ and ▶| either side; the remote on play) and a row of buttons under it:
+  Sources, Subtitles, Audio, Episodes (a series), Speed, Picture and Info, each with what it is set to. Up from the
+  transport goes to the seek line (Left and Right move the spot with a bubble saying where and how far, OK jumps there),
+  Down to the buttons; the overlay goes after a few seconds untouched while it plays. On the plain picture Left and
+  Right go back and on at once with the scrubber and its bubble (Settings › Other › VOD › Skip steps a press, further
+  the longer the key is held), Up lists the sources and Down goes to the buttons; play/pause, rewind, fast forward,
+  next and previous episode, stop, CC (Subtitles), the audio key (Audio), INFO (Info) and MENU (the buttons) work as
+  they say. Back closes what is open, then stops and keeps the place for Resume and Continue watching.
+- **Sources (the player's):** every copy, the best first, tried in turn: the family's own TorBox files of the film or
+  episode first (all of them found before anything plays, unless Settings put them last), then the playlists' copies,
+  each with its mark, the logos of its picture, HDR and sound, its file's name and size, the one playing ticked; another
+  chosen carries on from the same moment. A copy that stops while it plays gives way to the next from the moment it had
+  reached, with a short note at the top.
+- **Subtitles (films and episodes):** Off, the copy's own tracks (by language and name, SDH and forced marked; a forced
+  one in the family's languages still shows while Off), or OpenSubtitles: Find on OpenSubtitles searches by the title's
+  IMDb or TMDB id (the provider's, else TMDB's with the launcher's key; its name and year when neither is known), the
+  season and episode for an episode, in the family's languages, and lists the results with their language, release,
+  hearing-impaired mark and downloads; OK downloads one (off the main thread, with timeouts), reads it (SubRip or
+  WebVTT, italics, bold and colours kept) and shows it with the app's own subtitle renderer, clear of the overlay and
+  the pickers. The timing moves half a second a press; the look is its size, colour (white, yellow, light blue) and
+  background (an outline or a black box), with a sample line while it is chosen. The choice is kept for the title: a
+  film plays with the same file and timing next time, a series' next episode finds the same language by itself.
+  Settings › Other › Subtitles has the OpenSubtitles API key, username and password (typed on the on-screen keyboard,
+  the key and password only ever as dots, kept in the app's own storage: never synced, backed up or logged), Check the
+  login, the languages (English first), hearing impaired first, and the look. The TV launcher keeps no OpenSubtitles
+  login, so it is typed here once.
+- **Audio, Speed, Picture, Info:** the copy's sound tracks (language, channels, codec) and the sound's delay (50 ms a
+  press, as the live player's Audio offset); 0.75× to 2× for the sitting; Fit, Fill, Zoom, 16:9, 4:3 and the rest of
+  the live player's Display mode, one for every film; and the title's year, length, rating, age, kind, story, cast and
+  director (an episode's own too).
+- **Episodes and Up next:** a series' Episodes lists every season as pills and its episodes as rows with their
+  pictures, length and day, the watched ones ticked, one part-watched with its bar, the one playing ticked; OK plays
+  another from where it was left (its start if new). As an episode's credits come (a fortieth of it, 25 seconds to a
+  minute before its end) Up next shows the next one's picture, name and a ten-second countdown (Settings › Other › VOD
+  › Autoplay next episode; without it the card waits for OK): OK plays it now, Back puts it away and the episode plays
+  on to its end. The next one starts from its best copy and goes on Continue watching.
 - **TorBox:** films and episodes already in the family's own TorBox account (its finished torrents, usenet and web
   downloads) play as copies beside the playlists', matched by their names: the title, with its year no more than a year
   apart, and a series' season and episode (from the file's name, its folders or its download's name). Every version is

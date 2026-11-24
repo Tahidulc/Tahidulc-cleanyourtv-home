@@ -1,12 +1,6 @@
 package com.gathin.homefieldtv;
 
 import android.app.Activity;
-import android.content.Context;
-import android.graphics.Canvas;
-import android.graphics.LinearGradient;
-import android.graphics.Paint;
-import android.graphics.RectF;
-import android.graphics.Shader;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -25,98 +19,162 @@ import androidx.media3.common.AudioAttributes;
 import androidx.media3.common.C;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
+import androidx.media3.common.Tracks;
 import androidx.media3.common.VideoSize;
+import androidx.media3.common.text.CueGroup;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.exoplayer.ExoPlayer;
 
 import com.gathin.homefieldtv.engine.Catalog;
+import com.gathin.homefieldtv.engine.Copies;
 import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Resume;
 import com.gathin.homefieldtv.engine.Streams;
-import com.gathin.homefieldtv.engine.Copies;
+import com.gathin.homefieldtv.engine.Tmdb;
 import com.gathin.homefieldtv.engine.TorBox;
 import com.gathin.homefieldtv.prefs.Afr;
+import com.gathin.homefieldtv.prefs.OtherPrefs;
 import com.gathin.homefieldtv.prefs.Picture;
 import com.gathin.homefieldtv.prefs.PlayerPrefs;
 import com.gathin.homefieldtv.prefs.PlayerSetup;
+import com.gathin.homefieldtv.subs.OpenSubtitles;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 
 /**
- * A film or an episode from the family's own playlist, full screen, with the guide's playback bar: the title, a thin
- * line with the play knob where it is, the time gone under it, the length at the end, the day and time. OK pauses and
- * plays, Left and Right go back and on (further the longer they are held), Back stops and keeps the place. At the end
- * of an episode the next one starts. The address is made from the login here and never kept or logged.
+ * A film or an episode from the family's own playlists or TorBox, full screen, as the family asked: "improve the player
+ * whilst watching movies and TV shows to have all the features you'd expect and you can choose different sources,
+ * subtitles with open subtitles support". In the 07 look of the live player (VodOverlay draws it):
  *
- * It plays from every copy there is, the best first (Formats: 4K, then 1080p, 720p and the rest; HDR before SDR; Atmos
- * or surround before stereo; the bigger file), tried in turn: the family's own TorBox files of it first (all of them
- * found before anything plays, unless Settings put them last), then the playlists' copies. Play on a title's page (or
- * an episode chosen) shows every one of them first, as the phone's Choose a source does, the best first with the remote
- * on it: OK plays the one chosen, the others kept as its backups in their order. Resume and Continue watching carry on
- * straight away from the copy it was started on; the next episode starts straight away from its best copy. The bar
- * shows where it is playing from (TorBox's green mark, a playlist's blue one); Up lists the copies, and another one
- * chosen carries on from the same moment.
+ * <pre>
+ *   OK                 the overlay: the title (and S1 E3 · the episode's name), where it plays from, the seek line with
+ *                      the time gone, the length and when it ends ("ends 22:41"), the transport (◀◀ ⏯ ▶▶; a series'
+ *                      |◀ and ▶| either side) with the remote on play, and the row of buttons under it: Sources,
+ *                      Subtitles, Audio, Episodes (a series), Speed, Picture, Info. Up from the transport goes to the
+ *                      seek line (Left and Right move the spot, OK jumps there), Down to the buttons. It goes after a
+ *                      few seconds untouched while playing; Back closes it
+ *   Left and Right     on the plain picture: back and on at once, with the scrubber and its bubble (Settings › VOD ›
+ *                      Skip steps a press, further the longer the key is held), the jump made once the key is let go
+ *   media keys         play/pause, play, pause, rewind and fast forward (as Left and Right), next and previous episode,
+ *                      stop; CC opens Subtitles, the audio key Audio, INFO the title's Info; MENU the overlay's buttons
+ *   Up / Down          on the plain picture: the sources (when there are several) / the overlay's buttons
+ *   Back               closes what is open, then stops and keeps the place (Resume and Continue watching)
+ * </pre>
+ *
+ * <p>Sources (SourcePicker): every copy it can play from, the best first (Formats: 4K, then 1080p, 720p and the rest;
+ * HDR before SDR; Atmos or surround before stereo; the bigger file), each with its mark (TorBox's green, a playlist's
+ * blue), its picture's, HDR's and sound's logos, its file's name and size, the one playing ticked; another chosen carries
+ * on from the same moment. The family's own TorBox files of it come first (all of them found before anything plays,
+ * unless Settings put them last), then the playlists' copies. Play on a title's page (or an episode chosen) shows them
+ * all first, as the phone's Choose a source does; Resume and Continue watching carry on straight away from the copy it
+ * was started on; the next episode starts straight away from its best copy. A copy that fails, before or while it plays,
+ * gives way to the next from the same moment, with a short note at the top.
+ *
+ * <p>Subtitles (VodSubs, VodPanels): Off, the stream's own tracks, or OpenSubtitles (by the title's IMDb or TMDB id, the
+ * season and episode for an episode, in the family's languages), their timing nudged half a second at a time, their size,
+ * colour and background; remembered for the title. Audio: its tracks and the sound's delay. Speed 0.75× to 2×. Picture:
+ * the live player's Display mode. Info: year, rating, length, story, cast. Episodes (EpisodesPanel): every season's,
+ * watched ones ticked, the one playing ticked; another plays from where it was left. Near an episode's end, Up next: a
+ * card with a countdown (Settings › Other › VOD › Autoplay next episode; without it, OK starts it), OK plays it now,
+ * Back cancels; the next starts from its best copy and skips the credits.
+ *
+ * The address is made from the login here and never kept or logged. Nothing is made a frame: the overlay's words are
+ * kept until what they say changes; subtitles are read and network asked off the main thread, with their timeouts.
  */
 @OptIn(markerClass = UnstableApi.class)
-public final class VodActivity extends Activity {
+public final class VodActivity extends Activity implements VodSubs.Listener, EpisodesPanel.Host {
     static final String TITLE = "title", EPISODE = "episode", START = "start", CHOOSE = "choose";
-    private static final long BAR_MS = 4500;
+    static final long OVERLAY_MS = 6000, NOTE_MS = 4500, COUNTDOWN_MS = 10_000, APPLY_MS = 450;
+    /** The overlay's rows, and the items in them. */
+    static final int ROW_SEEK = 0, ROW_TRANSPORT = 1, ROW_BUTTONS = 2;
+    static final int T_PREVIOUS = 0, T_BACK = 1, T_PLAY = 2, T_FORWARD = 3, T_NEXT = 4;
+    static final int B_SOURCES = 0, B_SUBTITLES = 1, B_AUDIO = 2, B_EPISODES = 3, B_SPEED = 4, B_PICTURE = 5, B_INFO = 6;
+    static final String[] BUTTON_NAMES = {"Sources", "Subtitles", "Audio", "Episodes", "Speed", "Picture", "Info"};
+    private static final int[] FILM_TRANSPORT = {T_BACK, T_PLAY, T_FORWARD}, SERIES_TRANSPORT = {T_PREVIOUS, T_BACK, T_PLAY, T_FORWARD, T_NEXT};
+    private static final int[] FILM_BUTTONS = {B_SOURCES, B_SUBTITLES, B_AUDIO, B_SPEED, B_PICTURE, B_INFO},
+            SERIES_BUTTONS = {B_SOURCES, B_SUBTITLES, B_AUDIO, B_EPISODES, B_SPEED, B_PICTURE, B_INFO};
+    /** Up next: not shown, counting down, waiting for OK, put away with Back. */
+    static final int NEXT_NONE = 0, NEXT_COUNTING = 1, NEXT_WAITING = 2, NEXT_CANCELLED = 3;
 
     private ExoPlayer player;
     private SurfaceView surface;
-    private Bar bar;
+    private VodOverlay overlay;
+    private VodSubs subs;
+    private VodPanels panels;
+    private EpisodesPanel episodes;
     private final Handler h = new Handler(Looper.getMainLooper());
     private Catalog.Title title;
-    private Catalog.Episode episode;
+    private Catalog.Episode episode, nextUp;
     private Catalog.Details details;
+    private String cast = "";
     /** Every copy it can play from, in the order tried; the one playing. */
-    private final java.util.List<Catalog.Play> plays = new java.util.ArrayList<>();
+    private final List<Catalog.Play> plays = new ArrayList<>();
     private int at;
     /** The look in TorBox for this film or episode (a newer one makes an older answer moot). */
     private int looking;
-    /** The copies listed (Up), to play from another one. */
+    /** The copies listed, to play from another one. */
     private SourcePicker picker;
-    private final SourcePicker.Mark mark = new SourcePicker.Mark();
-    private boolean asHls, barOn = true, ended, ready, nextQueued;
+    private boolean asHls, ended, ready, overlayOn;
     /**
      * Play from a title's page: every source shown first (choose). Resume and Continue watching (resume): the copy it was
      * started on first. The next episode: neither, its best copy first.
      */
     private boolean choose, resume;
-    /** Previews: where the bar shows it is, as no stream plays there. */
+    /** Previews: where the overlay shows it is, as no stream plays there. */
     static long previewPos, previewDur;
     static boolean previewPlaying = true;
-    private long startAt, seekTo = -1, seekStarted, lastSave;
+    private long startAt, seekTo = -1, lastSave, lastPos;
     private int seekSteps;
-    private String error = "";
+    /** The spot moved on the plain picture (or with rewind and fast forward) goes by itself once the key is let go. */
+    private boolean seekGoes;
+    private int row = ROW_TRANSPORT, item;
+    private float speed = 1f;
+    private String error = "", note = "";
+    private long noteUntil;
+    private int upNext = NEXT_NONE;
+    private long countdownEnd;
     private long videoAspectW, videoAspectH;
     /** Settings → Player → Match frame rate: the film's rate being read. */
     private Afr.Probe probe;
-    /** The player's menu (MENU or the settings key): the picture's shape, the sound's delay and track. */
-    private PlayerMenu menu;
+    /** The words the overlay shows, made again only when what they say changes. */
+    private String head = "", sub = "", headFit = "", subFit = "", copies = "";
+    private float headFor = -1f, subFor = -1f;
+    private final List<String> chips = new ArrayList<>();
+    private final String[] values = new String[BUTTON_NAMES.length], valuesFit = new String[BUTTON_NAMES.length],
+            valuesFor = new String[BUTTON_NAMES.length];
+    private String audioWords = "", nextTitle = "", nextSub = "", nextTitleFit = "", nextSubFit = "";
+    private float nextTitleFor = -1f, nextSubFor = -1f;
+    /** How far each episode of the series was watched (Resume: the one watched last and those before it). */
+    private final java.util.Map<String, Float> watched = new java.util.HashMap<>();
 
-    private final Runnable hideBar = () -> {
-        barOn = false;
-        bar.invalidate();
+    private final Runnable hideOverlay = () -> {
+        if (seekTo >= 0 || !playingNow()) return;
+        setOverlay(false);
     };
     private final Runnable tick = new Runnable() {
         @Override public void run() {
-            bar.invalidate();
-            if (player != null && player.isPlaying() && SystemClock.elapsedRealtime() - lastSave > 15_000) save();
-            h.postDelayed(this, 500);
+            if (player != null && player.isPlaying()) {
+                lastPos = player.getCurrentPosition();
+                if (SystemClock.elapsedRealtime() - lastSave > 15_000) save();
+            }
+            checkUpNext();
+            // A picker that went by itself: the subtitles back in their place.
+            placeSubs();
+            h.postDelayed(this, upNext == NEXT_COUNTING ? 250 : 500);
         }
     };
     private final Runnable applySeek = this::applySeek;
-    private final Runnable nextEpisode = () -> {
-        nextQueued = false;
-        playNext();
-    };
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         Ui.init(this);
         Theme.apply(this);
-        // Outfit for the bar and the menus, also when Android starts the player again on its own.
+        // Outfit for the menus, also when Android starts the player again on its own.
         Dark.init(this);
         Pics.init(this);
+        OpenSubtitles.version = versionName();
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(0xFF000000);
@@ -128,14 +186,31 @@ public final class VodActivity extends Activity {
             still.setImageBitmap(LiveTv.previewStill);
             root.addView(still, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         }
-        bar = new Bar(this);
-        root.addView(bar, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        subs = new VodSubs(this, root, this::position, this);
+        overlay = new VodOverlay(this, this);
+        root.addView(overlay, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        PickerCard card = new PickerCard(this);
+        root.addView(card, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        panels = new VodPanels(this, card);
+        episodes = new EpisodesPanel(this, this);
+        root.addView(episodes, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> fitSurface());
         setContentView(root);
+        // Films' own sound delay (Settings and the player's Audio), not the last channel's.
+        PlayerPrefs.useDelay(this, null);
         startAt = getIntent().getLongExtra(START, 0);
         choose = getIntent().getBooleanExtra(CHOOSE, false);
         resume = !choose;
         open(getIntent().getStringExtra(TITLE), getIntent().getStringExtra(EPISODE));
+    }
+
+    private String versionName() {
+        try {
+            String v = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+            return v == null || v.isEmpty() ? "1.0" : v;
+        } catch (Exception e) {
+            return "1.0";
+        }
     }
 
     /** The title found (the catalogue read first if the app was started afresh), its details for an episode, then play. */
@@ -156,7 +231,7 @@ public final class VodActivity extends Activity {
                             if (own && cat.ownTries() != tries) {
                                 cat.removeListener(this);
                                 error = "It isn't in your TorBox any more, or TorBox couldn't be asked.";
-                                bar.invalidate();
+                                overlay.invalidate();
                             }
                             return;
                         }
@@ -168,11 +243,22 @@ public final class VodActivity extends Activity {
             } else {
                 error = torbox ? "TorBox is turned off in Settings." : "That isn't in your playlist any more.";
             }
-            bar.invalidate();
+            overlay.invalidate();
             return;
         }
         if (episodeId == null || episodeId.isEmpty()) {
+            // A film plays at once; its page (its story, cast, and the ids its subtitles are looked for by) as it comes.
+            Catalog.Title t = title;
             start();
+            cat.details(t, d -> {
+                if (t != title || d == null) return;
+                details = d;
+                readCast();
+                sub = VodPanels.facts(title, details);
+                subFor = -1f;
+                subs.details(d);
+                overlay.invalidate();
+            });
             return;
         }
         cat.details(title, d -> {
@@ -180,10 +266,28 @@ public final class VodActivity extends Activity {
             episode = d == null ? null : d.episode(episodeId);
             if (episode == null) {
                 error = "That episode isn't in your playlist any more.";
-                bar.invalidate();
+                overlay.invalidate();
                 return;
             }
+            readCast();
             start();
+        });
+    }
+
+    /** The cast for Info: the provider's, else TMDB's kept on this TV (read off the main thread). */
+    private void readCast() {
+        cast = details != null ? details.cast : "";
+        if (!cast.isEmpty() || title == null) return;
+        Catalog.Title t = title;
+        android.content.Context app = getApplicationContext();
+        Exec.io(() -> {
+            Tmdb.Extras x = Tmdb.keptExtras(app, t);
+            List<String> names = new ArrayList<>();
+            if (x != null) for (String[] p : x.cast) if (names.size() < 8 && p.length > 0 && !p[0].isEmpty()) names.add(p[0]);
+            String got = String.join(", ", names);
+            Exec.main(() -> {
+                if (t == title) cast = got;
+            });
         });
     }
 
@@ -194,35 +298,70 @@ public final class VodActivity extends Activity {
         error = "";
         ended = false;
         ready = false;
+        upNext = NEXT_NONE;
         plays.clear();
+        episodeChanged();
         int token = ++looking;
         if (!TorBox.on(this)) {
-            begin(token, mine, new java.util.ArrayList<>());
+            begin(token, mine, new ArrayList<>());
             return;
         }
         // TorBox's copies all found before anything plays, as they come first: at once from the library read lately.
         if (!TorBox.fresh(this)) {
             error = "Looking in your TorBox…";
-            bar.invalidate();
+            overlay.invalidate();
         }
         android.content.Context app = getApplicationContext();
         Catalog.Title t = title;
         Catalog.Episode e = episode;
         Exec.io(() -> {
-            java.util.List<Catalog.Play> found = TorBox.plays(app, t, e);
+            List<Catalog.Play> found = TorBox.plays(app, t, e);
             Exec.main(() -> begin(token, mine, found));
         });
     }
 
+    /** A new film or episode: its words, its next episode, its subtitles as chosen for the title. */
+    private void episodeChanged() {
+        head = title == null ? "" : title.name;
+        if (episode != null) {
+            sub = "S" + episode.season + " E" + episode.number + (episode.title.isEmpty() ? "" : "  ·  " + episode.title);
+        } else {
+            sub = title == null ? "" : VodPanels.facts(title, details);
+        }
+        headFor = subFor = -1f;
+        nextUp = details == null || episode == null ? null : details.after(episode);
+        nextTitle = nextUp == null ? "" : "S" + nextUp.season + " E" + nextUp.number + (nextUp.title.isEmpty() ? "" : "  ·  " + nextUp.title);
+        nextSub = nextUp == null ? "" : nextUp.minutes > 0 ? Ui.duration(nextUp.minutes) : "";
+        nextTitleFor = nextSubFor = -1f;
+        readWatched();
+        subs.open(title, episode, details);
+        refreshValues();
+    }
+
+    /** How far each episode was watched: those before the one watched last, whole; that one, as far as it got. */
+    private void readWatched() {
+        watched.clear();
+        if (title == null || details == null || !title.series) return;
+        Resume.Point last = Resume.latest(this, title.key);
+        if (last == null || last.episode.isEmpty()) return;
+        for (Catalog.Episode e : details.episodes()) {
+            if (e.id.equals(last.episode)) {
+                watched.put(e.id, last.position <= 0 ? -1f : last.progress());
+                break;
+            }
+            watched.put(e.id, 1f);
+        }
+    }
+
     /** The copies in the order they are tried (TorBox's first unless Settings say last), and the first one started. */
-    private void begin(int token, Catalog.Play mine, java.util.List<Catalog.Play> torbox) {
+    private void begin(int token, Catalog.Play mine, List<Catalog.Play> torbox) {
         if (token != looking || isFinishing() || isDestroyed()) return;
         plays.clear();
         plays.addAll(TorBox.order(torbox, mine, TorBox.first(this)));
         if (plays.isEmpty()) {
             error = title != null && title.torbox() ? "It isn't in your TorBox any more, or TorBox is turned off."
                     : "Its playlist has gone from this TV.";
-            bar.invalidate();
+            overlay.invalidate();
             return;
         }
         at = 0;
@@ -237,7 +376,7 @@ public final class VodActivity extends Activity {
             // Resume and Continue watching: the copy it was started on first, the others after it in their order.
             int was = Copies.find(this, title.key, episodeId(), plays);
             if (was > 0) {
-                java.util.List<Catalog.Play> order = Copies.chosenFirst(plays, was);
+                List<Catalog.Play> order = Copies.chosenFirst(plays, was);
                 plays.clear();
                 plays.addAll(order);
             }
@@ -250,17 +389,20 @@ public final class VodActivity extends Activity {
         return episode == null ? "" : episode.id;
     }
 
-    /** Every copy, the best first and the remote on it: OK plays the one chosen (the rest its backups), Back goes back. */
-    private void chooseSource() {
+    private SourcePicker picker() {
         if (picker == null) {
             picker = new SourcePicker(this);
             ((ViewGroup) surface.getParent()).addView(picker, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT));
         }
-        barOn = false;
-        bar.invalidate();
-        picker.choose(plays, i -> {
-            java.util.List<Catalog.Play> order = Copies.chosenFirst(plays, i);
+        return picker;
+    }
+
+    /** Every copy, the best first and the remote on it: OK plays the one chosen (the rest its backups), Back goes back. */
+    private void chooseSource() {
+        setOverlay(false);
+        picker().choose(plays, i -> {
+            List<Catalog.Play> order = Copies.chosenFirst(plays, i);
             plays.clear();
             plays.addAll(order);
             at = 0;
@@ -274,9 +416,10 @@ public final class VodActivity extends Activity {
     }
 
     private void prepare(boolean fresh) {
+        copyChanged();
         if (Exec.inline) {
             ready = true;
-            showBar();
+            setOverlay(true);
             return;
         }
         // A TorBox copy's address made only now (the key in it goes to TorBox alone); one that can't be is passed over.
@@ -289,7 +432,7 @@ public final class VodActivity extends Activity {
             } else {
                 error = "TorBox is turned off or its key has gone. OK to try again.";
                 release();
-                bar.invalidate();
+                overlay.invalidate();
             }
             return;
         }
@@ -302,6 +445,10 @@ public final class VodActivity extends Activity {
             player.setHandleAudioBecomingNoisy(true);
             player.setVideoSurfaceView(surface);
             player.addListener(listener);
+            subs.attach(player);
+            // Its clock again (a player let go after it failed took it with it).
+            h.removeCallbacks(tick);
+            h.post(tick);
         }
         if (fresh) asHls = Streams.looksHls(url);
         // The TV's refresh rate matched to this film (Settings → Player), read afresh for each one.
@@ -310,14 +457,27 @@ public final class VodActivity extends Activity {
         if (probe != null) player.setVideoFrameMetadataListener(probe);
         long from = player.getCurrentPosition() > 0 && !fresh ? player.getCurrentPosition() : startAt;
         player.setMediaSource(Streams.source(url, p.userAgent, p.referrer, asHls), from);
+        player.setPlaybackSpeed(speed);
         player.prepare();
         player.setPlayWhenReady(true);
-        showBar();
+        setOverlay(true);
+    }
+
+    /** The copy playing changed: what the overlay says of it. */
+    private void copyChanged() {
+        chips.clear();
+        if (plays.isEmpty()) return;
+        Catalog.Play p = current();
+        for (String m : SourcePicker.marks(p)) chips.add(m.toUpperCase(Locale.UK));
+        copies = plays.size() > 1 ? (at + 1) + " of " + plays.size() + " sources" : "";
+        subs.quality(Catalog.pictureName(p.picture));
+        refreshValues();
     }
 
     @Override protected void onResume() {
         super.onResume();
         Cast.hold(this);
+        h.removeCallbacks(tick);
         h.post(tick);
     }
 
@@ -338,6 +498,7 @@ public final class VodActivity extends Activity {
 
     @Override protected void onDestroy() {
         release();
+        subs.release();
         super.onDestroy();
     }
 
@@ -345,6 +506,7 @@ public final class VodActivity extends Activity {
         h.removeCallbacksAndMessages(null);
         probe = null;
         Afr.reset(this);
+        subs.detach();
         if (player != null) {
             player.removeListener(listener);
             player.release();
@@ -362,21 +524,30 @@ public final class VodActivity extends Activity {
     }
 
     private Resume.Point point(long pos, long dur) {
-        String picture = episode != null && !episode.still.isEmpty() ? episode.still
-                : details != null && !details.backdrop.isEmpty() ? details.backdrop : title.backdrop;
-        String subtitle = episode == null ? "" : "S" + episode.season + " E" + episode.number + (episode.title.isEmpty() ? "" : "  ·  " + episode.title);
-        return new Resume.Point(title.key, episode == null ? "" : episode.id, title.name, subtitle, picture, pos, dur, System.currentTimeMillis());
+        return point(episode, pos, dur);
     }
 
-    private long position() {
+    private Resume.Point point(Catalog.Episode e, long pos, long dur) {
+        String picture = e != null && !e.still.isEmpty() ? e.still
+                : details != null && !details.backdrop.isEmpty() ? details.backdrop : title.backdrop;
+        String line = e == null ? "" : "S" + e.season + " E" + e.number + (e.title.isEmpty() ? "" : "  ·  " + e.title);
+        return new Resume.Point(title.key, e == null ? "" : e.id, title.name, line, picture, pos, dur, System.currentTimeMillis());
+    }
+
+    long position() {
         return Exec.inline ? previewPos : player == null ? 0 : player.getCurrentPosition();
     }
 
-    private long duration() {
-        return Exec.inline ? previewDur : player == null ? C.TIME_UNSET : player.getDuration();
+    long duration() {
+        long d = Exec.inline ? previewDur : player == null ? C.TIME_UNSET : player.getDuration();
+        return d == C.TIME_UNSET ? 0 : Math.max(0, d);
     }
 
-    private boolean playing() {
+    long buffered() {
+        return Exec.inline ? previewPos + 4 * 60_000L : player == null ? 0 : player.getBufferedPosition();
+    }
+
+    boolean playingNow() {
         return Exec.inline ? previewPlaying : player != null && player.isPlaying();
     }
 
@@ -384,7 +555,7 @@ public final class VodActivity extends Activity {
         View root = (View) surface.getParent();
         int w = root.getWidth(), hh = root.getHeight();
         if (w == 0 || hh == 0) return;
-        // The shape Settings or the player's menu chose for films (Fit, Fill, Zoom, 16:9, 4:3).
+        // The shape the player's Picture chose for films (Fit, Fill, Zoom, 16:9, 4:3 and the rest).
         int[] p = Picture.place(PlayerPrefs.vodAspect(this), (int) videoAspectW, (int) videoAspectH, 0, 0, w, hh);
         int sw = p[2], sh = p[3];
         FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) surface.getLayoutParams();
@@ -394,54 +565,389 @@ public final class VodActivity extends Activity {
             lp.gravity = android.view.Gravity.CENTER;
             surface.setLayoutParams(lp);
         }
+        // A copy's own pictures of words go on the picture, never off the screen.
+        int l = Math.max(0, (w - sw) / 2), t = Math.max(0, (hh - sh) / 2);
+        subs.frame(l, t, Math.min(w, sw), Math.min(hh, sh));
+    }
+
+    // ---- what the overlay and the pickers read -------------------------------------------------------------------------
+
+    String error() {
+        return error;
+    }
+
+    String note() {
+        if (note.isEmpty()) return note;
+        if (!Exec.inline && SystemClock.elapsedRealtime() > noteUntil) note = "";
+        return note;
+    }
+
+    /** A short word at the top for a few seconds. */
+    private void say(String words) {
+        note = words == null ? "" : words;
+        noteUntil = SystemClock.elapsedRealtime() + NOTE_MS;
+        overlay.invalidate();
+    }
+
+    boolean overlayOn() {
+        return overlayOn;
+    }
+
+    long seekTarget() {
+        return seekTo;
+    }
+
+    boolean ready() {
+        return ready;
+    }
+
+    float speed() {
+        return speed;
+    }
+
+    int focusRow() {
+        return row;
+    }
+
+    int focusItem() {
+        return item;
+    }
+
+    int[] transport() {
+        return episode != null ? SERIES_TRANSPORT : FILM_TRANSPORT;
+    }
+
+    int[] buttons() {
+        return episode != null ? SERIES_BUTTONS : FILM_BUTTONS;
+    }
+
+    boolean transportEnabled(int t) {
+        if (t == T_NEXT) return nextUp != null;
+        return true;
+    }
+
+    static int transportIcon(int t, boolean playing) {
+        switch (t) {
+            case T_PREVIOUS: return Dark.SKIP_BACK;
+            case T_BACK: return Dark.REWIND;
+            case T_FORWARD: return Dark.FORWARD;
+            case T_NEXT: return Dark.SKIP_NEXT;
+            default: return playing ? Dark.PAUSE : Dark.PLAY;
+        }
+    }
+
+    static int buttonIcon(int b) {
+        switch (b) {
+            case B_SOURCES: return Dark.STACK;
+            case B_SUBTITLES: return Dark.CAPTIONS;
+            case B_AUDIO: return Dark.SPEAKER;
+            case B_EPISODES: return Dark.LIST;
+            case B_SPEED: return Dark.TIMER;
+            case B_PICTURE: return Dark.SHAPE;
+            default: return Dark.INFO;
+        }
+    }
+
+    Catalog.Play source() {
+        return plays.isEmpty() ? null : current();
+    }
+
+    List<String> chips() {
+        return chips;
+    }
+
+    String copiesWords() {
+        return copies;
+    }
+
+    String headWords(TextPaint p, float w) {
+        if (w != headFor) {
+            headFit = Ui.fit(head, p, w);
+            headFor = w;
+        }
+        return headFit;
+    }
+
+    String subWords(TextPaint p, float w) {
+        if (w != subFor) {
+            subFit = Ui.fit(sub, p, w);
+            subFor = w;
+        }
+        return subFit;
+    }
+
+    /** What a button says it is set to, cut to fit (made again only when it changes). */
+    String buttonValue(int b, TextPaint p, float w) {
+        String v = values[b] == null ? "" : values[b];
+        //noinspection StringEquality: the very words cut last time, or new ones
+        if (v != valuesFor[b]) {
+            valuesFit[b] = Ui.fit(v, p, w);
+            valuesFor[b] = v;
+        }
+        return valuesFit[b];
+    }
+
+    /** The buttons' words made again: something they say changed. */
+    private void refreshValues() {
+        values[B_SOURCES] = plays.size() == 1 ? "1 copy" : plays.size() + " copies";
+        values[B_SUBTITLES] = subs.words();
+        int delay = PlayerPrefs.delayMs(this);
+        values[B_AUDIO] = !audioWords.isEmpty() ? audioWords : delay != 0 ? PlayerPrefs.offsetWords(delay) : "";
+        values[B_EPISODES] = episode == null ? "" : "S" + episode.season + " E" + episode.number;
+        values[B_SPEED] = VodPanels.speedWords(speed);
+        values[B_PICTURE] = VodPanels.aspectName(PlayerPrefs.vodAspect(this));
+        values[B_INFO] = "";
+        overlay.invalidate();
+    }
+
+    VodSubs subs() {
+        return subs;
+    }
+
+    VodPanels panels() {
+        return panels;
+    }
+
+    EpisodesPanel episodesPanel() {
+        return episodes;
+    }
+
+    Player player() {
+        return player;
+    }
+
+    Catalog.Title title() {
+        return title;
+    }
+
+    Catalog.Episode episode() {
+        return episode;
+    }
+
+    Catalog.Details details() {
+        return details;
+    }
+
+    boolean isEpisode() {
+        return episode != null;
+    }
+
+    String titleName() {
+        return title == null ? "Info" : title.name;
+    }
+
+    String castWords() {
+        return cast;
+    }
+
+    void setSpeed(float s) {
+        speed = s;
+        if (player != null) player.setPlaybackSpeed(s);
+        refreshValues();
+    }
+
+    void setAspect(int mode) {
+        PlayerPrefs.setVodAspect(this, mode);
+        fitSurface();
+        refreshValues();
+    }
+
+    long startAtForTests() {
+        return startAt;
+    }
+
+    int upNextState() {
+        return upNext;
+    }
+
+    // ---- the overlay ------------------------------------------------------------------------------------------------
+
+    private void setOverlay(boolean on) {
+        overlayOn = on;
+        if (!on && seekTo >= 0 && !seekGoes) seekTo = -1;
+        if (on) {
+            // Up next stays on its own card, out of the overlay's way.
+            if (upNext == NEXT_COUNTING || upNext == NEXT_WAITING) {
+                if (!ended) upNext = NEXT_CANCELLED;
+            }
+        }
+        poke();
+        placeSubs();
+        overlay.invalidate();
+    }
+
+    /** The overlay with the remote on a row and an item in it. */
+    private void showOverlay(int r, int i) {
+        row = r;
+        item = i;
+        setOverlay(true);
+    }
+
+    private void showOverlayOnPlay() {
+        int[] t = transport();
+        int i = 0;
+        for (int k = 0; k < t.length; k++) if (t[k] == T_PLAY) i = k;
+        showOverlay(ROW_TRANSPORT, i);
+    }
+
+    /** Something touched: the overlay goes after a while (not while paused or the spot is being moved). */
+    void poke() {
+        h.removeCallbacks(hideOverlay);
+        if (overlayOn && playingNow() && !Exec.inline) h.postDelayed(hideOverlay, OVERLAY_MS);
+    }
+
+    /** The subtitles' foot kept above whatever is over the picture's foot, and left of a picker open at the right. */
+    private void placeSubs() {
+        float above = overlayOn ? VodOverlay.TOP : seekTo >= 0 ? VodOverlay.SEEK_Y - 90f
+                : upNextShowing() ? VodOverlay.NEXT_FOOT - VodOverlay.NEXT_H - 10f : 0f;
+        subs.keepAbove(above);
+        boolean wide = episodes.isOpen() || picker != null && picker.isOpen();
+        subs.keepLeftOf(panels.open() ? PickerCard.X : wide ? EpisodesPanel.X : 0f);
+    }
+
+    /** A picker shut: the overlay again (back), else the plain picture. */
+    void panelClosed(boolean back) {
+        if (back) setOverlay(true);
+        else {
+            setOverlay(false);
+            refreshValues();
+        }
+    }
+
+    @Override public void subsChanged() {
+        values[B_SUBTITLES] = subs.words();
+        if (panels != null) panels.subsChanged();
+        overlay.invalidate();
     }
 
     // ---- the remote ---------------------------------------------------------------------------------------------
 
-    private void showBar() {
-        barOn = true;
-        h.removeCallbacks(hideBar);
-        if (player != null && player.isPlaying() && !Exec.inline) h.postDelayed(hideBar, BAR_MS);
-        bar.invalidate();
-    }
-
     @Override public boolean dispatchKeyEvent(KeyEvent e) {
         int code = e.getKeyCode();
-        // The copies' list, then the player's menu, take the keys while open (the volume keys go on to the TV).
-        if (picker != null && picker.isOpen()) return picker.key(e) || super.dispatchKeyEvent(e);
-        if (menu != null && menu.isOpen()) return menu.key(e);
+        // The copies' list, the episodes, then the pickers take the keys while open (the volume keys go on to the TV).
+        if (picker != null && picker.isOpen()) {
+            boolean took = picker.key(e);
+            if (!picker.isOpen() && !picker.isChoosing() && e.getAction() == KeyEvent.ACTION_DOWN && isBack(code)) setOverlay(true);
+            return took || super.dispatchKeyEvent(e);
+        }
+        if (episodes.isOpen()) return episodes.key(e) || super.dispatchKeyEvent(e);
+        if (panels.open()) return panels.key(e) || super.dispatchKeyEvent(e);
         if (e.getAction() == KeyEvent.ACTION_UP) {
-            if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT || code == KeyEvent.KEYCODE_MEDIA_REWIND
-                    || code == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD) {
-                h.removeCallbacks(applySeek);
-                h.postDelayed(applySeek, 450);
+            if (isSeekKey(code)) {
+                // The spot moved on the plain picture (or by rewind and fast forward) goes once the key is let go.
+                if (seekGoes) {
+                    h.removeCallbacks(applySeek);
+                    h.postDelayed(applySeek, APPLY_MS);
+                }
                 return true;
             }
-            return code == KeyEvent.KEYCODE_BACK || isOk(code) || super.dispatchKeyEvent(e);
+            return isBack(code) || isOk(code) || super.dispatchKeyEvent(e);
         }
         if (e.getAction() != KeyEvent.ACTION_DOWN) return super.dispatchKeyEvent(e);
+        int repeat = e.getRepeatCount();
+        poke();
+        // Up next's card: OK plays it now, Back puts it away; the rest of the keys as they are without it.
+        if (upNextShowing() && !overlayOn) {
+            if (isOk(code) && code != KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) {
+                if (repeat == 0) playNext();
+                return true;
+            }
+            if (isBack(code)) {
+                if (repeat > 0) return true;
+                if (ended) {
+                    stop();
+                } else {
+                    upNext = NEXT_CANCELLED;
+                    placeSubs();
+                    overlay.invalidate();
+                }
+                return true;
+            }
+        }
         switch (code) {
             case KeyEvent.KEYCODE_BACK:
             case KeyEvent.KEYCODE_ESCAPE:
-                if (e.getRepeatCount() > 0) return true;
-                h.removeCallbacks(nextEpisode);
-                nextQueued = false;
-                save();
-                finish();
+                if (repeat > 0) return true;
+                if (overlayOn) {
+                    if (seekTo >= 0) {
+                        // The spot moved and not jumped to: left where the picture is.
+                        cancelSeek();
+                        return true;
+                    }
+                    setOverlay(false);
+                    return true;
+                }
+                if (seekTo >= 0) {
+                    cancelSeek();
+                    return true;
+                }
+                stop();
                 return true;
+            case KeyEvent.KEYCODE_MEDIA_STOP:
+                stop();
+                return true;
+            case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+            case KeyEvent.KEYCODE_SPACE:
+                if (repeat > 0) return true;
+                if (player == null && !Exec.inline) {
+                    if (!error.isEmpty() && !plays.isEmpty()) start();
+                    return true;
+                }
+                togglePlay();
+                if (!overlayOn) showOverlayOnPlay();
+                return true;
+            case KeyEvent.KEYCODE_MEDIA_PLAY:
+                if (player != null) player.play();
+                if (Exec.inline) previewPlaying = true;
+                if (!overlayOn) showOverlayOnPlay();
+                poke();
+                return true;
+            case KeyEvent.KEYCODE_MEDIA_PAUSE:
+                if (player != null) player.pause();
+                if (Exec.inline) previewPlaying = false;
+                save();
+                if (!overlayOn) showOverlayOnPlay();
+                return true;
+            case KeyEvent.KEYCODE_MEDIA_REWIND:
+            case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
+                seekGoes = true;
+                if (upNext == NEXT_COUNTING || upNext == NEXT_WAITING) upNext = NEXT_CANCELLED;
+                seek(code == KeyEvent.KEYCODE_MEDIA_REWIND ? -1 : 1, repeat);
+                return true;
+            case KeyEvent.KEYCODE_MEDIA_NEXT:
+                if (repeat == 0 && nextUp != null) playNext();
+                return true;
+            case KeyEvent.KEYCODE_MEDIA_PREVIOUS:
+                if (repeat == 0) previous();
+                return true;
+            case KeyEvent.KEYCODE_CAPTIONS:
+                if (repeat == 0) openPanel(VodPanels.SUBS);
+                return true;
+            case KeyEvent.KEYCODE_MEDIA_AUDIO_TRACK:
+                if (repeat == 0) openPanel(VodPanels.AUDIO);
+                return true;
+            case KeyEvent.KEYCODE_INFO:
+                if (repeat == 0) openPanel(VodPanels.INFO);
+                return true;
+            case KeyEvent.KEYCODE_MENU:
+            case KeyEvent.KEYCODE_SETTINGS:
+                if (repeat == 0) showOverlay(ROW_BUTTONS, 0);
+                return true;
+            default:
+                break;
+        }
+        if (overlayOn) return overlayKey(code, repeat) || super.dispatchKeyEvent(e);
+        return plainKey(code, repeat) || super.dispatchKeyEvent(e);
+    }
+
+    /** The plain picture: OK the overlay, Left and Right seek at once, Up the sources, Down the overlay's buttons. */
+    private boolean plainKey(int code, int repeat) {
+        switch (code) {
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
             case KeyEvent.KEYCODE_NUMPAD_ENTER:
-            case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
-            case KeyEvent.KEYCODE_SPACE:
-                if (e.getRepeatCount() > 0) return true;
-                if (ended && nextQueued) {
-                    h.removeCallbacks(nextEpisode);
-                    nextQueued = false;
-                    playNext();
-                    return true;
-                }
-                if (player == null) {
+                if (repeat > 0) return true;
+                if (player == null && !Exec.inline) {
                     if (!error.isEmpty() && !plays.isEmpty()) start();
                     return true;
                 }
@@ -449,66 +955,171 @@ public final class VodActivity extends Activity {
                     applySeek();
                     return true;
                 }
-                if (player.isPlaying()) {
-                    player.pause();
-                    save();
-                } else {
-                    player.play();
-                }
-                showBar();
-                return true;
-            case KeyEvent.KEYCODE_MEDIA_PLAY:
-                if (player != null) player.play();
-                showBar();
-                return true;
-            case KeyEvent.KEYCODE_MEDIA_PAUSE:
-                if (player != null) player.pause();
-                showBar();
+                showOverlayOnPlay();
                 return true;
             case KeyEvent.KEYCODE_DPAD_LEFT:
-            case KeyEvent.KEYCODE_MEDIA_REWIND:
-                seek(-1, e.getRepeatCount());
-                return true;
             case KeyEvent.KEYCODE_DPAD_RIGHT:
-            case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
-                seek(1, e.getRepeatCount());
+                if (upNext == NEXT_COUNTING || upNext == NEXT_WAITING) upNext = NEXT_CANCELLED;
+                seekGoes = true;
+                seek(code == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1, repeat);
                 return true;
             case KeyEvent.KEYCODE_DPAD_UP:
-                // The copies it can play from, when there is more than one.
-                if (plays.size() > 1) {
-                    if (e.getRepeatCount() == 0) openPicker();
-                    return true;
-                }
-                toggleBar();
+                if (repeat > 0) return true;
+                if (plays.size() > 1) openPicker();
+                else showOverlayOnPlay();
                 return true;
             case KeyEvent.KEYCODE_DPAD_DOWN:
-            case KeyEvent.KEYCODE_INFO:
-                toggleBar();
-                return true;
-            case KeyEvent.KEYCODE_MENU:
-            case KeyEvent.KEYCODE_SETTINGS:
-                if (e.getRepeatCount() == 0) openMenu();
+                if (repeat == 0) showOverlay(ROW_BUTTONS, 0);
                 return true;
             default:
-                return super.dispatchKeyEvent(e);
+                return false;
         }
     }
 
-    private void toggleBar() {
-        if (barOn && player != null && player.isPlaying()) hideBar.run();
-        else showBar();
+    /** The overlay's rows: the seek line, the transport, the buttons. */
+    private boolean overlayKey(int code, int repeat) {
+        switch (code) {
+            case KeyEvent.KEYCODE_DPAD_UP:
+                if (row == ROW_BUTTONS) {
+                    showOverlayOnPlay();
+                } else if (row == ROW_TRANSPORT && ready) {
+                    row = ROW_SEEK;
+                    overlay.invalidate();
+                }
+                return true;
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+                if (row == ROW_SEEK) {
+                    cancelSeek();
+                    showOverlayOnPlay();
+                } else if (row == ROW_TRANSPORT) {
+                    row = ROW_BUTTONS;
+                    item = Math.min(item, buttons().length - 1);
+                    item = Math.max(0, Math.min(buttons().length - 1, buttonNear()));
+                    overlay.invalidate();
+                }
+                return true;
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+            case KeyEvent.KEYCODE_DPAD_RIGHT: {
+                int dir = code == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1;
+                if (row == ROW_SEEK) {
+                    seekGoes = false;
+                    seek(dir, repeat);
+                    return true;
+                }
+                int n = row == ROW_TRANSPORT ? transport().length : buttons().length;
+                item = Math.max(0, Math.min(n - 1, item + dir));
+                overlay.invalidate();
+                return true;
+            }
+            case KeyEvent.KEYCODE_DPAD_CENTER:
+            case KeyEvent.KEYCODE_ENTER:
+            case KeyEvent.KEYCODE_NUMPAD_ENTER:
+                if (repeat > 0) return true;
+                if (row == ROW_SEEK) {
+                    if (seekTo >= 0) applySeek();
+                    return true;
+                }
+                if (row == ROW_TRANSPORT) transportPressed(transport()[item]);
+                else buttonPressed(buttons()[item]);
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /** The button under the transport item the remote was on (the middle one under play). */
+    private int buttonNear() {
+        float x = VodOverlay.transportX(item, transport().length);
+        int n = buttons().length, best = 0;
+        float d = Float.MAX_VALUE;
+        for (int k = 0; k < n; k++) {
+            float dk = Math.abs(VodOverlay.barX(k, n) - x);
+            if (dk < d) {
+                d = dk;
+                best = k;
+            }
+        }
+        return best;
+    }
+
+    private void transportPressed(int t) {
+        switch (t) {
+            case T_PREVIOUS: previous(); break;
+            case T_BACK: jump(-OtherPrefs.skipMs(this)); break;
+            case T_FORWARD: jump(OtherPrefs.skipMs(this)); break;
+            case T_NEXT: if (nextUp != null) playNext(); break;
+            default: togglePlay(); break;
+        }
+        overlay.invalidate();
+    }
+
+    private void buttonPressed(int b) {
+        switch (b) {
+            case B_SOURCES: openPicker(); break;
+            case B_SUBTITLES: openPanel(VodPanels.SUBS); break;
+            case B_AUDIO: openPanel(VodPanels.AUDIO); break;
+            case B_EPISODES: openEpisodes(); break;
+            case B_SPEED: openPanel(VodPanels.SPEED); break;
+            case B_PICTURE: openPanel(VodPanels.PICTURE); break;
+            default: openPanel(VodPanels.INFO); break;
+        }
+    }
+
+    private void togglePlay() {
+        if (player == null && !Exec.inline) {
+            // It didn't play: OK tries again.
+            if (!error.isEmpty() && !plays.isEmpty()) start();
+            return;
+        }
+        if (Exec.inline) {
+            previewPlaying = !previewPlaying;
+        } else if (player != null) {
+            if (player.isPlaying()) {
+                player.pause();
+                save();
+            } else {
+                player.play();
+            }
+        }
+        poke();
+        overlay.invalidate();
+    }
+
+    /** Stops, the place kept. */
+    private void stop() {
+        save();
+        finish();
+    }
+
+    /** A picker over the picture (the overlay going while it is up). */
+    private void openPanel(int kind) {
+        if (kind == VodPanels.INFO && title == null) return;
+        if (upNext == NEXT_COUNTING || upNext == NEXT_WAITING) upNext = NEXT_CANCELLED;
+        cancelSeek();
+        overlayOn = false;
+        panels.show(kind);
+        placeSubs();
+        overlay.invalidate();
     }
 
     /** The copies it can play from, the one playing ticked; another one chosen carries on from the same moment. */
     private void openPicker() {
-        if (plays.size() < 2) return;
-        if (picker == null) {
-            picker = new SourcePicker(this);
-            ((ViewGroup) surface.getParent()).addView(picker, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT));
-        }
-        showBar();
-        picker.open(plays, at, this::switchTo);
+        if (plays.isEmpty()) return;
+        cancelSeek();
+        overlayOn = false;
+        picker().open(plays, at, this::switchTo);
+        placeSubs();
+        overlay.invalidate();
+    }
+
+    /** The series' episodes, the one playing ticked. */
+    private void openEpisodes() {
+        if (details == null || details.seasons.isEmpty()) return;
+        cancelSeek();
+        overlayOn = false;
+        episodes.open(details, episode, details.backdrop.isEmpty() ? title.backdrop : details.backdrop);
+        placeSubs();
+        overlay.invalidate();
     }
 
     /** Another copy chosen: it plays from the moment the one before had reached. */
@@ -520,11 +1131,12 @@ public final class VodActivity extends Activity {
         error = "";
         ended = false;
         ready = false;
+        Copies.started(this, title.key, episodeId(), plays.get(at));
         prepare(true);
     }
 
     /** Previews: these copies as if found, shown before playing as Play shows them. */
-    void previewChoose(java.util.List<Catalog.Play> copies) {
+    void previewChoose(List<Catalog.Play> copies) {
         plays.clear();
         plays.addAll(copies);
         at = 0;
@@ -533,37 +1145,36 @@ public final class VodActivity extends Activity {
     }
 
     /** Previews: these copies as if found, the one at now playing; the list of them opened when asked. */
-    void previewSources(java.util.List<Catalog.Play> copies, int now, boolean list) {
+    void previewSources(List<Catalog.Play> copies, int now, boolean list) {
         plays.clear();
         plays.addAll(copies);
         at = now;
         error = "";
         ready = true;
-        showBar();
+        copyChanged();
         if (list) openPicker();
+        else showOverlayOnPlay();
     }
 
-    /** The player's menu over the film: its shape, the sound's delay and track. */
-    private void openMenu() {
-        if (menu == null) {
-            menu = new PlayerMenu(this, new PlayerMenu.Target() {
-                @Override public androidx.media3.common.Player player() {
-                    return player;
-                }
+    /** Previews: the overlay with the remote on a row and item. */
+    void previewOverlay(int r, int i) {
+        showOverlay(r, i);
+    }
 
-                @Override public int aspect() {
-                    return PlayerPrefs.vodAspect(VodActivity.this);
-                }
+    /** Previews: a picker open. */
+    void previewPanel(int kind) {
+        openPanel(kind);
+    }
 
-                @Override public void aspect(int mode) {
-                    PlayerPrefs.setVodAspect(VodActivity.this, mode);
-                    fitSurface();
-                }
-            });
-            ((ViewGroup) surface.getParent()).addView(menu, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT));
-        }
-        menu.open();
+    /** Previews: the episodes open. */
+    void previewEpisodes() {
+        openEpisodes();
+    }
+
+    /** Previews and tests: Up next's card counting down. */
+    void previewUpNext() {
+        setOverlay(false);
+        startUpNext();
     }
 
     private static boolean isOk(int code) {
@@ -571,52 +1182,224 @@ public final class VodActivity extends Activity {
                 || code == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE || code == KeyEvent.KEYCODE_SPACE;
     }
 
-    /** Back or on: 10 s a press, more the longer it is held; the jump made once the key is let go. */
+    private static boolean isBack(int code) {
+        return code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_ESCAPE;
+    }
+
+    private static boolean isSeekKey(int code) {
+        return code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT || code == KeyEvent.KEYCODE_MEDIA_REWIND
+                || code == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD;
+    }
+
+    // ---- moving through it ------------------------------------------------------------------------------------------
+
+    /**
+     * Pure: a seek's step: Settings › VOD › Skip steps for the first presses, then further the longer the key is held
+     * (at least 30 s, a minute, five minutes).
+     */
+    static long step(long first, int steps) {
+        return steps < 6 ? first : steps < 16 ? Math.max(first, 30_000) : steps < 30 ? Math.max(first, 60_000) : 300_000;
+    }
+
+    /** Back or on: a step a press, more the longer it is held; the jump made once the key is let go (or on OK). */
     private void seek(int dir, int repeat) {
-        if (player == null) return;
-        long dur = player.getDuration();
-        long from = seekTo >= 0 ? seekTo : player.getCurrentPosition();
+        if (player == null && !Exec.inline) return;
+        long dur = duration();
+        long from = seekTo >= 0 ? seekTo : position();
         if (repeat == 0 && seekTo < 0) seekSteps = 0;
         seekSteps++;
-        // Settings › VOD › Skip steps: the first presses its step, then further the longer it is held.
-        long first = com.gathin.homefieldtv.prefs.OtherPrefs.skipMs(this);
-        long step = seekSteps < 6 ? first : seekSteps < 16 ? Math.max(first, 30_000) : seekSteps < 30 ? Math.max(first, 60_000) : 300_000;
-        long to = from + dir * step;
+        long to = from + dir * step(OtherPrefs.skipMs(this), seekSteps);
         if (to < 0) to = 0;
-        if (dur > 0 && dur != C.TIME_UNSET && to > dur - 2000) to = dur - 2000;
-        seekTo = to;
-        seekStarted = SystemClock.elapsedRealtime();
+        if (dur > 0 && to > dur - 2000) to = dur - 2000;
+        seekTo = Math.max(0, to);
         h.removeCallbacks(applySeek);
-        h.postDelayed(applySeek, 1200);
-        showBar();
+        if (seekGoes) h.postDelayed(applySeek, 1200);
+        placeSubs();
+        poke();
+        overlay.invalidate();
     }
 
+    /** The spot jumped to. */
     private void applySeek() {
         h.removeCallbacks(applySeek);
-        if (player != null && seekTo >= 0) player.seekTo(seekTo);
+        if (seekTo >= 0) {
+            if (player != null) player.seekTo(seekTo);
+            if (Exec.inline) previewPos = seekTo;
+        }
         seekTo = -1;
         seekSteps = 0;
-        showBar();
+        seekGoes = false;
+        placeSubs();
+        poke();
+        overlay.invalidate();
     }
 
-    private void playNext() {
-        if (details == null || episode == null) {
-            finish();
+    private void cancelSeek() {
+        h.removeCallbacks(applySeek);
+        seekTo = -1;
+        seekSteps = 0;
+        seekGoes = false;
+        placeSubs();
+        overlay.invalidate();
+    }
+
+    /** The transport's skip back or on (ms), at once. */
+    private void jump(long by) {
+        long dur = duration(), to = Math.max(0, position() + by);
+        if (dur > 0) to = Math.min(to, dur - 2000);
+        if (player != null) player.seekTo(Math.max(0, to));
+        if (Exec.inline) previewPos = Math.max(0, to);
+        poke();
+    }
+
+    /** |◀: the episode from its start when it is some way in, else the one before it. */
+    private void previous() {
+        if (position() > 10_000 || details == null || episode == null) {
+            if (player != null) player.seekTo(0);
+            if (Exec.inline) previewPos = 0;
+            overlay.invalidate();
             return;
         }
-        Catalog.Episode next = details.after(episode);
-        if (next == null) {
-            finish();
+        List<Catalog.Episode> all = details.episodes();
+        for (int i = 1; i < all.size(); i++) {
+            if (all.get(i).id.equals(episode.id)) {
+                play(all.get(i - 1));
+                return;
+            }
+        }
+        if (player != null) player.seekTo(0);
+    }
+
+    // ---- episodes -----------------------------------------------------------------------------------------------
+
+    @Override public void play(Catalog.Episode e) {
+        if (e == null || episode != null && e.id.equals(episode.id)) {
+            setOverlay(false);
             return;
         }
-        episode = next;
-        startAt = 0;
-        // The next episode: straight away, from its best copy (as the phone's).
+        // The place in this one kept; that one from where it was left (or its start), from the copy it was started on.
+        save();
+        Resume.Point p = Resume.get(this, title.key, e.id);
+        long from = p != null && p.duration > 0 && p.position < p.duration * 0.95f ? p.position : 0;
+        switchEpisode(e, from, true);
+    }
+
+    @Override public float progress(Catalog.Episode e) {
+        Float p = watched.get(e.id);
+        return p == null ? -1f : p;
+    }
+
+    @Override public void closed() {
+        setOverlay(true);
+    }
+
+    private void switchEpisode(Catalog.Episode e, long from, boolean fromItsCopy) {
+        episode = e;
+        startAt = from;
         choose = false;
-        resume = false;
+        resume = fromItsCopy;
+        upNext = NEXT_NONE;
+        ended = false;
+        cancelSeek();
         if (player != null) player.stop();
+        if (Exec.inline) previewPos = from;
+        setOverlay(false);
         start();
     }
+
+    /** The next episode, now: this one counted as watched (skipping its credits), the next straight from its best copy. */
+    private void playNext() {
+        if (nextUp == null || title == null) {
+            stop();
+            return;
+        }
+        Catalog.Episode next = nextUp;
+        if (!ended) {
+            // Off Continue watching, the next episode on it instead.
+            Resume.save(this, point(Long.MAX_VALUE / 4, Long.MAX_VALUE / 4));
+            Resume.upNext(this, point(next, 0, next.minutes * 60_000L));
+        }
+        switchEpisode(next, 0, false);
+    }
+
+    /** Pure: how long before an episode's end Up next comes (its credits): a fortieth of it, between 25 s and a minute. */
+    static long credits(long durationMs) {
+        return Math.max(25_000L, Math.min(60_000L, durationMs / 40));
+    }
+
+    /** Up next's card once the credits come (or at the end); its countdown run out: the next one plays. */
+    private void checkUpNext() {
+        if (nextUp == null || !ready) return;
+        long dur = duration(), pos = position();
+        if (dur <= 0) return;
+        long credits = credits(dur);
+        boolean inCredits = pos >= dur - credits;
+        if (upNext == NEXT_NONE && inCredits && !ended && !overlayOn && !panels.open() && !episodes.isOpen()
+                && (picker == null || !picker.isOpen()) && seekTo < 0) {
+            startUpNext();
+        } else if (upNext != NEXT_NONE && !ended && pos < dur - credits - 5_000) {
+            // Gone back before the credits: it may come again.
+            upNext = NEXT_NONE;
+            placeSubs();
+            overlay.invalidate();
+        }
+        if (upNext == NEXT_COUNTING && SystemClock.elapsedRealtime() >= countdownEnd) playNext();
+    }
+
+    private void startUpNext() {
+        if (nextUp == null) return;
+        boolean auto = OtherPrefs.autoplayNext(this);
+        upNext = auto ? NEXT_COUNTING : NEXT_WAITING;
+        countdownEnd = SystemClock.elapsedRealtime() + COUNTDOWN_MS;
+        placeSubs();
+        overlay.invalidate();
+    }
+
+    boolean upNextShowing() {
+        return (upNext == NEXT_COUNTING || upNext == NEXT_WAITING) && nextUp != null;
+    }
+
+    Catalog.Episode upNextEpisode() {
+        return nextUp;
+    }
+
+    String upNextPicture() {
+        if (nextUp == null) return "";
+        if (!nextUp.still.isEmpty()) return nextUp.still;
+        return details != null && !details.backdrop.isEmpty() ? details.backdrop : title == null ? "" : title.backdrop;
+    }
+
+    /** The countdown's seconds left, or -1 without one. */
+    int upNextSeconds() {
+        if (upNext != NEXT_COUNTING) return -1;
+        long left = Math.max(0, countdownEnd - SystemClock.elapsedRealtime());
+        return (int) ((left + 999) / 1000);
+    }
+
+    /** How far the countdown has gone (0 to 1), or -1 without one. */
+    float upNextShare() {
+        if (upNext != NEXT_COUNTING) return -1f;
+        long left = Math.max(0, countdownEnd - SystemClock.elapsedRealtime());
+        return 1f - left / (float) COUNTDOWN_MS;
+    }
+
+    String upNextTitle(TextPaint p, float w) {
+        if (w != nextTitleFor) {
+            nextTitleFit = Ui.fit(nextTitle, p, w);
+            nextTitleFor = w;
+        }
+        return nextTitleFit;
+    }
+
+    String upNextSub(TextPaint p, float w) {
+        if (w != nextSubFor) {
+            nextSubFit = Ui.fit(nextSub, p, w);
+            nextSubFor = w;
+        }
+        return nextSubFit;
+    }
+
+    // ---- what the player says ---------------------------------------------------------------------------------------
 
     private final Player.Listener listener = new Player.Listener() {
         @Override public void onPlaybackStateChanged(int s) {
@@ -628,25 +1411,40 @@ public final class VodActivity extends Activity {
                 // Watched to the end: off Continue watching, the next episode on it instead.
                 if (title != null) {
                     Resume.save(VodActivity.this, point(Long.MAX_VALUE / 4, Long.MAX_VALUE / 4));
-                    Catalog.Episode next = details == null || episode == null ? null : details.after(episode);
-                    if (next != null) {
-                        String pic = !next.still.isEmpty() ? next.still : details.backdrop;
-                        Resume.upNext(VodActivity.this, new Resume.Point(title.key, next.id, title.name,
-                                "S" + next.season + " E" + next.number + (next.title.isEmpty() ? "" : "  ·  " + next.title), pic, 0,
-                                next.minutes * 60_000L, System.currentTimeMillis()));
-                        nextQueued = true;
-                        // Settings → Other → VOD → Autoplay next episode: on by itself after a few seconds, else on OK.
-                        if (com.gathin.homefieldtv.prefs.OtherPrefs.autoplayNext(VodActivity.this)) h.postDelayed(nextEpisode, 10_000);
+                    if (nextUp != null) {
+                        Resume.upNext(VodActivity.this, point(nextUp, 0, nextUp.minutes * 60_000L));
+                        // Settings → Other → VOD → Autoplay next episode: on by itself after the countdown, else on OK.
+                        if (upNext == NEXT_CANCELLED) {
+                            upNext = NEXT_WAITING;
+                        } else if (upNext != NEXT_COUNTING) {
+                            startUpNext();
+                        }
+                        setOverlay(false);
                     } else {
                         h.postDelayed(VodActivity.this::finish, 1500);
                     }
                 }
             }
-            showBar();
+            overlay.invalidate();
         }
 
         @Override public void onIsPlayingChanged(boolean playing) {
-            showBar();
+            poke();
+            overlay.invalidate();
+        }
+
+        @Override public void onTracksChanged(@NonNull Tracks tracks) {
+            List<String> words = new ArrayList<>();
+            int chosen = VodPanels.audioTracks(player, words, null);
+            String was = audioWords;
+            audioWords = chosen >= 0 ? shortAudio(words.get(chosen)) : "";
+            subs.tracksChanged();
+            if (!was.equals(audioWords)) refreshValues();
+            if (panels.kind() == VodPanels.AUDIO) panels.refresh();
+        }
+
+        @Override public void onCues(@NonNull CueGroup cueGroup) {
+            subs.cues(cueGroup.cues);
         }
 
         @Override public void onPlayerError(@NonNull PlaybackException e) {
@@ -659,16 +1457,20 @@ public final class VodActivity extends Activity {
                 prepare(false);
                 return;
             }
-            // The next copy (TorBox's others, then the playlists'), from where it was to start.
+            // The next copy (TorBox's others, then the playlists'), from the moment this one had reached.
             if (at + 1 < plays.size()) {
+                long reached = player.getCurrentPosition() > 0 ? player.getCurrentPosition() : lastPos;
+                if (ready && reached > 0) startAt = reached;
                 at++;
+                ready = false;
+                say(sourceStopped(current()));
                 prepare(true);
                 return;
             }
             error = e.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS
                     ? "Your provider didn't send it. OK to try again." : "It didn't play. OK to try again.";
             release();
-            bar.invalidate();
+            overlay.invalidate();
         }
 
         @Override public void onVideoSizeChanged(@NonNull VideoSize size) {
@@ -679,149 +1481,17 @@ public final class VodActivity extends Activity {
         }
     };
 
-    // ---- the playback bar ---------------------------------------------------------------------------------------
+    /** Pure: the note when a copy stops: "That copy stopped  ·  carrying on from TorBox · 4K". */
+    static String sourceStopped(Catalog.Play next) {
+        String from = next.torbox ? TorBox.NAME : next.playlist.isEmpty() ? "another playlist" : next.playlist;
+        String q = Catalog.pictureName(next.picture);
+        return "That copy stopped  ·  carrying on from " + from + (q.isEmpty() ? "" : "  ·  " + q);
+    }
 
-    /**
-     * The bar over a film or an episode, in the dark look of catch-up's: a dark scrim rising from the foot, the title,
-     * where it plays from, a thin bar across with the part watched in white and an amber knob (pause or play in it), the
-     * time watched under the knob, the length at the bar's end, the day and time and when it ends; and at an episode's
-     * end, the next one on a dark card.
-     */
-    private final class Bar extends View {
-        private final Paint shade = new Paint(), line = Dark.fill(0x52FFFFFF), done = Dark.fill(0xF2FFFFFF);
-        private final Paint knob = Dark.fill(Dark.ACCENT), knobEdge = Dark.line(0xB3FFFFFF, 2f), icon = Dark.fill(Dark.ACCENT_INK);
-        private final Paint cardBack = Dark.fill(Dark.alpha(Dark.CARD, 0xF2)), cardEdge = Dark.line(Dark.LINE, 1.5f);
-        private final TextPaint titleP = Dark.text(34, 600, Dark.TEXT), endP = Dark.text(26, 500, Dark.SOFT);
-        private final TextPaint goneP = Dark.text(24, 600, Dark.TEXT), dayP = Dark.text(26, 500, Dark.SOFT), msgP = Dark.text(32, 500, Dark.TEXT);
-        private final TextPaint nextP = Dark.text(30, 600, Dark.TEXT), nextSmall = Dark.text(22, 400, Dark.SOFT), nextKicker = Dark.text(20, 700, Dark.ACCENT);
-        private final TextPaint factsP = Dark.text(24, 600, Dark.TEXT), hintP = Dark.text(22, 500, Dark.SOFT);
-        private final Paint hintFill = Dark.fill(Dark.SOFT);
-        private final RectF r = new RectF();
-        private final android.graphics.Path tri = new android.graphics.Path(), up = new android.graphics.Path();
-        private float shadeFor = -1;
-
-        Bar(Context c) {
-            super(c);
-            endP.setShadowLayer(Ui.f(3), 0, 0, 0x99000000);
-            titleP.setShadowLayer(Ui.f(3), 0, 0, 0x99000000);
-            goneP.setShadowLayer(Ui.f(3), 0, 0, 0x99000000);
-            factsP.setShadowLayer(Ui.f(3), 0, 0, 0x99000000);
-            hintP.setShadowLayer(Ui.f(3), 0, 0, 0x99000000);
-            msgP.setShadowLayer(Ui.f(3), 0, 0, 0x99000000);
-            nextKicker.setLetterSpacing(0.08f);
-        }
-
-        @Override protected void onDraw(Canvas c) {
-            int w = getWidth(), hh = getHeight();
-            if (!error.isEmpty()) {
-                String m = error;
-                c.drawText(m, (w - msgP.measureText(m)) / 2f, hh / 2f, msgP);
-            }
-            if (ended && nextQueued && details != null && episode != null) {
-                Catalog.Episode next = details.after(episode);
-                if (next != null) {
-                    r.set(Ui.f(1180), Ui.f(780), Ui.f(1860), Ui.f(960));
-                    c.drawRoundRect(r, Ui.f(24), Ui.f(24), cardBack);
-                    c.drawRoundRect(r, Ui.f(24), Ui.f(24), cardEdge);
-                    c.drawText("UP NEXT", r.left + Ui.f(32), r.top + Ui.f(50), nextKicker);
-                    c.drawText(Ui.fit("S" + next.season + " E" + next.number + (next.title.isEmpty() ? "" : "  " + next.title), nextP,
-                            r.width() - Ui.f(64)), r.left + Ui.f(32), r.top + Ui.f(102), nextP);
-                    c.drawText(com.gathin.homefieldtv.prefs.OtherPrefs.autoplayNext(getContext())
-                            ? "Starts in a few seconds  ·  OK to start it now" : "OK to start it", r.left + Ui.f(32), r.top + Ui.f(146), nextSmall);
-                }
-            }
-            if (!barOn || player == null && !Exec.inline) return;
-            if (shadeFor != hh) {
-                shade.setShader(new LinearGradient(0, hh * 0.5f, 0, hh, new int[]{0x00000000, 0xB8000000, 0xF2000000},
-                        new float[]{0f, 0.42f, 1f}, Shader.TileMode.CLAMP));
-                shadeFor = hh;
-            }
-            c.drawRect(0, hh * 0.5f, w, hh, shade);
-            String name = title == null ? "" : title.name + (episode == null ? "" : "  ·  S" + episode.season + " E" + episode.number
-                    + (episode.title.isEmpty() ? "" : "  " + episode.title));
-            name = Ui.fit(name, titleP, Ui.f(1400));
-            c.drawText(name, (w - titleP.measureText(name)) / 2f, Ui.f(860), titleP);
-            source(c, w);
-
-            long dur = duration();
-            long pos = seekTo >= 0 ? seekTo : position();
-            boolean known = dur > 0 && dur != C.TIME_UNSET;
-            float x0 = Ui.f(300), x1 = Ui.f(1620), y = Ui.f(913);
-            c.drawText("0m", x0 - Ui.f(26) - endP.measureText("0m"), y + Ui.f(10), endP);
-            if (known) c.drawText(length(dur), x1 + Ui.f(26), y + Ui.f(10), endP);
-            c.drawRect(x0, y - Ui.f(2), x1, y + Ui.f(2), line);
-            float p = known ? Math.max(0f, Math.min(1f, pos / (float) dur)) : 0f;
-            float kx = x0 + (x1 - x0) * p;
-            c.drawRect(x0, y - Ui.f(2), kx, y + Ui.f(2), done);
-            // The knob, in amber: play or pause in it, as the player is now.
-            c.drawCircle(kx, y, Ui.f(24), knob);
-            c.drawCircle(kx, y, Ui.f(24), knobEdge);
-            if (playing() && seekTo < 0) {
-                c.drawRect(kx - Ui.f(7), y - Ui.f(9), kx - Ui.f(2), y + Ui.f(9), icon);
-                c.drawRect(kx + Ui.f(2), y - Ui.f(9), kx + Ui.f(7), y + Ui.f(9), icon);
-            } else {
-                tri.reset();
-                tri.moveTo(kx - Ui.f(5), y - Ui.f(10));
-                tri.lineTo(kx + Ui.f(10), y);
-                tri.lineTo(kx - Ui.f(5), y + Ui.f(10));
-                tri.close();
-                c.drawPath(tri, icon);
-            }
-            String gone = gone(pos);
-            c.drawText(gone, kx - goneP.measureText(gone) / 2f, y + Ui.f(60), goneP);
-            c.drawText(Ui.dayClock(System.currentTimeMillis()), Ui.f(90), Ui.f(1030), dayP);
-            if (known && !playing()) {
-                String end = "Ends " + Ui.clock(System.currentTimeMillis() + (dur - pos));
-                c.drawText(end, w - Ui.f(90) - dayP.measureText(end), Ui.f(1030), dayP);
-            }
-        }
-
-        /**
-         * Over the title, where it is playing from (TorBox's green mark or the playlist's blue one) and what its name says
-         * ("1080p · MKV"), with Up for the other copies when there are more; nothing for a film with one copy only.
-         */
-        private void source(Canvas c, int w) {
-            // Not while the copies are listed: the list says it there.
-            if (plays.isEmpty() || plays.size() < 2 && !current().torbox || picker != null && picker.isOpen()) return;
-            Catalog.Play p = current();
-            float mh = Ui.f(36), my = Ui.f(804), most = Ui.f(380);
-            String facts = SourcePicker.facts(p), more = plays.size() > 1 ? "Change source" : "";
-            float mw = mark.width(mh, p.torbox, p.playlist, most);
-            float fw = facts.isEmpty() ? 0f : Ui.f(16) + factsP.measureText(facts);
-            float hw = more.isEmpty() ? 0f : Ui.f(40) + Ui.f(26) + hintP.measureText(more);
-            float x = (w - mw - fw - hw) / 2f;
-            mark.draw(c, x, my, mh, p.torbox, p.playlist, most);
-            x += mw;
-            if (!facts.isEmpty()) {
-                c.drawText(facts, x + Ui.f(16), my + Ui.f(9), factsP);
-                x += fw;
-            }
-            if (!more.isEmpty()) {
-                // A small triangle pointing up: the key that lists them.
-                float tx = x + Ui.f(40), s = Ui.f(9);
-                up.reset();
-                up.moveTo(tx, my - s);
-                up.lineTo(tx + s * 1.2f, my + s * 0.8f);
-                up.lineTo(tx - s * 1.2f, my + s * 0.8f);
-                up.close();
-                c.drawPath(up, hintFill);
-                c.drawText(more, tx + Ui.f(20), my + Ui.f(9), hintP);
-            }
-        }
-
-        /** "2h 3m". */
-        private String length(long ms) {
-            long m = Math.round(ms / 60_000.0);
-            return m >= 60 ? m / 60 + "h " + m % 60 + "m" : m + "m";
-        }
-
-        /** "1s", "12m", "1h 4m" under the knob. */
-        private String gone(long ms) {
-            long s = ms / 1000;
-            if (s < 60) return s + "s";
-            long m = s / 60;
-            return m >= 60 ? m / 60 + "h " + m % 60 + "m" : m + "m";
-        }
+    /** Pure: a sound track's words for the Audio button: "English · 5.1" (the codec left to the picker). */
+    static String shortAudio(String words) {
+        String[] parts = words.split("  ·  ");
+        return parts.length >= 2 ? parts[0] + " " + parts[1] : parts[0];
     }
 
 }
