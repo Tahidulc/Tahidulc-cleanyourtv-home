@@ -35,7 +35,8 @@ public final class EditorStill {
         p.setShader(null);
         p.setColor(0x22FFFFFF);
         for (float y = h * 0.06f; y < horizon - 4; y += Math.max(3f, h * 0.025f)) c.drawRect(0, y, w, y + Math.max(1f, h * 0.006f), p);
-        // The pitch: mown stripes, lighter toward the camera.
+        // The pitch: mown stripes, lighter toward the camera (the paint opaque: its alpha would dim the shader).
+        p.setColor(0xFFFFFFFF);
         p.setShader(new LinearGradient(0, horizon, 0, h, 0xFF2C6B32, 0xFF3F8F45, Shader.TileMode.CLAMP));
         c.drawRect(0, horizon, w, h, p);
         p.setShader(null);
@@ -60,6 +61,7 @@ public final class EditorStill {
         c.drawOval(w * 0.36f, h * 0.55f, w * 0.64f, h * 0.82f, p);
         p.setStyle(Paint.Style.FILL);
         // The floodlights' glow.
+        p.setColor(0xFFFFFFFF);
         p.setShader(new RadialGradient(w * 0.82f, h * 0.05f, w * 0.5f, 0x40FFF4D6, 0x00FFF4D6, Shader.TileMode.CLAMP));
         c.drawRect(0, 0, w, h, p);
         p.setShader(new LinearGradient(0, 0, 0, h, 0x33000000, 0x00000000, Shader.TileMode.CLAMP));

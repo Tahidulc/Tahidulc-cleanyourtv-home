@@ -45,6 +45,8 @@ final class MyBoardsRow {
             row.removeAllViews();
             String inUse = ScoreBoard.customId(c);
             List<MyBoards.Saved> all = MyBoardStore.all(c);
+            // The one in use first.
+            all.sort((x, y) -> Boolean.compare(y.id.equals(inUse), x.id.equals(inUse)));
             for (MyBoards.Saved s : all) {
                 LinearLayout one = frame(c, s.id.equals(inUse) ? "✓  " + s.name : s.name, s.id.equals(inUse));
                 OverlayBug b = BoardEditor.tile(c, s.spec);

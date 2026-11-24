@@ -26,7 +26,11 @@ public final class BoardPaint {
             Typeface t = FONTS.get(f);
             if (t != null) return t;
             try {
-                t = Typeface.createFromAsset(c.getAssets(), f.asset);
+                // Outfit is one variable file: taken at its heavy weight, as the boards' own lettering is.
+                t = f == BoardSpec.Font.OUTFIT
+                        ? new Typeface.Builder(c.getAssets(), f.asset).setFontVariationSettings("'wght' 800").build()
+                        : Typeface.createFromAsset(c.getAssets(), f.asset);
+                if (t == null) t = Typeface.createFromAsset(c.getAssets(), f.asset);
             } catch (RuntimeException e) {
                 t = Typeface.create(Typeface.DEFAULT, Typeface.BOLD);
             }

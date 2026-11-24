@@ -57,10 +57,16 @@ final class BoardEditor {
 
     /** The editor: on a saved board (its id), or a new one from start (null: Classic's own). */
     static BottomSheetDialog open(Activity a, String id, BoardSpec start, Game game, Live live) {
+        return open(a, id, start, game, live, null);
+    }
+
+    /** The same, with a word at its top (where the board came from: "Claude's design: …"). */
+    static BottomSheetDialog open(Activity a, String id, BoardSpec start, Game game, Live live, String note) {
         MyBoards.Saved saved = id == null ? null : MyBoardStore.get(a, id);
         BoardSpec first = saved != null ? saved.spec : start != null ? start : BoardSpec.of(BoardSpec.Base.CLASSIC);
         State st = new State(a, saved == null ? null : saved.id, first, brief(game), live);
         View v = st.build();
+        if (note != null) st.note(note);
         BottomSheetDialog d = Sheets.open(a, v, false);
         st.dialog = d;
         d.setOnDismissListener(x -> {
@@ -137,7 +143,7 @@ final class BoardEditor {
         final Live live;
         BottomSheetDialog dialog;
         OverlayBug preview;
-        TextView warning, slotName, hexNow;
+        TextView warning, slotName, hexNow, said;
         EditText name, hex;
         SeekBar hue, sat, val, corners, border;
         LinearLayout swatches, suggestions, slots;
@@ -172,6 +178,10 @@ final class BoardEditor {
             TextView title = Ui.text(c, id == null ? "Scoreboard editor" : "Edit your scoreboard", 20, Ui.TEXT, true);
             top.addView(title);
             top.addView(Ui.text(c, "Shown live over a made-up match, and on your board while you watch.", 13, Ui.DIM, false));
+            said = Ui.text(c, "", 14, 0xFF3DDC84, true);
+            said.setPadding(0, Ui.dp(c, 6), 0, 0);
+            said.setVisibility(View.GONE);
+            top.addView(said);
             top.addView(stage(wide), new LinearLayout.LayoutParams(-1, Ui.dp(c, wide ? 190 : 170)));
             top.addView(moments());
             warning = Ui.text(c, "", 13, 0xFFFFC93C, false);
@@ -417,6 +427,7 @@ final class BoardEditor {
                 ed.load(s);
                 name.setText(s.name);
                 changed(true);
+                note("Claude's design: " + s.name + ". Change anything, then Save.");
             }));
             col.addView(ask, topGap());
 
@@ -453,6 +464,12 @@ final class BoardEditor {
                         .setNegativeButton("Keep", null).show());
                 saves.addView(del, gap());
             }
+        }
+
+        /** A word at the editor's top. */
+        void note(String s) {
+            said.setText(s);
+            said.setVisibility(s == null || s.isEmpty() ? View.GONE : View.VISIBLE);
         }
 
         private void save(boolean use) {

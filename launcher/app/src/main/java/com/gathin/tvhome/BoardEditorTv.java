@@ -272,7 +272,7 @@ final class BoardEditorTv {
             still.setImageBitmap(EditorStill.pitch(px(708), px(220)));
             stage.addView(still, new FrameLayout.LayoutParams(-1, -1));
             preview = BoardEditorTv.board(c, ed.live(), px(40));
-            FrameLayout.LayoutParams bp = new FrameLayout.LayoutParams(-2, px(46), Gravity.TOP | Gravity.START);
+            FrameLayout.LayoutParams bp = new FrameLayout.LayoutParams(px(470), px(46), Gravity.TOP | Gravity.START);
             bp.leftMargin = px(22);
             bp.topMargin = px(22);
             stage.addView(preview, bp);

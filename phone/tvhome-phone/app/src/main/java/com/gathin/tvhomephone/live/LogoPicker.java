@@ -56,7 +56,7 @@ final class LogoPicker {
         col.setBackgroundColor(PANEL);
         int pad = Ui.dp(c, 18);
         col.setPadding(pad, pad, pad, Ui.dp(c, 28));
-        col.addView(Ui.text(c, "Logo for " + ch.name, 20, Ui.TEXT, true));
+        col.addView(Ui.text(c, "Logo for " + LogoDesigner.plain(ch.name), 20, Ui.TEXT, true));
 
         // Now: the logo it has, and the playlist's own back.
         LinearLayout now = new LinearLayout(c);
