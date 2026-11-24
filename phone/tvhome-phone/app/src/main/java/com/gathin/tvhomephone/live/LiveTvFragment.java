@@ -262,7 +262,10 @@ public class LiveTvFragment extends Fragment {
         Details.Actions actions = actions();
         if (mode == COMPACT) {
             details = new Details(c, lib, true, 2);
-            head.addView(details, new LinearLayout.LayoutParams(-1, -2));
+            // A rounded panel with the programme's picture, a little in from the edges as the picture above it.
+            LinearLayout.LayoutParams dp = new LinearLayout.LayoutParams(-1, -2);
+            dp.setMargins(Ui.dp(c, 12), Ui.dp(c, 6), Ui.dp(c, 12), Ui.dp(c, 6));
+            head.addView(details, dp);
         } else if (mode == TOP) {
             band = new LinearLayout(c);
             // A panel of tinted glass, rounded, a little in from the edges (07's mat).

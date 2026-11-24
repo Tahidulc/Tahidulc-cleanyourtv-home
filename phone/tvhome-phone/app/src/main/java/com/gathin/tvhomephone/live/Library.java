@@ -919,12 +919,13 @@ public final class Library {
     private void writeGuide() {
         File f = file("guide.tsv"), tmp = file("guide.tsv.tmp");
         try (Writer w = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(tmp), StandardCharsets.UTF_8), 64 * 1024)) {
-            w.write("v2\t" + fingerprint + "\t" + guideAt + "\n");
+            // v3: each programme's picture after its description.
+            w.write("v3\t" + fingerprint + "\t" + guideAt + "\n");
             for (Map.Entry<String, Guide.Schedule> e : guide.entrySet()) {
                 Guide.Schedule s = e.getValue();
                 for (int i = 0; i < s.start.length; i++) {
                     w.write(cell(e.getKey()) + "\t" + s.start[i] + "\t" + s.stop[i] + "\t" + cell(s.title[i]) + "\t"
-                            + cell(s.desc[i]) + "\n");
+                            + cell(s.desc[i]) + "\t" + cell(s.pic(i)) + "\n");
                 }
             }
         } catch (IOException e) {
@@ -967,30 +968,33 @@ public final class Library {
         File f = file("guide.tsv");
         if (!f.exists()) return;
         Map<String, Guide.Builder> b = new HashMap<>();
+        PicLinks.Builder links = new PicLinks.Builder();
         long at;
         long now = System.currentTimeMillis();
         try (BufferedReader r = new BufferedReader(new InputStreamReader(new FileInputStream(f), StandardCharsets.UTF_8), 64 * 1024)) {
             String head = r.readLine();
             String[] h = head == null ? new String[0] : head.split("\t", -1);
-            // v1 had no descriptions.
-            boolean v2 = h.length >= 3 && "v2".equals(h[0]);
+            // v1 had no descriptions, v2 no pictures.
+            boolean v3 = h.length >= 3 && "v3".equals(h[0]), v2 = v3 || h.length >= 3 && "v2".equals(h[0]);
             if (h.length < 3 || !(v2 || "v1".equals(h[0])) || !fp.equals(h[1])) return;
             at = Long.parseLong(h[2]);
             Map<String, String> pool = new HashMap<>();
             for (String line; (line = r.readLine()) != null; ) {
-                String[] c = line.split("\t", v2 ? 5 : 4);
+                String[] c = line.split("\t", v3 ? 6 : v2 ? 5 : 4);
                 if (c.length < 4) continue;
                 long stop = Long.parseLong(c[2]);
                 if (stop < now - Guide.BEHIND_MS) continue;
                 Guide.Builder bl = b.get(c[0]);
                 if (bl == null) b.put(c[0], bl = new Guide.Builder());
-                bl.add(Long.parseLong(c[1]), stop, shared(pool, c[3]), c.length > 4 ? shared(pool, c[4]) : "");
+                bl.add(Long.parseLong(c[1]), stop, shared(pool, c[3]), c.length > 4 ? shared(pool, c[4]) : "",
+                        c.length > 5 ? links.add(c[5]) : -1);
             }
         } catch (IOException | NumberFormatException e) {
             return;
         }
+        PicLinks all = links.build();
         Map<String, Guide.Schedule> g = new HashMap<>();
-        for (Map.Entry<String, Guide.Builder> e : b.entrySet()) g.put(e.getKey(), e.getValue().build());
+        for (Map.Entry<String, Guide.Builder> e : b.entrySet()) g.put(e.getKey(), e.getValue().build(all));
         guide = g;
         guideAt = at;
     }
