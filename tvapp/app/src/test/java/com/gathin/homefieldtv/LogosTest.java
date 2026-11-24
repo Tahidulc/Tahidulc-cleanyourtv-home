@@ -16,6 +16,7 @@ import android.graphics.RectF;
 
 import com.gathin.broadcast.LogoColour;
 import com.gathin.homefieldtv.engine.Channel;
+import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.LogoMatch;
 
 import org.junit.Test;
@@ -28,8 +29,8 @@ import org.robolectric.annotation.GraphicsMode;
 /**
  * Channel logos (Logos), as the family asked: each logo's tile in the logo's own colour (the shared rule, LogoColour,
  * so a channel has the same colour on the TV, the phone and the launcher), a logo with no real colour on the neutral
- * slate; its channel's cell in the same colour (ChannelLook); None: the logo bare, a faint one with the shared soft
- * halo, never a box; and the setting, Logo's colour as it comes.
+ * slate; its channel's cell in the same colour held deep (ChannelLook); None: the logo bare, a faint one with the shared
+ * soft halo, never a box; and the setting, Logo's colour as it comes.
  */
 @RunWith(RobolectricTestRunner.class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -78,29 +79,36 @@ public class LogosTest {
         assertEquals("still blue", hue(navy), hue(t.tile), 20f);
     }
 
-    @Test public void aChannelsCellIsItsLogosRowColourOrThePlainRow() {
+    @Test public void aChannelsCellIsItsLogosDeepRowColourOrNothingBehind() {
         Context c = RuntimeEnvironment.getApplication();
         Ui.init(c);
         c.getSharedPreferences("look", Context.MODE_PRIVATE).edit().clear().commit();
         try {
             Logos.load(c);
+            // Its logo can't be read here (no network): read at once, so nothing waits on a reader.
+            Exec.inline = true;
             Channel red = new Channel("t:red", "Red One", "", "test:red", "", "", null, null, 1);
             // Not read yet: the slate's cell, so the column keeps its shape while the logos come.
-            assertEquals(Logos.Tint.WAITING.cell, ChannelLook.colour(red));
+            assertEquals(Logos.Tint.WAITING.row, ChannelLook.colour(red));
             Logos.Tint t = Logos.colours("test:red", logo(0xFFE2401E, 120, 60));
-            assertEquals(t.cell, ChannelLook.colour(red));
-            // Its words stay white on it, where the remote is or not; the cell is drawn in its colour.
+            assertEquals(t.row, ChannelLook.colour(red));
+            assertEquals("the shared row's hue", hue(t.cell), hue(t.row), 6f);
+            // The cell is drawn in that colour, opaque, where the remote is or not.
             Bitmap b = Bitmap.createBitmap(300, 100, Bitmap.Config.ARGB_8888);
             Canvas cv = new Canvas(b);
-            assertEquals(Look07.L1, ChannelLook.fillCell(cv, new RectF(20, 20, 280, 80), red, false));
-            assertEquals(hue(t.cell), hue(b.getPixel(150, 50)), 12f);
-            assertEquals(Look07.L1, ChannelLook.fillCell(cv, new RectF(20, 20, 280, 80), red, true));
-            // None and Black tile: the plain row, the white pill with dark words where the remote is.
+            ChannelLook.cell(cv, new RectF(20, 20, 280, 80), 20f, red, 0f, 0, "", false, null);
+            int px = b.getPixel(30, 50);
+            assertEquals(0xFF, px >>> 24);
+            assertEquals(hue(t.row), hue(px), 12f);
+            ChannelLook.cell(cv, new RectF(20, 20, 280, 80), 20f, red, 1f, 0, "", false, null);
+            assertEquals(0xFF, b.getPixel(30, 50) >>> 24);
+            // None: nothing behind the logo (the plain row); Black tile: the cell black.
             Logos.setBehind(c, Logos.NONE);
             assertEquals(0, ChannelLook.colour(red));
-            assertEquals(Look07.INK, ChannelLook.fillCell(cv, new RectF(20, 20, 280, 80), red, true));
-            assertEquals(Look07.L1, ChannelLook.fillCell(cv, new RectF(20, 20, 280, 80), red, false));
+            Logos.setBehind(c, Logos.BLACK);
+            assertEquals(0xFF000000, ChannelLook.colour(red));
         } finally {
+            Exec.inline = false;
             c.getSharedPreferences("look", Context.MODE_PRIVATE).edit().clear().commit();
             Logos.load(c);
         }
