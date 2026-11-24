@@ -83,6 +83,20 @@ public final class Tmdb {
     }
 
     /**
+     * One TMDB path read and not kept (Live TV's programme pictures look up many titles once each, and keep only what
+     * they found themselves: ProgArt).
+     */
+    public static JSONObject once(Context c, String path) throws IOException {
+        String key = Tvs.tmdbKey(c);
+        if (key == null) throw new Failed("No TMDB key yet: pair with a TV");
+        try {
+            return new JSONObject(Net.get(API + path + (path.contains("?") ? "&" : "?") + "api_key=" + key));
+        } catch (IOException | JSONException e) {
+            throw new Failed("TMDB didn't answer");
+        }
+    }
+
+    /**
      * One TMDB path, taken from the copy kept on disk while it is younger than keepMs (a title's details hardly change),
      * else read as get() reads it. Home's picks use it so a cold start doesn't read every title again.
      */

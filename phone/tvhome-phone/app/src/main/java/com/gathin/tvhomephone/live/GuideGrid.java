@@ -37,8 +37,11 @@ import java.util.TimeZone;
  * The TV guide's grid, in Homefield TV 2.0's 07 look made for a finger (TvLook): on the TV section's softly lit ground
  * (TvGround), the day in amber at the top left and the times across with an amber dot at now; each channel a row of
  * rounded cards, its logo on a raised tile in the logo's own colour at the row's start (or as it is, or on a black tile:
- * LogoTiles; a star on a favourite), and its programmes as cards of frosted glass after it, what's on now a little
- * brighter with a white line for how far in it is, the one chosen ringed in white and lifted, one pressed lifting under
+ * LogoTiles; a star on a favourite), and its programmes as cards after it, each filled by the programme's own picture
+ * as Homefield TV's are (ProgArt finds it, ProgPics makes it at the card's size with its faces whole, PicDraw draws it
+ * with a soft shade under the words only; a card too small for its faces in the picture's own colour; with no picture,
+ * the channel's logo on its colour; frosted glass while one is looked for), what's on now brighter (the rest a little
+ * dimmer) with a white line for how far in it is, the one chosen ringed in white and lifted, one pressed lifting under
  * the finger; the channel's name with its picture's tag and each start time over the titles, in Inter. One RecyclerView of rows,
  * each row one view that draws its blocks from a shared horizontal offset, so twenty thousand channels and a day of
  * guide stay smooth: no view per programme. A sideways drag or fling moves every row and the ruler together; up and
@@ -349,7 +352,16 @@ final class GuideGrid extends FrameLayout {
         }
     }
 
+    /** Every row drawn again as programmes' pictures are found (ProgArt). */
+    private final Runnable artFound = this::invalidateAll;
+
+    @Override protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        ProgArt.listen(artFound);
+    }
+
     @Override protected void onDetachedFromWindow() {
+        ProgArt.unlisten(artFound);
         removeCallbacks(fling);
         if (tracker != null) {
             tracker.recycle();
@@ -374,11 +386,19 @@ final class GuideGrid extends FrameLayout {
                 badge = fill(TvLook.L3), nowMark = fill(TvLook.AMBER), rim = fill(TvLook.RIM), hair = fill(TvLook.TOP),
                 track = fill(TvLook.TRACK), done = fill(TvLook.L1), pressed = fill(0x1AFFFFFF);
         final Paint title, titleInk, small, smallName, badgeText, ruler, rulerNow;
-        final RectF rect = new RectF(), tag = new RectF(), bar = new RectF();
+        final RectF rect = new RectF(), tag = new RectF(), bar = new RectF(), logoBox = new RectF();
         final char[] buf = new char[24];
         final float gap, radius, pad, minText, one, ringW, badgePad, badgeR, lineH, lineIn, lift, dot;
+        /** The programmes' pictures: drawn (PicDraw), the plain and dimming washes, the logo's paint. */
+        final PicDraw art;
+        final Paint plain = fill(0), wash = fill(0), logoPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        /** A card narrower than picMin takes no picture (its colour); none is made wider than cap (the screen). */
+        final float picMin, cap;
 
         State(Context c, boolean wide) {
+            art = new PicDraw(c);
+            picMin = Ui.dp(c, 40);
+            cap = Math.max(c.getResources().getDisplayMetrics().widthPixels, c.getResources().getDisplayMetrics().heightPixels);
             // Rounded blocks a little apart, each in a deep colour of its own, as cards in a row.
             gap = Ui.dp(c, 3);
             radius = Ui.dp(c, 11);
@@ -472,6 +492,8 @@ final class GuideGrid extends FrameLayout {
         private float topY, titleY, tapX = -1;
         /** Where a finger is pressing (the card under it lifts), or below 0. */
         private float pressX = -1;
+        /** Drawn again as a picture is made (ProgPics). */
+        private final Runnable redraw = this::invalidate;
 
         Blocks(Context c, State st) {
             super(c);
@@ -573,10 +595,18 @@ final class GuideGrid extends FrameLayout {
             boolean on = s.start[i] <= now && now < s.stop[i];
             boolean sel = mine && s.start[i] == st.selStart;
             boolean pressed = pressX >= 0 && pressX >= l && pressX < r;
-            card(cv, left, right, h, on, sel, pressed);
+            // The programme's picture filling the card (Homefield TV's cells), the words over a shade at its left; the
+            // glass card as before while it is looked for or read.
+            float tx = left + st.pad, end = right - st.pad;
+            String title = s.title[i].isEmpty() ? "—" : s.title[i];
+            float wordsEnd = end - tx >= st.minText ? words(tx, end, s.start[i], title) + st.pad * 0.6f : left;
+            float k = sel || pressed ? 0 : st.lift;
+            st.rect.set(left + k, k, right - k, h - k);
+            boolean past = s.stop[i] <= now;
+            if (picture(cv, s, i, r - l - 2 * st.gap, h, on, sel, past, wordsEnd)) edges(cv, sel, pressed);
+            else card(cv, left, right, h, on, sel, pressed);
             if (on) {
                 // How far in it is: a white line on a soft track along the card's foot.
-                float k = sel || pressed ? 0 : st.lift;
                 float y = h - k - st.lineIn / 2 - st.lineH;
                 float x0 = left + k + st.lineIn, x1 = right - k - st.lineIn;
                 if (x1 - x0 > st.lineIn) {
@@ -588,9 +618,138 @@ final class GuideGrid extends FrameLayout {
                 }
             }
             // The writing starts inside the card and stays in sight while the card runs on.
-            float tx = left + st.pad, end = right - st.pad;
             if (end - tx < st.minText) return;
-            writing(cv, tx, end, s.start[i], s.title[i].isEmpty() ? "—" : s.title[i], sel ? 1 : 0);
+            writing(cv, tx, end, s.start[i], title, sel ? 1 : 0);
+        }
+
+        /**
+         * The programme's picture filling st.rect (full: the whole programme's card width, the size it is made at),
+         * dimmer when it isn't on (more so once shown; the one chosen as on), the shade under the words; with none, the
+         * channel's own picture: its logo on its colour. False while it is looked for or read (the glass card then).
+         */
+        private boolean picture(Canvas cv, Guide.Schedule s, int i, float full, float h, boolean on, boolean sel, boolean past,
+                                float wordsEnd) {
+            Context c = getContext();
+            RectF rc = st.rect;
+            String url = ProgArt.of(c, ch, s, i);
+            if (url == null) return false;
+            if (url.isEmpty()) return logoCard(cv, on, sel, past, wordsEnd);
+            if (rc.width() < st.picMin) {
+                // Too small for a picture: its own colour, clean (once it has been read for a larger cell).
+                int col = ProgPics.colourOf(url);
+                if (col == 0) return false;
+                plain(cv, col, on, sel, past);
+                return true;
+            }
+            int fw = Math.round(Math.min(st.cap, Math.max(rc.width(), full))), fh = Math.round(h);
+            ProgPics.Made m = ProgPics.get(c, url, fw, fh, ProgPics.FILL, redraw);
+            if (m == null) return false;
+            if (m == ProgPics.NONE) return logoCard(cv, on, sel, past, wordsEnd);
+            if (m.b != null && st.art.place(rc, m, wordsEnd, st.pad)) {
+                st.art.fill(cv, rc, st.radius, m);
+            } else if (!st.art.ground(cv, rc, st.radius, m)) {
+                // Its faces would be cut at this size, or under the words: its own colours, never half a face.
+                plain(cv, m.colour, on, sel, past);
+                return true;
+            }
+            wash(cv, on, sel, past);
+            st.art.shade(cv, rc, st.radius, wordsEnd, on);
+            return true;
+        }
+
+        /** A card in one colour (a picture's own, too small for it). */
+        private void plain(Canvas cv, int colour, boolean on, boolean sel, boolean past) {
+            st.plain.setColor(colour | 0xFF000000);
+            cv.drawRoundRect(st.rect, st.radius, st.radius, st.plain);
+            wash(cv, on, sel, past);
+        }
+
+        /** Dimmer when it isn't on now (or chosen), more so once it has been shown: what's on keeps the brighter look. */
+        private void wash(Canvas cv, boolean on, boolean sel, boolean past) {
+            if (on || sel) return;
+            st.wash.setColor(past ? 0x7A000000 : 0x40000000);
+            cv.drawRoundRect(st.rect, st.radius, st.radius, st.wash);
+        }
+
+        /**
+         * The channel's own picture for a programme with none: the card in its logo's colour (as the logo's tile, Behind
+         * logos), the logo after the words where there is room; false with Behind logos set to None (the glass then).
+         */
+        private boolean logoCard(Canvas cv, boolean on, boolean sel, boolean past, float wordsEnd) {
+            if (ch == null) return false;
+            Context c = getContext();
+            String logo = ch.logo;
+            int top, foot;
+            if (logo.isEmpty()) {
+                top = foot = GuideLook.nameColour(ch.name);
+            } else {
+                int[] cols = LogoTiles.now(c, logo);
+                top = cols[0];
+                foot = cols[1];
+            }
+            if (top == 0 && foot == 0) return false;
+            RectF rc = st.rect;
+            st.plain.setColor(top | 0xFF000000);
+            cv.drawRoundRect(rc, st.radius, st.radius, st.plain);
+            if (foot != top) {
+                // Its foot in the tile's lower colour, softly: the tile's gradient without a shader per card.
+                st.wash.setColor(foot & 0x00FFFFFF | 0x80000000);
+                float mid = rc.top + rc.height() * 0.55f;
+                cv.save();
+                cv.clipRect(rc.left, mid, rc.right, rc.bottom);
+                cv.drawRoundRect(rc, st.radius, st.radius, st.wash);
+                cv.restore();
+            }
+            float lh = rc.height() * 0.5f, lw = lh * 2.2f, free = rc.right - Math.max(rc.left, wordsEnd) - st.pad;
+            if (!logo.isEmpty() && free >= lw + st.pad) {
+                ProgPics.Made m = ProgPics.get(c, logo, Math.round(lw), Math.round(lh), ProgPics.LOGO, redraw);
+                if (m != null && m.b != null) {
+                    float bw = m.b.getWidth(), bh = m.b.getHeight();
+                    float cx = Math.max(rc.left, wordsEnd) + free / 2f + st.pad / 2f, cy = rc.centerY();
+                    st.logoBox.set(cx - bw / 2f, cy - bh / 2f, cx + bw / 2f, cy + bh / 2f);
+                    st.logoPaint.setAlpha(on || sel ? 235 : 190);
+                    cv.drawBitmap(m.b, null, st.logoBox, st.logoPaint);
+                }
+            }
+            wash(cv, on, sel, past);
+            return true;
+        }
+
+        /** Over a picture: pressed, its wash; its rim and the bright hairline along its top; chosen, the white ring. */
+        private void edges(Canvas cv, boolean sel, boolean pressed) {
+            float rad = st.radius;
+            if (pressed) cv.drawRoundRect(st.rect, rad, rad, st.pressed);
+            float half = st.one / 2;
+            st.rect.inset(half, half);
+            cv.drawRoundRect(st.rect, rad, rad, st.rim);
+            if (st.rect.width() > rad * 2) cv.drawLine(st.rect.left + rad, st.rect.top, st.rect.right - rad, st.rect.top, st.hair);
+            st.rect.inset(-half, -half);
+            if (sel) {
+                inset(st.rect);
+                cv.drawRoundRect(st.rect, rad, rad, st.ring);
+                st.rect.inset(-st.ringW / 2, -st.ringW / 2);
+            }
+        }
+
+        /** Where the block's words end (as writing() lays them out), to shade under them. Nothing made. */
+        private float words(float tx, float end, long start, String title) {
+            float x = tx, max = end - tx;
+            if (!named) {
+                float wn = Math.min(st.smallName.measureText(name), max * 0.7f);
+                x += wn;
+                if (!quality.isEmpty() && wn > 0) {
+                    float bw = st.badgeText.measureText(quality) + 2 * st.badgePad, bx = x + st.badgePad * 1.5f;
+                    if (bx + bw < end) x = bx + bw;
+                }
+                x += st.pad * 0.8f;
+            }
+            if (start >= 0) {
+                int len = st.clock(start, 0);
+                float tw = st.small.measureText(st.buf, 0, len);
+                if (x + tw <= end) x += tw;
+            }
+            float t = tx + Math.min(max, st.title.measureText(title));
+            return Math.min(end, Math.max(x, t));
         }
 
         /**

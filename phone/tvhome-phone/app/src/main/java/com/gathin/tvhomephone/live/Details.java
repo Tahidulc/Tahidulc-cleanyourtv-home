@@ -22,7 +22,10 @@ import com.google.android.material.button.MaterialButton;
  * in it is when it's on, and what to do: Watch when it's on, Remind me when it's still to come, the favourite's star.
  * Compact on phones held upright (two lines of description, one button); fuller beside the preview and in a sheet.
  * In the TV section's 07 look (TvLook): Inter, the title semibold in white, the rest in softer greys, a white line for
- * how far in, Watch as a white pill and the rest as glass.
+ * how far in, Watch as a white pill and the rest as glass. Behind it the programme's own picture, as Homefield TV's panel
+ * has it (Art): upright, filling the rounded panel with its faces whole and clear on the right, the words down the left
+ * over a soft shade that ends before the faces; in the pane (on its side, a tablet), across its top, fading into the
+ * pane over the channel's line. With no picture, the channel's logo on its colour.
  */
 @SuppressLint("ViewConstructor")
 final class Details extends LinearLayout {
@@ -50,6 +53,16 @@ final class Details extends LinearLayout {
     private Channel ch;
     private Guide.Schedule s;
     private int i = -1;
+    /** The programme's picture behind the panel (Art), the words' column upright (null in the pane), and the picture's
+     *  place across the top in the pane (null upright). */
+    private final Art art;
+    private final LinearLayout texts;
+    private final Header header;
+    /** The picture to show: its address, "" for none (the channel's logo on its colour), null while it is looked for. */
+    private String artUrl = "";
+    private final Runnable artFound = () -> {
+        if (ch != null) showArt();
+    };
 
     Details(Context c, Library lib, boolean compact, int descLines) {
         super(c);
@@ -102,34 +115,50 @@ final class Details extends LinearLayout {
             if (ch != null && actions != null) actions.favourite(ch);
         });
 
+        art = new Art(c);
         if (compact) {
-            // Title, time and channel beside one button; the description under them.
-            LinearLayout top = new LinearLayout(c);
-            top.setGravity(Gravity.CENTER_VERTICAL);
-            LinearLayout texts = new LinearLayout(c);
+            // The programme's picture fills the panel (Homefield TV's), its faces in the part on the right: the title,
+            // time and channel, how far in, the description and the button down the left, over the picture's shade.
+            setOrientation(HORIZONTAL);
+            setPadding(Ui.dp(c, 16), Ui.dp(c, 12), 0, Ui.dp(c, 12));
+            header = null;
+            texts = new LinearLayout(c);
             texts.setOrientation(VERTICAL);
             texts.addView(title);
-            texts.addView(when);
-            top.addView(texts, new LinearLayout.LayoutParams(0, -2, 1f));
-            LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(-2, Ui.dp(c, 48));
-            bp.leftMargin = Ui.dp(c, 10);
-            top.addView(watch, bp);
-            LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-2, Ui.dp(c, 48));
-            rp.leftMargin = Ui.dp(c, 10);
-            top.addView(remind, rp);
-            addView(top);
+            LinearLayout.LayoutParams wp = new LinearLayout.LayoutParams(-1, -2);
+            wp.topMargin = Ui.dp(c, 2);
+            texts.addView(when, wp);
             LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(-1, Ui.dp(c, 3));
-            pp.topMargin = Ui.dp(c, 6);
-            addView(progress, pp);
+            pp.topMargin = Ui.dp(c, 8);
+            texts.addView(progress, pp);
             LinearLayout.LayoutParams dp = new LinearLayout.LayoutParams(-1, -2);
             dp.topMargin = Ui.dp(c, 6);
-            addView(desc, dp);
-            // Clear: the ground shows through (a ripple when tapped for the sheet).
-            setBackground(Ui.touch(c, false, 0x00000000, 16));
+            texts.addView(desc, dp);
+            LinearLayout buttons = new LinearLayout(c);
+            buttons.setGravity(Gravity.CENTER_VERTICAL);
+            LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(-2, Ui.dp(c, 44));
+            bp.rightMargin = Ui.dp(c, 8);
+            buttons.addView(watch, bp);
+            buttons.addView(remind, new LinearLayout.LayoutParams(-2, Ui.dp(c, 44)));
+            LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(-1, -2);
+            bl.topMargin = Ui.dp(c, 10);
+            texts.addView(buttons, bl);
+            addView(texts, new LinearLayout.LayoutParams(0, -2, PicFill.PANEL_ROOM));
+            addView(new View(c), new LinearLayout.LayoutParams(0, 1, 1f - PicFill.PANEL_ROOM));
+            // A rounded panel; a ripple over it when tapped for the sheet.
+            setBackground(art);
+            setForeground(new android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(0x33FFFFFF), null,
+                    Ui.round(c, Ui.TEXT, Art.RADIUS_DP)));
+            setClipToOutline(true);
             setOnClickListener(v -> {
                 if (ch != null && actions != null) actions.more(ch, i);
             });
         } else {
+            texts = null;
+            // The programme's picture across the top (its faces whole), fading into the pane at its foot.
+            header = new Header(c);
+            addView(header, new LinearLayout.LayoutParams(-1, -2));
+            setBackground(art);
             addView(head);
             LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(-1, -2);
             tp.topMargin = Ui.dp(c, 8);
@@ -199,6 +228,7 @@ final class Details extends LinearLayout {
         Context c = getContext();
         // Nothing chosen (an empty group): blank, keeping its place (its visibility is the page's to set).
         setAlpha(ch == null ? 0f : 1f);
+        showArt();
         if (ch == null) return;
         int n = lib.number(ch);
         String chan = n > 0 ? n + "  " + ch.name : ch.name;
@@ -253,6 +283,205 @@ final class Details extends LinearLayout {
             remind.setIconTint(ColorStateList.valueOf(set ? TvLook.INK : Ui.TEXT));
             remind.setTextColor(set ? TvLook.INK : Ui.TEXT);
             remind.setBackgroundTintList(ColorStateList.valueOf(set ? 0xF5FFFFFF : 0x29FFFFFF));
+        }
+    }
+
+    /** The programme's picture behind the panel, as ProgArt has it (asked again as searches finish). */
+    private void showArt() {
+        artUrl = ch == null || i < 0 ? "" : ProgArt.of(getContext(), ch, s, i);
+        art.invalidateSelf();
+    }
+
+    @Override protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        ProgArt.listen(artFound);
+    }
+
+    @Override protected void onDetachedFromWindow() {
+        ProgArt.unlisten(artFound);
+        super.onDetachedFromWindow();
+    }
+
+    /** The pane's picture across the top: as tall as HEADER_SHARE of the panel's width (within its least and most). */
+    private final class Header extends View {
+        Header(Context c) {
+            super(c);
+            setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+        }
+
+        @Override protected void onMeasure(int ws, int hs) {
+            int w = MeasureSpec.getSize(ws);
+            int full = w + Details.this.getPaddingLeft() + Details.this.getPaddingRight();
+            float d = getResources().getDisplayMetrics().density;
+            int h = Math.round(Math.max(110 * d, Math.min(230 * d, full * Art.HEADER_SHARE))) - Details.this.getPaddingTop()
+                    - Math.round(Art.UNDER_DP * d);
+            setMeasuredDimension(w, Math.max(0, h));
+        }
+    }
+
+    /**
+     * The panel's picture (Homefield TV's): upright, the programme's picture filling the rounded panel, its faces whole
+     * in the part right of the words (ProgPics.PANEL), the soft shade under the words ending before them; in the pane,
+     * the picture across its top (ProgPics.HEADER), fading into the pane at its foot. With none, the channel's own:
+     * its logo on its colour (Behind logos); while one is looked for, the panel's glass.
+     */
+    private final class Art extends android.graphics.drawable.Drawable {
+        /** The panel's corners; the pane's picture as tall as this share of its width, its faded foot this far under
+         *  the channel's line. */
+        static final float RADIUS_DP = 18f, HEADER_SHARE = 0.5f, UNDER_DP = 24f;
+        private final TvLook.Pane glass;
+        private final PicDraw draw;
+        private final android.graphics.Paint plain = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG),
+                pic = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG | android.graphics.Paint.FILTER_BITMAP_FLAG),
+                rim = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        private final android.graphics.RectF box = new android.graphics.RectF(), logoBox = new android.graphics.RectF();
+        private final float radius, pad;
+        private final Runnable redraw = this::invalidateSelf;
+        private int shadeTop, shadeFoot;
+        private android.graphics.Shader fadeShader;
+        private float fadeH = -1;
+
+        Art(Context c) {
+            float d = c.getResources().getDisplayMetrics().density;
+            radius = RADIUS_DP * d;
+            pad = 12 * d;
+            glass = TvLook.mat(c, RADIUS_DP);
+            draw = new PicDraw(c);
+            rim.setStyle(android.graphics.Paint.Style.STROKE);
+            rim.setStrokeWidth(Math.max(1f, 0.75f * d));
+            rim.setColor(TvLook.RIM);
+        }
+
+        @Override public void draw(@androidx.annotation.NonNull android.graphics.Canvas cv) {
+            android.graphics.Rect b = getBounds();
+            if (b.isEmpty() || ch == null) return;
+            if (compact) panel(cv, b);
+            else top(cv, b);
+        }
+
+        /** Upright: the picture filling the panel, the words' shade over its left. */
+        private void panel(android.graphics.Canvas cv, android.graphics.Rect b) {
+            box.set(b);
+            float wordsEnd = texts == null ? box.left : box.left + texts.getRight() + pad * 0.5f;
+            String url = artUrl;
+            int w = b.width(), h = b.height();
+            ProgPics.Made m = url == null || url.isEmpty() ? null : ProgPics.get(getContext(), url, w, h, ProgPics.PANEL, redraw);
+            if (m != null && m.b != null) {
+                draw.place(box, m, wordsEnd, pad);
+                draw.fill(cv, box, radius, m);
+            } else if (m != null && m != ProgPics.NONE) {
+                plain.setColor(m.colour | 0xFF000000);
+                cv.drawRoundRect(box, radius, radius, plain);
+                draw.facesAt(box.right);
+            } else if ("".equals(url) || m == ProgPics.NONE) {
+                if (!logo(cv, box, wordsEnd, box.right)) glassOnly(cv, b);
+            } else {
+                glassOnly(cv, b);
+                return;
+            }
+            draw.shade(cv, box, radius, wordsEnd, false);
+            box.inset(rim.getStrokeWidth() / 2, rim.getStrokeWidth() / 2);
+            cv.drawRoundRect(box, radius, radius, rim);
+        }
+
+        private void glassOnly(android.graphics.Canvas cv, android.graphics.Rect b) {
+            glass.setBounds(b);
+            glass.draw(cv);
+            draw.facesAt(b.right);
+        }
+
+        /** In the pane: the picture across the top (as tall as the Header's foot), fading into the pane. */
+        private void top(android.graphics.Canvas cv, android.graphics.Rect b) {
+            int hb = header == null ? 0 : header.getBottom() + Math.round(UNDER_DP * getResources().getDisplayMetrics().density);
+            if (hb <= 0) return;
+            box.set(b.left, b.top, b.right, b.top + hb);
+            String url = artUrl;
+            ProgPics.Made m = url == null || url.isEmpty() ? null : ProgPics.get(getContext(), url, b.width(), hb, ProgPics.HEADER, redraw);
+            if (m != null && m.b != null) {
+                pic.setShader(m.shader());
+                cv.save();
+                cv.translate(box.left, box.top);
+                cv.clipRect(0, 0, box.width(), box.height());
+                cv.drawRoundRect(0, 0, box.width(), box.height() + radius, radius, radius, pic);
+                cv.restore();
+                pic.setShader(null);
+            } else if ((m != null && m != ProgPics.NONE) || "".equals(url) || m == ProgPics.NONE) {
+                int col = m != null && m != ProgPics.NONE ? m.colour : 0;
+                if (col != 0) fade(cv, col, col);
+                else logo(cv, box, box.left, box.right);
+            }
+        }
+
+        /** The header's ground in a colour, top to foot, fading to nothing into the pane (a shader made per colour). */
+        private void fade(android.graphics.Canvas cv, int top, int foot) {
+            if (fadeShader == null || top != shadeTop || foot != shadeFoot || fadeH != box.height()) {
+                shadeTop = top;
+                shadeFoot = foot;
+                fadeH = box.height();
+                fadeShader = new android.graphics.LinearGradient(0, 0, 0, fadeH, new int[]{top | 0xFF000000, foot | 0xFF000000,
+                        foot & 0x00FFFFFF}, new float[]{0f, 0.55f, 1f}, android.graphics.Shader.TileMode.CLAMP);
+            }
+            plain.setShader(fadeShader);
+            cv.save();
+            cv.translate(box.left, box.top);
+            cv.clipRect(0, 0, box.width(), box.height());
+            cv.drawRoundRect(0, 0, box.width(), box.height() + radius, radius, radius, plain);
+            cv.restore();
+            plain.setShader(null);
+        }
+
+        /**
+         * The channel's own picture: r in its logo's colour (its tile's, as Behind logos asks; a colour of its own for
+         * one with no logo), the logo in the middle of from..to; false with Behind logos None (nothing to colour).
+         */
+        private boolean logo(android.graphics.Canvas cv, android.graphics.RectF r, float from, float to) {
+            Context c = getContext();
+            String url = ch.logo;
+            int top, foot;
+            if (url.isEmpty()) {
+                top = foot = GuideLook.nameColour(ch.name);
+            } else {
+                int[] cols = LogoTiles.now(c, url);
+                top = cols[0];
+                foot = cols[1];
+            }
+            if (top == 0 && foot == 0) return false;
+            if (compact) {
+                plain.setColor(top | 0xFF000000);
+                cv.drawRoundRect(r, radius, radius, plain);
+            } else {
+                fade(cv, top, foot);
+            }
+            float span = to - from;
+            float lh = Math.min(r.height() * (compact ? 0.42f : 0.4f), span * 0.32f), lw = Math.min(span * 0.7f, lh * 2.4f);
+            draw.facesAt(from + (span - lw) / 2f);
+            if (url.isEmpty() || lw < pad * 2) return true;
+            ProgPics.Made m = ProgPics.get(c, url, Math.round(lw), Math.round(lh), ProgPics.LOGO, redraw);
+            if (m != null && m.b != null) {
+                float cx = from + span / 2f, cy = r.top + r.height() * (compact ? 0.5f : 0.45f);
+                float bw = m.b.getWidth(), bh = m.b.getHeight();
+                logoBox.set(cx - bw / 2f, cy - bh / 2f, cx + bw / 2f, cy + bh / 2f);
+                cv.drawBitmap(m.b, null, logoBox, pic);
+            }
+            return true;
+        }
+
+        @Override public void getOutline(@androidx.annotation.NonNull android.graphics.Outline o) {
+            if (compact) o.setRoundRect(getBounds(), radius);
+            else o.setRect(getBounds());
+            o.setAlpha(compact ? 1f : 0f);
+        }
+
+        @Override public void setAlpha(int alpha) {
+            // drawn whole
+        }
+
+        @Override public void setColorFilter(android.graphics.ColorFilter cf) {
+            // not tinted
+        }
+
+        @Override public int getOpacity() {
+            return android.graphics.PixelFormat.TRANSLUCENT;
         }
     }
 
