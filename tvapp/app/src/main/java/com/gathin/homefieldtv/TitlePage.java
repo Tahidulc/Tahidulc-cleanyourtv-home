@@ -276,7 +276,7 @@ final class TitlePage extends View {
         java.util.Arrays.fill(epStoryFor, -1);
         // Its videos (TMDB's, with its extras): trailers first, the family's language first.
         videos.clear();
-        if (t.series && extras != null) videos.addAll(Videos.row(extras.videos, Tmdb.language()));
+        if (t.series && extras != null) videos.addAll(Videos.row(extras.videos, Tmdb.language(getContext())));
         vidNames = new String[videos.size()];
         for (int i = 0; i < videos.size(); i++) {
             Videos.Video v = videos.get(i);

@@ -549,7 +549,7 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
             return;
         }
         Exec.io(() -> {
-            List<String> keys = Videos.trailers(Videos.of(tv, it.tv, it.id), Tmdb.language(), "");
+            List<String> keys = Videos.trailers(Videos.of(tv, it.tv, it.id), Tmdb.language(tv), "");
             Runnable done = () -> {
                 if (soonKnown.size() > 100) soonKnown.clear();
                 soonKnown.put(k, keys);
@@ -566,7 +566,7 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
         if (t == null || !looked.contains(t.key)) return;
         Tmdb.Extras x = extrasKnown.get(t.key);
         Catalog.Details d = Catalog.get(tv).cachedDetails(t);
-        trailer.keys(t.key, Videos.trailers(x == null ? null : x.videos, Tmdb.language(), d == null ? "" : d.trailer));
+        trailer.keys(t.key, Videos.trailers(x == null ? null : x.videos, Tmdb.language(tv), d == null ? "" : d.trailer));
     }
 
     /** The remote's card's place for its trailer, once it has grown and the page has settled. */

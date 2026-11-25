@@ -185,7 +185,7 @@ public final class Tmdb {
     /** A title's videos by TMDB's id (the family's language, English and none given), kept three days; null when not to be had. */
     static JSONObject videos(Context c, boolean tv, int id) {
         return kept(c, "v|" + (tv ? "tv" : "movie") + "|" + id, (tv ? "tv/" : "movie/") + id + "/videos?include_video_language="
-                + videoLanguages(), 3 * 24 * 3600_000L);
+                + videoLanguages(c), 3 * 24 * 3600_000L);
     }
 
     /** A series' season as TMDB has it (its episodes' names, stories and stills), kept a fortnight; null when not to be had. */
@@ -492,16 +492,19 @@ public final class Tmdb {
         return new Extras(logo, cast, seasons, years, age, Videos.parse(j.optJSONObject("videos")), false);
     }
 
-    /** The family's language (the TV's), as TMDB writes one ("en"). */
-    public static String language() {
-        String l = Locale.getDefault().getLanguage();
-        return l == null || l.isEmpty() ? "en" : l.toLowerCase(Locale.ROOT);
+    /**
+     * The family's language as TMDB writes one ("en"): Settings › Playback › Sound languages' first, as a title's logo
+     * goes by (the TV's own where none is chosen).
+     */
+    public static String language(Context c) {
+        String l = com.gathin.homefieldtv.prefs.PlayerPrefs.languages(c).get(0);
+        return l == null || l.trim().isEmpty() ? "en" : l.trim().toLowerCase(Locale.ROOT);
     }
 
     /** The videos asked for: the family's language, English, and those with none given. */
-    static String videoLanguages() {
-        String l = language();
-        return (l.equals("en") ? "en" : l + ",en") + ",null";
+    static String videoLanguages(Context c) {
+        String l = language(c);
+        return (l.equals("en") ? "en" : enc(l) + ",en") + ",null";
     }
 
     private static String year(String date) {
