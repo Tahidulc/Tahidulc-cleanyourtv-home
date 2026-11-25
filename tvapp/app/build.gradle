@@ -10,8 +10,8 @@ android {
         applicationId 'com.gathin.homefieldtv'
         minSdk 26
         targetSdk 34
-        versionCode 55
-        versionName '4.16'
+        versionCode 56
+        versionName '4.17'
         // TVs: the ARM builds of the sound decoder only.
         ndk {
             abiFilters 'arm64-v8a', 'armeabi-v7a'
