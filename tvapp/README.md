@@ -31,7 +31,7 @@ wordmark are Homefield; it carries no Sky logo or name.
 - **Home, Movies and TV Shows (Home style Editorial, as it comes):** rows that change with the day ("the categories for
   all this should be fluid and ever changing and the catalogue for these categories should always be changing and
   updated"), picked each day by engine/DayRows from one table (engine/CategorySet: each row's id, title, source and when
-  it shows), the same all day so nothing moves while the family browses. Home: Continue Watching first; Top 10 Today,
+  it shows), the same all day so nothing moves while the family browses. Home: its carousel, then Continue Watching; Top 10 Today,
   New This Week (what the playlists added in the last week) and Because you watched (the title watched last), in the
   day's order; while in season, Christmas Films (December), Halloween Frights (October), Valentine's Romance (February's
   first fortnight) or Summer Blockbusters (21 June to August); the row for the part of the day (Easy Morning Watching
@@ -65,8 +65,14 @@ wordmark are Homefield; it carries no Sky logo or name.
   no cross-fade) and back as the remote moves on or the trailer ends. One that won't play (embedding turned off, an
   error, nothing within four seconds) is let go quietly for the next, or the poster stays; nothing is ever said on
   screen. It stops at once as the remote moves, goes up to the tab bar or anything comes over the page, and the player
-  is let go of whole when the app is left, so nothing plays in the background. The carousel on Movies and TV Shows has
-  the next title peeking in, its facts and View Details. OK opens a title's page, whose buttons are then a menu down the left: Play (or Resume), Trailer, More
+  is let go of whole when the app is left, so nothing plays in the background. Home, Movies and TV Shows each open on a
+  carousel of featured titles ("a carousel of titles that I can move myself and will move automatically"): what is
+  trending today with what the playlists added this week (refreshed with the rows), the next title peeking in, its
+  facts, View Details and small page dots under it. It moves on by itself every 7 seconds (the page's picture
+  cross-fading, the card and its words sliding in), from its last back round to its first, while it is what the page
+  shows (the remote on it, or up on the tab bar over it), never while the remote is in the rows below; Left and Right
+  move it by hand, as far as its ends, and hold its own steps for 15 seconds. On a title the remote rests on, its
+  trailer plays behind the card's words, as in a poster, and the carousel waits while it does. OK opens a title's page, whose buttons are then a menu down the left: Play (or Resume), Trailer, More
   episodes, Add to My List, More like this. Settings › Appearance › Home style: Classic brings back Home's one big card
   at a time and Movies' and TV Shows' pills.
 

@@ -50,9 +50,10 @@ public class DayRowsTest {
     @Test public void continueWatchingFirstTheCarouselFirstAndTheHeadsAlways() {
         for (int d = 0; d < 10; d++) {
             List<String> home = day(CategorySet.HOME, TUESDAY.plusDays(d));
-            assertEquals("continue", home.get(0));
+            assertEquals("the carousel", "hero", home.get(0));
+            assertEquals("continue", home.get(1));
             assertTrue(home.containsAll(Arrays.asList("top10", "fresh", "because.0")));
-            assertTrue("a head in second place", Arrays.asList("top10", "fresh", "because.0").contains(home.get(1)));
+            assertTrue("a head next", Arrays.asList("top10", "fresh", "because.0").contains(home.get(2)));
             assertEquals(new HashSet<>(home).size(), home.size());
             List<String> movies = day(CategorySet.MOVIES, TUESDAY.plusDays(d));
             assertEquals("hero", movies.get(0));
@@ -61,7 +62,7 @@ public class DayRowsTest {
         }
         // The heads' order changes with the day.
         Set<String> seconds = new HashSet<>();
-        for (int d = 0; d < 14; d++) seconds.add(day(CategorySet.HOME, TUESDAY.plusDays(d)).get(1));
+        for (int d = 0; d < 14; d++) seconds.add(day(CategorySet.HOME, TUESDAY.plusDays(d)).get(2));
         assertTrue(seconds.toString(), seconds.size() > 1);
     }
 
@@ -112,7 +113,7 @@ public class DayRowsTest {
         assertTrue(day(CategorySet.SHOWS, LocalDateTime.of(2026, 12, 1, 9, 0)).contains("christmas"));
         // In season, early on the page: right after the first head.
         List<String> dec = day(CategorySet.HOME, LocalDateTime.of(2026, 12, 20, 19, 0));
-        assertEquals(2, dec.indexOf("christmas"));
+        assertEquals(3, dec.indexOf("christmas"));
         assertTrue(DayRows.inSeason("12-26/01-06", LocalDate.of(2027, 1, 2)));
         assertFalse(DayRows.inSeason("12-26/01-06", LocalDate.of(2027, 1, 7)));
         assertFalse(DayRows.inSeason("nonsense", LocalDate.of(2027, 1, 7)));

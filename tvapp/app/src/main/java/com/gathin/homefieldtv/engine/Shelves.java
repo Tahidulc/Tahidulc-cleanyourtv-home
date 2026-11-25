@@ -97,7 +97,7 @@ public final class Shelves {
             this.next = next == null ? new int[0] : next;
             this.pages = pages == null ? new int[0] : pages;
             this.skip = skip == null ? Collections.emptySet() : skip;
-            this.at = System.currentTimeMillis();
+            this.at = DayRows.now();
             this.madeFor = madeFor;
         }
 
@@ -131,7 +131,7 @@ public final class Shelves {
 
     /** Whether a row kept is old enough to be made again (TMDB's lists move: ten minutes). */
     public static boolean stale(Shelf s) {
-        return s == null || System.currentTimeMillis() - s.at > 10 * 60_000L;
+        return s == null || DayRows.now() - s.at > 10 * 60_000L;
     }
 
     /**

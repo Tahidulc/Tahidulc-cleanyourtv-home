@@ -35,7 +35,7 @@ import java.util.Map;
 
 /**
  * Home, the first page of 07's shell. Settings › Appearance › Home style: Editorial (as it comes) hands the page to
- * EditorialPage (the carousel and rows of CategorySet.HOME); Classic is this page's own (HomeCard): one big card at a time for whatever the remote is on, from the sections
+ * EditorialPage (its carousel and the day's rows of CategorySet.HOME, as DayRows picks them); Classic is this page's own (HomeCard): one big card at a time for whatever the remote is on, from the sections
  * under the tab bar: what's on now, Continue watching, the family's own TorBox titles, the newest films and TV shows from
  * the playlists, sport on now and the favourite channels. A channel's card is its programme on now (the score where it
  * is a match, held back to the channel's delay) with its later programmes and what's on now on the next channels along

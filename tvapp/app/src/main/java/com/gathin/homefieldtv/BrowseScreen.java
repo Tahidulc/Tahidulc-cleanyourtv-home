@@ -25,7 +25,7 @@ import java.util.Map;
 
 /**
  * Movies, or TV Shows, as 07 pages under the tab bar. Settings › Appearance › Home style: Editorial (as it comes) hands
- * the page to EditorialPage (the carousel and rows of CategorySet.MOVIES or SHOWS); Classic is this page's own (homefield-07-real 09 and 11; the page itself is CineRows): the
+ * the page to EditorialPage (its carousel and the day's rows of CategorySet.MOVIES or SHOWS, as DayRows picks them); Classic is this page's own (homefield-07-real 09 and 11; the page itself is CineRows): the
  * playlists' lists as pills (All movies, Recently added, Your TorBox, then each category) with the sort at the right
  * (as in the playlist, by name, newest first, best rated), the title the remote is on in a big card (its logo, facts,
  * story, cast and director), then the chosen list as a shelf of posters (a series' as wide cards), then Continue

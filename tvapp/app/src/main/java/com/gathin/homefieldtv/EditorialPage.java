@@ -51,6 +51,13 @@ import java.util.Set;
  * <p>When the remote rests on a row's card its trailer plays in it (Trailer): its trailers are found as its details and
  * TMDB's extras are read (Videos.trailers: TMDB's, the family's language first, then the playlist's own); it stops as the
  * remote moves, goes up to the tab bar, or the page goes.
+ *
+ * <p>The carousel at the top of Home, Movies and TV Shows ("a carousel of titles that I can move myself and will move
+ * automatically") is its featured titles from the living rows (what is trending today with what the playlists added this
+ * week, refreshed with the rows): it moves on by itself every AUTO_MS while it is what the page shows (the remote on it,
+ * or up on the tab bar over it), never while the remote is in the rows; a move by hand (Left or Right, as far as its
+ * ends) holds it PAUSE_MS; and on a title the remote rests on its trailer may play behind its words, as on a poster,
+ * holding it while it plays.
  */
 final class EditorialPage implements Editorial.Host, Trailer.Host {
     /** The TMDB rows asked for as the page opens, and how far past the remote's row they are asked for. */
@@ -116,9 +123,41 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
         view = new Editorial(tv);
         view.setHost(this);
         f.addView(view, new FrameLayout.LayoutParams(-1, -1));
+        // The carousel's words over its trailer: the trailer's window goes under them.
+        View over = view.over(tv);
+        f.addView(over, new FrameLayout.LayoutParams(-1, -1));
         trailer = new Trailer(tv, f, this);
+        trailer.under(over);
         fill();
         return f;
+    }
+
+    // ---- the carousel's own steps -----------------------------------------------------------------------------------
+
+    /** How often the carousel moves on by itself, and how long a move by hand holds it. */
+    static final long AUTO_MS = 7000, PAUSE_MS = 15_000;
+    private final Runnable auto = this::autoStep;
+
+    /** Its next own step in ms (a full AUTO_MS from now, or PAUSE_MS after a move by hand). */
+    private void autoIn(long ms) {
+        h.removeCallbacks(auto);
+        if (heroEntry != null) h.postDelayed(auto, ms);
+    }
+
+    /** On to its next title, while it is what the page shows and no trailer plays in it; then the next step. */
+    private void autoStep() {
+        if (view == null) return;
+        if (mayShow() && !trailer.busy()) view.heroNext();
+        autoIn(AUTO_MS);
+    }
+
+    @Override public void heroMoved() {
+        autoIn(PAUSE_MS);
+    }
+
+    /** The carousel's next own step a full AUTO_MS after a title comes to its front (by hand: heroMoved, after this). */
+    @Override public void heroOn() {
+        autoIn(AUTO_MS);
     }
 
     /** Tests: the trailer of the card the remote rests on. */
@@ -149,6 +188,7 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
         }
         if (heroEntry != null && Shelves.stale(shelves.get(heroEntry.id)) && asked.remove(heroEntry.id)) request(heroEntry);
         publish();
+        autoIn(AUTO_MS);
     }
 
     /**
@@ -159,6 +199,11 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
         if (view == null || !mayShow()) return;
         Editorial.Row on = view.current();
         long now = DayRows.now();
+        // The carousel's titles too, with the rows (the remote kept on its title).
+        if (heroEntry != null && asked.contains(heroEntry.id) && Shelves.expired(shelves.get(heroEntry.id), now)) {
+            asked.remove(heroEntry.id);
+            request(heroEntry);
+        }
         for (CategorySet.Entry e : entries) {
             if (!e.tmdb() || !asked.contains(e.id) || on != null && on.id.equals(e.id)) continue;
             Shelves.Shelf s = shelves.get(e.id);
@@ -179,6 +224,7 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
 
     void hidden() {
         h.removeCallbacks(rested);
+        h.removeCallbacks(auto);
         if (trailer != null) trailer.hidden();
     }
 
@@ -416,8 +462,8 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
         }
         view.ground(card.wide);
         restingOn = card;
-        // Its trailer, after a rest (a row's card only: the carousel's has its words over it), the remote in the page.
-        if (row == null || !view.active()) trailer.moved();
+        // Its trailer, after a rest, the remote in the page (the carousel's behind its words).
+        if (!view.active()) trailer.moved();
         else {
             trailer.rest(trailerKey(card));
             trailers(card);
@@ -533,7 +579,12 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
         Screen top = tv.top();
         boolean mine = top instanceof HomeScreen ? ((HomeScreen) top).editorial() == this
                 : top instanceof BrowseScreen && ((BrowseScreen) top).editorial() == this;
-        return mine && tv.showing(top) && view != null && view.active() && view.area() == Editorial.ROWS;
+        return mine && tv.showing(top) && view != null && view.active();
+    }
+
+    /** A trailer shows in the card now (or no longer): over the carousel's, its words are drawn again. */
+    @Override public void showing(boolean on) {
+        if (view != null) view.heroTrailer(on && view.area() == Editorial.HERO);
     }
 
     /** More is known of a title (its details, its extras): its cards' words made again where they are shown. */

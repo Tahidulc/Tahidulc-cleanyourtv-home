@@ -49,7 +49,10 @@ public final class CategorySet {
     private CategorySet() {}
 
     public static final String HOME = "home", MOVIES = "movies", SHOWS = "shows";
-    /** How a row draws: the carousel at the top, or a row of titles (the remote's grows into its wide picture). */
+    /**
+     * How a row draws: the carousel at the top (the page's featured titles, from what is trending today and what the
+     * playlists added this week), or a row of titles (the remote's grows into its wide picture).
+     */
     public static final int HERO = 0, ROW = 1;
 
     /** One row: its page, its id (kept with the remote's place), its title, source, place, look and when it shows. */
@@ -181,7 +184,8 @@ public final class CategorySet {
 
     /** The whole table: page, id, title, source, kind and when (none: taken in turn); a page's rows in the order listed. */
     private static final Object[][] TABLE = {
-            // ---- Home: no carousel -----------------------------------------------------------------------------------
+            // ---- Home: its carousel (what is trending today, with what the playlists added this week), then its rows -----
+            {HOME, "hero", "", "tmdb:trending/all/day+fresh:all|new:all", HERO},
             {HOME, "continue", "Continue Watching", "continue", ROW, "first"},
             {HOME, "top10", "Top 10 Today", "top:trending/all/day", ROW, "head"},
             {HOME, "fresh", "New This Week", "fresh:all", ROW, "head"},
@@ -221,7 +225,7 @@ public final class CategorySet {
             {HOME, "torbox.new", "New in Your TorBox", "torbox:all", ROW},
 
             // ---- Movies: the carousel, then its rows ----------------------------------------------------------------
-            {MOVIES, "hero", "", "tmdb:movie/now_playing?region=GB|tmdb:trending/movie/week|new:movie", HERO},
+            {MOVIES, "hero", "", "tmdb:trending/movie/day+fresh:movie|tmdb:movie/now_playing?region=GB|new:movie", HERO},
             {MOVIES, "top10", "Top 10 Films Today", "top:trending/movie/day", ROW, "head"},
             {MOVIES, "trending", "Trending This Week", "tmdb:trending/movie/week", ROW, "head"},
             {MOVIES, "fresh", "New This Week", "fresh:movie", ROW, "head"},
@@ -264,7 +268,7 @@ public final class CategorySet {
             // ---- TV Shows: the carousel, then its rows -------------------------------------------------------------
             // The other app also has rows for Apple's and Netflix's services: left out here, as their names and marks may
             // not appear in Homefield.
-            {SHOWS, "hero", "", "tmdb:tv/on_the_air|tmdb:trending/tv/week|new:tv", HERO},
+            {SHOWS, "hero", "", "tmdb:trending/tv/day+fresh:tv|tmdb:tv/on_the_air|new:tv", HERO},
             {SHOWS, "top10", "Top 10 Shows Today", "top:trending/tv/day", ROW, "head"},
             {SHOWS, "trending", "Trending This Week", "tmdb:trending/tv/week", ROW, "head"},
             {SHOWS, "new.episodes", "New Episodes This Week", "tmdb:tv/on_the_air", ROW, "head"},

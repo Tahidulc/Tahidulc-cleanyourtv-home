@@ -32,9 +32,10 @@ import java.util.List;
  * under the row its score, year, genre and length (or its episode), then three lines of its story; the next row under it,
  * dimmed. Moving along, the card left shrinks back to a poster as the next one grows, its picture cross-fading from
  * poster to backdrop (Lite: the width alone, no cross-fade). Down goes to the next row, the page rising (past the last,
- * back to the first); Up to the one before. Movies and TV Shows have a big carousel above the rows (1500 x 580, the next
- * one peeking in): its picture, what it is, its logo or name, its score, year, genre, age and length, its story and View
- * Details. Over the page's own blurred picture (Ground). Only what is in sight is drawn; nothing is made while drawing
+ * back to the first); Up to the one before. Home, Movies and TV Shows have a big carousel above the rows (1500 x 580, the
+ * next one peeking in, page dots under it): its picture, what it is, its logo or name, its score, year, genre, age and
+ * length, its story and View Details; Left and Right along it as far as its ends, and its own steps (heroNext, timed by
+ * EditorialPage) on round from its last to its first while it is in sight. Over the page's own blurred picture (Ground). Only what is in sight is drawn; nothing is made while drawing
  * but a card's words as it comes into focus. Once the remote's wide card has settled, its trailer may play in it
  * (EditorialPage's Trailer, in a window over the card where trailerSpot says it is).
  */
@@ -51,6 +52,12 @@ final class Editorial extends View {
 
         /** The remote ran off the top (Ui.UP); true when the host took it. */
         boolean edge(int dir);
+
+        /** The carousel moved by hand (Left or Right on it): its own steps wait a while. */
+        void heroMoved();
+
+        /** A carousel title came to the front with the remote on it or up over it (a move, a step or the remote arriving). */
+        void heroOn();
 
         /** The remote is near the end of a row whose source has more (a TMDB row's next page). */
         void more(Row row);
@@ -221,6 +228,16 @@ final class Editorial extends View {
      * isn't in the rows.
      */
     boolean trailerSpot(RectF out) {
+        if (active && area == HERO) {
+            // The carousel's card, once it has slid into place: its trailer plays behind its words.
+            if (heroAt >= hero.size() || Math.abs(heroX.value() + heroAt * (HERO_W + HERO_GAP)) > 0.5f || Math.abs(y.value()) > 0.5f) {
+                return false;
+            }
+            float g = 1f + 0.018f * Math.max(0f, Math.min(1f, heroLift.of(hero.get(heroAt))));
+            float x = Ui.f(LEFT), top = Ui.f(HERO_T), w = Ui.f(HERO_W), h = Ui.f(HERO_H);
+            out.set(x + w / 2f - w * g / 2f, top + h / 2f - h * g / 2f, x + w / 2f + w * g / 2f, top + h / 2f + h * g / 2f);
+            return true;
+        }
         Row rw = active ? current() : null;
         Card on = rw == null ? null : focusCard();
         if (on == null || on != growing || grow.value() < 99.5f || shrinking != null && shrink.value() > 0.5f) return false;
@@ -394,10 +411,13 @@ final class Editorial extends View {
         if (area == HERO) {
             switch (code) {
                 case KeyEvent.KEYCODE_DPAD_LEFT:
+                    // By hand: as far as its ends (its own steps go round), and its own steps wait.
                     if (heroAt > 0) toHero(heroAt - 1);
+                    if (host != null) host.heroMoved();
                     return true;
                 case KeyEvent.KEYCODE_DPAD_RIGHT:
                     if (heroAt < hero.size() - 1) toHero(heroAt + 1);
+                    if (host != null) host.heroMoved();
                     return true;
                 case KeyEvent.KEYCODE_DPAD_UP:
                     return host != null && host.edge(Ui.UP);
@@ -442,6 +462,31 @@ final class Editorial extends View {
         heroAt = i;
         heroX.to(-heroAt * (HERO_W + HERO_GAP));
         told(true);
+    }
+
+    /**
+     * The carousel's own step: on to its next title (from its last, back round to its first), but only while it is in
+     * sight with the remote on it or up on the tab bar over it, never while the remote is in the rows below. True when
+     * it moved.
+     */
+    boolean heroNext() {
+        if (!heroInSight() || hero.size() < 2) return false;
+        toHero((heroAt + 1) % hero.size());
+        return true;
+    }
+
+    /** Whether the carousel is what the page shows (the remote on it, or on the tab bar over it): not risen to the rows. */
+    boolean heroInSight() {
+        return !hero.isEmpty() && area == HERO && Math.abs(y.value()) < 0.5f;
+    }
+
+    /** Tests: the carousel's title in front (its place), and how many it has. */
+    int heroAt() {
+        return heroAt;
+    }
+
+    int heroCount() {
+        return hero.size();
     }
 
     /** Up to the carousel, the page back down to its top. */
@@ -515,6 +560,7 @@ final class Editorial extends View {
         if (host == null) return;
         if (area == HERO) {
             if (heroAt < hero.size()) host.focused(null, hero.get(heroAt));
+            if (moved) host.heroOn();
         } else {
             Row rw = current();
             if (rw != null && rw.focus < rw.cards.size()) {
@@ -646,6 +692,16 @@ final class Editorial extends View {
             c.restore();
             return;
         }
+        heroOver(c, card, w, h, up, alpha, words);
+        c.restore();
+    }
+
+    /**
+     * The carousel card's words over its picture (card px, at its top left): its words' shade, its foot, what it is, its
+     * mark, facts and story and View Details, and its edge as it lifts. Drawn again over its trailer (Over).
+     */
+    private void heroOver(Canvas c, Card card, float w, float h, float up, int alpha, int words) {
+        float rad = Ui.f(HERO_R);
         float fadeEnd = w * 0.64f;
         shade.setAlpha(alpha);
         foot.setAlpha(alpha);
@@ -693,7 +749,46 @@ final class Editorial extends View {
             r.set(0, 0, w, h);
             c.drawRoundRect(r, rad, rad, edge);
         }
-        c.restore();
+    }
+
+    // ---- the carousel's trailer: its words over it ----------------------------------------------------------------
+
+    private boolean heroTrailer;
+    private Over over;
+
+    /** Whether a trailer plays in the carousel's card now (its words are then drawn again over it). */
+    void heroTrailer(boolean on) {
+        heroTrailer = on;
+        if (over != null) over.invalidate();
+    }
+
+    /**
+     * A view over the trailer's window for the carousel's words: the trailer plays behind the card's words, as the
+     * picture did. It draws only while one plays there (nothing else, nothing made while drawing).
+     */
+    View over(Context c) {
+        if (over == null) over = new Over(c);
+        return over;
+    }
+
+    private final class Over extends View {
+        Over(Context c) {
+            super(c);
+            setWillNotDraw(false);
+        }
+
+        @Override protected void onDraw(Canvas c) {
+            if (!heroTrailer || area != HERO || heroAt >= hero.size()) return;
+            Card card = hero.get(heroAt);
+            float w = Ui.f(HERO_W), h = Ui.f(HERO_H), x = Ui.f(LEFT) + Ui.f(heroX.value()) + heroAt * Ui.f(HERO_W + HERO_GAP),
+                    y = Ui.f(HERO_T) - Ui.f(Editorial.this.y.value());
+            float up = Math.max(0f, Math.min(1.1f, heroLift.of(card)));
+            c.save();
+            if (up > 0.001f) c.scale(1f + 0.018f * up, 1f + 0.018f * up, x + w / 2f, y + h / 2f);
+            c.translate(x, y);
+            heroOver(c, card, w, h, up, 255, 255);
+            c.restore();
+        }
     }
 
     /** The carousel card's words laid out once each time it changes (or its details or logo arrive). */

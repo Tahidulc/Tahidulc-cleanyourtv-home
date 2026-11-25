@@ -216,7 +216,7 @@ public class EditorialPageTest {
         TvActivity a = start(true);
         EditorialPage home = a.homeScreen().editorial();
         int first = home.previewAsked();
-        assertEquals(EditorialPage.FIRST, first);
+        assertEquals("the first rows, and the carousel's", EditorialPage.FIRST + 1, first);
         int rows = home.view().rows().size();
         home.previewFocus(rows - 1, 0);
         idle();

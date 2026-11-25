@@ -96,8 +96,12 @@ public class EditorialRowsTest {
                 "90 Minute Movies", "Sci-Fi Movies: Top Picks", "Comedy Movies", "Oscar Winners: Best Picture", "Visually Pleasing",
                 "Crazy Plot Twists", "British Gangster Movies", "Cult Classics", "Survival Movies", "Nostalgia", "Revenge Movies",
                 "Zero Gravity Watchlist", "No brainers", "Thriller Movies")));
-        assertEquals("continue", CategorySet.of(CategorySet.HOME).get(0).id);
-        for (CategorySet.Entry e : CategorySet.of(CategorySet.HOME)) assertEquals(CategorySet.ROW, e.kind);
+        // Its carousel first (Home has one now, as Movies and TV Shows have), then Continue Watching.
+        assertEquals(CategorySet.HERO, CategorySet.of(CategorySet.HOME).get(0).kind);
+        assertEquals("continue", CategorySet.of(CategorySet.HOME).get(1).id);
+        for (CategorySet.Entry e : CategorySet.of(CategorySet.HOME).subList(1, CategorySet.of(CategorySet.HOME).size())) {
+            assertEquals(CategorySet.ROW, e.kind);
+        }
     }
 
     @Test public void moviesHasItsCarouselAndTheOtherAppsRowsAmongItsOwn() {

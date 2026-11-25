@@ -27,7 +27,8 @@ import java.util.List;
  * implement trailers to automatically play over a poster when I'm on it". Once the remote has rested on a card for
  * REST_MS (REST_LITE_MS on the Lite motion tier) and the card has grown into its wide picture, its trailer plays inside
  * the card, muted unless Settings › Appearance › Home says Sound on; the card's picture cross-fades to the video once it
- * is really playing (Lite: no cross-fade) and back as the remote moves on or the trailer ends.
+ * is really playing (Lite: no cross-fade) and back as the remote moves on or the trailer ends. On the carousel the window
+ * goes under its words (under()), so the trailer plays behind them.
  *
  * <p>The trailers are YouTube videos (Videos.trailers: TMDB's for the title, the official trailer, then a teaser, the
  * family's language first, then the playlist's own trailer), played with YouTube's own embedded player (the IFrame
@@ -70,8 +71,11 @@ final class Trailer {
         /** Where the remote's card is on the page (screen px) once it has settled there; false while it moves. */
         boolean spot(RectF out);
 
-        /** Whether a trailer may play now: the page on screen and in front, the app in front, the remote in its rows. */
+        /** Whether a trailer may play now: the page on screen and in front, the app in front, the remote in the page. */
         boolean mayPlay();
+
+        /** A trailer is now shown in the card (true), or no longer is (false). */
+        void showing(boolean on);
     }
 
     /** How long the remote rests before its trailer starts (Full, Lite), how long it may take to start, the watch. */
@@ -93,6 +97,8 @@ final class Trailer {
     private final Handler h = new Handler(Looper.getMainLooper());
     private final RectF spot = new RectF(), now = new RectF();
     private FrameLayout box;
+    /** The view the window goes just under (the carousel's words over its trailer), or null: on top. */
+    private View above;
     private Player player;
     private Object card;
     private List<String> keys;
@@ -172,6 +178,16 @@ final class Trailer {
         card = null;
         keys = null;
         if (!tv.showing(tv.top())) release();
+    }
+
+    /** The window goes just under this view (the carousel's words, drawn again over its trailer). */
+    void under(View v) {
+        above = v;
+    }
+
+    /** Whether a trailer is starting or playing (the carousel's own steps wait for it). */
+    boolean busy() {
+        return state == LOADING || state == SHOWN;
     }
 
     /** Tests: where it is with the card (IDLE, RESTING, LOADING, SHOWN, DONE), and the trailer playing (or tried last). */
@@ -298,7 +314,8 @@ final class Trailer {
             });
             box.setClipToOutline(true);
             box.setVisibility(View.GONE);
-            parent.addView(box, new FrameLayout.LayoutParams(1, 1));
+            int at = above == null ? -1 : parent.indexOfChild(above);
+            parent.addView(box, at, new FrameLayout.LayoutParams(1, 1));
         }
         View v = p.view();
         if (v.getParent() != box) {
@@ -318,6 +335,7 @@ final class Trailer {
 
     private void fadeIn() {
         if (box == null) return;
+        host.showing(true);
         box.animate().cancel();
         if (Motion.lite() || Exec.inline) box.setAlpha(1f);
         else box.animate().alpha(1f).setDuration(FADE_IN_MS).start();
@@ -325,6 +343,7 @@ final class Trailer {
 
     private void hide(boolean fade) {
         if (box == null || box.getVisibility() != View.VISIBLE) return;
+        host.showing(false);
         box.animate().cancel();
         if (fade && box.getAlpha() > 0.01f && !Motion.lite() && !Exec.inline) {
             box.animate().alpha(0f).setDuration(FADE_OUT_MS).withEndAction(() -> {
