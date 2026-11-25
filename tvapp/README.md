@@ -379,6 +379,27 @@ wordmark are Homefield; it carries no Sky logo or name.
   or any screen or panel over the picture (the guide's preview, Home, Settings) takes them away at once, and
   they come back with plain playback; their pop-ups wait for it, or are let go when stale (a kick-off after two minutes,
   a goal's after ninety seconds), and after a longer time away the board catches up without popping up what it missed.
+  As the TV launcher's over TiviMate (the family: "the scoreboard and logo pop up logic the same as tivimate. With the
+  other games goals notifications coming from the scoreboard ... only when I'm watching it on the full screen"): the
+  one rule both apps keep (InChannel: the app's own live picture, full screen, nothing over it; a picture moved back
+  behind live counts as covered too), the board coming in again as a broadcaster's does when the picture is back, and
+  the goals, red cards and full times of the family's other games coming out of the board in its look. The launcher stays
+  the one source of those alerts (its scores' service, the games followed, each goal held its minute, Settings ›
+  Notifications passed first) and hands each to this board while it is up (ChannelCardsProvider's board_alert, behind the
+  two apps' signature permission; BoardInbox); taken, the launcher shows no card of its own, so nothing comes twice; with
+  the board away (the guide, a list, a menu, half time resting, switched off) the launcher's own card shows over the app,
+  as over TiviMate's guide. This board's own game's goals, cards, half and full time, kick-off and VAR it says itself, held
+  back as the launcher's Notifications switches say for that game (AlertSwitches: the launcher's provider's
+  alert_switches; with no launcher, every kind on but Goal Rush and the live table). The logo's cover has every look the
+  launcher's has over TiviMate, drawn by the same code (CoverLooks, ChannelMark, SportsMark, BrandStyles, LabMarks): the
+  channel's own logo first (as it came), then the Whitebrook Road channel looks, Event, the competition's logo, Glass,
+  Mark, Plain, Broadcast see-through and in the scoreboard's colours, Whitebrook Road Sports and its stacked form, the 54
+  styles and the Scoreboard Lab's five; in the menu: Logo's look, This channel's logo (as the rest, Leave the channel's
+  own, or a look of its own), Style, On the logo, Channel (sports or general), Picture tag, Logo's background (plate,
+  frosted, tempered or smoked glass, transparent: drawn as the launcher draws them before it has a picture of the screen
+  behind, solid glass, transparent on smoked glass), Competition logo, LIVE, and Event's four extras (Up next from this
+  app's guide, the prayer time and the clock's weather from the launcher's provider's logo_extras, the picture and sound
+  marks from the channel's name; LogoExtras).
 - **A club's page:** in 07, under the shell's "‹ back" line: the club's own colour behind (ESPN's, made deep enough for
   white writing; for a white or black club FotMob's, else ESPN's second colour), brightest a little above the middle
   and deepening to the edges, with a fine grain and a soft vignette; the crest and the Players and Management pills at
