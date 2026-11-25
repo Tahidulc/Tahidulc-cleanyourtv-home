@@ -861,3 +861,8 @@ side by side, with the same headings and search.
 **The match pop-ups (5.40).** After a goal the pop-up is the score alone, with no RESTART and no scorer or minute; at
 full time a new FULL TIME pop-up with the final score as the board's full time reaches the picture. Kick-off and the
 second half as before; all under the same pop-up switch.
+
+**Goal animations to choose from (5.41).** The scoreboard's menu has Goal animation: As today, GOAL band, Flip, Burst,
+3D shirt, Club animations (each of the top five leagues' 96 clubs its own: a sweep in its colours, its crest turning
+in, what it is known by or its fans' cry, then GOAL! and the new score) and Generic; and six new goal sounds made for
+them. As today stays the default.
