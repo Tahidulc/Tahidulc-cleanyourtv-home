@@ -336,6 +336,15 @@
                 <action android:name="com.gathin.tvhome.GUARD" />
             </intent-filter>
         </receiver>
+        <!-- One kind of alert switched on or off from ADB (NotifyConfig): only the shell can send it. -->
+        <receiver
+            android:name=".NotifyConfig"
+            android:exported="true"
+            android:permission="android.permission.WRITE_SECURE_SETTINGS">
+            <intent-filter>
+                <action android:name="com.gathin.tvhome.NOTIFY" />
+            </intent-filter>
+        </receiver>
 
         <service
             android:name=".InputKeyService"
