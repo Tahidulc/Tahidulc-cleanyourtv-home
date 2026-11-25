@@ -309,8 +309,13 @@ final class BoardPanel extends SportPanel {
             // heard as it is chosen (the first time once it has loaded)
             if (!"off".equals(next)) new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> com.gathin.broadcast.Sfx.goal(c, next), 250);
         };
+        // the goal's animation on the board (GoalLooks): as today unless another is chosen
+        Row goalLook = row("Goal animation", false);
+        goalLook.words = () -> com.gathin.broadcast.GoalLooks.name(BoardCover.goalLook(c)) + " · "
+                + com.gathin.broadcast.GoalLooks.note(BoardCover.goalLook(c)) + " · OK: the next one";
+        goalLook.ok = () -> BoardCover.setGoalLook(c, com.gathin.broadcast.GoalLooks.next(BoardCover.goalLook(c), 1));
         add(swish, scoreSwish);
-        add(goalSound);
+        add(goalLook, goalSound);
         Row varWhy = row("VAR explained", true);
         varWhy.on = () -> BoardCover.varExplainedOn(c);
         varWhy.words = () -> BoardCover.varExplainedOn(c) ? "A check comes out of the board, then its decision with WHY: the law behind it and how long it took" : "Off · VAR's alerts as before";

@@ -46,6 +46,11 @@ final class KitBoard {
         prefs(c).edit().putBoolean("goal_shirt", on).apply();
     }
 
+    /** The shirt wanted with a goal: its own switch, or the 3D shirt chosen as the goal animation (GoalLooks). */
+    static boolean shirtWanted(Context c) {
+        return goalShirtOn(c) || com.gathin.broadcast.GoalLooks.shirt(BoardCover.goalLook(c));
+    }
+
     // ---- the hidden page's window ------------------------------------------------------------------------------------
 
     private static FrameLayout pageWin;
@@ -184,7 +189,7 @@ final class KitBoard {
 
     /** The scores' goals so far: any new one's shirt made ahead, for its moment on the screen (main thread). */
     static void feed(Context c, ScoresTicker.Game g) {
-        if (g == null || g.id == null || !goalShirtOn(c)) return;
+        if (g == null || g.id == null || !shirtWanted(c)) return;
         if (seen.size() > 200) {
             seen.clear();
             asked.clear();
@@ -211,7 +216,7 @@ final class KitBoard {
 
     /** A goal for side (1 home, 2 away) on the screen: its scorer's shirt out of the board and round (main thread). */
     static void goal(Context c, ScoresTicker.Game g, int side, BoardBug bug) {
-        if (g == null || bug == null || !goalShirtOn(c)) return;
+        if (g == null || bug == null || !shirtWanted(c)) return;
         String[] goal = Moments.lastGoal(g.goals, side);
         if (goal == null || goal.length < 6 || "og".equals(goal[4])) return;
         String[] back = back(g, goal);

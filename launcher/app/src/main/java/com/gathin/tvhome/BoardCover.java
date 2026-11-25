@@ -51,7 +51,9 @@ import java.util.regex.Pattern;
  * clock off the picture as the phone does, so at each kick-off (and the second half's) a card asks for OK as it happens
  * on the screen (InStepCard): from that moment the board's clock is counted exactly as the channel's; Move and resize's
  * Timing puts it a second or five later or sooner. It comes in and goes as a broadcaster's does (BoardBug); a goal on
- * the screen sweeps the scorers' colour across it with their crest and GOAL, the new score popping up after. Up twenty
+ * the screen sweeps the scorers' colour across it with their crest and GOAL, the new score popping up after (or in the
+ * goal animation the family chose in the hold-OK menu or the Scoreboard card: GoalLooks, each club's own among them, with
+ * its goal sound). Up twenty
  * minutes before kick-off with the kick-off's time; at half time a little longer for its alert and the half's stats,
  * then it rests (gone, up by hand too: the logo's cover stays) until the second half kicks off on the screen; full time
  * shows for two minutes.
@@ -840,6 +842,28 @@ final class BoardCover {
     static void setGoalSound(Context c, String key) {
         prefs(c).edit().putString("goal_sound_pick", key).apply();
         com.gathin.broadcast.Sfx.warm(c, "goal-" + key);
+    }
+
+    /** The goal sound stepped on (1) or back (-1), heard as it is chosen (once it has loaded). */
+    static void stepGoalSound(Context c, int step) {
+        String next = step < 0 ? com.gathin.broadcast.Sfx.previousGoal(goalSound(c)) : com.gathin.broadcast.Sfx.nextGoal(goalSound(c));
+        setGoalSound(c, next);
+        if (!"off".equals(next)) main().postDelayed(() -> com.gathin.broadcast.Sfx.goal(c, next), 250);
+    }
+
+    /**
+     * The board's goal animation (GoalLooks: as today unless the family chooses another: the GOAL band, the flip, the
+     * burst, the 3D shirt, each club's own, the generic), from the hold-OK menu and the Scoreboard card.
+     */
+    static String goalLook(Context c) {
+        return com.gathin.broadcast.GoalLooks.of(prefs(c).getString("goal_look", com.gathin.broadcast.GoalLooks.DEFAULT));
+    }
+
+    static void setGoalLook(Context c, String key) {
+        String k = com.gathin.broadcast.GoalLooks.of(key);
+        prefs(c).edit().putString("goal_look", k).apply();
+        BoardBug b = bug;
+        if (b != null) b.goalLook(k);
     }
 
     /** The line-ups' tab swish as anything slides out beside the board (the scorer, the stats, alerts): on unless switched off. */
@@ -2544,6 +2568,9 @@ final class BoardCover {
             int side = goalSide(shownScore, l.score);
             if (side > 0) {
                 BugCover.PLAY.goal(SystemClock.uptimeMillis());
+                // drawn as the family chose (GoalLooks), the clubs' own animations found by ESPN's ids
+                bug.goalLook(goalLook(c));
+                bug.teams(g.homeId, g.awayId);
                 bug.goal(side);
                 com.gathin.broadcast.Sfx.goal(c, goalSound(c));
                 // the scorer's shirt out of the board and round to his name and number (its own switch)
@@ -2564,6 +2591,8 @@ final class BoardCover {
         if (g != null) {
             bug.competition(g.slug, g.league);
             bug.names(g.homeName, g.awayName);
+            bug.teams(g.homeId, g.awayId);
+            bug.goalLook(goalLook(c));
             // its moments chosen for this game (BoardFx): the same goals, half time and shootout all through it
             bug.game(g.id);
             // the 3D kits: the look's two shirts made for the kits worn, a new goal's shirt made ahead of its moment
@@ -5966,6 +5995,9 @@ final class BoardCover {
         String mine = "";
         /** The channel on now ("" when not known), its mode and its own look, in words. */
         String channel = "", channelMode = "As the rest", channelLook = "As the rest";
+        /** The goal animation and the goal sound, in words (GoalLooks.name, Sfx.goalName). */
+        String goalLook = com.gathin.broadcast.GoalLooks.name(com.gathin.broadcast.GoalLooks.DEFAULT),
+                goalSound = com.gathin.broadcast.Sfx.goalName(com.gathin.broadcast.Sfx.GOAL_DEFAULT);
     }
 
     /** Pure: the menu's lines, as the switches stand. */
@@ -5990,7 +6022,9 @@ final class BoardCover {
                 "Logo's background:  ‹  " + m.ground + "  ›" + (!"Plate".equals(m.ground) && !m.seeing.isEmpty() ? "  ·  " + m.seeing : ""),
                 "Find the channel's scoreboard:  ‹  " + (m.find ? "On" : "Off") + "  ›  ·  OK: look again now",
                 "Line-ups on screen:  ‹  " + (m.lineups ? "On" : "Off") + "  ›",
-                "My scoreboards:  ‹  " + (m.mine.isEmpty() ? "None (the look above)" : m.mine) + "  ›  ·  OK: the editor, Generate, Ask AI"};
+                "My scoreboards:  ‹  " + (m.mine.isEmpty() ? "None (the look above)" : m.mine) + "  ›  ·  OK: the editor, Generate, Ask AI",
+                "Goal animation:  ‹  " + m.goalLook + "  ›",
+                "Goal sound:  ‹  " + m.goalSound + "  ›  ·  it plays as it is chosen"};
     }
 
     /** The menu's state now. */
@@ -6024,6 +6058,8 @@ final class BoardCover {
         m.manual = manual(c);
         m.showing = showingWords(c);
         m.note = ChannelSight.note();
+        m.goalLook = com.gathin.broadcast.GoalLooks.name(goalLook(c));
+        m.goalSound = com.gathin.broadcast.Sfx.goalName(goalSound(c));
         return m;
     }
 
@@ -6359,6 +6395,12 @@ final class BoardCover {
             case M_MINE:
                 stepMine(c, step);
                 break;
+            case M_GOAL:
+                setGoalLook(c, com.gathin.broadcast.GoalLooks.next(goalLook(c), step));
+                break;
+            case M_GOAL_SOUND:
+                stepGoalSound(c, step);
+                break;
             default:
                 break;
         }
@@ -6366,11 +6408,13 @@ final class BoardCover {
 
     /**
      * The menu's lines, in order: up by hand, this channel's mode and logo, move, the board, the channel's score pop-ups
-     * covered, the cover, the looks, what is on, the name, the tag, see-through, find, line-ups.
+     * covered, the cover, the looks, what is on, the name, the tag, see-through, find, line-ups, my scoreboards, the goal's
+     * animation and its sound.
      */
     static final int M_HAND = 0, M_CHANNEL = 1, M_CHANNEL_LOGO = 2, M_MOVE = 3, M_BOARD = 4, M_POP_UPS = 5, M_LOGO = 6, M_LOOK = 7,
-            M_LOGO_LOOK = 8, M_WHAT = 9, M_NAME = 10, M_TAG = 11, M_GROUND = 12, M_FIND = 13, M_LINEUPS = 14, M_MINE = 15;
-    private static final int MENU_LINES = 16;
+            M_LOGO_LOOK = 8, M_WHAT = 9, M_NAME = 10, M_TAG = 11, M_GROUND = 12, M_FIND = 13, M_LINEUPS = 14, M_MINE = 15,
+            M_GOAL = 16, M_GOAL_SOUND = 17;
+    private static final int MENU_LINES = 18;
 
     /** The hold-OK menu's My scoreboards: on to the next saved board (or back), "none" between the last and the first. */
     private static void stepMine(Context c, int step) {

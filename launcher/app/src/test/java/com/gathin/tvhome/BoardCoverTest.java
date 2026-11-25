@@ -679,7 +679,7 @@ public class BoardCoverTest {
         m.manual = true;
         m.showing = "Everton v Spurs";
         String[] on = BoardCover.menuLines(m);
-        assertEquals(16, on.length);
+        assertEquals(18, on.length);
         assertTrue(on[BoardCover.M_MINE].startsWith("My scoreboards") && on[BoardCover.M_MINE].contains("None"));
         m.mine = "Harbour lights";
         assertTrue(BoardCover.menuLines(m)[BoardCover.M_MINE].contains("‹  Harbour lights  ›"));
