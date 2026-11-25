@@ -3161,7 +3161,8 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             h.post(nextDrop);
             return;
         }
-        // A goal's scorer, when the after-goal pop-up showed that goal (its score): left out, the pop-up stood for it.
+        // A goal's scorer, when the after-goal pop-up showed that goal (its score, then its scorer): left out, the pop-up
+        // said it.
         if (d.own && d.goalN > 0 && d.gameId != null && afterGoal.showed(d.gameId, d.side, d.goalN)) {
             h.post(nextDrop);
             return;

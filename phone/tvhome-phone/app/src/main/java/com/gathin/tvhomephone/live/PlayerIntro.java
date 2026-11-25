@@ -574,7 +574,7 @@ final class PlayerIntro {
                 // A moment's grace while it is made ready to show (showing() then says so).
                 restartUntil = android.os.SystemClock.uptimeMillis() + 3_000L;
                 String[] last = Moments.lastGoal(g.goals, side);
-                popup(g, "restart", score, Moments.scorer(last), last == null ? "" : BroadcastData.minute(last[2]));
+                popup(g, "restart", score, Moments.popupScorer(last), last == null ? "" : BroadcastData.minute(last[2]));
             }
         }, com.gathin.broadcast.LivePlay.FIRST_MS);
     }
@@ -586,7 +586,7 @@ final class PlayerIntro {
     private int restartSide;
     /**
      * The goals whose restart pop-up came up (Moments.restartKey: the game, the side, that side's goals with it): their
-     * scorer beside the scoreboard is left out, the pop-up stood for it (the score alone, as the family asked).
+     * scorer beside the scoreboard is left out, the pop-up said it (the score, then its scorer).
      */
     private final Set<String> restartsUp = new HashSet<>();
 
@@ -672,7 +672,7 @@ final class PlayerIntro {
             h.post(() -> {
                 if (showing() || !canShow.getAsBoolean() || a.isFinishing()) return;
                 show(BroadcastView.page(a, strap ? "strap" : "kickoff", cfg, this::gone), strap ? "strap" : kind);
-                // A goal's: its scorer beside the scoreboard is left out (ScoreBoard), the pop-up stood for it.
+                // A goal's: its scorer beside the scoreboard is left out (ScoreBoard), the pop-up said it.
                 if ("restart".equals(kind) && g.id != null && g.id.equals(restartGame)) {
                     String k = Moments.restartKey(g.id, restartSide, score);
                     if (k != null) {
@@ -837,7 +837,7 @@ final class PlayerIntro {
             boolean restart = "restart".equals(kind);
             int[] score = "kickoff".equals(kind) ? null : testScore(g, restart);
             String[] last = g.goals.isEmpty() ? null : g.goals.get(g.goals.size() - 1);
-            String scorer = !restart ? null : last == null ? "A. Player" : Moments.scorer(last);
+            String scorer = !restart ? null : last == null ? "A. Player" : Moments.popupScorer(last);
             String minute = !restart ? null : last == null ? "23'" : BroadcastData.minute(last[2]);
             return strap ? strapCfg(c, g, m, kind, score, scorer, minute, board)
                     : BroadcastData.kickoff(kind, m, score, scorer, minute);

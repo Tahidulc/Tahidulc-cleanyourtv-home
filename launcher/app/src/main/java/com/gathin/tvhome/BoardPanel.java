@@ -487,7 +487,7 @@ final class BoardPanel extends SportPanel {
         tryKick.words = () -> "Plays it now (" + popupStyleWords() + "), with " + tryGame();
         tryKick.ok = () -> tryClassic("kickoff");
         Row tryGoal = row("Try the goal pop-up", false);
-        tryGoal.words = () -> "As play starts again after a goal: the score";
+        tryGoal.words = () -> "As play starts again after a goal: the score, then the scorer";
         tryGoal.ok = () -> tryClassic("restart");
         add(tryKick, tryGoal);
         Row trySecond = row("Try the second-half pop-up", false);

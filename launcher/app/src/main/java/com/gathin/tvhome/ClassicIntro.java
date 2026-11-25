@@ -38,7 +38,7 @@ import java.util.function.Consumer;
  * <li>the line-ups once, from seven minutes before kick-off on the screen (when FotMob has them), both teams in about a
  * minute and a half, the scoreboard out of the way meanwhile; Back closes them, straight back to the channel;</li>
  * <li>the pop-up as the kick-off reaches the screen, when play starts again after a goal (40 seconds after the goal shows,
- * or once live play is back: the score alone), at the second half's kick-off (with the score) and at full time (the final
+ * or once live play is back: the score, then its scorer), at the second half's kick-off (with the score) and at full time (the final
  * score, as the board's own full time reaches the screen: Moments, Whistle; then the board goes as it does after it).</li>
  * </ul>
  * Each moment is shown once. Nothing shows over Home, another app, the screensaver or another of the launcher's frames,
@@ -345,8 +345,8 @@ final class ClassicIntro {
     private static int restartSide;
     /**
      * The goals whose restart pop-up came up (Moments.restartKey: the game, the side, that side's goals with it): their
-     * card over the app (GoalWatchService) and their scorer beside the board (BoardCover) are left out, the pop-up stood for
-     * them (the score alone, as the family asked).
+     * card over the app (GoalWatchService) and their scorer beside the board (BoardCover) are left out, the pop-up said it
+     * (the score, then its scorer).
      */
     private static final Set<String> restartsUp = new HashSet<>();
 
@@ -454,7 +454,7 @@ final class ClassicIntro {
             String[] last = Moments.lastGoal(game.goals, side);
             int[] sc = BroadcastData.score(score);
             if (sc == null) return;
-            prepare(app, game, "restart", sc, Moments.scorer(last), last == null ? "" : BroadcastData.minute(last[2]),
+            prepare(app, game, "restart", sc, Moments.popupScorer(last), last == null ? "" : BroadcastData.minute(last[2]),
                     popupKey(id, "restart", sc), null, null);
         }, PREP_RESTART_MS);
         long at = android.os.SystemClock.uptimeMillis();
@@ -487,7 +487,8 @@ final class ClassicIntro {
                 ScoresTicker.Game now = GoalWatchService.latestGame(id);
                 ScoresTicker.Game game = now != null ? now : g;
                 String[] last = Moments.lastGoal(game.goals, side);
-                popup(c, game, "restart", BroadcastData.score(score), Moments.scorer(last), last == null ? "" : BroadcastData.minute(last[2]));
+                popup(c, game, "restart", BroadcastData.score(score), Moments.popupScorer(last),
+                        last == null ? "" : BroadcastData.minute(last[2]));
             }
         }, com.gathin.broadcast.LivePlay.FIRST_MS);
     }
@@ -1023,7 +1024,7 @@ final class ClassicIntro {
                             int[] score = "kickoff".equals(kind) ? null : trialScore(g);
                             String[] last = g.goals.isEmpty() ? null : g.goals.get(g.goals.size() - 1);
                             boolean goal = "restart".equals(kind);
-                            cfg = popupCfg(app, tryPopupPage(app, force), g, m, kind, score, goal ? Moments.scorer(last) : null,
+                            cfg = popupCfg(app, tryPopupPage(app, force), g, m, kind, score, goal ? Moments.popupScorer(last) : null,
                                     goal ? (last == null ? "" : BroadcastData.minute(last[2])) : null);
                             if (q.length() > 0) cfg.put("q", q);
                         }

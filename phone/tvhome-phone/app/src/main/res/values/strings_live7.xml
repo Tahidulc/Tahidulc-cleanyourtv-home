@@ -11,7 +11,7 @@
     <string name="live7_other">Test · Other notifications</string>
     <string name="live7_lineups_alert">Line-ups</string>
     <string name="live7_kickoff">Kick-off</string>
-    <string name="live7_restart">After a goal: the score</string>
+    <string name="live7_restart">After a goal: the score, then the scorer</string>
     <string name="live7_second">Second half</string>
     <string name="live7_full">Full time</string>
     <string name="live7_goal_home">Goal: home</string>

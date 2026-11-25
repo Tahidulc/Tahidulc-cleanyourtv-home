@@ -1095,7 +1095,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         String[] goal = nthGoal(game == null ? null : game.goals, side, score);
         String scorer = Moments.scorer(goal), minute = goal == null || goal.length < 3 ? "" : BroadcastData.minute(goal[2]);
         if (BoardPrefs.popupOn(c) && game != null) {
-            restartLater(side, new int[]{r.home, r.away}, scorer, minute);
+            restartLater(side, new int[]{r.home, r.away}, Moments.popupScorer(goal), scorer, minute);
         } else {
             drop(goalDrop(side, scorer, goal == null || goal.length < 3 ? "" : nz(goal[2])));
         }
@@ -1120,8 +1120,11 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         return Moments.lastGoal(goals, side);
     }
 
-    /** The pop-up after a goal, once play starts again (Moments: forty seconds after the goal reached the picture). */
-    private void restartLater(int side, int[] score, String scorer, String minute) {
+    /**
+     * The pop-up after a goal, once play starts again (Moments: forty seconds after the goal reached the picture): the score,
+     * then its scorer as the pop-up names them (popScorer); the alert beside the board (scorer) when it does not come.
+     */
+    private void restartLater(int side, int[] score, String popScorer, String scorer, String minute) {
         long at = SystemClock.uptimeMillis();
         restartUntil = at + Moments.RESTART_WAIT_MS;
         String id = game.id;
@@ -1137,7 +1140,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
                     return;
                 }
                 restartUntil = go > 0 ? SystemClock.uptimeMillis() + 3_000L : 0;
-                if (go > 0) popup("restart", score, scorer, minute);
+                if (go > 0) popup("restart", score, popScorer, minute);
                 // Held back while the picture is covered: the pop-up comes then (or not at all), not an alert as well.
                 if (go < 0 || popup == null && !popupMaking && held == null) drop(goalDrop(side, scorer, minute));
             }
