@@ -85,9 +85,22 @@ public class AppSearchService extends AccessibilityService {
         Intent open = c.getPackageManager().getLeanbackLaunchIntentForPackage(pkg);
         if (open == null) open = c.getPackageManager().getLaunchIntentForPackage(pkg);
         if (open == null) return false;
-        // The helper not connected (a TCL drops it now and then): without it the app only opens, on its home screen,
-        // with nothing searched. Connected again first, as a channel's tune is, then the search.
-        if (instance == null && query != null && !query.isEmpty() && ensure(c)) {
+        boolean asked = query != null && !query.isEmpty();
+        // Debrid Stream with the helper not connected (a TCL drops it now and then): opened at once all the same, and
+        // its search taken up the moment the helper is connected again (onServiceConnected), no wait first. Started
+        // afresh, as before: with no helper to see it come, what it would be brought back to can't be told.
+        if (instance == null && asked && ReleaseAlerts.DEBRID.equals(pkg) && ensure(c)) {
+            open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            try {
+                c.startActivity(open);
+            } catch (Exception e) {
+                return false;
+            }
+            pending = new Object[]{pkg, query, tv, art, logo, now()};
+            return true;
+        }
+        // Another app: the helper connected again first, as a channel's tune is, then the search.
+        if (instance == null && asked && ensure(c)) {
             waiting(c, pkg);
             Intent go = open;
             whenReady(() -> openFor(c, pkg, go, query, tv, art, logo), 0);
@@ -96,56 +109,264 @@ public class AppSearchService extends AccessibilityService {
         return openFor(c, pkg, open, query, tv, art, logo);
     }
 
+    /**
+     * Debrid Stream opened while the helper was off (search): {pkg, query, tv, art, logo, when}, its search taken up when
+     * the helper is connected again within PENDING_MS; else it stays as it opened.
+     */
+    private static Object[] pending;
+    static final long PENDING_MS = 10_000L;
+
+    /** The helper connected again: a Debrid Stream search asked for meanwhile taken up, the app already on its way. */
+    private void takePending() {
+        Object[] p = pending;
+        pending = null;
+        if (p == null || now() - (Long) p[5] > PENDING_MS) return;
+        begin((String) p[0], (String) p[1], (Boolean) p[2], (android.graphics.Bitmap) p[3], (android.graphics.Bitmap) p[4], (Long) p[5], true);
+    }
+
     /** search's opening of pkg, the helper connected or not. */
     private static boolean openFor(Context c, String pkg, Intent open, String query, boolean tv, android.graphics.Bitmap art,
                                    android.graphics.Bitmap logo) {
         boolean helper = instance != null && query != null && !query.isEmpty();
-        // With the helper on, the app starts afresh from its home screen, where its search is: left on a title's own
-        // page, it would come back there, with no search to open.
-        open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | (helper ? Intent.FLAG_ACTIVITY_CLEAR_TASK : 0));
+        // With the helper on, another app starts afresh from its home screen, where its search is: left on a title's own
+        // page, it would come back there, with no search to open. Debrid Stream is brought to the front as it was, at
+        // once (a cold start is seconds on a TV): its search is opened from there, or it starts afresh if it can't be
+        // (DebridSteps.RESTART).
+        boolean debrid = ReleaseAlerts.DEBRID.equals(pkg);
+        open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | (helper && !debrid ? Intent.FLAG_ACTIVITY_CLEAR_TASK : 0));
+        long launched = now();
         try {
             c.startActivity(open);
         } catch (Exception e) {
             return false;
         }
-        if (helper) {
-            instance.start(pkg, query);
-            instance.wantTv = tv;
-            // Surprise me's episode, asked for just before (wantEpisode): found on the series' page too.
-            boolean episode = tv && ReleaseAlerts.DEBRID.equals(pkg) && pendingSeason > 0
-                    && System.currentTimeMillis() - pendingAt < 15_000L;
-            if (episode) {
-                instance.epSeason = pendingSeason;
-                instance.epNumber = pendingEpisode;
-                instance.epName = pendingName;
-                instance.deadline = System.currentTimeMillis() + 40_000L;
-            }
-            pendingSeason = 0;
-            // A poster's OK: on from the title's page to its Play (an episode asked for comes first).
-            if (!episode && ReleaseAlerts.DEBRID.equals(pkg) && query.equals(pendingPlay)
-                    && System.currentTimeMillis() - pendingPlayAt < 15_000L) {
-                instance.playQuery = query;
-                instance.playMode = pendingPlayYes == null ? -1 : pendingPlayYes ? 1 : 0;
-                if (instance.playMode != 0) instance.deadline = System.currentTimeMillis() + 40_000L;
-            }
-            pendingPlay = null;
-            if (episode) {
-                // The loading cover for an episode: the programme's logo, the season and number, the episode's title,
-                // over the episode's own picture.
-                instance.coverEpisode = new String[]{"SEASON " + instance.epSeason + "  ·  EPISODE " + instance.epNumber,
-                        pendingName == null ? "" : pendingName};
-                instance.showCover(art, logo, query, null, 24_000L);
-                instance.coverEpisode = null;
-                if (pendingStill != null && instance.coverBg != null) {
-                    instance.coverBg.setImageBitmap(pendingStill);
-                    instance.coverBg.setAlpha(0.85f);
-                }
-            } else {
-                instance.showCover(art, logo, query, null, 8_000L);
-            }
-            pendingStill = null;
-        }
+        if (helper) instance.begin(pkg, query, tv, art, logo, launched, false);
         return true;
+    }
+
+    /** The helper's search for query in pkg (opened at launched; fresh: started afresh on purpose), its cover up at once. */
+    private void begin(String pkg, String query, boolean tv, android.graphics.Bitmap art, android.graphics.Bitmap logo, long launched,
+                       boolean fresh) {
+        start(pkg, query);
+        if (ReleaseAlerts.DEBRID.equals(pkg)) debridBegin(query, tv, launched, fresh);
+        wantTv = tv;
+        // Surprise me's episode, asked for just before (wantEpisode): found on the series' page too.
+        boolean episode = tv && ReleaseAlerts.DEBRID.equals(pkg) && pendingSeason > 0
+                && System.currentTimeMillis() - pendingAt < 15_000L;
+        if (episode) {
+            epSeason = pendingSeason;
+            epNumber = pendingEpisode;
+            epName = pendingName;
+            deadline = System.currentTimeMillis() + 40_000L;
+        }
+        pendingSeason = 0;
+        // A poster's OK: on from the title's page to its Play (an episode asked for comes first).
+        if (!episode && ReleaseAlerts.DEBRID.equals(pkg) && query.equals(pendingPlay)
+                && System.currentTimeMillis() - pendingPlayAt < 15_000L) {
+            playQuery = query;
+            playMode = pendingPlayYes == null ? -1 : pendingPlayYes ? 1 : 0;
+            if (playMode != 0) deadline = System.currentTimeMillis() + 40_000L;
+        }
+        pendingPlay = null;
+        if (episode) {
+            // The loading cover for an episode: the programme's logo, the season and number, the episode's title,
+            // over the episode's own picture.
+            coverEpisode = new String[]{"SEASON " + epSeason + "  ·  EPISODE " + epNumber,
+                    pendingName == null ? "" : pendingName};
+            showCover(art, logo, query, null, 24_000L);
+            coverEpisode = null;
+            if (pendingStill != null && coverBg != null) {
+                coverBg.setImageBitmap(pendingStill);
+                coverBg.setAlpha(0.85f);
+            }
+        } else {
+            showCover(art, logo, query, null, 8_000L);
+        }
+        pendingStill = null;
+    }
+
+    // ---- Debrid Stream: to the title's page as its screens come (DebridSteps) ------------------------------------
+
+    /** The search under way in Debrid Stream, or null. */
+    private DebridSteps debrid;
+    /** When the last step was taken (uptime): Debrid Stream's events start the next one no sooner than KICK_GAP_MS after. */
+    private long stepAt;
+    /**
+     * At most one look at Debrid Stream's screen this often while its screens change: each look reads its views on its
+     * own main thread, so a burst of changes is one look, not many.
+     */
+    static final long KICK_GAP_MS = 100L;
+    /** The helper's events as they were before a Debrid Stream search asked for them at once (-1: not changed). */
+    private long timeoutWas = -1;
+    private int typesWas;
+
+    private void debridBegin(String query, boolean tv, long launched, boolean fresh) {
+        debrid = new DebridSteps(query, tv, launched, fresh);
+        fastEvents(true);
+        // Its first look now: the app is on its way, and each of its screens is looked at as it comes.
+        main.removeCallbacks(step);
+        main.post(step);
+    }
+
+    /** The search in Debrid Stream over (done, given up, or another asked for): the helper's events as they were. */
+    private void debridEnd() {
+        if (debrid == null) return;
+        debrid = null;
+        fastEvents(false);
+    }
+
+    /** One of Debrid Stream's screens changed while searching it: the next step at once (one per KICK_GAP_MS at most). */
+    private void kick() {
+        long wait = Math.max(0L, stepAt + KICK_GAP_MS - android.os.SystemClock.uptimeMillis());
+        main.removeCallbacks(step);
+        main.postDelayed(step, wait);
+    }
+
+    /**
+     * While a Debrid Stream search runs: its window and content changes told at once (not at most every 400 ms, as the
+     * helper is set up for its quieter work), its windows appearing too; back as they were once it is over.
+     */
+    private void fastEvents(boolean on) {
+        try {
+            android.accessibilityservice.AccessibilityServiceInfo info = getServiceInfo();
+            if (info == null) return;
+            if (on) {
+                if (timeoutWas < 0) {
+                    timeoutWas = info.notificationTimeout;
+                    typesWas = info.eventTypes;
+                }
+                info.notificationTimeout = 50L;
+                info.eventTypes = typesWas | AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED | AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+                        | AccessibilityEvent.TYPE_VIEW_FOCUSED | AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED;
+            } else {
+                if (timeoutWas < 0) return;
+                info.notificationTimeout = timeoutWas;
+                info.eventTypes = typesWas;
+                timeoutWas = -1;
+            }
+            setServiceInfo(info);
+        } catch (RuntimeException ignored) {
+            // Left as it was: the safety net's looks still go on.
+        }
+    }
+
+    /** Android's node for DebridSteps. */
+    private static final class Acc implements DebridSteps.Node {
+        final AccessibilityNodeInfo n;
+
+        Acc(AccessibilityNodeInfo n) {
+            this.n = n;
+        }
+
+        @Override public CharSequence text() {
+            return n.getText();
+        }
+
+        @Override public CharSequence desc() {
+            return n.getContentDescription();
+        }
+
+        @Override public String id() {
+            return n.getViewIdResourceName();
+        }
+
+        @Override public boolean editable() {
+            return n.isEditable();
+        }
+
+        @Override public boolean focused() {
+            return n.isFocused();
+        }
+
+        @Override public int count() {
+            return n.getChildCount();
+        }
+
+        @Override public DebridSteps.Node child(int i) {
+            AccessibilityNodeInfo c = n.getChild(i);
+            return c == null ? null : new Acc(c);
+        }
+    }
+
+    private static AccessibilityNodeInfo node(DebridSteps.Step s) {
+        return s.node == null ? null : ((Acc) s.node).n;
+    }
+
+    /** Debrid Stream's screen now: the step DebridSteps gives, done. False when the search is over. */
+    private boolean debridStep(AccessibilityNodeInfo root) {
+        long now = now();
+        DebridSteps.Step s = debrid.next(new Acc(root), keyboardShown(), now);
+        switch (s.what) {
+            case DebridSteps.TYPE: {
+                Bundle text = new Bundle();
+                text.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, s.text);
+                if (node(s).performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, text)) {
+                    debrid.typed(now);
+                    deadline = Math.max(deadline, now + 12_000L);
+                    trace("debrid: typed " + s.text + " " + (now - startedAt) + " ms in");
+                }
+                return true;
+            }
+            case DebridSteps.HIDE_KEYBOARD:
+                performGlobalAction(GLOBAL_ACTION_BACK);
+                return true;
+            case DebridSteps.PICK: {
+                AccessibilityNodeInfo hit = node(s);
+                click(hit);
+                deadline = Math.max(deadline, now + 8_000L);
+                // A poster has no words of its own, only its description: that names what was picked.
+                trace("debrid: picked " + (hit.getText() != null ? hit.getText() : hit.getContentDescription()) + " " + (now - startedAt) + " ms in");
+                return true;
+            }
+            case DebridSteps.OPEN_SEARCH:
+                click(node(s));
+                trace("debrid: search opened");
+                // Its search screen and keyboard to come: the time for them.
+                deadline = Math.max(deadline, now + 12_000L);
+                return true;
+            case DebridSteps.PROFILE: {
+                // The profile it highlights is the one last used, chosen with the remote's OK; time then for its home.
+                AccessibilityNodeInfo focused = s.node != null ? node(s) : root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+                if (focused != null) {
+                    press(focused);
+                } else if (android.os.Build.VERSION.SDK_INT >= 33 && now - startedAt > 1_500L) {
+                    // No focus reported yet: OK goes to whatever the app has focused, which on its picker is a profile.
+                    QuietHold.okSentAt = android.os.SystemClock.uptimeMillis();
+                    performGlobalAction(GLOBAL_ACTION_DPAD_CENTER);
+                }
+                trace("debrid: profile picked (focus " + (focused != null) + ")");
+                deadline = Math.max(deadline, now + 15_000L);
+                return true;
+            }
+            case DebridSteps.RESTART: {
+                // Brought to the front on a page without its search: started afresh, as every search once was.
+                Intent open = getPackageManager().getLeanbackLaunchIntentForPackage(target);
+                if (open == null) open = getPackageManager().getLaunchIntentForPackage(target);
+                if (open != null) {
+                    try {
+                        startActivity(open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
+                    } catch (RuntimeException ignored) {
+                        return false;
+                    }
+                }
+                debrid.restarted(now);
+                deadline = Math.max(deadline, now + SEARCH_MS);
+                trace("debrid: started afresh");
+                return true;
+            }
+            case DebridSteps.PAGE:
+                // Picked: done once the search has given way to the title's page, or with an episode asked for (Surprise
+                // me), once that episode is found on it.
+                if (epPlayAt > 0) return playerStep(root);
+                if (epSeason > 0) return episodeStep(root);
+                if (playMode != 0) return coverPlayStep(root);
+                hideDelay = 700;
+                return false;
+            case DebridSteps.NOT_FOUND:
+                return false;
+            default:
+                return true;
+        }
     }
 
     // ---- Debrid Stream: an episode on the series' page ---------------------------------------------------------
@@ -549,8 +770,10 @@ public class AppSearchService extends AccessibilityService {
     }
 
     private void abort() {
+        pending = null;
         if (target == null && cover == null) return;
         target = null;
+        debridEnd();
         main.removeCallbacks(step);
         removeCover();
     }
@@ -886,6 +1109,8 @@ public class AppSearchService extends AccessibilityService {
     }
 
     private void start(String pkg, String q) {
+        // A Debrid Stream search before this one is over (debridBegin starts this one's, when it is one).
+        debridEnd();
         target = pkg;
         query = q;
         typedAt = 0;
@@ -1082,9 +1307,12 @@ public class AppSearchService extends AccessibilityService {
 
     private final Runnable step = new Runnable() {
         @Override public void run() {
-            if (target == null) { loud(); hideCover(0); return; }
+            stepAt = android.os.SystemClock.uptimeMillis();
+            if (target == null) { debridEnd(); loud(); hideCover(0); return; }
             boolean late = System.currentTimeMillis() > deadline;
-            if (!late && advance()) { main.postDelayed(this, STEP_MS); return; }
+            // Debrid Stream: the next step as its screen changes (kick); a look every SAFETY_MS besides, as a safety net.
+            if (!late && advance()) { main.postDelayed(this, debrid != null ? debrid.lookAgainIn(now()) : STEP_MS); return; }
+            debridEnd();
             // How long it took and how it ended, in the log (adb logcat -s AppSearch), to time one way against another.
             android.util.Log.i(TAG, "done " + (kleva ? (wanted != null ? "kleva-channel" : "kleva-game") : channel ? "tivimate" : target)
                     + " in " + (System.currentTimeMillis() - startedAt) + " ms: " + (late ? "TIMED OUT" : missed ? "NOT FOUND" : "ok")
@@ -1258,6 +1486,7 @@ public class AppSearchService extends AccessibilityService {
         if (channel) return tuneStep(root);
         if (kleva) return klevaStep(root);
         if (camera) return cameraStep(root);
+        if (debrid != null) return debridStep(root);
         AccessibilityNodeInfo box = find(root, Kind.EDIT);
         if (opened) {
             // Picked: done once the search has given way to the title's page, or with an episode asked for (Surprise
@@ -2580,6 +2809,8 @@ public class AppSearchService extends AccessibilityService {
         instance = this;
         BoardCover.attach(this);
         playerKeysCheck(this);
+        // Debrid Stream opened while the helper was off: its search taken up now, the app already on its way.
+        takePending();
     }
 
     @Override public boolean onUnbind(Intent intent) {
@@ -2589,6 +2820,7 @@ public class AppSearchService extends AccessibilityService {
 
     @Override public void onDestroy() {
         instance = null;
+        debrid = null;
         main.removeCallbacksAndMessages(null);
         removeCover();
         if (assistCover != null) removeView(assistCover);
@@ -2610,6 +2842,12 @@ public class AppSearchService extends AccessibilityService {
      * entered on first (it is the row's first card, the one last watched). Copied for Home after each change.
      */
     @Override public void onAccessibilityEvent(AccessibilityEvent event) {
+        // Searching Debrid Stream: each change of its screen takes the next step at once.
+        if (debrid != null && target != null) {
+            CharSequence of = event == null ? null : event.getPackageName();
+            if (of != null && target.contentEquals(of)) kick();
+            return;
+        }
         if (target != null || System.currentTimeMillis() - lastLook < 300) return;
         lastLook = System.currentTimeMillis();
         CharSequence from = event == null ? null : event.getPackageName();

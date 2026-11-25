@@ -956,11 +956,15 @@ final class HomeV2 {
         });
     }
 
-    /** What OK on a poster does in Discover, Movies and TV shows: the app it was watched in, else Debrid Stream's page. */
+    /**
+     * What OK on a poster does in Discover, Movies and TV shows: Debrid Stream's page for it whenever Debrid Stream is on
+     * this TV, whichever app it was watched in; without Debrid Stream, the app it was watched in.
+     */
     void playLikePages(PagesV2.Title t) {
         String pkg = debridPackage();
-        if (t.app != null && !t.app.equals(pkg)) { openApp(t.app); return; }
-        if (pkg == null) return;
+        String target = DebridOpen.target(pkg, t.app);
+        if (target == null) return;
+        if (!target.equals(pkg)) { openApp(target); return; }
         // On from Debrid Stream's page to its Play, for a title on one of the TV's streaming apps (looked up while the
         // search runs; a title on none of them stops at its page, as before).
         AppSearchService.wantPlay(t.title, t.id == 0 ? Boolean.FALSE : null);
@@ -1837,6 +1841,8 @@ final class HomeV2 {
         // a style, which reads its own; Home's row is read again when Home's own screen is chosen).
         // Homefield TV's cards read again at once (a channel just watched there comes first), ready before the dock lands.
         homefield.resume();
+        // Debrid Stream's own rows read again (the helper is asked back on by MainActivity as Home comes up).
+        warmDebrid();
         Long at = skin == null ? rowsAt.get(mode) : null;
         if (at != null && System.currentTimeMillis() - at > 5 * 60_000L) {
             rowsAt.remove(mode);
@@ -2551,6 +2557,8 @@ final class HomeV2 {
         players.stop();
         playingTile = null;
         main.removeCallbacks(previewNow);
+        // Discover, Movies and TV shows: Debrid Stream's posters, the helper on before OK.
+        if (which >= 1 && which <= 3) warmDebrid();
         pageWhich = which;
         preview = hover;
         page = which == 1 ? PagesV2.discover(this) : which == 2 ? PagesV2.movies(this) : which == 3 ? PagesV2.shows(this)
@@ -2691,6 +2699,8 @@ final class HomeV2 {
         railSel = i;
         // The dock next to TiviMate or Homefield TV: their live row read ahead, so it is there as the dock lands.
         liveAhead(i);
+        // Next to Debrid Stream: the helper on before OK is pressed on one of its cards.
+        if (DebridOpen.near(dockTags(), i)) warmDebrid();
         String p = (String) railViews.get(i).getTag();
         if (p == null) {
             // All apps: the same Apps page as the Apps box, showing as when the box is hovered; Right or OK goes in.
@@ -2951,6 +2961,8 @@ final class HomeV2 {
         if (m.equals(mode) && already != null && already == shown && row.getChildCount() > 0) return;
         mode = m;
         homefield.rowFor(m);
+        // Debrid Stream's cards in view: the helper on before OK.
+        if (DebridOpen.ofDebrid(m)) warmDebrid();
         int gen = ++generation;
         String railPkg = railSel >= 0 && railSel < railViews.size() ? (String) railViews.get(railSel).getTag() : null;
         label.setText(labelFor(m, railPkg));
@@ -3772,6 +3784,31 @@ final class HomeV2 {
         return null;
     }
 
+    /** Debrid Stream's own rows on Android TV (Watch Next, its preview rows), as last read (DebridOpen.published). */
+    private volatile List<String[]> debridRows = new ArrayList<>();
+    private long debridRowsAt;
+
+    /**
+     * Debrid Stream's cards coming into view (Home up, the dock near it, its row, For you, Discover, Movies or TV shows):
+     * the helper switched back on now if it is off, so OK never waits for it, and Debrid Stream's own rows read again
+     * (at most once a minute) for the titles it can be opened on straight away.
+     */
+    void warmDebrid() {
+        DebridOpen.warm(a);
+        String pkg = dock == null ? null : debridPackage();
+        long now = System.currentTimeMillis();
+        if (pkg == null || now - debridRowsAt < 60_000L && now >= debridRowsAt) return;
+        debridRowsAt = now;
+        io.execute(() -> debridRows = published(pkg));
+    }
+
+    /** The dock's apps by place (null for All apps), for DebridOpen.near. */
+    private List<String> dockTags() {
+        List<String> out = new ArrayList<>();
+        for (View v : railViews) out.add(v.getTag() instanceof String ? (String) v.getTag() : null);
+        return out;
+    }
+
     /** One dock app's tiles: what it publishes to Android's TV rows, else what is popular on it from TMDB. */
     private List<Tile> app(String pkg) {
         // TiviMate and Homefield TV: live TV's channels on now, the same cards (OK on Homefield TV's opens Homefield TV).
@@ -4219,17 +4256,16 @@ final class HomeV2 {
         }
         Bitmap logo = known == null ? null : cached(known);
         Bitmap pic = art == null ? null : cached(art);
-        Runnable open = () -> {
-            AppSearchService.search(a, pkg, title, tv, pic, logo);
+        // Debrid Stream's own row for the title (Watch Next, its preview rows): straight there by its link, no search.
+        if (DebridOpen.PKG.equals(pkg) && DebridOpen.openPublished(a, DebridOpen.published(debridRows, title))) {
+            AppSearchService.wantPlay(null, null);
             GoalWatchService.onAppOpened(a, pkg);
-        };
-        // The helper off (a TCL turns it off now and then): switched back on first, given a moment to start.
-        if (!AppSearchService.running()) {
-            AppSearchService.ensure(a);
-            main.postDelayed(open, 1600);
-        } else {
-            open.run();
+            return;
         }
+        // At once: with the helper off (a TCL turns it off now and then) the app opens all the same and its search is
+        // taken up as the helper comes back (AppSearchService.search); no set wait first.
+        AppSearchService.search(a, pkg, title, tv, pic, logo);
+        GoalWatchService.onAppOpened(a, pkg);
         if (logo != null && pic != null) return;
         io.execute(() -> {
             int id = tmdbId;

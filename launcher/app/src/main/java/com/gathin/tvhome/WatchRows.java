@@ -853,6 +853,8 @@ final class WatchRows {
     /** The row on show, read when stale (and shown when it arrives), with its tabs. */
     private boolean showTrending() {
         if (!trendingRow()) return false;
+        // Debrid Stream's row (its trending titles, its Continue Watching): the helper on before OK.
+        DebridOpen.warm(context);
         if (tmdbKey == null) {
             tmdbKey = Config.themeString(context, "tmdb_key", "").trim();
             cats = Trending.categories(!tmdbKey.isEmpty());
