@@ -1,7 +1,9 @@
-Fonts in this app: Outfit (app/src/main/assets/fonts/outfit.ttf) and Inter (app/src/main/res/font/inter_*.ttf).
+Fonts in this app: Outfit (app/src/main/assets/fonts/outfit.ttf), Plus Jakarta Sans (app/src/main/assets/fonts/plusjakartasans.ttf)
+and Inter (app/src/main/res/font/inter_*.ttf).
 
 Copyright 2021 The Outfit Project Authors (https://github.com/Outfitio/Outfit-Fonts)
 Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter)
+Copyright 2020 The Plus Jakarta Sans Project Authors (https://github.com/tokotype/PlusJakartaSans)
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:

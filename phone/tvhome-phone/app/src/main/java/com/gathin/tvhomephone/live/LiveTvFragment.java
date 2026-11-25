@@ -394,6 +394,7 @@ public class LiveTvFragment extends Fragment {
         bar.setGravity(Gravity.CENTER_VERTICAL);
         bar.setPadding(Ui.dp(c, 12), 0, Ui.dp(c, 16), 0);
         catsButton = Ui.text(c, "", 15, Ui.TEXT, true);
+        catsButton.setTypeface(TvLook.guide(c, TvLook.NAME));
         catsButton.setGravity(Gravity.CENTER_VERTICAL);
         catsButton.setMinHeight(Ui.dp(c, 48));
         catsButton.setMaxLines(1);
@@ -411,7 +412,7 @@ public class LiveTvFragment extends Fragment {
         catsButton.setOnClickListener(v -> openCats());
         paintCatsButton(c);
         bar.addView(catsButton, new LinearLayout.LayoutParams(-2, -1));
-        catsCount = TvLook.text(c, "", 12.5f, TvLook.L3, false);
+        catsCount = TvLook.guideText(c, "", 12.5f, TvLook.L3, TvLook.WORDS);
         catsCount.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
         catsCount.setMaxLines(1);
         catsCount.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
@@ -1776,7 +1777,7 @@ public class LiveTvFragment extends Fragment {
             LinearLayout texts = new LinearLayout(c);
             texts.setOrientation(LinearLayout.VERTICAL);
             texts.setPadding(Ui.dp(c, 14), 0, Ui.dp(c, 6), 0);
-            name = TvLook.text(c, "", 15.5f, Ui.TEXT, true);
+            name = TvLook.guideText(c, "", 15.5f, Ui.TEXT, TvLook.TITLE);
             name.setSingleLine(true);
             name.setEllipsize(TextUtils.TruncateAt.END);
             texts.addView(name);
@@ -1785,7 +1786,7 @@ public class LiveTvFragment extends Fragment {
             nowTag = Ui.text(c, getString(R.string.live_now), 11, Ui.RED, true);
             nowTag.setPadding(0, 0, Ui.dp(c, 6), 0);
             now.addView(nowTag);
-            nowTitle = TvLook.text(c, "", 13.5f, Ui.SOFT, false);
+            nowTitle = TvLook.guideText(c, "", 13.5f, Ui.SOFT, TvLook.WORDS);
             nowTitle.setSingleLine(true);
             nowTitle.setEllipsize(TextUtils.TruncateAt.END);
             now.addView(nowTitle, new LinearLayout.LayoutParams(0, -2, 1f));
@@ -1799,7 +1800,7 @@ public class LiveTvFragment extends Fragment {
             pp.topMargin = Ui.dp(c, 4);
             pp.bottomMargin = Ui.dp(c, 3);
             texts.addView(progress, pp);
-            next = TvLook.text(c, "", 12, TvLook.L3, false);
+            next = TvLook.guideText(c, "", 12, TvLook.L3, TvLook.WORDS);
             next.setSingleLine(true);
             next.setEllipsize(TextUtils.TruncateAt.END);
             texts.addView(next);

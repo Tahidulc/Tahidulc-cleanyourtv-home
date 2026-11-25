@@ -413,10 +413,13 @@ final class GuideGrid extends FrameLayout {
             minText = Ui.dp(c, 34);
             badgePad = Ui.dp(c, 4);
             badgeR = Ui.dp(c, 4);
-            // Inter: the titles semibold in white, the times and names regular in 07's softer greys.
-            Typeface regular = TvLook.inter(c), semi = TvLook.semi(c);
-            title = text(c, wide ? 16.5f : 15.5f, Ui.TEXT, semi);
-            titleInk = text(c, wide ? 16.5f : 15.5f, Ui.TEXT, semi);
+            // Plus Jakarta Sans (the family's pick, 25 Nov): the titles bold in white, a touch tighter; the channels'
+            // names semibold and the times regular, in 07's softer greys.
+            Typeface regular = TvLook.guide(c, TvLook.WORDS), semi = TvLook.guide(c, TvLook.NAME), bold = TvLook.guide(c, TvLook.TITLE);
+            title = text(c, wide ? 16.5f : 15.5f, Ui.TEXT, bold);
+            titleInk = text(c, wide ? 16.5f : 15.5f, Ui.TEXT, bold);
+            title.setLetterSpacing(TvLook.TITLE_TRACK);
+            titleInk.setLetterSpacing(TvLook.TITLE_TRACK);
             small = text(c, wide ? 13 : 12, TvLook.L3, regular);
             smallName = text(c, wide ? 13 : 12, TvLook.L2, semi);
             badgeText = text(c, wide ? 9.5f : 9f, TvLook.L2, semi);

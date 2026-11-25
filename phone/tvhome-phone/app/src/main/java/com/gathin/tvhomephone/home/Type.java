@@ -13,7 +13,7 @@ import com.gathin.tvhomephone.R;
  * built once each), Inter for words (res/font, SIL Open Font License 1.1). Android's own sans when one can't be read.
  */
 public final class Type {
-    private static final SparseArray<Typeface> OUTFIT = new SparseArray<>();
+    private static final SparseArray<Typeface> OUTFIT = new SparseArray<>(), JAKARTA = new SparseArray<>();
     private static Typeface inter, interSemi, interLight;
 
     private Type() {}
@@ -28,6 +28,23 @@ public final class Type {
         }
         if (t == null) t = Typeface.create("sans-serif-medium", weight >= 700 ? Typeface.BOLD : Typeface.NORMAL);
         OUTFIT.put(weight, t);
+        return t;
+    }
+
+    /**
+     * Live TV's type (the guide, its panel and the channels' rows): Plus Jakarta Sans, the variable font in assets at
+     * the weight asked (200 to 800), built once each; Inter where it can't be read.
+     */
+    public static synchronized Typeface jakarta(Context c, int weight) {
+        Typeface t = JAKARTA.get(weight);
+        if (t != null) return t;
+        try {
+            t = new Typeface.Builder(c.getAssets(), "fonts/plusjakartasans.ttf").setFontVariationSettings("'wght' " + weight).build();
+        } catch (RuntimeException e) {
+            t = null;
+        }
+        if (t == null) t = weight >= 600 ? interSemi(c) : inter(c);
+        JAKARTA.put(weight, t);
         return t;
     }
 

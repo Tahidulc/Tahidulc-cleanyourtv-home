@@ -874,3 +874,8 @@ the name, the minute and (og) or (pen) as the board marks them.
 went to the picture and the programme's panel: upright on a phone the panel is taller, its programme's picture showing
 more; upright on a tablet the picture is bigger (over half the width), the details beside it; sideways the pane is the
 picture and the details.
+
+**Live TV in Plus Jakarta Sans (5.44).** The guide, the programme's panel over it, the channels' rows and the
+categories' button are set in Plus Jakarta Sans (the family's pick of seven fonts tried on the guide): programme titles bold
+and a touch tighter, channel names semibold, times and descriptions regular. The rest of the app keeps Inter and Outfit.
+The font is the variable Plus Jakarta Sans in the app's assets (SIL Open Font License 1.1, listed in FONT-LICENSE-OFL.txt).

@@ -83,24 +83,24 @@ final class Details extends LinearLayout {
         logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
         box.addView(logo, new FrameLayout.LayoutParams(-1, -1));
         if (!compact) head.addView(box, new LinearLayout.LayoutParams(Ui.dp(c, LogoTiles.boxed(c) ? 52 : 44), Ui.dp(c, 30)));
-        channel = TvLook.text(c, "", 12.5f, TvLook.L2, true);
+        channel = TvLook.guideText(c, "", 12.5f, TvLook.L2, TvLook.NAME);
         channel.setSingleLine(true);
         channel.setEllipsize(TextUtils.TruncateAt.END);
         channel.setPadding(compact ? 0 : Ui.dp(c, 10), 0, 0, 0);
         head.addView(channel, new LinearLayout.LayoutParams(0, -2, 1f));
 
-        title = TvLook.text(c, "", compact ? 17 : 21, Ui.TEXT, true);
+        title = TvLook.guideText(c, "", compact ? 17 : 21, Ui.TEXT, TvLook.TITLE);
         title.setLetterSpacing(-0.02f);
         title.setLineSpacing(0, 1.05f);
         title.setMaxLines(compact ? 1 : 2);
         title.setEllipsize(TextUtils.TruncateAt.END);
-        when = TvLook.text(c, "", compact ? 12.5f : 13, TvLook.L2, false);
+        when = TvLook.guideText(c, "", compact ? 12.5f : 13, TvLook.L2, TvLook.WORDS);
         when.setSingleLine(true);
         when.setEllipsize(TextUtils.TruncateAt.END);
         progress = new ProgressBar(c, null, android.R.attr.progressBarStyleHorizontal);
         progress.setMax(1000);
         TvLook.line(progress);
-        desc = TvLook.text(c, "", compact ? 13 : 13.5f, TvLook.L2, false);
+        desc = TvLook.guideText(c, "", compact ? 13 : 13.5f, TvLook.L2, TvLook.WORDS);
         // The whole description (the family's ask, 24 Nov): no Watch button taking its room, nothing cut short.
         desc.setMaxLines(descLines);
         if (descLines < 50) desc.setEllipsize(TextUtils.TruncateAt.END);

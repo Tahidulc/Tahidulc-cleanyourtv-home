@@ -69,6 +69,24 @@ final class TvLook {
         return Type.interSemi(c);
     }
 
+    /** Live TV's guide, its panel and the channels' rows: Plus Jakarta Sans at this weight (400, 600, 700). */
+    static Typeface guide(Context c, int weight) {
+        return Type.jakarta(c, weight);
+    }
+
+    /** Writing in the guide's font: bold titles a touch tighter, semibold names, regular for the rest. */
+    static TextView guideText(Context c, String s, float sp, int colour, int weight) {
+        TextView t = Ui.text(c, s, sp, colour, false);
+        t.setTypeface(guide(c, weight));
+        if (weight >= 700) t.setLetterSpacing(TITLE_TRACK);
+        t.setIncludeFontPadding(false);
+        return t;
+    }
+
+    /** The guide's titles: bold, and this much tighter (em). */
+    static final int TITLE = 700, NAME = 600, WORDS = 400;
+    static final float TITLE_TRACK = -0.01f;
+
     /** Writing in Inter: semibold for titles and buttons, regular for the rest. */
     static TextView text(Context c, String s, float sp, int colour, boolean semi) {
         TextView t = Ui.text(c, s, sp, colour, false);
