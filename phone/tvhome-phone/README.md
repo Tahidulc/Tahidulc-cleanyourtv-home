@@ -888,3 +888,11 @@ picture and the details.
 categories' button are set in Plus Jakarta Sans (the family's pick of seven fonts tried on the guide): programme titles bold
 and a touch tighter, channel names semibold, times and descriptions regular. The rest of the app keeps Inter and Outfit.
 The font is the variable Plus Jakarta Sans in the app's assets (SIL Open Font License 1.1, listed in FONT-LICENSE-OFL.txt).
+
+**Sky's programme pictures, and every programme a picture, seen whole (5.45).** The guide and the programme's panel now
+ask Sky's public UK guide for a programme's picture as Homefield TV does, so Sky Sports and the other Sky channels show
+their programmes' backgrounds. Pictures are found in one order shared with the TV app: the guide's own picture, then
+Sky's, then TMDB by the programme's title (on sports and news channels too, never for a match or a bulletin), then a
+match's two clubs' crests, then a picture for what it is, then the channel's logo card. Each is fitted to its cell or
+panel without being zoomed in too far: a much wider or narrower space shows the whole picture with its edges faded into
+its own colour, and a guide cell's picture slides with the cell as it scrolls instead of jumping or turning plain.
