@@ -231,7 +231,7 @@ final class LineupCard {
 
         // The band down the left, its contents changed with each page; the stage beside it, where pages slide.
         FrameLayout band = new FrameLayout(c);
-        band.setBackground(new Streaks(0xFF1B2591, 0xFF0D1360, 0x12FFFFFF, px(21), px(3)));
+        band.setBackground(new Streaks(0xFF1B2591, 0xFF1B2591, 0, px(21), px(3)));
         card.addView(band, new FrameLayout.LayoutParams(px(BAND), h));
         FrameLayout stage = new FrameLayout(c);
         stage.setClipChildren(true);
@@ -398,10 +398,10 @@ final class LineupCard {
 
     /**
      * The line-ups on Home, in the style of Home's score bars and no taller than fits above the clock: a long pill
-     * across the top on the pale streaked ground, the navy band at its left end (the competition, then the club's
-     * crest and shape) with its stripes drifting, the LINE-UPS label, and the pages turning behind the card's wipe:
+     * across the top on a solid pale ground, the solid navy band at its left end (the competition, then the club's
+     * crest and shape), the LINE-UPS label, and the pages turning behind the card's wipe:
      * the fixture with the kick-off and the channel (OK watches), then each eleven across the bar by its lines, each
-     * player's head and shoulders, number and surname. The streaks drift on layers of their own. Back closes it.
+     * player's head and shoulders, number and surname. No stripes: every ground solid (the family's ask, 25 Nov). Back closes it.
      */
     private static void showBar(Context c, Data d) {
         k = c.getResources().getDisplayMetrics().widthPixels / 1920f;
@@ -415,17 +415,15 @@ final class LineupCard {
             @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), r); }
         });
         box.setClipToOutline(true);
-        box.setBackground(new Streaks(0xFFF6F7FD, 0xFFD3D6F3, 0, px(50), px(30)));
-        box.addView(driftingLines(c, 0x4DFFFFFF, px(50), px(30), h), driftParams(px(50) + px(30), h));
+        box.setBackground(new Streaks(0xFFF6F7FD, 0xFFF6F7FD, 0, px(50), px(30)));
 
         LinearLayout row = new LinearLayout(c);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        // The band: its navy, its fine stripes drifting along on a layer of their own, the mark over them.
+        // The band: solid navy, the mark over it.
         FrameLayout band = new FrameLayout(c);
-        band.setBackground(new Streaks(0xFF1B2591, 0xFF0D1360, 0, px(14), px(3)));
+        band.setBackground(new Streaks(0xFF1B2591, 0xFF1B2591, 0, px(14), px(3)));
         band.setClipChildren(true);
-        band.addView(driftingLines(c, 0x17FFFFFF, px(14), px(3), h), driftParams(px(14) + px(3), h));
         FrameLayout mark = new FrameLayout(c);
         band.addView(mark, new FrameLayout.LayoutParams(-1, -1));
         row.addView(band, new LinearLayout.LayoutParams(bandW, h));
@@ -496,27 +494,6 @@ final class LineupCard {
         box.setTranslationY(-px(24));
         box.animate().alpha(1f).translationY(0f).setDuration(300).setInterpolator(new DecelerateInterpolator(2f)).withLayer().start();
         step.run();
-    }
-
-    /** Streaks alone on a layer, a period wider than their place, drifting one period to the right and again. */
-    private static View driftingLines(Context c, int colour, int gap, int width, int h) {
-        View lines = new View(c);
-        lines.setBackground(new Streaks(0, 0, colour, gap, width));
-        lines.setLayerType(View.LAYER_TYPE_HARDWARE, null);
-        int period = Math.max(4, gap) + Math.max(1, width);
-        android.animation.ObjectAnimator a = android.animation.ObjectAnimator.ofFloat(lines, View.TRANSLATION_X, 0f, period);
-        a.setDuration(Math.max(900, Math.round(period / (float) px(30) * 1_000)));
-        a.setRepeatCount(android.animation.ValueAnimator.INFINITE);
-        a.setInterpolator(new LinearInterpolator());
-        a.setStartDelay(300);
-        drifting.add(a);
-        return lines;
-    }
-
-    private static FrameLayout.LayoutParams driftParams(int period, int h) {
-        FrameLayout.LayoutParams p = new FrameLayout.LayoutParams(-1, h);
-        p.leftMargin = -period;
-        return p;
     }
 
     /** The band's mark: big in the middle (the competition's), or the club's crest with its shape under it. */
@@ -786,7 +763,7 @@ final class LineupCard {
         card.setClipToOutline(true);
         card.setBackgroundColor(0xFF0D1360);
         FrameLayout band = new FrameLayout(c);
-        band.setBackground(new Streaks(0xFF1B2591, 0xFF0D1360, 0x12FFFFFF, px(21), px(3)));
+        band.setBackground(new Streaks(0xFF1B2591, 0xFF1B2591, 0, px(21), px(3)));
         card.addView(band, new FrameLayout.LayoutParams(px(BAND), h));
         FrameLayout stage = new FrameLayout(c);
         FrameLayout.LayoutParams sl = new FrameLayout.LayoutParams(w - px(BAND), h);
@@ -861,7 +838,7 @@ final class LineupCard {
     /** Both clubs with their scorers under them, the score between, possession and shots as thin bars along the foot. */
     private static View halfPage(Context c, Half f) {
         FrameLayout page = new FrameLayout(c);
-        page.setBackground(new Streaks(0xFF2A35B8, 0xFF080B3A, 0x0EFFFFFF, px(60), px(4)));
+        page.setBackground(new Streaks(0xFF1B2591, 0xFF1B2591, 0, px(60), px(4)));
         LinearLayout col = new LinearLayout(c);
         col.setOrientation(LinearLayout.VERTICAL);
         col.setPadding(px(16), px(14), px(16), px(14));
@@ -1055,7 +1032,7 @@ final class LineupCard {
         card.setClipToOutline(true);
         card.setBackgroundColor(0xFF0D1360);
         FrameLayout band = new FrameLayout(c);
-        band.setBackground(new Streaks(0xFF1B2591, 0xFF0D1360, 0x12FFFFFF, px(21), px(3)));
+        band.setBackground(new Streaks(0xFF1B2591, 0xFF1B2591, 0, px(21), px(3)));
         card.addView(band, new FrameLayout.LayoutParams(px(BAND), h));
         FrameLayout stage = new FrameLayout(c);
         FrameLayout.LayoutParams sl = new FrameLayout.LayoutParams(w - px(BAND), h);
@@ -1113,7 +1090,7 @@ final class LineupCard {
     /** The game at the break along the top, then a line for each game on now and Stay. */
     private static View hopPage(Context c, Hop hp) {
         FrameLayout page = new FrameLayout(c);
-        page.setBackground(new Streaks(0xFF2A35B8, 0xFF080B3A, 0x0EFFFFFF, px(60), px(4)));
+        page.setBackground(new Streaks(0xFF1B2591, 0xFF1B2591, 0, px(60), px(4)));
         LinearLayout col = new LinearLayout(c);
         col.setOrientation(LinearLayout.VERTICAL);
         col.setPadding(px(16), px(14), px(16), px(12));
@@ -2274,7 +2251,7 @@ final class LineupCard {
 
     private static View players(Context c, Team t, List<Player> ps) {
         FrameLayout page = new FrameLayout(c);
-        page.setBackground(new Streaks(0xFFF4F5FD, 0xFFC2C5EE, 0x8CFFFFFF, px(86), px(36)));
+        page.setBackground(new Streaks(0xFFF4F5FD, 0xFFF4F5FD, 0, px(86), px(36)));
         LinearLayout row = new LinearLayout(c);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setPadding(px(6), 0, px(6), 0);
@@ -2356,7 +2333,7 @@ final class LineupCard {
 
     private static View pitch(Context c, Data d) {
         FrameLayout page = new FrameLayout(c);
-        page.setBackground(new Streaks(0xFF1B2591, 0xFF0D1360, 0x10FFFFFF, px(60), px(4)));
+        page.setBackground(new Streaks(0xFF1B2591, 0xFF1B2591, 0, px(60), px(4)));
         Pitch field = new Pitch(c, d);
         FrameLayout.LayoutParams fl = new FrameLayout.LayoutParams(-1, -1);
         fl.setMargins(px(8), px(8), px(8), px(30));
@@ -2702,7 +2679,7 @@ final class LineupCard {
      */
     private static View first(Context c, Data d) {
         FrameLayout page = new FrameLayout(c);
-        page.setBackground(new Streaks(0xFF2A35B8, 0xFF080B3A, 0x0EFFFFFF, px(60), px(4)));
+        page.setBackground(new Streaks(0xFF1B2591, 0xFF1B2591, 0, px(60), px(4)));
         int side = px(150);
         View home = club(c, d.home, px(116));
         FrameLayout.LayoutParams hl = new FrameLayout.LayoutParams(side, -2, Gravity.START | Gravity.CENTER_VERTICAL);

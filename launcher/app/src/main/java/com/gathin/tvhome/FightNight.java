@@ -405,7 +405,7 @@ final class FightNight {
         card.setClipToOutline(true);
         card.setBackgroundColor(0xFF0D1360);
         FrameLayout b = new FrameLayout(c);
-        b.setBackground(new SkyStyle.Streaks(0xFF1B2591, 0xFF0D1360, 0x12FFFFFF, px(21), px(3)));
+        b.setBackground(new SkyStyle.Streaks(0xFF1B2591, 0xFF1B2591, 0, px(21), px(3)));
         card.addView(b, new FrameLayout.LayoutParams(band, h));
         LinearLayout bl = new LinearLayout(c);
         bl.setOrientation(LinearLayout.VERTICAL);
@@ -420,7 +420,7 @@ final class FightNight {
         bl.addView(cap, capl);
         b.addView(bl, new FrameLayout.LayoutParams(-1, -1));
         FrameLayout stage = new FrameLayout(c);
-        stage.setBackground(new SkyStyle.Streaks(0xFFF4F5FD, 0xFFC2C5EE, 0x8CFFFFFF, px(75), px(32)));
+        stage.setBackground(new SkyStyle.Streaks(0xFFF4F5FD, 0xFFF4F5FD, 0, px(75), px(32)));
         FrameLayout.LayoutParams sl = new FrameLayout.LayoutParams(w - band, h);
         sl.leftMargin = band;
         card.addView(stage, sl);

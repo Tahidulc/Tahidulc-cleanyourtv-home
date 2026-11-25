@@ -369,7 +369,7 @@ final class ScoreCard {
         FrameLayout bandBox = new FrameLayout(c);
         bandBox.setBackground(band.getBackground());
         band.setBackground(null);
-        if (!plainBlack(d)) bandBox.addView(stripes(c, d), new FrameLayout.LayoutParams(bandW + STRIPE_PERIOD_PX(), h));
+        if (d.f1) bandBox.addView(stripes(c, d), new FrameLayout.LayoutParams(bandW + STRIPE_PERIOD_PX(), h));
         bandBox.addView(band, new FrameLayout.LayoutParams(bandW, h));
         card.addView(bandBox, new LinearLayout.LayoutParams(bandW, h));
 
@@ -377,7 +377,7 @@ final class ScoreCard {
         LinearLayout stage = new LinearLayout(c);
         stage.setOrientation(LinearLayout.HORIZONTAL);
         stage.setGravity(Gravity.CENTER_VERTICAL);
-        // Its ground is the box's (below), with the streaks drifting across it on a layer of their own.
+        // Its ground is the box's (below): one solid colour, no streaks (the family's ask, 25 Nov).
         View label = label(c, d, 25, h);
         stage.addView(label, new LinearLayout.LayoutParams(-2, h));
         View photo = null;
@@ -416,7 +416,6 @@ final class ScoreCard {
         box.setClipToOutline(true);
         // No shadow: over a bright picture it shows as a dark rim round the card.
         box.setBackground(stageFill(d, px(40), px(26)));
-        if (!d.dark) box.addView(drifting(c, d, px(40), px(26), h), driftParams(px(40), px(26), h));
         box.addView(card, new FrameLayout.LayoutParams(-2, h));
         FrameLayout win = new FrameLayout(c);
         int m = px(10);
@@ -458,12 +457,12 @@ final class ScoreCard {
             @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), r); }
         });
         bar.setClipToOutline(true);
-        // Its ground is the box's (below), with the streaks drifting across it on a layer of their own.
+        // Its ground is the box's (below): one solid colour, no streaks (the family's ask, 25 Nov).
         boolean ko = "kickoff".equals(d.kind);
         FrameLayout band = new FrameLayout(c);
         band.setBackground(bandGround(d, false));
         int bandW = d.f1 ? px(190) : d.bigMark ? px(230) : d.wideMark ? px(150) : px(120);
-        if (!plainBlack(d)) band.addView(stripes(c, d), new FrameLayout.LayoutParams(bandW + STRIPE_PERIOD_PX(), h));
+        if (d.f1) band.addView(stripes(c, d), new FrameLayout.LayoutParams(bandW + STRIPE_PERIOD_PX(), h));
         if (d.leagueLogo != null) band.addView(image(c, d.leagueLogo), new FrameLayout.LayoutParams(
                 d.f1 ? px(164) : d.bigMark ? px(200) : d.wideMark ? px(124) : px(40), d.f1 ? px(46) : px(40), Gravity.CENTER));
         bar.addView(band, new LinearLayout.LayoutParams(bandW, h));
@@ -577,7 +576,6 @@ final class ScoreCard {
         });
         box.setClipToOutline(true);
         box.setBackground(stageFill(d, px(50), px(30)));
-        if (!d.dark) box.addView(drifting(c, d, px(50), px(30), h), driftParams(px(50), px(30), h));
         int bw = w;
         box.addView(bar, new FrameLayout.LayoutParams(bw, h));
         FrameLayout win = new FrameLayout(c);
@@ -678,7 +676,8 @@ final class ScoreCard {
         if (plainBlack(d)) return new Streaks(0xFF141519, 0xFF0B0C0F, 0, px(14), px(3));
         int a = d.band != 0 ? d.band : d.f1 ? 0xFFE10600 : 0xFF1B2591;
         int b = d.bandDeep != 0 ? d.bandDeep : d.f1 ? 0xFF8E0400 : 0xFF0D1360;
-        return new Streaks(a, b, withStripes ? stripeColour(d) : 0, px(14), px(3));
+        // Solid, no stripes (the family's ask, 25 Nov): only F1's red keeps its stripes and its two shades.
+        return d.f1 ? new Streaks(a, b, withStripes ? stripeColour(d) : 0, px(14), px(3)) : new Streaks(a, a, 0, px(14), px(3));
     }
 
     /** The fights' pop-ups (UFC, boxing): black all over, band too, with no stripes and nothing moving. */
@@ -710,50 +709,13 @@ final class ScoreCard {
 
     /** The stage's ground without its streaks: pale; plain black for F1 and fights (no streaks, nothing moving). */
     private static Drawable stageFill(Data d, int gap, int width) {
-        return d.dark ? new Streaks(0xFF141519, 0xFF0B0C0F, 0, gap, width) : new Streaks(0xFFF6F7FD, 0xFFD3D6F3, 0, gap, width);
-    }
-
-    /**
-     * The stage's streaks on a layer of their own, a period wider than the pop-up (its params start a period to the
-     * left), drifting one period to the right and again while it shows: drawn once, only the layer moves, so the
-     * picture under it is not redrawn. Stopped when it closes.
-     */
-    private static View drifting(Context c, Data d, int gap, int width, int h) {
-        View lines = new DriftLines(c, Math.max(4, gap) + Math.max(1, width));
-        lines.setBackground(new Streaks(0, 0, d.dark ? 0x14FFFFFF : 0x4DFFFFFF, gap, width));
-        lines.setLayerType(View.LAYER_TYPE_HARDWARE, null);
-        int period = Math.max(4, gap) + Math.max(1, width);
-        android.animation.ObjectAnimator drift = android.animation.ObjectAnimator.ofFloat(lines, View.TRANSLATION_X, 0f, period);
-        drift.setDuration(Math.round(period / (float) px(30) * 1_000));
-        drift.setRepeatCount(android.animation.ValueAnimator.INFINITE);
-        drift.setInterpolator(new android.view.animation.LinearInterpolator());
-        drift.setStartDelay(300);
-        moving.add(drift);
-        drift.start();
-        return lines;
-    }
-
-    private static FrameLayout.LayoutParams driftParams(int gap, int width, int h) {
-        return new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        return d.dark ? new Streaks(0xFF141519, 0xFF0B0C0F, 0, gap, width) : new Streaks(0xFFF6F7FD, 0xFFF6F7FD, 0, gap, width);
     }
 
     /**
      * The streaks' layer: no size of its own, so a pop-up stays as wide as its contents (a layer as wide as its parent
      * made every card over an app stretch across the screen); DriftBox lays it over the whole box.
      */
-    static final class DriftLines extends View {
-        final int period;
-
-        DriftLines(Context c, int period) {
-            super(c);
-            this.period = period;
-        }
-
-        @Override protected void onMeasure(int widthSpec, int heightSpec) {
-            setMeasuredDimension(0, 0);
-        }
-    }
-
     /** A pop-up's box, as big as its contents, with its streaks' layer laid over all of it and a period to the left. */
     static final class DriftBox extends FrameLayout {
         DriftBox(Context c) {
@@ -1084,7 +1046,7 @@ final class ScoreCard {
             later.add(tick);
             main.postDelayed(tick, 800L);
         }
-        // Every pop-up but F1's and the fights' (plain black, still): the band's stripes drift along, slightly.
+        // F1's red band only (every other pop-up's band is solid, no stripes): its stripes drift along, slightly.
         View lines = box.findViewWithTag("stripes");
         if (lines != null && !d.dark) {
             android.animation.ObjectAnimator drift = android.animation.ObjectAnimator.ofFloat(lines, View.TRANSLATION_X,

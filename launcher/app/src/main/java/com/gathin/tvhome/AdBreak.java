@@ -1592,7 +1592,7 @@ final class AdBreak {
             band.setBackground(SkyStyle.band(SkyStyle.NAVY, SkyStyle.NAVY_DEEP, px(18), px(3)));
             root.addView(band, new FrameLayout.LayoutParams(px(90), -1));
             stage = new FrameLayout(c);
-            stage.setBackground(new SkyStyle.Streaks(0xFFF4F5FD, 0xFFC2C5EE, 0x8CFFFFFF, px(75), px(32)));
+            stage.setBackground(new SkyStyle.Streaks(0xFFF4F5FD, 0xFFF4F5FD, 0, px(75), px(32)));
             stage.setClipChildren(true);
             FrameLayout.LayoutParams sl = new FrameLayout.LayoutParams(-1, -1);
             sl.leftMargin = px(90);

@@ -744,7 +744,7 @@ final class Widgets {
         band.addView(bl, new FrameLayout.LayoutParams(-1, -1));
         card.addView(band, new FrameLayout.LayoutParams(px(84), -1));
         FrameLayout stage = new FrameLayout(c);
-        stage.setBackground(new SkyStyle.Streaks(0xFFF4F5FD, 0xFFC2C5EE, 0x8CFFFFFF, px(75), px(32)));
+        stage.setBackground(new SkyStyle.Streaks(0xFFF4F5FD, 0xFFF4F5FD, 0, px(75), px(32)));
         FrameLayout.LayoutParams sl = new FrameLayout.LayoutParams(-1, -1);
         sl.leftMargin = px(84);
         card.addView(stage, sl);

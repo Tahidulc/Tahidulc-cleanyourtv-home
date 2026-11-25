@@ -35,14 +35,14 @@ final class SkyStyle {
         return CORNER * c.getResources().getDisplayMetrics().widthPixels / 1920f;
     }
 
-    /** The band's ground: its two colours and light stripes (gap and width in pixels). */
+    /** The band's ground: its top colour, solid, no stripes (the family's ask, 25 Nov; gap and width kept for callers). */
     static Drawable band(int top, int bottom, int gap, int width) {
-        return new Streaks(top, bottom, 0x1AFFFFFF, gap, width);
+        return new Streaks(top, top, 0, gap, width);
     }
 
-    /** The stage's ground: pale, with soft white streaks. */
+    /** The stage's ground: pale, solid, no streaks. */
     static Drawable stage(int gap, int width) {
-        return new Streaks(STAGE, STAGE_DEEP, 0x40FFFFFF, gap, width);
+        return new Streaks(STAGE, STAGE, 0, gap, width);
     }
 
     /** A vertical gradient with diagonal bands (as ScoreCard's and the line-up card's grounds). */

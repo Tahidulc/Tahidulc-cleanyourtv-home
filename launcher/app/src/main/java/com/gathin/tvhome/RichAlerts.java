@@ -249,12 +249,12 @@ final class RichAlerts {
         return v;
     }
 
-    /** The navy band with its fine diagonal stripes (the score cards' and the line-up card's). */
+    /** The navy band, solid (the score cards' and the line-up card's). */
     private static android.graphics.drawable.Drawable band() {
         return SkyStyle.band(0xFF1B2591, 0xFF0D1360, px(14), px(3));
     }
 
-    /** The pale stage with its soft streaks. */
+    /** The pale stage, solid. */
     private static android.graphics.drawable.Drawable stage() {
         return SkyStyle.stage(px(40), px(26));
     }
