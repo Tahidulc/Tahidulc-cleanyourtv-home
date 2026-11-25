@@ -1,4 +1,4 @@
-package com.gathin.tvhome;
+package com.gathin.broadcast;
 
 import android.content.Context;
 import android.graphics.Bitmap;
@@ -22,9 +22,9 @@ import java.util.Locale;
  * filled in stroke by stroke (LogoShape). Or as a general channel (sports off): the name alone, with no sport and no competition, in the house colours
  * (stacked: "whitebrook" over "road"). The family's own words; no broadcaster's lettering or emblem.
  */
-final class SportsMark {
+public final class SportsMark {
     /** What can be on it, as the Scoreboard card offers them: "" (Auto, from the game) first. */
-    static final String[] WHATS = {"", "premier league", "football", "main event", "f1", "cricket", "golf", "nfl", "arena", "tennis",
+    public static final String[] WHATS = {"", "premier league", "football", "main event", "f1", "cricket", "golf", "nfl", "arena", "tennis",
             "racing", "darts", "action"};
     static final int RED = 0xFFE10A1E, RED_DEEP = 0xFFB0061A, WHITE = 0xFFFFFFFF, SOFT = 0xD9FFFFFF, NIGHT = 0xFF0A0E1C;
 
@@ -35,14 +35,14 @@ final class SportsMark {
     private final Rect bounds = new Rect();
     private final java.util.Map<Typeface, Float> xs = new java.util.HashMap<>();
 
-    SportsMark(Context c) {
-        heavy = ScoreCard.outfit(c, 800);
-        bold = ScoreCard.outfit(c, 700);
-        semi = ScoreCard.outfit(c, 600);
+    public SportsMark(Context c) {
+        heavy = Outfit.at(c, 800);
+        bold = Outfit.at(c, 700);
+        semi = Outfit.at(c, 600);
     }
 
     /** Pure: what is on for a game of this league (ESPN's slug, "eng.1"), or for Formula 1 (f1 true). */
-    static String auto(String slug, boolean f1) {
+    public static String auto(String slug, boolean f1) {
         if (f1) return "f1";
         String s = slug == null ? "" : slug.toLowerCase(Locale.ROOT);
         if (s.equals("eng.1")) return "premier league";
@@ -51,7 +51,7 @@ final class SportsMark {
     }
 
     /** Pure: the colour of what is on, for its plate (stacked) and its line under the one-line mark. */
-    static int colourOf(String what) {
+    public static int colourOf(String what) {
         switch (what == null ? "" : what) {
             case "premier league": return 0xFF4B1D8C;
             case "main event": return 0xFF00A3D2;
@@ -72,13 +72,13 @@ final class SportsMark {
      * Pure: what the mark says is on: nothing on a general channel (sports false: the name alone, no sport on it), else
      * the choice, or "football" when none is made.
      */
-    static String onFor(boolean sports, String what) {
+    public static String onFor(boolean sports, String what) {
         if (!sports) return "";
         return what == null || what.isEmpty() ? "football" : what;
     }
 
     /** Pure: the label the Scoreboard card shows for a choice ("Auto, from the game" for ""). */
-    static String label(String what) {
+    public static String label(String what) {
         return what == null || what.isEmpty() ? "Auto, from the game" : what;
     }
 
@@ -87,7 +87,7 @@ final class SportsMark {
      * line; with "sports" on its tab or the name alone; what is on; the tag ("" none); on its plate or plain over the
      * picture; the competition's logo (null: none) before the tag.
      */
-    void draw(Canvas cv, float x, float y, float w, float h, boolean stacked, boolean sports, String what, String tag, boolean plate,
+    public void draw(Canvas cv, float x, float y, float w, float h, boolean stacked, boolean sports, String what, String tag, boolean plate,
               Bitmap comp) {
         if (w <= 2 || h <= 2) return;
         String on = onFor(sports, what);

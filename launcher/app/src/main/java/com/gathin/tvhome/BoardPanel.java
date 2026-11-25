@@ -1,4 +1,9 @@
 package com.gathin.tvhome;
+import com.gathin.broadcast.LogoExtras;
+
+import com.gathin.broadcast.CoverLooks;
+import com.gathin.broadcast.ChannelMark;
+import com.gathin.broadcast.BrandStyles;
 
 import android.graphics.Bitmap;
 import android.view.Gravity;
@@ -631,7 +636,7 @@ final class BoardPanel extends SportPanel {
         markPreviews.clear();
         List<Row> channels = new ArrayList<>(), others = new ArrayList<>();
         List<Row> own = new ArrayList<>(), lab = new ArrayList<>();
-        for (LogoMark.Look l : LogoMark.Look.values()) {
+        for (CoverLooks.Look l : CoverLooks.Look.values()) {
             (l.channel() ? channels : l.lab() != null ? lab : l.own() ? own : others).add(markTile(l));
         }
         for (int i = 0; i < channels.size(); i += 4) addLine(150, 4, channels.subList(i, Math.min(channels.size(), i + 4)));
@@ -772,7 +777,7 @@ final class BoardPanel extends SportPanel {
     }
 
     /** One of the logo cover's looks, drawn on a stand-in channel picture, its name under it. */
-    private Row markTile(LogoMark.Look look) {
+    private Row markTile(CoverLooks.Look look) {
         Row r = new Row();
         LinearLayout t = new LinearLayout(c);
         t.setOrientation(LinearLayout.VERTICAL);
@@ -789,7 +794,7 @@ final class BoardPanel extends SportPanel {
         // Event: the channel's own name on it, the board's channel's when it has one, else "main event".
         String sub = ChannelMark.subOf(InStep.channel(c));
         m.sub(sub.isEmpty() ? "main event" : sub);
-        if (look == LogoMark.Look.STYLES) stylePreview = m;
+        if (look == CoverLooks.Look.STYLES) stylePreview = m;
         // Broadcast and the channel looks: the picture's tag chosen, LIVE, the scoreboard look chosen for its colours.
         m.tag(previewTag());
         m.live(true);
@@ -800,7 +805,7 @@ final class BoardPanel extends SportPanel {
         BoardBug colours = new BoardBug(c);
         colours.style(BoardCover.style(c));
         m.boardLook(colours.stripLook());
-        stage.addView(m, look.channel() || look == LogoMark.Look.COMPETITION ? new FrameLayout.LayoutParams(h.px(190), h.px(90), Gravity.CENTER)
+        stage.addView(m, look.channel() || look == CoverLooks.Look.COMPETITION ? new FrameLayout.LayoutParams(h.px(190), h.px(90), Gravity.CENTER)
                 : look.own() ? new FrameLayout.LayoutParams(h.px(230), h.px(80), Gravity.CENTER)
                 : look.broadcast() ? new FrameLayout.LayoutParams(h.px(170), h.px(96), Gravity.CENTER)
                 : new FrameLayout.LayoutParams(h.px(150), h.px(52), Gravity.CENTER));
@@ -815,7 +820,7 @@ final class BoardPanel extends SportPanel {
         r.sub = name;
         r.words = () -> (BoardCover.logoLook(c) == look ? "✓  " : "") + look.label;
         r.ok = () -> BoardCover.setLogoLook(c, look);
-        if (look == LogoMark.Look.BROADCAST_BOARD) boardColoured.add(m);
+        if (look == CoverLooks.Look.BROADCAST_BOARD) boardColoured.add(m);
         return r;
     }
 
@@ -825,7 +830,7 @@ final class BoardPanel extends SportPanel {
     /** The next (or the last) of the 54 styles, chosen and shown on its tile; the look itself is the styles'. */
     private void stepStyle(int step) {
         BoardCover.stepLogoStyle(c, step);
-        if (BoardCover.logoLook(c) != LogoMark.Look.STYLES) BoardCover.setLogoLook(c, LogoMark.Look.STYLES);
+        if (BoardCover.logoLook(c) != CoverLooks.Look.STYLES) BoardCover.setLogoLook(c, CoverLooks.Look.STYLES);
         if (stylePreview != null) stylePreview.style(BoardCover.logoStyle(c));
     }
 

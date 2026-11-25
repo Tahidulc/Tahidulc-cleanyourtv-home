@@ -1,5 +1,9 @@
 package com.gathin.tvhome;
 
+import com.gathin.broadcast.CoverLooks;
+import com.gathin.broadcast.ChannelMark;
+import com.gathin.broadcast.SportsMark;
+
 import org.junit.Test;
 
 import java.util.ArrayDeque;
@@ -739,8 +743,8 @@ public class BoardCoverTest {
         assertEquals(ChannelOverlays.SAME, ChannelOverlays.nextMode(ChannelOverlays.NEVER, 1));
         assertEquals(ChannelOverlays.NEVER, ChannelOverlays.nextMode(ChannelOverlays.SAME, -1));
         assertEquals(ChannelOverlays.LEAVE, ChannelOverlays.nextLook(null, 1));
-        assertEquals(LogoMark.Look.values()[0].name(), ChannelOverlays.nextLook(ChannelOverlays.LEAVE, 1));
-        assertNull(ChannelOverlays.nextLook(LogoMark.Look.values()[LogoMark.Look.values().length - 1].name(), 1));
+        assertEquals(CoverLooks.Look.values()[0].name(), ChannelOverlays.nextLook(ChannelOverlays.LEAVE, 1));
+        assertNull(ChannelOverlays.nextLook(CoverLooks.Look.values()[CoverLooks.Look.values().length - 1].name(), 1));
         assertEquals("As the rest (Glass)", ChannelOverlays.lookWords(null, "Glass"));
         assertEquals("Leave the channel's own", ChannelOverlays.lookWords(ChannelOverlays.LEAVE, "Glass"));
         // its HD and 4K forms share it
@@ -776,10 +780,10 @@ public class BoardCoverTest {
         assertEquals("", LogoMark.tagOf(null));
         // "HD" inside a word is no tag.
         assertEquals("", LogoMark.tagOf("Shdtv Sports"));
-        assertTrue(LogoMark.Look.BROADCAST.broadcast());
-        assertTrue(LogoMark.Look.BROADCAST_BOARD.broadcast());
-        assertFalse(LogoMark.Look.GLASS.broadcast());
-        assertEquals(LogoMark.Look.BROADCAST_BOARD, LogoMark.Look.of("BROADCAST_BOARD"));
+        assertTrue(CoverLooks.Look.BROADCAST.broadcast());
+        assertTrue(CoverLooks.Look.BROADCAST_BOARD.broadcast());
+        assertFalse(CoverLooks.Look.GLASS.broadcast());
+        assertEquals(CoverLooks.Look.BROADCAST_BOARD, CoverLooks.Look.of("BROADCAST_BOARD"));
     }
 
     // ---- 4.19: Whitebrook Road's own channel looks, the picture tag ---------------------------------------------------
@@ -812,47 +816,47 @@ public class BoardCoverTest {
     @Test
     public void theChannelLooksAreTheirOwn() {
         int channel = 0;
-        for (LogoMark.Look l : LogoMark.Look.values()) {
+        for (CoverLooks.Look l : CoverLooks.Look.values()) {
             if (l.channel()) channel++;
             assertFalse(l.channel() && l.broadcast());
-            assertEquals(l, LogoMark.Look.of(l.name()));
+            assertEquals(l, CoverLooks.Look.of(l.name()));
         }
         assertEquals(10, channel);
-        assertTrue(LogoMark.Look.FROSTED.channel());
-        assertTrue(LogoMark.Look.SIGNATURE.channel());
-        assertTrue(LogoMark.Look.SMOKED.channel());
-        assertFalse(LogoMark.Look.GLASS.channel());
+        assertTrue(CoverLooks.Look.FROSTED.channel());
+        assertTrue(CoverLooks.Look.SIGNATURE.channel());
+        assertTrue(CoverLooks.Look.SMOKED.channel());
+        assertFalse(CoverLooks.Look.GLASS.channel());
         // An old choice still reads as it was; nothing chosen is Glass, as before.
-        assertEquals(LogoMark.Look.GLASS, LogoMark.Look.of(""));
+        assertEquals(CoverLooks.Look.GLASS, CoverLooks.Look.of(""));
         assertEquals("GRAND PRIX", ChannelMark.channelFor("f1"));
         assertEquals("MATCHDAY", ChannelMark.channelFor(""));
         // The competition's own logo is a look of its own, neither a channel look nor Broadcast.
-        assertEquals(LogoMark.Look.COMPETITION, LogoMark.Look.of("COMPETITION"));
-        assertFalse(LogoMark.Look.COMPETITION.channel());
-        assertFalse(LogoMark.Look.COMPETITION.broadcast());
+        assertEquals(CoverLooks.Look.COMPETITION, CoverLooks.Look.of("COMPETITION"));
+        assertFalse(CoverLooks.Look.COMPETITION.channel());
+        assertFalse(CoverLooks.Look.COMPETITION.broadcast());
     }
 
     // ---- Event: the name and "sports" over the channel's own name ---------------------------------------------------
 
     @Test
     public void eventIsAChannelLookDrawnWholeInTwoInks() {
-        for (LogoMark.Look l : new LogoMark.Look[]{LogoMark.Look.EVENT_NAVY, LogoMark.Look.EVENT_WHITE}) {
+        for (CoverLooks.Look l : new CoverLooks.Look[]{CoverLooks.Look.EVENT_NAVY, CoverLooks.Look.EVENT_WHITE}) {
             assertTrue(l.event());
             // In the channel looks' picker, drawn whole (no LIVE foot, no block beside), see-through when chosen.
             assertTrue(l.channel());
             assertTrue(l.own());
             assertFalse(l.sports());
             assertFalse(l.broadcast());
-            assertEquals(l, LogoMark.Look.of(l.name()));
+            assertEquals(l, CoverLooks.Look.of(l.name()));
         }
-        assertEquals("Event, navy", LogoMark.Look.EVENT_NAVY.label);
-        assertEquals("Event, white", LogoMark.Look.EVENT_WHITE.label);
-        assertFalse(LogoMark.Look.SMOKED.event());
-        assertFalse(LogoMark.Look.SMOKED.own());
-        assertTrue(LogoMark.Look.STYLES.own());
+        assertEquals("Event, navy", CoverLooks.Look.EVENT_NAVY.label);
+        assertEquals("Event, white", CoverLooks.Look.EVENT_WHITE.label);
+        assertFalse(CoverLooks.Look.SMOKED.event());
+        assertFalse(CoverLooks.Look.SMOKED.own());
+        assertTrue(CoverLooks.Look.STYLES.own());
         // Never the default.
-        assertEquals(LogoMark.Look.GLASS, LogoMark.Look.of(""));
-        assertEquals(LogoMark.Look.GLASS, LogoMark.Look.of(null));
+        assertEquals(CoverLooks.Look.GLASS, CoverLooks.Look.of(""));
+        assertEquals(CoverLooks.Look.GLASS, CoverLooks.Look.of(null));
     }
 
     @Test

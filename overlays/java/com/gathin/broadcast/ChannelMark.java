@@ -1,4 +1,4 @@
-package com.gathin.tvhome;
+package com.gathin.broadcast;
 
 import android.content.Context;
 import android.graphics.Canvas;
@@ -32,9 +32,9 @@ import java.util.Set;
  * channel's own name ("main event") under them in a box open at its top, in navy or white, on its plate or alone over
  * the picture. The family's own words and mark, never a channel's.
  */
-final class ChannelMark {
-    static final String NAME = "WHITEBROOK ROAD", SPORTS = "SPORTS", L1 = "WHITEBROOK", L2 = "ROAD ";
-    static final int VIOLET = 0xFF6D28F2, CORAL = 0xFFFF6B6B, LILAC = 0xFFC2ADFF, PEACH = 0xFFFFA196, NIGHT = 0xFF07090F,
+public final class ChannelMark {
+    public static final String NAME = "WHITEBROOK ROAD", SPORTS = "SPORTS", L1 = "WHITEBROOK", L2 = "ROAD ";
+    public static final int VIOLET = 0xFF6D28F2, CORAL = 0xFFFF6B6B, LILAC = 0xFFC2ADFF, PEACH = 0xFFFFA196, NIGHT = 0xFF07090F,
             DUSK = 0xFF1B1F31, WHITE = 0xFFFFFFFF, LIVE_RED = 0xFFFF3B4E;
     /** The frosted look's frost, as the frosted scoreboard's: its top and its foot. */
     static final int FROST_TOP = 0xFF9AA5BA, FROST_FOOT = 0xFF5D677D;
@@ -42,11 +42,11 @@ final class ChannelMark {
     private static final int SOLID = 0, LINED = 1, GRADED = 2, ON_COLOUR = 3;
 
     /** The picture tags the cover can show, as the Scoreboard card names them; AUTO reads it from the channel's name. */
-    enum Tag {
+    public enum Tag {
         AUTO("Auto, from the channel", null), NONE("None", ""), HD("HD", "HD"), UHD("UHD", "UHD"), K4("4K", "4K"),
         UHD_HDR("UHD HDR", "UHD HDR"), K4_HDR("4K HDR", "4K HDR");
 
-        final String label, shown;
+        public final String label, shown;
 
         Tag(String label, String shown) {
             this.label = label;
@@ -54,11 +54,11 @@ final class ChannelMark {
         }
 
         /** What it shows on a channel of this name. */
-        String on(String channel) {
+        public String on(String channel) {
             return shown != null ? shown : tagOf(channel);
         }
 
-        static Tag of(String name) {
+        public static Tag of(String name) {
             for (Tag t : values()) if (t.name().equals(name)) return t;
             return AUTO;
         }
@@ -66,18 +66,14 @@ final class ChannelMark {
 
     /**
      * Pure: the picture's tag from a channel's name: "4K" (4K, 2160p) or "UHD", with " HDR" when it says HDR (or HDR10,
-     * Dolby Vision); "HD" for HD, FHD or 1080p; "" for none.
+     * Dolby Vision); "HD" for HD, FHD or 1080p; "" for none. The one rule both apps' covers use (CoverLooks.tagOf).
      */
-    static String tagOf(String channel) {
-        String n = channel == null ? "" : " " + channel.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]+", " ") + " ";
-        boolean hdr = n.contains(" HDR ") || n.contains(" HDR10 ") || n.contains(" DOLBY VISION ") || n.contains(" DV ");
-        String base = n.contains(" 4K ") || n.contains(" 2160P ") ? "4K" : n.contains(" UHD ") ? "UHD"
-                : n.contains(" HD ") || n.contains(" FHD ") || n.contains(" 1080P ") ? "HD" : "";
-        return hdr && !base.isEmpty() && !base.equals("HD") ? base + " HDR" : base;
+    public static String tagOf(String channel) {
+        return com.gathin.broadcast.CoverLooks.tagOf(channel);
     }
 
     /** The channel's own name for what is on: Grand Prix for Formula 1, Matchday for football. */
-    static String channelFor(String sport) {
+    public static String channelFor(String sport) {
         return "f1".equals(sport) ? "GRAND PRIX" : "MATCHDAY";
     }
 
@@ -103,7 +99,7 @@ final class ChannelMark {
      * "sports 1" ("TNT Sports 1"). "" for a channel of no sports broadcaster known here (so no broadcaster's name is ever
      * shown), or with nothing left.
      */
-    static String subOf(String channel) {
+    public static String subOf(String channel) {
         if (channel == null) return "";
         // Small capitals and the like as plain letters ("ᴴᴰ" as "HD"); what is in brackets is a tag ("(UK)", "[Backup]").
         String s = Normalizer.normalize(channel, Normalizer.Form.NFKC).toLowerCase(Locale.ROOT)
@@ -146,13 +142,13 @@ final class ChannelMark {
     /** For the marks' pictures. */
     private final Context context;
 
-    ChannelMark(Context c) {
+    public ChannelMark(Context c) {
         context = c.getApplicationContext();
-        black = ScoreCard.outfit(c, 900);
-        heavy = ScoreCard.outfit(c, 800);
-        bold = ScoreCard.outfit(c, 700);
-        semi = ScoreCard.outfit(c, 600);
-        medium = ScoreCard.outfit(c, 500);
+        black = Outfit.at(c, 900);
+        heavy = Outfit.at(c, 800);
+        bold = Outfit.at(c, 700);
+        semi = Outfit.at(c, 600);
+        medium = Outfit.at(c, 500);
         // Homefield's mark, in its icon's 108 units: the house, and the play button cut through it.
         house.moveTo(31, 75);
         house.lineTo(31, 50);
@@ -170,12 +166,12 @@ final class ChannelMark {
     }
 
     /** WHITEBROOK ROAD alone, or with SPORTS (as it was). */
-    void nameOnly(boolean on) {
+    public void nameOnly(boolean on) {
         nameOnly = on;
     }
 
     /** One look in the box (x, y, w, h): the tag ("" for none), live or not, the sport ("f1", else football). */
-    void draw(Canvas cv, LogoMark.Look look, float x, float y, float w, float h, String tag, boolean live, String sport) {
+    public void draw(Canvas cv, CoverLooks.Look look, float x, float y, float w, float h, String tag, boolean live, String sport) {
         draw(cv, look, x, y, w, h, tag, live, sport, 0f);
     }
 
@@ -183,12 +179,12 @@ final class ChannelMark {
      * The same, its ground (and its bands and bars) running on extend further to the right than its words and mark, for
      * the competition's logo to stand in at the end of the one block.
      */
-    void draw(Canvas cv, LogoMark.Look look, float x, float y, float w, float h, String tag, boolean live, String sport, float extend) {
+    public void draw(Canvas cv, CoverLooks.Look look, float x, float y, float w, float h, String tag, boolean live, String sport, float extend) {
         draw(cv, look, x, y, w, h, tag, live, sport, extend, 0f);
     }
 
     /** The same, its ground running on below too, by below (LIVE's foot under the look, part of the one block). */
-    void draw(Canvas cv, LogoMark.Look look, float x, float y, float w, float h, String tag, boolean live, String sport, float extend,
+    public void draw(Canvas cv, CoverLooks.Look look, float x, float y, float w, float h, String tag, boolean live, String sport, float extend,
               float below) {
         ext = Math.max(0f, extend);
         down = Math.max(0f, below);
@@ -539,19 +535,19 @@ final class ChannelMark {
      * true); on its plate (light under navy, dark under white) so the channel's logo under it never shows, or alone over
      * the picture with a soft shadow. A general channel's has no red box.
      */
-    void event(Canvas cv, float x, float y, float w, float h, String sub, String tag, boolean white, boolean plate) {
+    public void event(Canvas cv, float x, float y, float w, float h, String sub, String tag, boolean white, boolean plate) {
         event(cv, x, y, w, h, sub, tag, white, plate ? GROUND_PLATE : GROUND_NONE);
     }
 
     /** Event's grounds: its own plate, glass laid under it by the cover (no plate drawn, the marks as on one), or none. */
-    static final int GROUND_PLATE = 0, GROUND_GLASS = 1, GROUND_NONE = 2;
+    public static final int GROUND_PLATE = 0, GROUND_GLASS = 1, GROUND_NONE = 2;
     /** Clear (tempered) glass under it: laid out as on a plate, the marks with their soft shadow, as over the picture. */
-    static final int GROUND_CLEAR_GLASS = 3;
+    public static final int GROUND_CLEAR_GLASS = 3;
     /** The logo of what is on (the Formula 1 logo, the Premier League's) for Event's lower box, in place of the words; null: the words. */
     private android.graphics.Bitmap eventLogo;
     private final Paint logoPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
 
-    void eventLogo(android.graphics.Bitmap b) {
+    public void eventLogo(android.graphics.Bitmap b) {
         eventLogo = b != null && !b.isRecycled() && b.getWidth() > 0 && b.getHeight() > 0 ? b : null;
     }
 
@@ -567,15 +563,13 @@ final class ChannelMark {
     /** The name's box as last drawn (in the canvas's units), and whether it was. */
     private final RectF lowerBox = new RectF();
     private boolean lowerDrawn;
-    /** The marks drawn, by kind, held to a size in bytes (BitmapCache). */
-    private final BitmapCache markPics = new BitmapCache("marks", 4L * 1024 * 1024);
     private final Paint markPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
 
-    void marks(List<String> m) {
+    public void marks(List<String> m) {
         marks = m == null ? new java.util.ArrayList<>() : m;
     }
 
-    void clock(float turned, String hm, android.graphics.drawable.Drawable icon, String temp) {
+    public void clock(float turned, String hm, android.graphics.drawable.Drawable icon, String temp) {
         flip = Math.max(0f, Math.min(1f, turned));
         clockHm = hm;
         clockIcon = icon;
@@ -583,7 +577,7 @@ final class ChannelMark {
     }
 
     /** The name's box as last drawn into out; false when the look drew none. */
-    boolean nameBox(RectF out) {
+    public boolean nameBox(RectF out) {
         if (!lowerDrawn) return false;
         out.set(lowerBox);
         return true;
@@ -591,19 +585,10 @@ final class ChannelMark {
 
     /** A mark's picture (the real format's logo), or null for one drawn in letters (4K, UHD, HD, HDR, DTS, 5.1). */
     private android.graphics.Bitmap markPic(String m) {
-        int res = "HDR10+".equals(m) ? R.drawable.fmt_hdr10plus : "HDR10".equals(m) ? R.drawable.fmt_hdr10
-                : "DOLBY VISION".equals(m) ? R.drawable.fmt_dolby_vision : "DOLBY ATMOS".equals(m) ? R.drawable.fmt_dolby_atmos : 0;
-        if (res == 0) return null;
-        if (!markPics.containsKey(m)) {
-            android.graphics.Bitmap b = null;
-            try {
-                b = android.graphics.BitmapFactory.decodeResource(context.getResources(), res);
-            } catch (RuntimeException ignored) {
-                // drawn in letters instead
-            }
-            markPics.put(m, b);
-        }
-        return markPics.get(m);
+        boolean pictured = "HDR10+".equals(m) || "HDR10".equals(m) || "DOLBY VISION".equals(m) || "DOLBY ATMOS".equals(m);
+        if (!pictured) return null;
+        // Read once and kept (Outfit.format): the same pictures as the launcher's Home shows.
+        return Outfit.format(context, m);
     }
 
     /** The marks' width at th (the name's box units): the line's room, then each mark with a gap between. */
@@ -680,7 +665,7 @@ final class ChannelMark {
     static final float MOST_NARROW = 0.7f, MOST_WIDE = 1.4f;
 
     /** Event on the ground given: on its plate or on glass the marks as on a plate; on none, each with a soft shadow. */
-    void event(Canvas cv, float x, float y, float w, float h, String sub, String tag, boolean white, int ground) {
+    public void event(Canvas cv, float x, float y, float w, float h, String sub, String tag, boolean white, int ground) {
         lowerDrawn = false;
         if (w <= 2 || h <= 2) return;
         boolean plate = ground != GROUND_NONE, glow = ground == GROUND_NONE || ground == GROUND_CLEAR_GLASS;

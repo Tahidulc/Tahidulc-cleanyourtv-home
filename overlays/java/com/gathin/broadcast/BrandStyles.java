@@ -1,4 +1,4 @@
-package com.gathin.tvhome;
+package com.gathin.broadcast;
 
 import android.content.Context;
 import android.graphics.Canvas;
@@ -18,8 +18,8 @@ import android.graphics.Typeface;
  * under them, for when the channel's logo is hidden another way. SPORTS and the picture's tag (HD, UHD or 4K, with HDR)
  * show when given. Style numbers run from 0 to COUNT - 1 (shown to people as 1 to 54).
  */
-final class BrandStyles {
-    static final int COUNT = 54;
+public final class BrandStyles {
+    public static final int COUNT = 54;
 
     /** What each is called on the Scoreboard card: what it looks like, never whose logo it calls to mind. */
     private static final String[] NAMES = {
@@ -84,16 +84,16 @@ final class BrandStyles {
             0xFF4CC9F0, 0xFF9B5DE5}, DOTS = {0xFFFFC21A, 0xFFFF7A1A, 0xFFFF3D5A, 0xFFB44DFF, 0xFF2F8BFF, 0xFF20C997};
 
     /** The style's name as the Scoreboard card shows it. */
-    static String name(int style) {
+    public static String name(int style) {
         return NAMES[clamp(style)];
     }
 
     /** Its natural width for its height on its plate, with SPORTS and an HD tag. */
-    static float aspect(int style) {
+    public static float aspect(int style) {
         return ASPECTS[clamp(style)];
     }
 
-    static int clamp(int style) {
+    public static int clamp(int style) {
         return style < 0 ? 0 : Math.min(style, COUNT - 1);
     }
 
@@ -119,7 +119,7 @@ final class BrandStyles {
     /** The words' state: spacing between letters (ems), lean, width and outline. */
     private float spacing, skew, scaleX = 1f, stroke;
 
-    BrandStyles(Context c) {
+    public BrandStyles(Context c) {
         context = c.getApplicationContext() != null ? c.getApplicationContext() : c;
         lp.setStyle(Paint.Style.STROKE);
         lp.setStrokeJoin(Paint.Join.ROUND);
@@ -142,21 +142,16 @@ final class BrandStyles {
         return faces[i];
     }
 
+    /** Outfit at a weight, as the apps' outfit_extralight to outfit_black make it (Outfit: the one font, its weight set). */
     private static Typeface font(Context c, int weight) {
-        if (weight >= 500) return ScoreCard.outfit(c, weight);
-        int res = weight >= 400 ? R.font.outfit_regular : weight >= 300 ? R.font.outfit_light : R.font.outfit_extralight;
-        try {
-            return Fonts.get(c, res);
-        } catch (RuntimeException e) {
-            return ScoreCard.outfit(c, 500);
-        }
+        return Outfit.at(c, weight);
     }
 
     /**
      * One style in the box (x, y, w, h): SPORTS after the name or not, the picture's tag ("" for none), on its own solid
      * plate filling the box (ground) or the marks alone.
      */
-    void draw(Canvas canvas, int which, float x, float y, float w, float h, boolean withSports, String pictureTag, boolean onGround) {
+    public void draw(Canvas canvas, int which, float x, float y, float w, float h, boolean withSports, String pictureTag, boolean onGround) {
         if (canvas == null || w <= 1f || h <= 1f) return;
         set(which, withSports, pictureTag, onGround);
         if (!measure()) return;
@@ -179,7 +174,7 @@ final class BrandStyles {
     }
 
     /** Its width for its height as these words lay it out on its plate. */
-    float aspect(int which, boolean withSports, String pictureTag) {
+    public float aspect(int which, boolean withSports, String pictureTag) {
         set(which, withSports, pictureTag, true);
         if (!measure()) return aspect(which);
         float bw = maxX - minX, bh = maxY - minY;
@@ -279,7 +274,7 @@ final class BrandStyles {
         return c;
     }
 
-    static float lum(int c) {
+    public static float lum(int c) {
         return (0.299f * ((c >> 16) & 0xFF) + 0.587f * ((c >> 8) & 0xFF) + 0.114f * (c & 0xFF)) / 255f;
     }
 

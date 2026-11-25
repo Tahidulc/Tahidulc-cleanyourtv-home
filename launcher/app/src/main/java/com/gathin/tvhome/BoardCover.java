@@ -1,4 +1,10 @@
 package com.gathin.tvhome;
+import com.gathin.broadcast.LogoExtras;
+
+import com.gathin.broadcast.CoverLooks;
+import com.gathin.broadcast.ChannelMark;
+import com.gathin.broadcast.BrandStyles;
+import com.gathin.broadcast.SportsMark;
 
 import android.content.Context;
 import android.content.Intent;
@@ -238,9 +244,9 @@ final class BoardCover {
     }
 
     /** The logo's cover's look on the channel on now: its own, else the general one. */
-    static LogoMark.Look lookNow(Context c) {
+    static CoverLooks.Look lookNow(Context c) {
         String own = ChannelOverlays.look(c, InStep.channel(c));
-        return own != null && !ChannelOverlays.LEAVE.equals(own) ? LogoMark.Look.of(own) : logoLook(c);
+        return own != null && !ChannelOverlays.LEAVE.equals(own) ? CoverLooks.Look.of(own) : logoLook(c);
     }
 
     /** Whether the channel on now gets the logo's cover: its own look says (a look, or its own logo left), else the general switch. */
@@ -404,8 +410,8 @@ final class BoardCover {
             return;
         }
         boolean was = logoNow(c);
-        LogoMark.Look[] all = LogoMark.Look.values();
-        LogoMark.Look next = all[((lookNow(c).ordinal() + step) % all.length + all.length) % all.length];
+        CoverLooks.Look[] all = CoverLooks.Look.values();
+        CoverLooks.Look next = all[((lookNow(c).ordinal() + step) % all.length + all.length) % all.length];
         ChannelOverlays.setLook(c, channel, next.name());
         if (mark != null && was) mark.look(next);
         else restyle();
@@ -644,22 +650,22 @@ final class BoardCover {
         setStyle(c, all[((style(c).ordinal() + step) % all.length + all.length) % all.length]);
     }
 
-    static LogoMark.Look logoLook(Context c) {
-        return LogoMark.Look.of(prefs(c).getString("look", ""));
+    static CoverLooks.Look logoLook(Context c) {
+        return CoverLooks.Look.of(prefs(c).getString("look", ""));
     }
 
     static void nextLogoLook(Context c) {
         stepLogoLook(c, 1);
     }
 
-    static void setLogoLook(Context c, LogoMark.Look l) {
+    static void setLogoLook(Context c, CoverLooks.Look l) {
         prefs(c).edit().putString("look", l.name()).apply();
         if (mark != null) mark.look(lookNow(c));
         else restyle();
     }
 
     static void stepLogoLook(Context c, int step) {
-        LogoMark.Look[] all = LogoMark.Look.values();
+        CoverLooks.Look[] all = CoverLooks.Look.values();
         setLogoLook(c, all[((logoLook(c).ordinal() + step) % all.length + all.length) % all.length]);
     }
 
@@ -5540,7 +5546,7 @@ final class BoardCover {
         // The logo's extras: what comes out of it next (Up next, the prayer time, the clock), never over the board's moments.
         if (mark != null && app != null) {
             boolean moment = dropping || bug != null && bug.bandLeft(now) > 0;
-            LogoExtras.tick(app, mark, mark.eventLook(), !moment && !veiled && !logoAwayNow && !adjusting, boardOnScreen());
+            LogoExtras.tick(app, LogoExtrasHere.SOURCE, mark, mark.eventLook(), !moment && !veiled && !logoAwayNow && !adjusting, boardOnScreen());
         }
         // Your logo up: the channel's own looked at, so yours steps aside in its ad breaks (AdBreak).
         if (logoWin != null && app != null && logoAwayOn(app)) AdBreak.watchCover(app);
@@ -6041,7 +6047,7 @@ final class BoardCover {
         m.logoLook = lookNow(c).label;
         // What the cover on this channel is drawn in: its own look, else the general one.
         m.sportsLook = lookNow(c).sports();
-        m.stylesLook = lookNow(c) == LogoMark.Look.STYLES;
+        m.stylesLook = lookNow(c) == CoverLooks.Look.STYLES;
         m.style = (styleNow(c) + 1) + " of " + BrandStyles.COUNT + "  ·  " + BrandStyles.name(styleNow(c));
         m.channel = InStep.channel(c);
         m.channelMode = ChannelOverlays.modeWords(ChannelOverlays.mode(c, m.channel));
@@ -6242,21 +6248,21 @@ final class BoardCover {
     /** The menu's pictures as the settings on this channel now stand. */
     private static void paintPreview(Context c) {
         if (menuLook == null) return;
-        LogoMark.Look now = lookNow(c);
-        LogoMark.Look[] all = LogoMark.Look.values();
-        LogoMark.Look before = all[(now.ordinal() - 1 + all.length) % all.length], after = all[(now.ordinal() + 1) % all.length];
+        CoverLooks.Look now = lookNow(c);
+        CoverLooks.Look[] all = CoverLooks.Look.values();
+        CoverLooks.Look before = all[(now.ordinal() - 1 + all.length) % all.length], after = all[(now.ordinal() + 1) % all.length];
         dress(c, menuLook, now);
         dress(c, menuPrev, before);
         dress(c, menuNext, after);
         String bg = now.own() ? "  ·  " + groundWords(groundNow(c)) : "";
-        String style = now == LogoMark.Look.STYLES ? "  ·  " + BrandStyles.name(styleNow(c)) : "";
+        String style = now == CoverLooks.Look.STYLES ? "  ·  " + BrandStyles.name(styleNow(c)) : "";
         menuLookName.setText(now.label + style + bg);
         menuPrevName.setText(before.label);
         menuNextName.setText(after.label);
     }
 
     /** A picture's mark dressed as the cover on this channel would be, in the look given. */
-    private static void dress(Context c, LogoMark m, LogoMark.Look look) {
+    private static void dress(Context c, LogoMark m, CoverLooks.Look look) {
         String channel = InStep.channel(c);
         m.look(look);
         m.competition(compImage, compTag);
@@ -6375,7 +6381,7 @@ final class BoardCover {
                 stepLookHere(c, step);
                 break;
             case M_WHAT:
-                if (lookNow(c) == LogoMark.Look.STYLES) stepStyleHere(c, step);
+                if (lookNow(c) == CoverLooks.Look.STYLES) stepStyleHere(c, step);
                 else stepWhatHere(c, step);
                 break;
             case M_NAME:

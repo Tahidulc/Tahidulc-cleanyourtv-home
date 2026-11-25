@@ -1,5 +1,7 @@
 package com.gathin.tvhome;
 
+import com.gathin.broadcast.SportsMark;
+
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;

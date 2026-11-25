@@ -3645,11 +3645,9 @@ final class HomeV2 {
         // The formats with logos of their own (Dolby's, HDR10's): the logo in white, inside the same outlined box as
         // 4K UHD and 5.1, at the same height. Dolby Vision with Atmos is Dolby's one stacked badge, a little taller
         // inside its box.
-        int logo = m.equals("DOLBY VISION ATMOS") ? R.drawable.fmt_dolby_vision_atmos
-                : m.equals("DOLBY VISION") ? R.drawable.fmt_dolby_vision : m.equals("DOLBY ATMOS") ? R.drawable.fmt_dolby_atmos
-                : m.equals("HDR10+") ? R.drawable.fmt_hdr10plus : m.equals("HDR10") ? R.drawable.fmt_hdr10
-                : m.equals("DOLBY") ? R.drawable.fmt_dolby : 0;
-        if (logo != 0) {
+        // (The logos are shared with the covers over the channel, in the overlays' assets: Outfit.format.)
+        android.graphics.Bitmap logo = com.gathin.broadcast.Outfit.formatAsset(m) == null ? null : com.gathin.broadcast.Outfit.format(a, m);
+        if (logo != null) {
             FrameLayout box = new FrameLayout(a);
             GradientDrawable g = new GradientDrawable();
             g.setCornerRadius(px(4));
@@ -3658,7 +3656,7 @@ final class HomeV2 {
             box.setPadding(px(8), 0, px(8), 0);
             box.setMinimumHeight(px(MARK_H));
             ImageView v = new ImageView(a);
-            v.setImageResource(logo);
+            v.setImageBitmap(logo);
             v.setAdjustViewBounds(true);
             v.setScaleType(ImageView.ScaleType.FIT_CENTER);
             int inner = m.equals("DOLBY VISION ATMOS") ? 22 : m.startsWith("HDR") ? 17 : 15;

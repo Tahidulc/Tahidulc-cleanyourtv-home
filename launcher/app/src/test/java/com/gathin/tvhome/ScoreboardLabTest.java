@@ -1,5 +1,7 @@
 package com.gathin.tvhome;
 
+import com.gathin.broadcast.CoverLooks;
+
 import com.gathin.broadcast.BoardFx;
 import com.gathin.broadcast.CompBug;
 import com.gathin.broadcast.LabMarks;
@@ -64,12 +66,12 @@ public class ScoreboardLabTest {
 
     @Test
     public void theLabsFiveLogosAreDrawnWholeAfterTheStyles() {
-        LogoMark.Look[] lab = {LogoMark.Look.FLOODLIGHT, LogoMark.Look.SPLITKIT, LogoMark.Look.TICKER, LogoMark.Look.DUO,
-                LogoMark.Look.LED};
+        CoverLooks.Look[] lab = {CoverLooks.Look.FLOODLIGHT, CoverLooks.Look.SPLITKIT, CoverLooks.Look.TICKER, CoverLooks.Look.DUO,
+                CoverLooks.Look.LED};
         LabMarks.Look[] marks = LabMarks.Look.values();
         assertEquals(marks.length, lab.length);
         for (int i = 0; i < lab.length; i++) {
-            assertEquals(LogoMark.Look.STYLES.ordinal() + 1 + i, lab[i].ordinal());
+            assertEquals(CoverLooks.Look.STYLES.ordinal() + 1 + i, lab[i].ordinal());
             assertEquals(marks[i], lab[i].lab());
             assertEquals(marks[i].label, lab[i].label);
             // Drawn whole (see-through capable), not a channel look nor Broadcast, kept by name.
@@ -78,15 +80,15 @@ public class ScoreboardLabTest {
             assertFalse(lab[i].broadcast());
             assertFalse(lab[i].sports());
             assertFalse(lab[i].event());
-            assertEquals(lab[i], LogoMark.Look.of(lab[i].name()));
+            assertEquals(lab[i], CoverLooks.Look.of(lab[i].name()));
         }
-        assertNull(LogoMark.Look.STYLES.lab());
-        assertNull(LogoMark.Look.GLASS.lab());
-        assertNull(LogoMark.Look.SIGNATURE.lab());
-        assertEquals(24, LogoMark.Look.values().length);
+        assertNull(CoverLooks.Look.STYLES.lab());
+        assertNull(CoverLooks.Look.GLASS.lab());
+        assertNull(CoverLooks.Look.SIGNATURE.lab());
+        assertEquals(24, CoverLooks.Look.values().length);
         // The last look is the Lab's LED: the per-channel picker steps on to "as the rest" after it.
-        assertNull(ChannelOverlays.nextLook(LogoMark.Look.LED.name(), 1));
-        assertEquals(LogoMark.Look.LED.name(), ChannelOverlays.nextLook(null, -1));
+        assertNull(ChannelOverlays.nextLook(CoverLooks.Look.LED.name(), 1));
+        assertEquals(CoverLooks.Look.LED.name(), ChannelOverlays.nextLook(null, -1));
     }
 
     @Test

@@ -1,5 +1,8 @@
 package com.gathin.tvhome;
 
+import com.gathin.broadcast.CoverLooks;
+import com.gathin.broadcast.BrandStyles;
+
 import android.content.Context;
 import android.content.SharedPreferences;
 
@@ -44,7 +47,7 @@ final class ChannelOverlays {
         else prefs(c).edit().remove("m." + k).apply();
     }
 
-    /** The channel's own look: a LogoMark.Look's name, LEAVE, or null for the general one. */
+    /** The channel's own look: a CoverLooks.Look's name, LEAVE, or null for the general one. */
     static String look(Context c, String channel) {
         String k = key(channel);
         return k.isEmpty() ? null : prefs(c).getString("l." + k, null);
@@ -107,7 +110,7 @@ final class ChannelOverlays {
         List<String> all = new ArrayList<>();
         all.add(null);
         all.add(LEAVE);
-        for (LogoMark.Look l : LogoMark.Look.values()) all.add(l.name());
+        for (CoverLooks.Look l : CoverLooks.Look.values()) all.add(l.name());
         int at = all.indexOf(now);
         if (at < 0) at = 0;
         return all.get(((at + step) % all.size() + all.size()) % all.size());
@@ -148,6 +151,6 @@ final class ChannelOverlays {
     static String lookWords(String own, String general) {
         if (own == null) return "As the rest (" + general + ")";
         if (LEAVE.equals(own)) return "Leave the channel's own";
-        return LogoMark.Look.of(own).label;
+        return CoverLooks.Look.of(own).label;
     }
 }

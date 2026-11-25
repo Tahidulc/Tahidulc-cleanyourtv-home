@@ -1,4 +1,4 @@
-package com.gathin.tvhome;
+package com.gathin.broadcast;
 
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -12,7 +12,6 @@ import android.os.Looper;
 import android.text.TextUtils;
 import android.view.View;
 
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -23,34 +22,35 @@ import java.util.concurrent.Executors;
 
 /**
  * What the family's own logo over the channel's (Event: "whitebrook road", "sports" on red, the channel's name in its box)
- * shows besides, as the mock-up they chose has it, each with its own switch on the Scoreboard card (on unless switched
- * off):
+ * shows besides, as the mock-up they chose has it, each with its own switch (on unless switched off): the launcher's
+ * Scoreboard card over TiviMate, and Homefield TV's hold-OK menu over its own player, the same code in both apps:
  * <ul>
- *   <li>Up next: five minutes before the next programme on the channel watched (Sky's guide), a panel slides out to the
- *   left of the name's box, a red block counting the minutes, "Up next · 21:00" and the programme's title, for 30
+ *   <li>Up next: five minutes before the next programme on the channel watched (the app's own guide), a panel slides out
+ *   to the left of the name's box, a red block counting the minutes, "Up next · 21:00" and the programme's title, for 30
  *   seconds, once a programme.</li>
- *   <li>Prayer time: five minutes before each prayer (the Darussalam times the TV has), a small pill drops under the logo:
- *   a gold crescent, "Maghrib in 5 min" and the time, for 30 seconds, once a prayer.</li>
+ *   <li>Prayer time: five minutes before each prayer (the Darussalam times the TV launcher has), a small pill drops under
+ *   the logo: a gold crescent, "Maghrib in 5 min" and the time, for 30 seconds, once a prayer.</li>
  *   <li>Clock and weather: every five minutes the channel's name turns over to the time, the weather's icon and the
- *   temperature (Home's last reading, under three hours old), for 30 seconds, then back; it waits while either of the
- *   others is out.</li>
+ *   temperature (the launcher's Home's last reading, under three hours old), for 30 seconds, then back; it waits while
+ *   either of the others is out.</li>
  *   <li>Picture and sound marks: inside the name's box after a fine line, the formats the channel carries by its own
  *   name in the playlist (4K, UHD, HD, HDR, HDR10, HDR10+, Dolby Vision, Dolby Atmos, DTS, 5.1), the marks alone in white;
  *   always up. Never guessed: a channel whose name says none has none.</li>
  * </ul>
- * The panel and the pill are drawn in a window of their own beside the logo's (BoardCover keeps it with the logo's
- * window, its burn-in step, its fade and its going aside); never where the scoreboard is.
+ * Where the programme, the prayer and the weather come from is each app's own (Source); the cover the extras go with is
+ * each app's own view (Cover). The panel and the pill are drawn in a view of their own beside the logo's (Extras);
+ * never where the scoreboard is.
  */
-final class LogoExtras {
+public final class LogoExtras {
     private LogoExtras() { }
 
     /** How long each stays out; how long before a programme or a prayer it comes; how often the clock turns over. */
-    static final long SHOW_MS = 30_000L, AHEAD_MS = 5 * 60_000L, CLOCK_EVERY_MS = 5 * 60_000L;
+    public static final long SHOW_MS = 30_000L, AHEAD_MS = 5 * 60_000L, CLOCK_EVERY_MS = 5 * 60_000L;
     /** The guide looked at this often; the prayer times this often. */
-    static final long GUIDE_MS = 30_000L, PRAYER_MS = 15_000L;
+    public static final long GUIDE_MS = 30_000L, PRAYER_MS = 15_000L;
     /** The last weather reading counts this long. */
-    static final long WEATHER_MS = 3 * 3_600_000L;
-    static final long SLIDE_MS = 550L, DROP_MS = 450L, OUT_MS = 320L;
+    public static final long WEATHER_MS = 3 * 3_600_000L;
+    public static final long SLIDE_MS = 550L, DROP_MS = 450L, OUT_MS = 320L;
 
     private static final String FILE = "logo_extras";
     private static final ExecutorService io = Executors.newSingleThreadExecutor();
@@ -65,20 +65,63 @@ final class LogoExtras {
         return c.getApplicationContext().getSharedPreferences(FILE, Context.MODE_PRIVATE);
     }
 
+    /** Where an app's extras come from (the launcher's: Sky's guide, the mosque's times, Home's weather; Homefield TV's own guide and the launcher's times and weather). */
+    public interface Source {
+        /** The programmes on the channel watched around now, {title, start (epoch ms)} each; off the main thread. */
+        List<Object[]> around(Context c, long now, long within);
+
+        /** Whether prayer times are on at all here. */
+        boolean prayerOn(Context c);
+
+        /** The next prayer: {its label ("Maghrib"), when it begins (epoch ms), its time as shown ("17:02")}; null for none. */
+        Object[] nextPrayer(Context c);
+
+        /** The weather: {temperature, code, 1 by day}, null when there is none under WEATHER_MS old. */
+        long[] weather(Context c, long now);
+
+        /** The weather's icon for its code, by day or not; null for none. */
+        android.graphics.drawable.Drawable icon(Context c, int code, boolean day);
+    }
+
+    /** The cover the extras go with (the app's own view of it). */
+    public interface Cover {
+        /** The name turned over to the clock (on), or back; its time, the weather's icon (null: none), its temperature. */
+        void clock(boolean on, String hm, android.graphics.drawable.Drawable icon, String temp);
+
+        /** The name's box as Event last drew it (the cover's pixels) into out; false for none. */
+        boolean nameBox(RectF out);
+
+        /** The cover's view on the screen. */
+        View view();
+    }
+
     // ---- the switches -------------------------------------------------------------------------------------------------
 
-    static final String NEXT = "next", PRAYER = "prayer", CLOCK = "clock", MARKS = "marks";
+    public static final String NEXT = "next", PRAYER = "prayer", CLOCK = "clock", MARKS = "marks";
+    /** The four, in the order the switches are listed. */
+    public static final String[] ALL = {NEXT, PRAYER, CLOCK, MARKS};
 
-    static boolean on(Context c, String which) {
+    public static boolean on(Context c, String which) {
         return prefs(c).getBoolean(which, true);
     }
 
-    static void set(Context c, String which, boolean on) {
+    public static void set(Context c, String which, boolean on) {
         prefs(c).edit().putBoolean(which, on).apply();
         if (!on) {
             if (NEXT.equals(which)) panelUntil = Math.min(panelUntil, System.currentTimeMillis());
             if (PRAYER.equals(which)) pillUntil = Math.min(pillUntil, System.currentTimeMillis());
             if (CLOCK.equals(which)) clockUntil = 0;
+        }
+    }
+
+    /** Pure: a switch's name, as the switches list it. */
+    public static String words(String which) {
+        switch (which == null ? "" : which) {
+            case NEXT: return "Up next on the logo";
+            case PRAYER: return "Prayer time on the logo";
+            case CLOCK: return "Clock and weather on the logo";
+            case MARKS: return "Picture and sound marks on the logo";
+            default: return "";
         }
     }
 
@@ -89,7 +132,7 @@ final class LogoExtras {
      * UHD, HDR10+, DOLBY ATMOS), in order: the picture's size, its HDR, Dolby Vision, then the sound. Only what the name
      * says.
      */
-    static List<String> marks(String channel) {
+    public static List<String> marks(String channel) {
         List<String> out = new ArrayList<>();
         if (channel == null) return out;
         String n = " " + channel.toUpperCase(Locale.ROOT).replace("HDR10+", " HDR10PLUS ").replace("HDR10 +", " HDR10PLUS ")
@@ -109,29 +152,29 @@ final class LogoExtras {
     }
 
     /** Pure: a programme's title as the panel shows it: the guide's own marks off ("New: ", "(S)", "[HD]"), else as it is. */
-    static String tidy(String title) {
+    public static String tidy(String title) {
         if (title == null) return "";
         String t = title.trim().replaceAll("(?i)^new:\\s*", "").replaceAll("\\s*[\\[(](S|AD|HD|SL|R|NEW)[\\])]\\s*", " ").trim();
         return t.replaceAll("\\s{2,}", " ");
     }
 
     /** Pure: whole minutes to go till at, rounded up (4 min 20 s: 5). */
-    static int minutesTo(long at, long now) {
+    public static int minutesTo(long at, long now) {
         return (int) Math.max(1, (at - now + 59_999L) / 60_000L);
     }
 
     /** Pure: something at at is due a reminder now: within AHEAD_MS and still to come. */
-    static boolean due(long at, long now) {
+    public static boolean due(long at, long now) {
         return at > now && at - now <= AHEAD_MS;
     }
 
     /** Pure: the clock is due to turn over: its last time long enough ago, and neither of the others out. */
-    static boolean clockDue(long lastAt, long now, boolean panelOut, boolean pillOut) {
+    public static boolean clockDue(long lastAt, long now, boolean panelOut, boolean pillOut) {
         return !panelOut && !pillOut && now - lastAt >= CLOCK_EVERY_MS;
     }
 
     /** Pure: two boxes {left, top, right, bottom} meet. */
-    static boolean meet(float[] a, float[] b) {
+    public static boolean meet(float[] a, float[] b) {
         return a != null && b != null && a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
     }
 
@@ -147,34 +190,44 @@ final class LogoExtras {
     private static Extras view;
 
     /** The logo came up (anew): nothing out, the clock's five minutes from now. */
-    static void reset(long now) {
+    public static void reset(long now) {
         panelUntil = pillUntil = clockUntil = 0;
         clockLast = now;
         guideAt = prayerAt = 0;
     }
 
-    static void view(Extras v) {
+    public static void view(Extras v) {
         view = v;
     }
 
     /** Whether the name is turned over to the clock now. */
-    static boolean clockOut(long now) {
+    public static boolean clockOut(long now) {
         return now < clockUntil;
+    }
+
+    /** Whether the Up next panel or the prayer pill is out now (the tests, the previews). */
+    public static boolean panelOut(long now) {
+        return now < panelUntil;
+    }
+
+    public static boolean pillOut(long now) {
+        return now < pillUntil;
     }
 
     /**
      * Each second while the logo is up over the player (main thread): what comes out next. event: the logo is Event (the
-     * look with the name's box); still: nothing of the scoreboard's moments out, the logo not aside.
+     * look with the name's box); still: nothing of the scoreboard's moments out, the logo not aside; board: the
+     * scoreboard on the screen, kept clear of.
      */
-    static void tick(Context c, LogoMark mark, boolean event, boolean still, float[] board) {
+    public static void tick(Context c, Source src, Cover mark, boolean event, boolean still, float[] board) {
         long now = System.currentTimeMillis();
         if (mark == null || !event) {
-            if (mark != null) mark.clock(false, null, 0, "");
+            if (mark != null) mark.clock(false, null, null, "");
             return;
         }
         boolean panelOut = now < panelUntil, pillOut = now < pillUntil;
-        if (on(c, NEXT) && still && !guiding && now - guideAt >= GUIDE_MS) guide(c, board);
-        if (on(c, PRAYER) && still && Prayer.on(c) && now - prayerAt >= PRAYER_MS) prayer(c, now, board);
+        if (on(c, NEXT) && still && !guiding && now - guideAt >= GUIDE_MS) guide(c, src, board);
+        if (on(c, PRAYER) && still && src.prayerOn(c) && now - prayerAt >= PRAYER_MS) prayer(c, src, now, board);
         // The clock: every five minutes for 30 s; back at once when either of the others comes out.
         boolean clock = on(c, CLOCK) && now < clockUntil && !panelOut && !pillOut;
         if (!clock && clockUntil > now) clockUntil = 0;
@@ -184,25 +237,24 @@ final class LogoExtras {
             clock = true;
         }
         if (clock) {
-            long[] w = weather(c, now);
+            long[] w = src.weather(c, now);
             String hm = String.format(Locale.ROOT, "%1$tH:%1$tM", now);
-            mark.clock(true, hm, w == null ? 0 : WeatherLine.icon((int) w[1], w[2] == 1), w == null ? "" : w[0] + "°");
+            mark.clock(true, hm, w == null ? null : src.icon(c, (int) w[1], w[2] == 1), w == null ? "" : w[0] + "°");
         } else {
-            mark.clock(false, null, 0, "");
+            mark.clock(false, null, null, "");
         }
         if (view != null) view.invalidate();
     }
 
     /** The next programme on the channel watched, off the main thread; out when it is due and not out before. */
-    private static void guide(Context c, float[] board) {
+    private static void guide(Context c, Source src, float[] board) {
         guiding = true;
         guideAt = System.currentTimeMillis();
         Context a = c.getApplicationContext();
         io.execute(() -> {
             Object[] next = null;
             try {
-                String[] channels = a.getResources().getStringArray(R.array.sport_tv_channels);
-                List<Object[]> around = TvGuide.around(channels, InStep.tunedNames(a), System.currentTimeMillis(), AHEAD_MS + 30_000L);
+                List<Object[]> around = src.around(a, System.currentTimeMillis(), AHEAD_MS + 30_000L);
                 for (Object[] o : around) if ((Long) o[1] > System.currentTimeMillis()) next = o;
             } catch (RuntimeException ignored) {
                 // looked at again in half a minute
@@ -228,21 +280,21 @@ final class LogoExtras {
     }
 
     /** The next prayer: its reminder out when it is five minutes off, once. */
-    private static void prayer(Context c, long now, float[] board) {
+    private static void prayer(Context c, Source src, long now, float[] board) {
         prayerAt = now;
-        Prayer.Slot s;
+        Object[] s;
         try {
-            s = Prayer.next(c);
+            s = src.nextPrayer(c);
         } catch (RuntimeException e) {
             return;
         }
-        if (s == null || s.begins == null || view == null) return;
-        long at = s.begins.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
-        String key = "s|" + s.name + "|" + at;
+        if (s == null || s.length < 3 || view == null) return;
+        long at = (Long) s[1];
+        String key = "s|" + s[0] + "|" + at;
         if (!due(at, now) || shown.contains(key) || meet(view.pillBox(), board)) return;
         remember(key);
-        pillWords = s.label() + " in " + minutesTo(at, now) + " min";
-        pillTime = Prayer.hm(s.begins);
+        pillWords = s[0] + " in " + minutesTo(at, now) + " min";
+        pillTime = String.valueOf(s[2]);
         pillAt = now;
         pillUntil = now + SHOW_MS;
         view.invalidate();
@@ -253,12 +305,29 @@ final class LogoExtras {
         shown.add(key);
     }
 
-    /** Home's last weather reading: {temperature, code, 1 by day}; null when there is none under three hours old. */
-    private static long[] weather(Context c, long now) {
-        SharedPreferences p = c.getSharedPreferences("weather_line", Context.MODE_PRIVATE);
-        long at = p.getLong("at", 0);
+    /** Pure: a weather reading {temperature, code, 1 by day} from its parts as kept, null when there is none under WEATHER_MS old. */
+    public static long[] weatherOf(long at, long temp, int code, boolean day, long now) {
         if (at <= 0 || now - at > WEATHER_MS) return null;
-        return new long[]{p.getLong("temp", 0), p.getInt("code", 3), p.getBoolean("day", true) ? 1 : 0};
+        return new long[]{temp, code, day ? 1 : 0};
+    }
+
+    /** Previews and tests only: the Up next panel and the prayer pill out now with these words. */
+    public static void showNow(String title, String time, long start, String prayer, String prayerTime) {
+        long now = System.currentTimeMillis();
+        if (title != null) {
+            panelTitle = title;
+            panelTime = time;
+            panelStart = start;
+            panelAt = now - SLIDE_MS;
+            panelUntil = now + SHOW_MS;
+        }
+        if (prayer != null) {
+            pillWords = prayer;
+            pillTime = prayerTime;
+            pillAt = now - DROP_MS;
+            pillUntil = now + SHOW_MS;
+        }
+        if (view != null) view.invalidate();
     }
 
     // ---- the panel and the pill, drawn ------------------------------------------------------------------------------
@@ -267,8 +336,8 @@ final class LogoExtras {
      * The window's view: the Up next panel to the left of the logo's name box and the prayer pill under the logo, sized by
      * the name box as the mock-up has them (its box 38 high: the panel as high, 8 from it; the pill 26 high, 7 under).
      */
-    static final class Extras extends View {
-        private final LogoMark mark;
+    public static final class Extras extends View {
+        private final Cover mark;
         private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), text = new Paint(Paint.ANTI_ALIAS_FLAG),
                 line = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final RectF r = new RectF(), box = new RectF();
@@ -278,23 +347,23 @@ final class LogoExtras {
         /** Where the panel and the pill are drawn last, on the screen (for keeping clear of the scoreboard). */
         private float[] panelAtScreen, pillAtScreen;
 
-        Extras(Context c, LogoMark mark) {
+        public Extras(Context c, Cover mark) {
             super(c);
             this.mark = mark;
-            bold = ScoreCard.outfit(c, 700);
-            semi = ScoreCard.outfit(c, 600);
-            medium = ScoreCard.outfit(c, 500);
+            bold = Outfit.at(c, 700);
+            semi = Outfit.at(c, 600);
+            medium = Outfit.at(c, 500);
             line.setStyle(Paint.Style.STROKE);
         }
 
         /** Where the panel would be on the screen, {left, top, right, bottom} (an estimate before it is ever drawn). */
-        float[] panelBox() {
+        public float[] panelBox() {
             if (panelAtScreen != null) return panelAtScreen;
             float[] b = nameBox();
             return b == null ? null : new float[]{b[0] - (b[3] - b[1]) * 7f, b[1], b[0], b[3]};
         }
 
-        float[] pillBox() {
+        public float[] pillBox() {
             if (pillAtScreen != null) return pillAtScreen;
             float[] l = logoBox();
             return l == null ? null : new float[]{l[0], l[3], l[2], l[3] + (l[3] - l[1]) * 0.45f};
@@ -302,15 +371,17 @@ final class LogoExtras {
 
         /** The logo's name box on the screen; null when it has none drawn. */
         private float[] nameBox() {
-            if (mark == null || !mark.nameBox(box) || !mark.isAttachedToWindow()) return null;
-            mark.getLocationOnScreen(it);
+            View v = mark == null ? null : mark.view();
+            if (v == null || !mark.nameBox(box) || !v.isAttachedToWindow()) return null;
+            v.getLocationOnScreen(it);
             return new float[]{it[0] + box.left, it[1] + box.top, it[0] + box.right, it[1] + box.bottom};
         }
 
         private float[] logoBox() {
-            if (mark == null || !mark.isAttachedToWindow()) return null;
-            mark.getLocationOnScreen(it);
-            return new float[]{it[0], it[1], it[0] + mark.getWidth(), it[1] + mark.getHeight()};
+            View v = mark == null ? null : mark.view();
+            if (v == null || !v.isAttachedToWindow()) return null;
+            v.getLocationOnScreen(it);
+            return new float[]{it[0], it[1], it[0] + v.getWidth(), it[1] + v.getHeight()};
         }
 
         @Override protected void onDraw(Canvas cv) {
@@ -461,7 +532,7 @@ final class LogoExtras {
     }
 
     /** Pure: eased out (the mock-up's cubic-bezier(.2,.8,.2,1), near enough). */
-    static float ease(float t) {
+    public static float ease(float t) {
         float x = Math.max(0f, Math.min(1f, t));
         return 1f - (1f - x) * (1f - x) * (1f - x);
     }
