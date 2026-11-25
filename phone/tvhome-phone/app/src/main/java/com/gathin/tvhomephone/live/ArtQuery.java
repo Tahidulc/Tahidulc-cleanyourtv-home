@@ -88,6 +88,11 @@ final class ArtQuery {
         return PicQuery.pick(found, type, title, year);
     }
 
+    /** As pick(), with the answer's TMDB id and kind: {path, id, "tv" or "movie"} (a series' gives its episodes' stills); null for none. */
+    String[] pickWithId(JSONObject found) {
+        return PicQuery.pickWithId(found, type, title, year);
+    }
+
     static boolean same(String a, String b) {
         return PicQuery.same(a, b);
     }

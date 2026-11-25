@@ -16,6 +16,7 @@ import com.bumptech.glide.Glide;
 import com.gathin.broadcast.PicArt;
 import com.gathin.broadcast.PicPlace;
 import com.gathin.broadcast.PicSources;
+import com.gathin.broadcast.PicVet;
 
 import java.io.File;
 import java.util.ArrayDeque;
@@ -282,17 +283,34 @@ final class ProgPics {
             float[] lay = new float[PicPlace.SIZE];
             PicPlace.place(o.outWidth, o.outHeight, Faces.known(url), k.w, k.h, room(k.mode, k.w, k.h), 1f, lay);
             if (strict && PicPlace.tooSmall(lay)) return null;
+            // A catalogue's picture that is no programme's (a badge, a tracking pixel): never shown, the next instead.
+            if (PicVet.tiny(o.outWidth, o.outHeight)) throw new java.io.IOException("too small to be a programme's");
             int sample = 1;
             while (o.outHeight / (sample * 2) >= lay[PicPlace.PH] && o.outWidth / (sample * 2) >= lay[PicPlace.PW]) sample *= 2;
             BitmapFactory.Options d = new BitmapFactory.Options();
             d.inSampleSize = sample;
             d.inPreferredConfig = Bitmap.Config.RGB_565;
             Bitmap src = BitmapFactory.decodeFile(f.getPath(), d);
-            return src == null ? null : fill(src, url, k.w, k.h, k.mode);
+            if (src == null) return null;
+            if (placeholder(src)) {
+                // A placeholder card ("Image unavailable", a plain colour): never shown, the next instead.
+                src.recycle();
+                throw new java.io.IOException("a placeholder");
+            }
+            return fill(src, url, k.w, k.h, k.mode);
         } catch (Exception | OutOfMemoryError e) {
             FAILED.put(url, System.currentTimeMillis());
             return null;
         }
+    }
+
+    /** Whether a picture read is a placeholder card: a small even sample of it nearly all one colour (PicVet.flat). */
+    static boolean placeholder(Bitmap src) {
+        Bitmap s = Bitmap.createScaledBitmap(src, 24, 14, true);
+        int[] px = new int[24 * 14];
+        s.getPixels(px, 0, 24, 0, 0, 24, 14);
+        if (s != src) s.recycle();
+        return PicVet.flat(px);
     }
 
     /** A made-up picture (a game's crests on their colours, a kind's picture: PicArt) drawn for a place w x h. */
