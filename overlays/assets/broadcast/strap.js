@@ -30,8 +30,8 @@
   const weather = esc(up(C.weather || ''));
   const live = M.ground ? 'LIVE FROM ' + M.ground : '';
   const join = (...a) => a.filter(Boolean).join('  ·  ');
-  // The moment's word (LABELS): after a goal none, the score alone (as the family asked: no word for it, no scorer, no
-  // minute); FULL TIME with the final score. The line under the strap: the ground (and its weather at the kick-offs).
+  // The moment's word (LABELS): after a goal none (as the family asked: the score, then a beat later its scorer);
+  // FULL TIME with the final score. The line under the strap: the ground (and its weather at the kick-offs).
   const LABELS = { kickoff: 'KICK-OFF', restart: '', second: 'SECOND HALF', full: 'FULL TIME' };
   const MO = {
     kickoff: { sub: join(live, weather), extra: weather },
@@ -44,13 +44,22 @@
   // Full time: the clock stopped, FT where it shows on its own (as the app's board then has it); where the moment's word
   // and the clock share a place, the word alone (FULL TIME), as after a goal the clock alone: ONE, then in its middle.
   const FT = MOMENT === 'full', ONE = FT || !MO.label;
-  // the match clock, running from the page's start: the app's own reading if it gave one, else from the moment
-  const minute = parseInt(String(C.goalMin || '').replace(/[^0-9]/g, ''), 10);
+  // After a goal, its scorer as the board names them: a ball, the name, the minute, (og) or (pen); shown a beat after the
+  // score (SC0, SC1) on the line under the strap where the brand is (or the look's own place for it: goalHTML).
+  const GOAL = MOMENT === 'restart' && C.scorer ? { name: esc(C.scorer), min: esc(C.goalMin || ''),
+    mark: C.goalMark === 'og' || C.goalMark === 'pen' ? C.goalMark : '' } : null;
+  // the match clock, running from the page's start: the app's own reading if it gave one, else from the moment (a goal's
+  // minute: 67' or 45+2')
+  const gm = String(C.goalMin || '').match(/(\d+)(?:\s*\+\s*(\d+))?/);
+  const minute = gm ? +gm[1] + (+gm[2] || 0) : NaN;
   const CLOCK_AT0 = C.clock != null && isFinite(+C.clock) ? +C.clock
     : MOMENT === 'second' ? 45 * 60 : MOMENT === 'restart' ? (isFinite(minute) ? Math.max(0, minute - 1) * 60 + 50 : 0) : 0;
 
   // ---------- the timeline (the mock-up's seconds, T): in at 0.5, the fold 4.5-5.15, the board, then gone ----------
   const IN0 = 0.50, IN1 = 1.25, SUB0 = 1.20, SUB1 = 1.65, OUT0 = 4.50, OUT1 = 5.15;
+  // after a goal: the scorer from SC0 (a beat after the score is up), opened out by SC1; the line under the strap kept to
+  // the fold then (the strap's own sound holds its fold where it is, so the scorer has the time up to it)
+  const SC0 = 2.30, SC1 = 2.70;
   const END_T = OUT1 + 1.40;                          // the board held, its sheen past
   const FADE = 0.25;
   window.STRAP_LEN = END_T + FADE - LEAD;             // in the page's own seconds (about 6.6)
@@ -101,16 +110,53 @@
   const SHEEN = '<i class="bsheen"></i>';
   let sheenAt = OUT1 + 0.05;
 
+  // A small football: a white ball, its middle patch and seams (the scorer's mark, as the board's captions have it).
+  function ballSvg(px, edge) {
+    return '<svg class="mark" width="' + px + '" height="' + px + '" viewBox="0 0 24 24">' +
+      '<circle cx="12" cy="12" r="10.6" fill="#fff" stroke="' + (edge || 'rgba(0,0,0,.55)') + '" stroke-width="1.1"/>' +
+      '<path d="M12 7.4 L16.2 10.4 L14.6 15.3 L9.4 15.3 L7.8 10.4 Z" fill="#15171d"/>' +
+      '<path d="M12 7.4 V2.2 M16.2 10.4 L21.4 8.8 M14.6 15.3 L17.8 19.9 M9.4 15.3 L6.2 19.9 M7.8 10.4 L2.6 8.8" stroke="#15171d" stroke-width="1.3" fill="none"/>' +
+      '<path d="M9.2 1.7 L12 2.2 L14.8 1.7 M20.6 6.2 L21.4 8.8 L22.3 11.4 M19.6 19.5 L17.8 19.9 L16.4 21.8 M7.6 21.8 L6.2 19.9 L4.4 19.5 M1.7 11.4 L2.6 8.8 L3.4 6.2" stroke="#15171d" stroke-width="1.6" fill="none"/></svg>';
+  }
+  // The scorer's words: the name, the minute, (og) or (pen) after it, as the board writes them (not in capitals).
+  const goalWords = () => GOAL.name + (GOAL.min ? ' ' + GOAL.min : '') + (GOAL.mark ? ' (' + GOAL.mark + ')' : '');
+  // After a goal, the scorer for a line (gap: the line's own between its parts; sep: a bar before it), opened out of
+  // nothing from SC0 (goalRender); '' for any other moment.
+  function goalHTML(gap, sep, px, css, room) {
+    if (!GOAL) return '';
+    return '<span class="sgoal" data-gap="' + gap + '" data-room="' + (room || 0) + '" style="display:inline-flex;align-items:center;gap:' + gap + 'px;max-width:0;margin-left:' + (-gap) +
+      'px;opacity:0;overflow:hidden;white-space:nowrap;flex:none">' + (sep ? '<span style="opacity:.45">|</span>' : '') +
+      '<span class="row" style="gap:' + Math.round(px * 0.4) + 'px;text-transform:none;letter-spacing:.03em;font-weight:700;' + (css || '') + '">' + ballSvg(px) +
+      '<span>' + goalWords() + '</span></span></span>';
+  }
+  function goalRender(t) {
+    if (!GOAL) return;
+    const p = eo(prog(t, SC0, SC1));
+    for (const e of document.querySelectorAll('.sgoal')) {
+      if (e._w == null) {
+        // its whole width, measured once (a long name made smaller to fit a place with only so much room)
+        const was = e.style.maxWidth, words = e.lastElementChild, room = +e.dataset.room || 0;
+        e.style.maxWidth = 'none'; e.style.alignSelf = 'flex-start';   // its own width, not a column's
+        for (let i = 0; i < 12 && room && e.scrollWidth > room; i++) words.style.fontSize = (parseFloat(getComputedStyle(words).fontSize) * 0.92) + 'px';
+        e._w = e.scrollWidth + 2; e.style.maxWidth = was; e.style.alignSelf = '';
+      }
+      const gap = +e.dataset.gap || 0;
+      e.style.maxWidth = (e._w * p) + 'px';
+      e.style.marginLeft = (-gap * (1 - p)) + 'px';
+      e.style.opacity = String(p);
+    }
+  }
   function subHTML(bg, ink, markHouse, markCut, extra) {
     return '<div class="sub row" style="height:44px;padding:0 22px;gap:14px;border-radius:0 0 10px 10px;font-size:18px;background:' + bg + ';color:' + ink + (extra || '') + '">' +
       markSvg(26, markHouse, markCut) + '<span style="opacity:.9">WHITEBROOK ROAD SPORTS</span>' +
-      (MO.sub ? '<span style="opacity:.45">|</span><span>' + MO.sub + '</span>' : '') + '</div>';
+      (MO.sub ? '<span style="opacity:.45">|</span><span>' + MO.sub + '</span>' : '') + goalHTML(14, true, 24, 'font-size:22px') + '</div>';
   }
   function subRender(t, left, width) {
     const sl = $('subline'); if (!sl.firstElementChild) return;
     sl.style.left = left + 'px'; sl.style.top = (Y + H) + 'px'; sl.style.height = '50px'; sl.style.overflow = 'hidden';
     if (width) sl.style.width = width + 'px';
-    const pin = eo(prog(t, SUB0, SUB1)), pout = eio(prog(t, OUT0 - 0.34, OUT0 - 0.04));
+    // after a goal the line (and its scorer) stays until the strap folds, then goes up behind it
+    const pin = eo(prog(t, SUB0, SUB1)), pout = GOAL ? eio(prog(t, OUT0 - 0.1, OUT0 + 0.2)) : eio(prog(t, OUT0 - 0.34, OUT0 - 0.04));
     sl.firstElementChild.style.transform = 'translateY(' + (-56 * (1 - pin) - 56 * pout) + 'px)';
     sl.style.opacity = pin <= 0 || pout >= 1 ? 0 : 1;
   }
@@ -355,7 +401,7 @@
         '<div id="mt" class="row nm" style="font-size:66px;gap:26px;color:#fff">' + crest(true, 66) + M.home +
         '<span class="num" style="font-weight:300;color:#cfd5ea">' + MO.score[0] + '–' + MO.score[1] + '</span>' + M.away + crest(false, 66) + '</div>' +
         '<div class="sub row" style="gap:12px;font-size:17px;color:#cfd5ea">' + markSvg(22, 'grad', '#070912') + '<span style="opacity:.85">WHITEBROOK ROAD SPORTS</span>' +
-        (MO.sub ? '<span style="opacity:.4">|</span><span>' + MO.sub + '</span>' : '') + '</div></div></div>';
+        (MO.sub ? '<span style="opacity:.4">|</span><span>' + MO.sub + '</span>' : '') + goalHTML(12, true, 22, 'font-size:21px;color:#fff') + '</div></div></div>';
       $('subline').innerHTML = '';
       $('board').innerHTML = '<div class="row" style="height:' + BH + 'px;padding:0 20px;gap:14px;background:#070912;font-size:26px">' +
         '<span class="nm">' + M.hs + '</span><span class="num" style="font-weight:400">' + MO.score[0] + '–' + MO.score[1] + '</span><span class="nm">' + M.as + '</span>' +
@@ -431,7 +477,7 @@
         '<div id="svenue" style="width:360px;height:100%;flex:none;box-sizing:border-box;padding:0 28px;background:linear-gradient(#111a48,#070C26);display:flex;flex-direction:column;justify-content:center;gap:6px;overflow:hidden">' +
         '<div class="row sub" style="gap:10px;font-size:14px;color:#aeb8e6">' + markSvg(22, 'grad', '#070C26') + (M.ground ? 'LIVE FROM' : 'WHITEBROOK ROAD SPORTS') + '</div>' +
         '<span id="svname" class="nm" style="font-size:30px;color:#fff">' + (M.ground || esc(up(C.compName))) + '</span>' +
-        '<span class="sub" style="font-size:15px;color:#c9d3ff">' + MO.extra + '</span></div></div>';
+        (GOAL ? goalHTML(0, false, 22, 'font-size:20px;color:#fff', 300) : '<span class="sub" style="font-size:15px;color:#c9d3ff">' + MO.extra + '</span>') + '</div></div>';
       $('subline').innerHTML = '';
       $('board').innerHTML = '<div class="row" style="height:84px">' +
         '<div id="bcomp" style="width:72px;height:100%;display:grid;place-items:center;background:#070C26">' + comp(48) + '</div>' +
@@ -2641,6 +2687,7 @@
     // the minute alone, where a look shows it so (the Ticker's and the LED board's: "12'")
     for (const c of document.querySelectorAll('.bmin')) if (c.textContent !== mm) c.textContent = mm;
     boardSheen(t);
+    goalRender(t);
     // the end: the drawn board fades as the app's own comes back
     const f = prog(t, END_T, END_T + FADE);
     if (f > 0) b.style.opacity = String((+b.style.opacity || 0) * (1 - f));

@@ -1,14 +1,15 @@
 // The kick-off strap in the scoreboard's own look (the first design), live: BROADCAST.start({kind ('kickoff', 'restart': the
-// score alone after a goal, 'second', 'full': full time), look (the board's, as BroadcastData.strapLook names it: CLASSIC
-// GLASS LIGHT CLUB MINIMAL CRESTS STACKED CARD FROSTED KITS, the Lab's FLOODLIGHT SPLITKIT TICKER DUO LED, the competitions'
-// PL_WORLD ... LIGA_MX, the retro RETRO_2004 ... RETRO_2016), home, away ({name, short, crest, color, color2, board (its
-// colour on the board), retro (its name on the retro boards)}), comp, compName, compLogo, compLight (the logo for light
-// grounds), compMark (the logo as the look's board cuts it), compShort, compTitle, sfx (the look's sound), stadium, weather,
-// score, goalMin (a goal's minute: the clock from it), clock (seconds on the match clock as it starts, optional), board
-// ({x, y, w, h}: where the app's board sits, in the 1920 x 1080 the page is fitted to), sound, volume, q, hold}) plays it
-// once over a see-through page, then calls done(). With hold it gets everything ready, calls prepared() and waits for
-// BROADCAST.go(). The strap is page elements, not a canvas (as the mock-up was): the stage is fitted to the screen every
-// frame; q.scale has no part (the screen's own pixels are drawn), q.flat takes every blur and shadow away.
+// score after a goal, then its scorer; 'second'; 'full': full time), look (the board's, as BroadcastData.strapLook names
+// it: CLASSIC GLASS LIGHT CLUB MINIMAL CRESTS STACKED CARD FROSTED KITS, the Lab's FLOODLIGHT SPLITKIT TICKER DUO LED, the
+// competitions' PL_WORLD ... LIGA_MX, the retro RETRO_2004 ... RETRO_2016), home, away ({name, short, crest, color, color2,
+// board (its colour on the board), retro (its name on the retro boards)}), comp, compName, compLogo, compLight (the logo for
+// light grounds), compMark (the logo as the look's board cuts it), compShort, compTitle, sfx (the look's sound), stadium,
+// weather, score, scorer, goalMin, goalMark ('og', 'pen'; a goal's, 'restart' only: the clock runs on from its minute),
+// clock (seconds on the match clock as it starts, optional), board ({x, y, w, h}: where the app's board sits, in the
+// 1920 x 1080 the page is fitted to), sound, volume, q, hold}) plays it once over a see-through page, then calls done().
+// With hold it gets everything ready, calls prepared() and waits for BROADCAST.go(). The strap is page elements, not a
+// canvas (as the mock-up was): the stage is fitted to the screen every frame; q.scale has no part (the screen's own pixels
+// are drawn), q.flat takes every blur and shadow away.
 (function () {
   const stage = document.getElementById('stage');
   // the 1920 x 1080 stage, as large as fits, in the middle (as BX.fit does for a canvas), looked at every frame
@@ -35,7 +36,8 @@
         kind: cfg.kind, look: look || 'CLASSIC', home: side(cfg.home), away: side(cfg.away),
         comp: cfg.comp || '', compName: cfg.compName || '', compLogo: cfg.compLogo || '', compLight: cfg.compLight || '',
         compMark: cfg.compMark || '', compShort: cfg.compShort || '', compTitle: cfg.compTitle || '', stadium: cfg.stadium || '',
-        weather: cfg.weather || '', score: cfg.score || [0, 0], goalMin: cfg.goalMin || '',
+        weather: cfg.weather || '', score: cfg.score || [0, 0], scorer: cfg.scorer || '', goalMin: cfg.goalMin || '',
+        goalMark: cfg.goalMark || '',
         clock: cfg.clock, board: cfg.board || null, boardFont: cfg.boardFont || '',
       };
       window.onBroadcastReady = () => {

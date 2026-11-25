@@ -289,6 +289,16 @@ public final class Moments {
         return last;
     }
 
+    /**
+     * Pure: the scorer as the after-goal pop-up names them, marked as the board marks a goal: "Havertz (pen)", "Gabriel
+     * (og)", "Saka"; "" for none. The page puts the mark after the minute ("Havertz 41' (pen)").
+     */
+    public static String popupScorer(String[] goal) {
+        if (goal == null || goal.length < 2 || goal[1] == null) return "";
+        String kind = goal.length > 4 ? goal[4] : null;
+        return goal[1] + ("pen".equals(kind) ? " (pen)" : "og".equals(kind) ? " (og)" : "");
+    }
+
     /** Pure: the scorer as a goal's alert beside the board names them ("Havertz", "Gabriel (OG)" for an own goal). */
     public static String scorer(String[] goal) {
         if (goal == null || goal.length < 2 || goal[1] == null) return "";

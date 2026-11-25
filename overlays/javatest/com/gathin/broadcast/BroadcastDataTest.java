@@ -240,24 +240,37 @@ public class BroadcastDataTest {
     }
 
     @Test
-    public void afterAGoalAndAtFullTimeThePopUpIsGivenTheScoreAndNoScorer() throws Exception {
+    public void afterAGoalThePopUpIsGivenItsScorerAndNoOtherMomentIs() throws Exception {
         BroadcastData.Match m = new BroadcastData.Match();
         m.homeName = "Northfield"; m.awayName = "Riverside"; m.homeShort = "NOR"; m.awayShort = "RIV"; m.venue = "Whitebrook Park";
-        for (String kind : new String[]{"restart", "full"}) {
-            String minute = "restart".equals(kind) ? "67'" : null;
-            JSONObject[] both = {BroadcastData.kickoff(kind, m, new int[]{2, 1}, "Ayo Bennett", minute),
-                    BroadcastData.strap(kind, m, new int[]{2, 1}, "Ayo Bennett", minute, "CLASSIC", new float[]{64, 46, 380, 49}, "")};
+        // after a goal: the score, the scorer, the minute and the board's mark for an own goal or a penalty
+        for (String[] c : new String[][]{{"Riverson", ""}, {"Riverson (pen)", "pen"}, {"Riverson (og)", "og"}, {"Riverson (OG)", "og"}}) {
+            JSONObject[] both = {BroadcastData.kickoff("restart", m, new int[]{2, 1}, c[0], "67'"),
+                    BroadcastData.strap("restart", m, new int[]{2, 1}, c[0], "67'", "CLASSIC", new float[]{64, 46, 380, 49}, "")};
             for (JSONObject o : both) {
-                assertEquals(kind, o.getString("kind"));
+                assertEquals("restart", o.getString("kind"));
                 assertEquals(2, o.getJSONArray("score").getInt(0));
                 assertEquals(1, o.getJSONArray("score").getInt(1));
-                // the score alone: no page names the scorer any more
-                assertFalse(kind + " " + o, o.has("scorer"));
+                assertEquals("Riverson", o.getString("scorer"));
+                assertEquals("67'", o.getString("goalMin"));
+                assertEquals(c[1], o.optString("goalMark", ""));
             }
         }
-        // a goal's minute stays, for the strap's clock to run on from it; full time has none
-        assertEquals("67'", BroadcastData.kickoff("restart", m, new int[]{2, 1}, "Ayo Bennett", "67'").getString("goalMin"));
-        assertFalse(BroadcastData.kickoff("full", m, new int[]{2, 1}, null, null).has("goalMin"));
+        // the kick-off, the second half and full time: no scorer, minute or mark, whatever they are handed
+        for (String kind : new String[]{"kickoff", "second", "full"}) {
+            JSONObject[] both = {BroadcastData.kickoff(kind, m, new int[]{2, 1}, "Riverson (pen)", "67'"),
+                    BroadcastData.strap(kind, m, new int[]{2, 1}, "Riverson (pen)", "67'", "CLASSIC", null, "")};
+            for (JSONObject o : both) {
+                assertFalse(kind + " " + o, o.has("scorer"));
+                assertFalse(kind, o.has("goalMin"));
+                assertFalse(kind, o.has("goalMark"));
+            }
+        }
+        // a goal with no scorer known: the score alone
+        assertFalse(BroadcastData.kickoff("restart", m, new int[]{1, 0}, null, "").has("scorer"));
+        assertArrayEquals(new String[]{"Gabriel", "og"}, BroadcastData.scorerAndMark(" Gabriel  (og) "));
+        assertArrayEquals(new String[]{"Saka", ""}, BroadcastData.scorerAndMark("Saka"));
+        assertArrayEquals(new String[]{"", ""}, BroadcastData.scorerAndMark(null));
     }
 
     @Test

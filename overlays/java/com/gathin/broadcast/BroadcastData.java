@@ -184,9 +184,9 @@ public final class BroadcastData {
 
     /**
      * The pop-up for one moment (Moments.KINDS): kind "kickoff" (the game's kick-off), "restart" (play starting again after
-     * a goal: the score alone, as the family asked, no word for it and no scorer), "second" (the second half's kick-off, with
-     * the score) or "full" (full time, with the final score). Crests and the logo inline. The scorer is no page's any more
-     * (it is not given); a goal's minute is, for the strap's clock (goalMin).
+     * a goal: the score, then a beat later its scorer, as the family asked, with no word for the moment), "second" (the
+     * second half's kick-off, with the score) or "full" (full time, with the final score). Crests and the logo inline. Only
+     * a goal's has its scorer (Moments.popupScorer: the name, its mark "og" or "pen" apart as goalMark) and minute.
      */
     public static JSONObject kickoff(String kind, Match m, int[] score, String scorer, String minute) throws JSONException {
         JSONObject o = new JSONObject();
@@ -202,10 +202,25 @@ public final class BroadcastData {
         if (!mk.isEmpty()) o.put("mark", mk);
         o.put("stadium", m.venue == null ? "" : m.venue);
         if (score != null && score.length == 2) o.put("score", new JSONArray().put(score[0]).put(score[1]));
-        if (minute != null && !minute.isEmpty()) o.put("goalMin", minute);
+        if ("restart".equals(kind)) {
+            String[] who = scorerAndMark(scorer);
+            if (!who[0].isEmpty()) o.put("scorer", who[0]);
+            if (!who[1].isEmpty()) o.put("goalMark", who[1]);
+            if (minute != null && !minute.isEmpty()) o.put("goalMin", minute);
+        }
         o.put("kicksOff", "home");
         o.put("sound", true);
         return o;
+    }
+
+    private static final java.util.regex.Pattern MARKED = java.util.regex.Pattern.compile("^(.*?)\\s*\\((og|pen)\\)\\s*$",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
+
+    /** Pure: a scorer as the pop-up is given them ("Havertz (pen)", "Gabriel (OG)") as {name, its mark "og"/"pen" or ""}. */
+    static String[] scorerAndMark(String scorer) {
+        String s = scorer == null ? "" : scorer.trim();
+        java.util.regex.Matcher m = MARKED.matcher(s);
+        return m.matches() ? new String[]{m.group(1).trim(), m.group(2).toLowerCase(Locale.ROOT)} : new String[]{s, ""};
     }
 
     private static JSONObject side(String name, String shortName, int colour, int alt, String crest) throws JSONException {

@@ -122,6 +122,11 @@ public class MomentsTest {
         assertNull(Moments.lastGoal(Arrays.<String[]>asList(), 1));
         assertEquals("Havertz", Moments.scorer(Moments.lastGoal(goals, 1)));
         assertEquals("Gabriel (OG)", Moments.scorer(new String[]{"d", "Gabriel", "77'", "away", "og"}));
+        // the after-goal pop-up's: marked as the board marks a goal, the mark going after the minute on the page
+        assertEquals("Havertz (pen)", Moments.popupScorer(Moments.lastGoal(goals, 1)));
+        assertEquals("Gabriel (og)", Moments.popupScorer(new String[]{"d", "Gabriel", "77'", "away", "og"}));
+        assertEquals("Delap", Moments.popupScorer(Moments.lastGoal(goals, 2)));
+        assertEquals("", Moments.popupScorer(null));
         assertEquals("", Moments.scorer(null));
     }
 

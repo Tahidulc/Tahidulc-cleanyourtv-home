@@ -1581,6 +1581,22 @@
     const items = [];
     const text = (s, w, size, ls, col) => { fontBC(g, w, size, ls); const tw = g.measureText(s).width - ls; return { w: tw, draw: (x, cy) => { fontBC(g, w, size, ls); g.textAlign = 'left'; g.textBaseline = 'alphabetic'; g.fillStyle = col || '#fff'; g.fillText(s, x, cy + capOf(size) / 2); } }; };
     const house = (s) => ({ w: s, draw: (x, cy) => tile(g, x, cy - s / 2, s) });
+    // a small football: white, its middle patch and seams (the scorer's mark, as the board's captions have it)
+    const ball = (s) => ({ w: s, draw: (x, cy) => {
+      const r = s / 2, cx = x + r, P = (k, d) => [cx + Math.sin(k * 2 * PI / 5) * d, cy - Math.cos(k * 2 * PI / 5) * d];
+      g.save();
+      g.beginPath(); g.arc(cx, cy, r - 0.6, 0, TAU); g.fillStyle = '#fff'; g.fill();
+      g.lineWidth = Math.max(1, s * 0.05); g.strokeStyle = 'rgba(0,0,0,0.5)'; g.stroke();
+      g.beginPath(); g.arc(cx, cy, r - 0.6, 0, TAU); g.clip();
+      g.fillStyle = g.strokeStyle = '#15171d'; g.lineWidth = Math.max(1, s * 0.06);
+      g.beginPath(); for (let k = 0; k < 5; k++) { const [px, py] = P(k, r * 0.4); if (k) g.lineTo(px, py); else g.moveTo(px, py); } g.closePath(); g.fill();
+      for (let k = 0; k < 5; k++) {
+        const [ax, ay] = P(k, r * 0.4), [bx, by] = P(k, r * 0.86);
+        g.beginPath(); g.moveTo(ax, ay); g.lineTo(bx, by); g.stroke();
+        g.beginPath(); g.arc(P(k, r * 1.08)[0], P(k, r * 1.08)[1], r * 0.3, 0, TAU); g.fill();
+      }
+      g.restore();
+    } });
     if (kind === 'comp') {
       if (LOGO.mark) items.push(markItem(g, LOGO.mark));
       else items.push(pillItem(g, (MATCH.compName || COMP_NAME[m.comp || MATCH.comp] || '').toUpperCase(), logoCanvas(m.comp || MATCH.comp)));
@@ -1593,6 +1609,11 @@
     } else if (kind === 'live') { items.push(house(30)); items.push(text('LIVE FROM', TABT.w, TABT.s, TABT.ls)); }
     else if (kind === 'second') { items.push(house(30)); items.push(text('SECOND HALF', TABT.w, TABT.s, TABT.ls)); }
     else if (kind === 'full') { items.push(house(30)); items.push(text('FULL TIME', TABT.w, TABT.s, TABT.ls)); }
+    else if (kind === 'scorer') {
+      // after a goal, a beat after the score: its scorer as the board names them (the name, the minute, (og) or (pen))
+      const words = [m.scorer || '', m.goalMin || '', m.goalMark ? '(' + m.goalMark + ')' : ''].filter(Boolean).join(' ');
+      items.push(ball(30)); items.push(text(words, TABT.w, TABT.s, 1));
+    }
     return items;
   }
   // the competition's name and logo sit straight on the tab (no box of their own, as the family asked), inside it
@@ -1720,12 +1741,13 @@
   }
 
   // ---------------------------------------------------------------- one pop-up, T seconds after it starts
-  // Each moment's pages (the tab's words, the bar's) and when they change. After a goal the score alone, under the
-  // competition (as the family asked: no word for it, no scorer, no minute); full time the final score, its tab turning to
-  // FULL TIME as the second half's turns to SECOND HALF.
+  // Each moment's pages (the tab's words, the bar's) and when they change. After a goal the score under the competition,
+  // then a beat later its tab turns to the scorer (as the family asked: no word for the moment); one with no scorer given
+  // keeps the competition. Full time the final score, its tab turning to FULL TIME as the second half's turns to SECOND HALF.
   const KINDS = {
     kickoff: { pages: [['comp', 'vs'], ['brand', 'vs'], ['live', 'stadium']], steps: [[2.9, 'tab'], [4.2, 'flip']], close: 6.6 },
-    restart: { pages: [['comp', 'score']], steps: [], close: 4.4 },
+    restart: { pages: [['comp', 'score'], ['scorer', 'score']], steps: [[1.6, 'tab']], close: 4.4 },
+    goal: { pages: [['comp', 'score']], steps: [], close: 4.4 },
     second: { pages: [['comp', 'score'], ['second', 'score']], steps: [[2.3, 'tab']], close: 4.4 },
     full: { pages: [['comp', 'score'], ['full', 'score']], steps: [[2.3, 'tab']], close: 4.4 },
     still: { pages: [['comp', 'vs']], steps: [], close: 9 },
@@ -2187,6 +2209,8 @@
     LK.mount();
     bakeFixed();
     const Q = POP.q || {};
+    // a goal with no scorer given: its score under the competition alone
+    for (const m of POP.moments) if (m.kind === 'restart' && !m.scorer) m.kind = 'goal';
     for (const m of POP.moments) {
       bakeMoment(m);
       const kind3 = m.trophy || MATCH.trophy || MATCH.comp;

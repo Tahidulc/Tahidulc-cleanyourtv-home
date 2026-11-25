@@ -1,12 +1,14 @@
-// The kick-off pop-up, live: BROADCAST.start({kind ('kickoff', 'restart': the score alone after a goal, 'second', 'full':
-// full time), home, away, comp, compName, compLogo, mark, markImg, stadium, score, kicksOff, sound, volume, q, hold}) plays
-// it once over a see-through page, then calls done(). With hold it gets everything ready, calls prepared() and waits for
-// BROADCAST.go() (the app shows it on the moment, without the wait).
+// The kick-off pop-up, live: BROADCAST.start({kind ('kickoff', 'restart': the score after a goal, then its scorer; 'second';
+// 'full': full time), home, away, comp, compName, compLogo, mark, markImg, stadium, score, scorer, goalMin, goalMark ('og',
+// 'pen'; a goal's, 'restart' only), kicksOff, sound, volume, q, hold}) plays it once over a see-through page, then calls
+// done(). With hold it gets everything ready, calls prepared() and waits for BROADCAST.go() (the app shows it on the moment,
+// without the wait).
 // It is drawn as compositor layers (layers.js): every part drawn once while it gets ready, the frames only placing them.
 (function () {
   const LEAD = 0.15;   // the sound starts this much before the first frame (its thump lands as the crests do)
   const LEN = { kickoff: 6.6, restart: 4.4, second: 4.4, full: 4.4 };
-  // each moment's sound (sfx/): after a goal and at full time the second half's, the tab's soft change in it
+  // each moment's sound (sfx/): after a goal and at full time the second half's, the tab's soft change in it (a goal's tab
+  // turning to its scorer, full time's to FULL TIME)
   const SOUND = { kickoff: 'popup-kickoff', restart: 'popup-second', second: 'popup-second', full: 'popup-second' };
   // the whole pop-up's length as the page plays it (slower and up longer than LEN, its design's own times: kickoff.js)
   const length = () => (window.POP_LEN && window.POP_LEN(kind)) || LEN[kind] + 0.62;
@@ -25,7 +27,9 @@
         background: 'none', captions: false, cuts: [], dur: 12,
         match: { home: BX.up(cfg.home.name), away: BX.up(cfg.away.name), stadium: BX.up(cfg.stadium), comp, compName: cfg.compName || '', mark: cfg.mark || '',
           trophy: TROPHY[cfg.trophy] || TROPHY[comp] || 'generic' },
-        moments: [{ n: 1, kind, t0: 0, kicksOff: cfg.kicksOff === 'away' ? 'away' : 'home', score: cfg.score || [0, 0] }],
+        moments: [{ n: 1, kind, t0: 0, kicksOff: cfg.kicksOff === 'away' ? 'away' : 'home', score: cfg.score || [0, 0],
+          scorer: kind === 'restart' ? String(cfg.scorer || '') : '', goalMin: kind === 'restart' ? String(cfg.goalMin || '') : '',
+          goalMark: kind === 'restart' && /^(og|pen)$/.test(cfg.goalMark || '') ? cfg.goalMark : '' }],
       };
       // the competition's own mark (its logo, then its name in its own lettering) comes inline as markImg
       window.ASSET_URLS = { home: cfg.home.crest, away: cfg.away.crest, logos: cfg.compLogo ? { [comp]: cfg.compLogo } : {}, mark: cfg.markImg || '' };
