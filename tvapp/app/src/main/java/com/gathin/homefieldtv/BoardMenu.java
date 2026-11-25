@@ -30,7 +30,10 @@ import java.util.Locale;
  * 21 px Inter semibold: the remote's on white at 20 % with a 3 px white ring, the rest white at 80 %. At its right, 470
  * wide, the logo's cover as it will look, drawn by the cover itself on a pitch's green (a stand-in for the picture), its
  * look's name under it, and small either side under that the board's looks before and after it (the cover is drawn in
- * the board's look: what Left and Right on "Scoreboard look" would bring).
+ * the board's look: what Left and Right on "Scoreboard look" would bring). On "Logo's look" and "Picture tag on the logo"
+ * (the family's "the option to pick what logo I want to use like tivimate": the channel's own logo as it came, then the
+ * launcher's looks over TiviMate, drawn by the same CoverLooks, with the picture tag as the launcher's Scoreboard card
+ * sets it) the small ones are the logo's looks before and after the one chosen.
  *
  * <p>Its top stays below TOP of the screen's height, where the launcher's menu reaches, so the board and the cover stay in
  * sight as they are switched: the lines that don't fit slide into sight as the remote goes, a small chevron where they go
@@ -55,6 +58,9 @@ final class BoardMenu extends View {
         /** The logo's cover drawn at (0, 0), w x h, in the board's look `look` away from the one now (0: as it is now). */
         void cover(Canvas c, float w, float h, int look);
 
+        /** The logo's cover drawn at (0, 0), w x h, in the logo's look `step` away from the one chosen, the board as it is. */
+        void logoCover(Canvas c, float w, float h, int step);
+
         /** The cover's width over its height on this channel, as its place has it. */
         float coverAspect();
     }
@@ -78,6 +84,15 @@ final class BoardMenu extends View {
         String look = "", lookNow = "", lookBefore = "", lookAfter = "";
         /** One of My scoreboards in use, "" for none. */
         String mine = "";
+        /** The logo's look chosen and those either side of it (BoardPrefs.logoLookWords), its picture tag in words. */
+        String logoLook = BoardPrefs.logoLookWords(BoardPrefs.CHANNEL_LOGO), logoBefore = "", logoAfter = "",
+                logoTag = com.gathin.broadcast.CoverLooks.tagWords(null, "");
+        /** This channel's own logo, the style, the wordmark's words, the background, in words. */
+        String logoHere = "As the rest", logoStyle = "1 of 54", logoWhat = "Auto, from the game", logoGround = "Plate";
+        /** A general channel (the name alone), the competition's logo beside it, LIVE along its foot. */
+        boolean logoNameOnly, logoComp = true, logoLive = true;
+        /** Event's extras on: Up next, prayer time, clock and weather, the picture and sound marks. */
+        boolean next = true, prayer = true, clock = true, marks = true;
         String timing = "", usual = "", popups = "", sound = "";
         /** The goal animation chosen, in words (GoalLooks.name). */
         String goalLook = com.gathin.broadcast.GoalLooks.name(com.gathin.broadcast.GoalLooks.DEFAULT);
@@ -86,10 +101,34 @@ final class BoardMenu extends View {
     }
 
     /** The lines, in order: the two switches the family uses on TiviMate first, then the rest as the launcher orders them. */
-    static final int M_BOARD = 0, M_LOGO = 1, M_LOOK = 2, M_MOVE = 3, M_MOVE_LOGO = 4, M_LINEUPS = 5, M_MINE = 6, M_NEW = 7,
-            M_TIMING = 8, M_USUAL = 9, M_NOW = 10, M_ASK = 11, M_ALERTS = 12, M_VAR = 13, M_POPUPS = 14, M_GOAL = 15,
-            M_SOUND = 16, M_SWISH = 17, M_RESET = 18;
-    static final int LINES = 19;
+    /**
+     * The logo's lines, every choice the launcher gives its logo over TiviMate (its Scoreboard card and its hold-OK menu):
+     * the look (every one of them, the channel's own logo first as Homefield TV's came), this channel's own, the style of
+     * the 54, the Sports wordmark's words, a sports or general channel, the picture tag, the background, the competition's
+     * logo beside it, LIVE along its foot, and Event's four extras.
+     */
+    static final int M_BOARD = 0, M_LOGO = 1, M_LOGO_LOOK = 2, M_LOGO_HERE = 3, M_LOGO_STYLE = 4, M_LOGO_WHAT = 5,
+            M_LOGO_CHANNEL = 6, M_LOGO_TAG = 7, M_LOGO_GROUND = 8, M_LOGO_COMP = 9, M_LOGO_LIVE = 10, M_LOGO_NEXT = 11,
+            M_LOGO_PRAYER = 12, M_LOGO_CLOCK = 13, M_LOGO_MARKS = 14, M_LOOK = 15, M_MOVE = 16, M_MOVE_LOGO = 17,
+            M_LINEUPS = 18, M_MINE = 19, M_NEW = 20, M_TIMING = 21, M_USUAL = 22, M_NOW = 23, M_ASK = 24, M_ALERTS = 25, M_VAR = 26,
+            M_POPUPS = 27, M_GOAL = 28, M_SOUND = 29, M_SWISH = 30, M_RESET = 31;
+    static final int LINES = 32;
+
+    /** Whether a line is about the logo's look (the previews under the cover show its looks either side then). */
+    static boolean logoLine(int line) {
+        return line >= M_LOGO_LOOK && line <= M_LOGO_MARKS;
+    }
+
+    /** Event's extra a line switches (LogoExtras), or null for a line that is none of them. */
+    static String extraOf(int line) {
+        switch (line) {
+            case M_LOGO_NEXT: return com.gathin.broadcast.LogoExtras.NEXT;
+            case M_LOGO_PRAYER: return com.gathin.broadcast.LogoExtras.PRAYER;
+            case M_LOGO_CLOCK: return com.gathin.broadcast.LogoExtras.CLOCK;
+            case M_LOGO_MARKS: return com.gathin.broadcast.LogoExtras.MARKS;
+            default: return null;
+        }
+    }
 
     static final String HEAD = "Scoreboard and logo  ·  Up and Down, Left and Right, OK  ·  Back to close";
 
@@ -98,6 +137,19 @@ final class BoardMenu extends View {
         return new String[]{
                 "Scoreboard:  ‹  " + onOff(m.boardShown) + "  ›",
                 "Logo's cover:  ‹  " + onOff(m.logoOn) + "  ›",
+                "Logo's look:  ‹  " + m.logoLook + "  ›",
+                "This channel's logo:  ‹  " + m.logoHere + "  ›",
+                "Style (Whitebrook Road styles):  ‹  " + m.logoStyle + "  ›",
+                "On the logo (Whitebrook Road Sports):  ‹  " + m.logoWhat + "  ›",
+                "Channel:  ‹  " + (m.logoNameOnly ? "General · Whitebrook Road" : "Sports · Whitebrook Road Sports") + "  ›",
+                "Picture tag on the logo:  ‹  " + m.logoTag + "  ›",
+                "Logo's background:  ‹  " + m.logoGround + "  ›",
+                "Competition logo on the logo:  ‹  " + onOff(m.logoComp) + "  ›",
+                "LIVE on the logo:  ‹  " + onOff(m.logoLive) + "  ›",
+                "Up next on the logo (Event):  ‹  " + onOff(m.next) + "  ›",
+                "Prayer time on the logo (Event):  ‹  " + onOff(m.prayer) + "  ›",
+                "Clock and weather on the logo (Event):  ‹  " + onOff(m.clock) + "  ›",
+                "Picture and sound marks on the logo (Event):  ‹  " + onOff(m.marks) + "  ›",
                 "Scoreboard look:  ‹  " + m.look + "  ›",
                 "Move and resize the scoreboard:  ‹  " + m.boardSize + "%  ›  ·  OK: move it with the arrows",
                 "Move and resize the logo's cover:  ‹  " + m.logoSize + "%  ›  ·  OK: move it with the arrows",
@@ -330,23 +382,27 @@ final class BoardMenu extends View {
         float st = py + lineH(labelP) + Ui.f(10);
         stage.set(px, st, px + pw, st + Ui.f(200));
         pitch(c, stage, Ui.f(14));
-        if (state.logoOn) coverIn(c, stage, Ui.f(340), Ui.f(130), 0);
-        String name = state.logoOn ? state.lookNow + "  ·  " + state.logoSize + "%" : "Off: the channel's own logo shows";
+        // On the logo's own lines, its looks either side under it (what Left and Right on "Logo's look" would bring);
+        // elsewhere the board's, the cover drawn in each board look's colours.
+        boolean logo = logoLine(at);
+        if (state.logoOn) coverIn(c, stage, Ui.f(340), Ui.f(130), 0, false);
+        String name = !state.logoOn ? "Off: the channel's own logo shows"
+                : (logo ? state.logoLook : state.lookNow) + "  ·  " + state.logoSize + "%";
         float y = stage.bottom + Ui.f(6);
         centred(c, name, captionP, cx, y, pw);
         y += lineH(captionP) + Ui.f(14);
         float colW = (pw - Ui.f(12)) / 2f;
-        small(c, px, y, colW, "‹  before", state.lookBefore, -1);
-        small(c, px + colW + Ui.f(12), y, colW, "next  ›", state.lookAfter, 1);
+        small(c, px, y, colW, "‹  before", logo ? state.logoBefore : state.lookBefore, -1, logo);
+        small(c, px + colW + Ui.f(12), y, colW, "next  ›", logo ? state.logoAfter : state.lookAfter, 1, logo);
     }
 
-    private void small(Canvas c, float x, float y, float cw, String way, String name, int look) {
+    private void small(Canvas c, float x, float y, float cw, String way, String name, int look, boolean logo) {
         float cx = x + cw / 2f;
         centred(c, way, wayP, cx, y, cw);
         float st = y + lineH(wayP) + Ui.f(4);
         stage.set(x, st, x + cw, st + Ui.f(96));
         pitch(c, stage, Ui.f(14));
-        coverIn(c, stage, Ui.f(170), Ui.f(66), look);
+        coverIn(c, stage, Ui.f(170), Ui.f(66), look, logo);
         centred(c, name, nameP, cx, stage.bottom + Ui.f(6), cw);
     }
 
@@ -364,13 +420,14 @@ final class BoardMenu extends View {
     /** The launcher's stand-in for the picture: a pitch's green, top to bottom. */
     private static final int[] PITCH = {0xFF2F7A35, 0xFF4C9A4A, 0xFF2A6A2F};
 
-    /** The cover at its own shape, as big as fits maxW x maxH, in the middle of s. */
-    private void coverIn(Canvas c, RectF s, float maxW, float maxH, int look) {
+    /** The cover at its own shape, as big as fits maxW x maxH, in the middle of s: look steps of the board's, or the logo's. */
+    private void coverIn(Canvas c, RectF s, float maxW, float maxH, int look, boolean logo) {
         float aspect = Math.max(0.2f, host.coverAspect());
         float cw = Math.min(maxW, maxH * aspect), ch = cw / aspect;
         int saved = c.save();
         c.translate(s.centerX() - cw / 2f, s.centerY() - ch / 2f);
-        host.cover(c, cw, ch, look);
+        if (logo) host.logoCover(c, cw, ch, look);
+        else host.cover(c, cw, ch, look);
         c.restoreToCount(saved);
     }
 

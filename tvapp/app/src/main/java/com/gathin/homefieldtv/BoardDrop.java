@@ -32,6 +32,8 @@ final class BoardDrop extends BoardSide {
         boolean lineups;
         /** The board's own game: the board beside it already shows the clubs and the score. */
         boolean own;
+        /** Handed over by the TV launcher (BoardInbox): already through the family's Notifications switches there. */
+        boolean checked;
         /** The game it is about (null: none), what Today's alerts and the log call it. */
         String gameId, what = "";
         /** A goal's "game|score": it is captioned once, from its card or from the scores (null: not a goal). */

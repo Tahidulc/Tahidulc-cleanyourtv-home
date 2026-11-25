@@ -28,6 +28,9 @@ import java.util.List;
  *
  * <p>Answered at once from what ChannelCards last made (kept in memory, else read back from its small file): never the
  * playlists or the guide, and nothing else of the app is started for it.
+ *
+ * <p>call("board_alert") takes the launcher's football alerts for the scoreboard over the player while it is up
+ * (BoardInbox), for the same apps only (checked in call: Android checks no permission there).
  */
 public final class ChannelCardsProvider extends ContentProvider {
     public static final String AUTHORITY = "com.gathin.homefieldtv.cards";
@@ -137,6 +140,29 @@ public final class ChannelCardsProvider extends ContentProvider {
         File f = com.gathin.homefieldtv.engine.MadeLogos.fileNamed(c, path.get(1));
         if (f == null || !f.isFile()) throw new java.io.FileNotFoundException("no such picture");
         return android.os.ParcelFileDescriptor.open(f, android.os.ParcelFileDescriptor.MODE_READ_ONLY);
+    }
+
+    /** The two apps' signature permission (the launcher declares it too): who may read the cards and hand the board an alert. */
+    static final String PERMISSION = "com.gathin.homefieldtv.permission.READ_CHANNEL_CARDS";
+
+    /**
+     * call("board_alert"): the TV launcher's football alert for the scoreboard over the player (BoardInbox), answered at
+     * once (taken or not). Android checks no permission for call(), so it is checked here: only an app holding the two
+     * apps' signature permission (signed with the same key), else a SecurityException. Nothing else is served.
+     */
+    @Override public android.os.Bundle call(String method, String arg, android.os.Bundle extras) {
+        if (!com.gathin.broadcast.BoardAlert.BOARD_ALERT.equals(method)) return null;
+        Context c = getContext();
+        if (c == null || !mayCall(c)) throw new SecurityException("not one of the family's own apps");
+        return BoardInbox.offer(extras);
+    }
+
+    /** Whether the app calling holds the signature permission (or is signed with this app's key). */
+    static boolean mayCall(Context c) {
+        if (c.checkCallingPermission(PERMISSION) == android.content.pm.PackageManager.PERMISSION_GRANTED) return true;
+        android.content.pm.PackageManager pm = c.getPackageManager();
+        return pm != null && pm.checkSignatures(android.os.Process.myUid(), android.os.Binder.getCallingUid())
+                == android.content.pm.PackageManager.SIGNATURE_MATCH;
     }
 
     @Override public String getType(Uri uri) {

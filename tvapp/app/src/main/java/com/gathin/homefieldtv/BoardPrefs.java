@@ -357,6 +357,195 @@ final class BoardPrefs {
         switched(c).edit().putBoolean("logo", on).apply();
     }
 
+    // ---- the logo's look (the launcher's logo looks over TiviMate, CoverLooks) ----------------------------------------
+
+    /**
+     * The cover's look as it came: the channel's own logo on a plate in the scoreboard's look (CoverArt), what the cover
+     * has always been here, so what the family had stays as it was until they pick another.
+     */
+    static final String CHANNEL_LOGO = "CHANNEL";
+
+    /**
+     * The looks the menu offers, in its order: the channel's own logo first (as it came), then the launcher's over TiviMate
+     * that both apps draw the same (CoverLooks: Glass, Mark only, Plain, both Broadcasts, the competition's logo, the
+     * Scoreboard Lab's five), as the launcher's Scoreboard card orders them.
+     */
+    static String[] logoLooks() {
+        com.gathin.broadcast.CoverLooks.Look[] all = com.gathin.broadcast.CoverLooks.Look.values();
+        String[] out = new String[all.length + 1];
+        out[0] = CHANNEL_LOGO;
+        for (int i = 0; i < all.length; i++) out[i + 1] = all[i].name();
+        return out;
+    }
+
+    /** The look chosen for the cover over the channel's logo: CHANNEL_LOGO, or a CoverLooks.Look's name. Kept on this TV. */
+    static String logoLook(Context c) {
+        return logoLookOf(prefs(c).getString("logo_look", CHANNEL_LOGO));
+    }
+
+    static void setLogoLook(Context c, String look) {
+        prefs(c).edit().putString("logo_look", logoLookOf(look)).apply();
+    }
+
+    /** Pure: a kept look as one the menu offers (anything else, or none: the channel's own logo). */
+    static String logoLookOf(String kept) {
+        return com.gathin.broadcast.CoverLooks.Look.find(kept) != null ? kept : CHANNEL_LOGO;
+    }
+
+    /** Pure: the look step away from now (1 the next, -1 the one before), round the menu's list. */
+    static String nextLogoLook(String now, int step) {
+        String[] all = logoLooks();
+        int at = 0;
+        for (int i = 0; i < all.length; i++) if (all[i].equals(logoLookOf(now))) at = i;
+        return all[Math.floorMod(at + step, all.length)];
+    }
+
+    /** Pure: a look in words, as the launcher's Scoreboard card names it. */
+    static String logoLookWords(String look) {
+        com.gathin.broadcast.CoverLooks.Look l = com.gathin.broadcast.CoverLooks.Look.find(look);
+        return l == null ? "The channel's own logo" : l.label;
+    }
+
+    /**
+     * The picture tag on the cover (Broadcast's box, the Lab's logos), as the launcher's: null for Auto, from the channel's
+     * name (HD, UHD, 4K, with HDR or not), "" for none, or one set (CoverLooks.TAGS). Kept on this TV.
+     */
+    static String logoTag(Context c) {
+        String t = prefs(c).getString("logo_tag", "AUTO");
+        return tagOf(t);
+    }
+
+    static void setLogoTag(Context c, String tag) {
+        prefs(c).edit().putString("logo_tag", tag == null ? "AUTO" : tag).apply();
+    }
+
+    /** Pure: a kept tag as a choice (AUTO, or anything not one of CoverLooks.TAGS: null for Auto). */
+    static String tagOf(String kept) {
+        if (kept == null || "AUTO".equals(kept)) return null;
+        for (String t : com.gathin.broadcast.CoverLooks.TAGS) if (t != null && t.equals(kept)) return t;
+        return null;
+    }
+
+    /** Whitebrook Road styles: which of the 54 (BrandStyles, 0 to COUNT - 1), as the launcher's Back a style and Next style. */
+    static int logoStyle(Context c) {
+        return com.gathin.broadcast.BrandStyles.clamp(prefs(c).getInt("logo_style", 0));
+    }
+
+    static void setLogoStyle(Context c, int n) {
+        prefs(c).edit().putInt("logo_style", com.gathin.broadcast.BrandStyles.clamp(n)).apply();
+    }
+
+    /** Pure: the style step away from n, round the 54. */
+    static int nextStyle(int n, int step) {
+        return Math.floorMod(com.gathin.broadcast.BrandStyles.clamp(n) + step, com.gathin.broadcast.BrandStyles.COUNT);
+    }
+
+    /** What the Sports wordmark says is on ("" for Auto, from the game: premier league, football, f1; else SportsMark.WHATS). */
+    static String logoWhat(Context c) {
+        String w = prefs(c).getString("logo_what", "");
+        for (String k : com.gathin.broadcast.SportsMark.WHATS) if (k.equals(w)) return w;
+        return "";
+    }
+
+    static void setLogoWhat(Context c, String what) {
+        prefs(c).edit().putString("logo_what", what == null ? "" : what).apply();
+    }
+
+    /** Pure: the next of the wordmark's choices (Auto first), step on or back, round. */
+    static String nextWhat(String now, int step) {
+        String[] all = com.gathin.broadcast.SportsMark.WHATS;
+        int at = 0;
+        for (int i = 0; i < all.length; i++) if (all[i].equals(now == null ? "" : now)) at = i;
+        return all[Math.floorMod(at + step, all.length)];
+    }
+
+    /** A general channel (the family's name alone, no SPORTS), else a sports one (Whitebrook Road Sports). */
+    static boolean logoNameOnly(Context c) {
+        return prefs(c).getBoolean("logo_name_only", false);
+    }
+
+    static void setLogoNameOnly(Context c, boolean on) {
+        prefs(c).edit().putBoolean("logo_name_only", on).apply();
+    }
+
+    /** The looks drawn whole's background (CoverLooks.GROUNDS: plate, frosted, tempered, smoked glass, transparent). */
+    static int logoGround(Context c) {
+        int g = prefs(c).getInt("logo_ground", com.gathin.broadcast.CoverLooks.PLATE);
+        for (int k : com.gathin.broadcast.CoverLooks.GROUNDS) if (k == g) return g;
+        return com.gathin.broadcast.CoverLooks.PLATE;
+    }
+
+    static void setLogoGround(Context c, int g) {
+        prefs(c).edit().putInt("logo_ground", g).apply();
+    }
+
+    /** Pure: the next background, step on or back, round the five in the launcher's order. */
+    static int nextGround(int g, int step) {
+        int[] all = com.gathin.broadcast.CoverLooks.GROUNDS;
+        int at = 0;
+        for (int i = 0; i < all.length; i++) if (all[i] == g) at = i;
+        return all[Math.floorMod(at + step, all.length)];
+    }
+
+    /** The competition's logo beside every look (the Premier League's, the Champions League's): on unless off. */
+    static boolean logoComp(Context c) {
+        return prefs(c).getBoolean("logo_comp", true);
+    }
+
+    static void setLogoComp(Context c, boolean on) {
+        prefs(c).edit().putBoolean("logo_comp", on).apply();
+    }
+
+    /** LIVE along the cover's foot while the game is live: on unless off. */
+    static boolean logoLive(Context c) {
+        return prefs(c).getBoolean("logo_live", true);
+    }
+
+    static void setLogoLive(Context c, boolean on) {
+        prefs(c).edit().putBoolean("logo_live", on).apply();
+    }
+
+    /** A channel's own logo choice, as the launcher's This channel's logo: null as the rest, LEAVE, CHANNEL_LOGO or a look. */
+    static final String LEAVE = "LEAVE";
+
+    static String channelLogo(Context c, String channelKey) {
+        String k = channelKey == null ? "" : channelKey;
+        if (k.isEmpty()) return null;
+        String v = prefs(c).getString("logo_here." + k, null);
+        return v == null || !(LEAVE.equals(v) || CHANNEL_LOGO.equals(v) || com.gathin.broadcast.CoverLooks.Look.find(v) != null) ? null : v;
+    }
+
+    static void setChannelLogo(Context c, String channelKey, String look) {
+        if (channelKey == null || channelKey.isEmpty()) return;
+        if (look == null) prefs(c).edit().remove("logo_here." + channelKey).apply();
+        else prefs(c).edit().putString("logo_here." + channelKey, look).apply();
+    }
+
+    /** Pure: the channel's own choice step on or back: as the rest (null), leave the channel's own, then each look, round. */
+    static String nextChannelLogo(String now, int step) {
+        String[] looks = logoLooks();
+        String[] all = new String[looks.length + 2];
+        all[0] = null;
+        all[1] = LEAVE;
+        System.arraycopy(looks, 0, all, 2, looks.length);
+        int at = 0;
+        for (int i = 0; i < all.length; i++) if (java.util.Objects.equals(all[i], now)) at = i;
+        return all[Math.floorMod(at + step, all.length)];
+    }
+
+    /** Pure: a channel's own choice in words (general: the look the rest have). */
+    static String channelLogoWords(String own, String general) {
+        if (own == null) return "As the rest (" + logoLookWords(general) + ")";
+        if (LEAVE.equals(own)) return "Leave the channel's own";
+        return logoLookWords(own);
+    }
+
+    /** The look the cover is drawn in on this channel: its own, else the general one (LEAVE: no cover on it). */
+    static String logoLookHere(Context c, String channelKey) {
+        String own = channelLogo(c, channelKey);
+        return own != null ? own : logoLook(c);
+    }
+
     /** The board's clock as set at a kick-off on the screen (BoardClock.anchorWords), the last game's; null for none. */
     static String anchor(Context c) {
         return prefs(c).getString("anchor", null);

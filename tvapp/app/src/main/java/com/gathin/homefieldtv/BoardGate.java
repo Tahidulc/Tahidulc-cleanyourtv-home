@@ -9,8 +9,13 @@ package com.gathin.homefieldtv;
  * window, Settings, History, any other screen) takes the live screen off the top, which stops the board (Screen.hidden)
  * until it is back (Screen.shown).
  *
- * <p>Covered, everything of the board goes at once (its moment's pop-up let go, its menu closed); it comes back when
- * plain playback does. Its pop-ups due meanwhile wait for then, and are skipped when stale: a kick-off, second-half or
+ * The picture moved back behind live (paused or rewound in the stream's own window) counts as covered too: catch-up and
+ * the start-over play in CatchupScreen over the live screen, which takes it off the top, and the films and series in their
+ * own activity. The same rule as the TV launcher's over TiviMate (InChannel, OverlayScope).
+ *
+ * <p>Covered, everything of the board goes at once (its moment's pop-up let go, its menu closed, what is out beside it
+ * folded away); it comes back when plain playback does, the board coming in again as a broadcaster's does, as the
+ * launcher's does when TiviMate's menus close. Its pop-ups due meanwhile wait for then, and are skipped when stale: a kick-off, second-half or
  * full-time pop-up held more than MOMENT_MS, a goal's (restart) more than RESTART_MS; alerts beside it queued more than
  * DROP_MS before it came back are let go.
  */
@@ -22,7 +27,15 @@ final class BoardGate {
 
     /** Pure: plain full-screen playback: shown and in front, the whole screen, no panel of the live screen's, nothing typed or asked. */
     static boolean plain(boolean showing, boolean fullScreen, boolean noPanel, boolean typing, boolean asking) {
-        return showing && fullScreen && noPanel && !typing && !asking;
+        return plain(showing, fullScreen, true, noPanel, typing, asking);
+    }
+
+    /**
+     * Pure: the same, and the picture live (not moved back behind live, not from the archive), by the one rule the TV
+     * launcher keeps over TiviMate (InChannel): only in the channel.
+     */
+    static boolean plain(boolean showing, boolean fullScreen, boolean live, boolean noPanel, boolean typing, boolean asking) {
+        return com.gathin.broadcast.InChannel.shows(showing, fullScreen, live, !noPanel || typing || asking);
     }
 
     /** Pure: whether a pop-up held back since heldAt is still worth showing at now ("restart": a goal's). */

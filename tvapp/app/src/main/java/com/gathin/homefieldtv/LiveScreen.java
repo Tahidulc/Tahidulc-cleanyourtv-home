@@ -301,7 +301,8 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
     private boolean plain() {
         android.graphics.Rect w = tv.live.where(), f = tv.fullScreen();
         boolean full = w != null && !w.isEmpty() && w.width() >= f.width() - 1 && w.height() >= f.height() - 1;
-        return BoardGate.plain(tv.showing(this), full, mode == NONE, !digits.isEmpty(), dialog.showing());
+        // Live, not moved back behind it (catch-up and the start-over play in CatchupScreen over this one).
+        return BoardGate.plain(tv.showing(this), full, !tv.live.behind(), mode == NONE, !digits.isEmpty(), dialog.showing());
     }
 
     @Override public void liveChanged() {

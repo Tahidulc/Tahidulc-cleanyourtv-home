@@ -87,6 +87,12 @@ import java.util.Set;
  * the board changing with it as it is edited. Kind to the screen: once a minute both step a pixel or two round a
  * circle, and after five minutes without a goal they dim.
  *
+ * <p>As the launcher's over TiviMate in two more ways: the other games' goals, red cards and full times the family
+ * follows come out of this board, handed over by the launcher (the one source of them; BoardInbox, BoardAlert), so the
+ * launcher shows no card of its own meanwhile; and the cover over the channel's logo has every look the launcher's has
+ * (the channel's own logo first, as it came; CoverLooks, LogoExtras), with this board's own game's alerts held back by
+ * the launcher's Notifications switches (AlertSwitches).
+ *
  * <p>All of it shows only while the channel plays full screen with nothing over it (BoardGate: the live screen says
  * when, showOnlyWhen and coverChanged): the info card, the OK overlay, the bar, the channel list or anything else over
  * the picture takes it away at once, and it comes back with plain playback; its pop-ups wait for then, or are let go
@@ -118,6 +124,9 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
     final BoardMenu menu;
     /** The menu's picture of the cover, and a board in the looks either side of the one now (for their strips' colours). */
     private final CoverArt menuArt;
+    private final com.gathin.broadcast.CoverLooks.Parts menuParts = new com.gathin.broadcast.CoverLooks.Parts();
+    /** Event's extras beside the cover (LogoExtras: Up next to the left of its name's box, the prayer pill under it). */
+    private final com.gathin.broadcast.LogoExtras.Extras extras;
     private BoardBug looks;
     /** The menu's Back to the standard places: on every channel (else this one's). */
     private boolean resetEvery;
@@ -197,6 +206,9 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         logo = new LogoCover(tv);
         logo.setVisibility(INVISIBLE);
         addView(logo, new LayoutParams(1, 1));
+        extras = new com.gathin.broadcast.LogoExtras.Extras(tv, logo);
+        extras.setVisibility(INVISIBLE);
+        addView(extras, new LayoutParams(-1, -1));
         drop = new BoardDrop(tv);
         addView(drop, new LayoutParams(1, 1));
         bug = new BoardBug(tv);
@@ -318,9 +330,25 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
                 v.stop();
                 removeView(v);
             }
+            // What was out beside the board goes with it (the launcher's over TiviMate as its menu opens); what waits its
+            // turn waits for the picture (stale ones let go then).
+            if (drop.isOut()) {
+                h.removeCallbacks(hideDropRun);
+                h.removeCallbacks(nextDropRun);
+                varOut.off();
+                drop.gone();
+                dropping = false;
+            }
+            publish(now);
         } else if (clear && covered) {
             covered = false;
             setVisibility(VISIBLE);
+            // Back with the plain picture: the board comes in again as a broadcaster's does at its first showing, as the
+            // launcher's does when TiviMate's menu closes over its channel (no swish: nothing popped up meanwhile).
+            if (up && moving == 0) {
+                up = false;
+                bug.setVisibility(INVISIBLE);
+            }
             for (Iterator<BoardDrop.Drop> it = drops.iterator(); it.hasNext(); ) {
                 BoardDrop.Drop d = it.next();
                 if (BoardGate.stale(queuedAt.get(d), now)) {
@@ -328,6 +356,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
                     queuedAt.remove(d);
                 }
             }
+            if (!drops.isEmpty() && !dropping) h.post(nextDropRun);
         }
         if (clear && held != null && game != null && !popupShowing()) {
             BoardGate.Held p = held;
@@ -354,12 +383,17 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         tv.live.addListener(this);
         restyle(MyBoardStore.inUse(getContext()));
         Sfx.warm(getContext(), Sfx.SWISH, Sfx.SCORE, "goal-" + BoardPrefs.goalSound(getContext()));
+        // The logo's extras with this cover, nothing out to begin with (the clock's five minutes from now).
+        com.gathin.broadcast.LogoExtras.view(extras);
+        com.gathin.broadcast.LogoExtras.reset(System.currentTimeMillis());
         h.post(tick);
     }
 
     /** The live screen gone: everything away at once. */
     void stop() {
         started = false;
+        BoardInbox.gone(this);
+        com.gathin.broadcast.LogoExtras.view(null);
         stoppedAt = System.currentTimeMillis();
         tv.live.removeListener(this);
         h.removeCallbacksAndMessages(null);
@@ -433,6 +467,9 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         }
         show(now, playing);
         varTick(now);
+        // The family's alert switches for this game, from the launcher (AlertSwitches), now and then while there is one.
+        if (game != null) AlertSwitches.refresh(getContext(), game.id, game.slug);
+        publish(now);
         // The menu up as the match is found or read: its line under the title says so.
         if (menu.open && !noteNow().equals(menuNote)) menu.refresh();
         // Caught up once a reading taken since coming back has been shown (what it brought was not popped up).
@@ -1019,10 +1056,35 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         if (awayForPopup) swishBack = true;
         layoutAll();
         boardUp(want && clear && (!only || moving == 1));
-        logoUp(clear && (moving == 2 || phase != BoardClock.AWAY && BoardPrefs.logoOn(c)));
+        // The logo's look on this channel (its own, else the general one; Leave the channel's own: no cover on it).
+        logo.look = BoardPrefs.logoLookHere(c, chKey);
+        boolean leave = BoardPrefs.LEAVE.equals(logo.look);
+        logoUp(clear && (moving == 2 || phase != BoardClock.AWAY && BoardPrefs.logoOn(c) && !leave));
         logo.live = l.live;
+        logoParts(logo.parts);
         logo.invalidate();
+        extrasTick(now);
         guard(now);
+    }
+
+    /**
+     * Event's extras each second while its cover is up (LogoExtras, as the launcher's over TiviMate): Up next from this
+     * app's guide, the prayer pill and the clock's weather from the launcher; still while nothing of the board's moments
+     * is out and it is not being moved; kept clear of the board.
+     */
+    private void extrasTick(long now) {
+        Context c = getContext();
+        boolean shown = logo.getVisibility() == VISIBLE;
+        if (!shown) {
+            logo.clock(false, null, null, "");
+            return;
+        }
+        LogoHere.channelKey = chKey;
+        if (logo.event()) LogoHere.refresh(c);
+        boolean still = !popupShowing() && moving == 0 && !menu.open && !editor.open;
+        float[] board = bug.getVisibility() == VISIBLE
+                ? new float[]{boardRect.left, boardRect.top, boardRect.right, boardRect.bottom} : null;
+        com.gathin.broadcast.LogoExtras.tick(c, LogoHere.SOURCE, logo, logo.event(), still, board);
     }
 
     /**
@@ -1392,6 +1454,77 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         }
     }
 
+    // ---- the launcher's alerts: the other games', out of this board as out of the launcher's over TiviMate ------------
+
+    /** Its full time this late in its minute: an alert with pages (the ratings) is the launcher's card instead (its FT_GONE_MS - 35 s). */
+    static final long FT_LATE_MS = 60_000L - 35_000L;
+
+    /**
+     * The board's state for the launcher's alerts (BoardInbox), as it is drawn: up to take one (the live screen up, the
+     * picture plain, the board up and not going, not being moved, switched on with its alerts beside it, as the launcher's
+     * BoardCover.up), its game, and whether its full time is late in its minute.
+     */
+    private void publish(long now) {
+        Context c = getContext();
+        boolean takes = started && !covered && up && bug.getVisibility() == VISIBLE && !bug.closing() && moving == 0
+                && BoardPrefs.on(c) && BoardPrefs.dropsOn(c);
+        Game g = game;
+        BoardInbox.state(this, takes, g == null ? null : g.id, ftSince >= 0 && now - ftSince > FT_LATE_MS);
+    }
+
+    /** Whether the board takes the launcher's alerts now (the tests). */
+    boolean takesAlerts() {
+        return BoardInbox.takes();
+    }
+
+    /** The alerts waiting their turn beside the board, first first (the tests). */
+    List<BoardDrop.Drop> queued() {
+        return new ArrayList<>(drops);
+    }
+
+    /** Whether the picture is covered now (the tests). */
+    boolean covered() {
+        return covered;
+    }
+
+    /**
+     * An alert the launcher handed over (main thread): another game's goal, card or full time, or this game's kind the
+     * board does not say itself (the ratings, the weather), queued with the board's own and sliding out beside it in its
+     * look, after the board's own goal and its pop-up as the launcher's waits (nextDrop). Already through the family's
+     * switches in the launcher.
+     */
+    void fromLauncher(com.gathin.broadcast.BoardAlert a) {
+        if (a == null || !started) return;
+        BoardDrop.Drop d = new BoardDrop.Drop();
+        d.gameId = a.gameId;
+        d.chip = a.chip;
+        d.title = a.title;
+        d.line = a.line;
+        d.line2 = a.line2;
+        d.key = a.key;
+        d.what = a.what;
+        d.tag = a.tag;
+        d.colour = a.colour;
+        d.homeColour = a.homeColour;
+        d.awayColour = a.awayColour;
+        d.side = a.side;
+        if (a.tag != null) {
+            d.tagColour = a.tagColour;
+            d.tagMark = a.tagMark;
+        }
+        d.lineups = a.lineups;
+        d.photo = a.photo;
+        d.homeCrest = a.homeCrest;
+        d.awayCrest = a.awayCrest;
+        d.pages = a.pages;
+        d.photos = a.photos;
+        // The board's own game: the board beside it says the clubs and the score already.
+        Game g = game;
+        d.own = a.own || g != null && g.id != null && g.id.equals(a.gameId);
+        d.checked = true;
+        drop(d);
+    }
+
     // ---- what slides out beside it ---------------------------------------------------------------------------------------
 
     void drop(BoardDrop.Drop d) {
@@ -1399,6 +1532,9 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         if (!d.lineups && !BoardPrefs.dropsOn(getContext())) return;
         // What slides out beside the board goes with it: nothing queued while the menu's Scoreboard is off.
         if (!BoardPrefs.on(getContext())) return;
+        // The board's own alert of a kind the family switched off in the launcher's Notifications (or held back now: Do not
+        // disturb, Match mode's quiet, the competition's switch): not said, as the launcher's board would not (AlertSwitches).
+        if (!d.checked && d.gameId != null && !AlertSwitches.allowed(com.gathin.broadcast.BoardAlert.kindOfChip(d.chip))) return;
         // A goal is said once.
         if (d.key != null && !shown.add("drop|" + d.key)) return;
         // Another event of the game (a card, a substitution, a goal, half or full time) while its VAR check is out or
@@ -1562,13 +1698,15 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
 
     private void logoUp(boolean want) {
         logo.setVisibility(want ? VISIBLE : INVISIBLE);
+        // Event's extras go with the cover.
+        extras.setVisibility(want ? VISIBLE : INVISIBLE);
     }
 
     private void hideAll() {
         up = false;
         bug.setVisibility(INVISIBLE);
         drop.gone();
-        logo.setVisibility(INVISIBLE);
+        logoUp(false);
         if (popup != null) {
             BroadcastView v = popup;
             popup = null;
@@ -1841,6 +1979,9 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
                 bmp = new Paint(Paint.FILTER_BITMAP_FLAG), pill = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final TextPaint name = new TextPaint(Paint.ANTI_ALIAS_FLAG), tag = new TextPaint(Paint.ANTI_ALIAS_FLAG);
         private final RectF r = new RectF();
+        /** The launcher's looks over TiviMate, drawn by the shared CoverLooks: the same pixels as its cover's. */
+        private final com.gathin.broadcast.CoverLooks looks;
+        private final com.gathin.broadcast.CoverLooks.Parts parts = new com.gathin.broadcast.CoverLooks.Parts();
 
         CoverArt(Context c) {
             ring.setStyle(Paint.Style.STROKE);
@@ -1848,6 +1989,38 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             name.setTypeface(BoardPrefs.outfit(c, 700));
             tag.setTypeface(BoardPrefs.outfit(c, 800));
             pill.setColor(0xFFE3061B);
+            looks = new com.gathin.broadcast.CoverLooks(c, BoardPrefs.outfit(c, 700), BoardPrefs.outfit(c, 800));
+        }
+
+        /** Pure: the board's look's colours as the shared covers take them (Broadcast in the scoreboard's colours). */
+        static com.gathin.broadcast.CoverLooks.Board boardOf(BoardBug.StripLook s) {
+            return s == null ? null : new com.gathin.broadcast.CoverLooks.Board(s.ground, s.block, s.ink, s.light);
+        }
+
+        /**
+         * The cover w x hh at (0, 0) in the logo's look chosen (BoardPrefs.logoLook: the channel's own logo on its plate, as
+         * below, or one of the launcher's looks: CoverLooks, every one of them, in the board's look's colours where it takes
+         * them), for channel c, its edge e, live or not, ringed while moved, with the rest of what the look shows as the
+         * family set it (p: the picture tag, LIVE's foot, the competition's logo, the background, the wordmark's words, the
+         * style, Event's marks and clock). True while something in it moves (Event's clock turning over).
+         */
+        boolean draw(Canvas cv, float w, float hh, String logoLook, BoardBug.StripLook look, Channel c, float e, boolean live,
+                     boolean ringed, Runnable again, com.gathin.broadcast.CoverLooks.Parts p) {
+            com.gathin.broadcast.CoverLooks.Look l = com.gathin.broadcast.CoverLooks.Look.find(logoLook);
+            if (l == null || p == null) {
+                draw(cv, w, hh, look, c, e, live, ringed, again);
+                return false;
+            }
+            p.live = live;
+            p.board = boardOf(look);
+            p.inset = e;
+            p.outlined = ringed;
+            return looks.draw(cv, l, w, hh, p);
+        }
+
+        /** Event's name's box as last drawn (the cover's pixels); false for none. */
+        boolean nameBox(RectF out) {
+            return looks.nameBox(out);
         }
 
         /** The cover w x hh at (0, 0) in look, for channel c (null: the plate alone), e its edge; again when its logo comes. */
@@ -1893,9 +2066,17 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         }
     }
 
-    /** The cover over where the channel's logo is (CoverArt), in the board's look now. */
-    private final class LogoCover extends View {
+    /**
+     * The cover over where the channel's logo is (CoverArt), in the logo's look chosen on this channel and the board's look
+     * now; Event's extras go with it (LogoExtras: the clock it turns over to, its name's box for Up next and the prayer).
+     */
+    private final class LogoCover extends View implements com.gathin.broadcast.LogoExtras.Cover {
         boolean live, ringed;
+        /** The logo's look on this channel (BoardPrefs.logoLookHere), read as the board is looked at each second. */
+        String look = BoardPrefs.CHANNEL_LOGO;
+        /** What the look shows as the family set it, worked out each second (logoParts), and Event's clock turning over. */
+        final com.gathin.broadcast.CoverLooks.Parts parts = new com.gathin.broadcast.CoverLooks.Parts();
+        private final com.gathin.broadcast.CoverLooks.ClockTurn turn = new com.gathin.broadcast.CoverLooks.ClockTurn();
         private final CoverArt art;
         private final Runnable again = this::invalidate;
 
@@ -1905,8 +2086,73 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         }
 
         @Override protected void onDraw(Canvas cv) {
-            art.draw(cv, getWidth(), getHeight(), bug.stripLook(), ch, edge, live, ringed, again);
+            parts.turned = turn.turned();
+            if (art.draw(cv, getWidth(), getHeight(), look, bug.stripLook(), ch, edge, live, ringed, again, parts)) postInvalidateOnAnimation();
         }
+
+        /** Whether the look is Event (the one the extras go with). */
+        boolean event() {
+            com.gathin.broadcast.CoverLooks.Look l = com.gathin.broadcast.CoverLooks.Look.find(look);
+            return l != null && l.event();
+        }
+
+        @Override public void clock(boolean on, String hm, android.graphics.drawable.Drawable icon, String temp) {
+            if (turn.set(parts, on, hm, icon, temp) && event()) invalidate();
+        }
+
+        @Override public boolean nameBox(RectF out) {
+            return event() && art.nameBox(out);
+        }
+
+        @Override public View view() {
+            return this;
+        }
+    }
+
+    /** The competition's short name for the cover's looks that show it (no logo read yet): the board's tag. */
+    private String compShort() {
+        Game g = game;
+        return g == null ? "" : BoardClock.tag(g.leagueName);
+    }
+
+    /** The picture tag the cover shows on this channel: as chosen, else from the channel's own name (CoverLooks.tagOf). */
+    private String pictureTag() {
+        return com.gathin.broadcast.CoverLooks.tagShown(BoardPrefs.logoTag(getContext()), ch == null ? "" : ch.name);
+    }
+
+    /** Previews only (as LiveTv.previewStill): the channel's name as the cover reads it (Event's name, its marks); null: the channel's own. */
+    static volatile String previewChannelName;
+
+    /** Pure: what the Sports wordmark says is on: as chosen, else from the game's competition (SportsMark.auto), football with none. */
+    static String whatOn(String chosen, Game g) {
+        if (chosen != null && !chosen.isEmpty()) return chosen;
+        return com.gathin.broadcast.SportsMark.auto(g == null ? null : g.slug, false);
+    }
+
+    /**
+     * Everything the cover's looks show besides the look itself, as the family set it in the menu (the launcher's
+     * Scoreboard card's and its hold-OK menu's): the picture tag, LIVE along the foot, the competition's logo beside it,
+     * the background of the looks drawn whole, the Sports wordmark's words and whether a sports or general channel, the
+     * style, Event's channel name and its picture and sound marks.
+     */
+    private void logoParts(com.gathin.broadcast.CoverLooks.Parts p) {
+        Context c = getContext();
+        String name = previewChannelName != null ? previewChannelName : ch == null ? "" : ch.name;
+        p.tag = pictureTag();
+        p.liveBar = BoardPrefs.logoLive(c);
+        p.compOn = BoardPrefs.logoComp(c);
+        p.comp = compPic;
+        p.compName = compShort();
+        p.nameOnly = BoardPrefs.logoNameOnly(c);
+        p.ground = BoardPrefs.logoGround(c);
+        // Transparent needs the channel's own logo learned from the picture (the launcher's LogoShape): on smoked glass
+        // here, as the launcher's stands while it learns a channel's.
+        p.filled = false;
+        p.what = whatOn(BoardPrefs.logoWhat(c), game);
+        p.style = BoardPrefs.logoStyle(c);
+        p.sub = com.gathin.broadcast.ChannelMark.subOf(name);
+        p.sport = "";
+        p.marks = com.gathin.broadcast.LogoExtras.on(c, com.gathin.broadcast.LogoExtras.MARKS) ? com.gathin.broadcast.LogoExtras.marks(name) : null;
     }
 
     /** Words cut to a width with an ellipsis. */
@@ -2052,6 +2298,24 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             BoardMenu.MenuState m = new BoardMenu.MenuState();
             m.boardShown = BoardPrefs.on(c);
             m.logoOn = BoardPrefs.logoOn(c);
+            String logoLook = BoardPrefs.logoLook(c);
+            m.logoLook = BoardPrefs.logoLookWords(logoLook);
+            m.logoBefore = BoardPrefs.logoLookWords(BoardPrefs.nextLogoLook(logoLook, -1));
+            m.logoAfter = BoardPrefs.logoLookWords(BoardPrefs.nextLogoLook(logoLook, 1));
+            m.logoTag = com.gathin.broadcast.CoverLooks.tagWords(BoardPrefs.logoTag(c), ch == null ? "" : ch.name);
+            m.logoHere = chKey.isEmpty() ? "No channel on" : BoardPrefs.channelLogoWords(BoardPrefs.channelLogo(c, chKey), logoLook);
+            int st = BoardPrefs.logoStyle(c);
+            m.logoStyle = (st + 1) + " of " + com.gathin.broadcast.BrandStyles.COUNT + "  ·  " + com.gathin.broadcast.BrandStyles.name(st);
+            String w = BoardPrefs.logoWhat(c);
+            m.logoWhat = w.isEmpty() ? "Auto, from the game (" + whatOn("", game) + ")" : w;
+            m.logoNameOnly = BoardPrefs.logoNameOnly(c);
+            m.logoGround = com.gathin.broadcast.CoverLooks.groundWords(BoardPrefs.logoGround(c));
+            m.logoComp = BoardPrefs.logoComp(c);
+            m.logoLive = BoardPrefs.logoLive(c);
+            m.next = com.gathin.broadcast.LogoExtras.on(c, com.gathin.broadcast.LogoExtras.NEXT);
+            m.prayer = com.gathin.broadcast.LogoExtras.on(c, com.gathin.broadcast.LogoExtras.PRAYER);
+            m.clock = com.gathin.broadcast.LogoExtras.on(c, com.gathin.broadcast.LogoExtras.CLOCK);
+            m.marks = com.gathin.broadcast.LogoExtras.on(c, com.gathin.broadcast.LogoExtras.MARKS);
             BoardBug.Style look = BoardPrefs.style(c);
             m.look = look.label;
             String id = BoardPrefs.customId(c);
@@ -2087,6 +2351,33 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             switch (line) {
                 case BoardMenu.M_BOARD: boardShown(!BoardPrefs.on(c)); return;
                 case BoardMenu.M_LOGO: BoardPrefs.setLogoOn(c, !BoardPrefs.logoOn(c)); break;
+                case BoardMenu.M_LOGO_LOOK:
+                    // the launcher's looks over TiviMate (CoverLooks), the channel's own logo first, kept on this TV
+                    BoardPrefs.setLogoLook(c, BoardPrefs.nextLogoLook(BoardPrefs.logoLook(c), step));
+                    logo.look = BoardPrefs.logoLook(c);
+                    logo.invalidate();
+                    break;
+                case BoardMenu.M_LOGO_TAG:
+                    BoardPrefs.setLogoTag(c, com.gathin.broadcast.CoverLooks.nextTag(BoardPrefs.logoTag(c), step));
+                    logo.invalidate();
+                    break;
+                case BoardMenu.M_LOGO_HERE:
+                    BoardPrefs.setChannelLogo(c, chKey, BoardPrefs.nextChannelLogo(BoardPrefs.channelLogo(c, chKey), step));
+                    break;
+                case BoardMenu.M_LOGO_STYLE: BoardPrefs.setLogoStyle(c, BoardPrefs.nextStyle(BoardPrefs.logoStyle(c), step)); break;
+                case BoardMenu.M_LOGO_WHAT: BoardPrefs.setLogoWhat(c, BoardPrefs.nextWhat(BoardPrefs.logoWhat(c), step)); break;
+                case BoardMenu.M_LOGO_CHANNEL: BoardPrefs.setLogoNameOnly(c, !BoardPrefs.logoNameOnly(c)); break;
+                case BoardMenu.M_LOGO_GROUND: BoardPrefs.setLogoGround(c, BoardPrefs.nextGround(BoardPrefs.logoGround(c), step)); break;
+                case BoardMenu.M_LOGO_COMP: BoardPrefs.setLogoComp(c, !BoardPrefs.logoComp(c)); break;
+                case BoardMenu.M_LOGO_LIVE: BoardPrefs.setLogoLive(c, !BoardPrefs.logoLive(c)); break;
+                case BoardMenu.M_LOGO_NEXT:
+                case BoardMenu.M_LOGO_PRAYER:
+                case BoardMenu.M_LOGO_CLOCK:
+                case BoardMenu.M_LOGO_MARKS: {
+                    String which = BoardMenu.extraOf(line);
+                    com.gathin.broadcast.LogoExtras.set(c, which, !com.gathin.broadcast.LogoExtras.on(c, which));
+                    break;
+                }
                 case BoardMenu.M_LOOK:
                     BoardPrefs.setStyle(c, lookAt(step));
                     restyle(null);
@@ -2196,7 +2487,17 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
                 looks.competition(g == null ? null : g.slug, g == null ? null : boardComp(g));
                 strip = looks.stripLook();
             }
-            menuArt.draw(cv, w, hh, strip, ch, Math.max(2f, Ui.f(2)), game != null && logo.live, false, menu::invalidate);
+            logoParts(menuParts);
+            String here = BoardPrefs.logoLookHere(getContext(), chKey);
+            menuArt.draw(cv, w, hh, BoardPrefs.LEAVE.equals(here) ? BoardPrefs.logoLook(getContext()) : here, strip, ch,
+                    Math.max(2f, Ui.f(2)), game != null && logo.live, false, menu::invalidate, menuParts);
+        }
+
+        @Override public void logoCover(Canvas cv, float w, float hh, int step) {
+            String look = BoardPrefs.nextLogoLook(BoardPrefs.logoLook(getContext()), step);
+            logoParts(menuParts);
+            menuArt.draw(cv, w, hh, look, bug.stripLook(), ch, Math.max(2f, Ui.f(2)), game != null && logo.live, false,
+                    menu::invalidate, menuParts);
         }
 
         @Override public float coverAspect() {
@@ -2266,6 +2567,8 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         up = true;
         logo.setVisibility(BoardPrefs.logoOn(getContext()) ? VISIBLE : INVISIBLE);
         logo.live = l.live;
+        logo.look = BoardPrefs.logoLookHere(getContext(), chKey);
+        logoParts(logo.parts);
         layoutAll();
         if (d != null) {
             LayoutParams b = (LayoutParams) bug.getLayoutParams();
