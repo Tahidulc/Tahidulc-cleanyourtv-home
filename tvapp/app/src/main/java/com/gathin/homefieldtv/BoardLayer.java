@@ -1037,8 +1037,9 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
     }
 
     /**
-     * The moments as the picture reaches them: the kick-off, half time, the second half, full time; the line-ups. Followed
-     * always; popped up (or out beside the board) only when pop (the board shown).
+     * The moments as the picture reaches them: the kick-off, half time, the second half, full time (the board's own, as
+     * BoardTime has the whistle on the picture: its pop-up once, then the board goes as it does after it); the line-ups.
+     * Followed always; popped up (or out beside the board) only when pop (the board shown).
      */
     private void moments(BoardClock.Reading r, long screenNow, long now, String score, boolean pop) {
         Game g = game;
@@ -1051,19 +1052,30 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         String kind = was == null || ph.isEmpty() ? null : Moments.moment(was, ph);
         // Seen only now after the live screen was away too long (BoardGate): not popped up stale.
         boolean stale = staleSinceStop(now) || !pop;
-        if (kind != null && !stale) {
-            lastChange = now;
-            int[] sc = "kickoff".equals(kind) || r == null ? null : new int[]{r.home, r.away};
-            if (BoardPrefs.popupOn(c)) popup(kind, sc, null, null);
-            else drop(momentDrop("kickoff".equals(kind) ? "KICK-OFF" : "SECOND HALF", sc == null ? null : score));
-        }
-        if (was != null && !was.equals(ph) && !stale) {
-            if ("ht".equals(ph)) drop(momentDrop("HALF TIME", score));
-            else if ("ft".equals(ph)) drop(momentDrop("FULL TIME", score));
+        if (!stale) {
+            if (kind != null) lastChange = now;
+            String[] out = momentOut(was, ph, kind, BoardPrefs.popupOn(c));
+            if (out[0] != null) popup(out[0], "kickoff".equals(kind) || r == null ? null : new int[]{r.home, r.away}, null, null);
+            if (out[1] != null) drop(momentDrop(out[1], "KICK-OFF".equals(out[1]) ? null : score));
         }
         if (pop && "pre".equals(ph) && g.kickoff > 0 && BoardPrefs.lineupsOn(c) && Moments.lineupsDue(g.kickoff - screenNow)) {
             lineups(false);
         }
+    }
+
+    /**
+     * Pure: what a change of phase on the picture (was to now; kind the pop-up it brings: Moments.moment) puts up: the
+     * moment's pop-up when they are on (popups), else its alert beside the board; half time's alert, and full time's unless
+     * its pop-up says it. {the pop-up's kind or null, the alert's chip or null}.
+     */
+    static String[] momentOut(String was, String now, String kind, boolean popups) {
+        String pop = kind != null && popups ? kind : null, chip = null;
+        if (kind != null && !popups) chip = "kickoff".equals(kind) ? "KICK-OFF" : "second".equals(kind) ? "SECOND HALF" : null;
+        if (was != null && !was.equals(now)) {
+            if ("ht".equals(now)) chip = "HALF TIME";
+            else if ("ft".equals(now) && pop == null) chip = "FULL TIME";
+        }
+        return new String[]{pop, chip};
     }
 
     /** A goal on the screen: its moment on the board, its sound, and what it brings (the pop-up after it, or its scorer). */
@@ -1162,8 +1174,8 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
     }
 
     /**
-     * A moment's pop-up ("kickoff", "restart", "second"), once each: in my scoreboard's look (the strap, which folds into
-     * the board where it is), or the classic.
+     * A moment's pop-up ("kickoff", "restart", "second", "full"), once each: in my scoreboard's look (the strap, which folds
+     * into the board where it is), or the classic.
      */
     private void popup(String kind, int[] score, String scorer, String minute) {
         Game g = game;

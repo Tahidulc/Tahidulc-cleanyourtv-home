@@ -10,14 +10,14 @@ package com.gathin.homefieldtv;
  * until it is back (Screen.shown).
  *
  * <p>Covered, everything of the board goes at once (its moment's pop-up let go, its menu closed); it comes back when
- * plain playback does. Its pop-ups due meanwhile wait for then, and are skipped when stale: a kick-off or second-half
- * pop-up held more than MOMENT_MS, a goal's (restart) more than RESTART_MS; alerts beside it queued more than DROP_MS
- * before it came back are let go.
+ * plain playback does. Its pop-ups due meanwhile wait for then, and are skipped when stale: a kick-off, second-half or
+ * full-time pop-up held more than MOMENT_MS, a goal's (restart) more than RESTART_MS; alerts beside it queued more than
+ * DROP_MS before it came back are let go.
  */
 final class BoardGate {
     private BoardGate() {}
 
-    /** How long a moment's pop-up (kick-off, second half), a goal's, and an alert may wait for the picture to be clear. */
+    /** How long a moment's pop-up (kick-off, second half, full time), a goal's, and an alert may wait for a clear picture. */
     static final long MOMENT_MS = 2 * 60_000L, RESTART_MS = 90_000L, DROP_MS = 2 * 60_000L;
 
     /** Pure: plain full-screen playback: shown and in front, the whole screen, no panel of the live screen's, nothing typed or asked. */
