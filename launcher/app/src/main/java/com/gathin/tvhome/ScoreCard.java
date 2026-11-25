@@ -156,7 +156,7 @@ final class ScoreCard {
     private static float k;
     /** The score's tick and Home's light, waiting to run; dropped when the card goes first. */
     private static final List<Runnable> later = new ArrayList<>();
-    /** The band's stripes drifting, stopped when the card goes. */
+    /** What moves on the card (its animations), stopped when the card goes. */
     private static final List<android.animation.Animator> moving = new ArrayList<>();
 
     private ScoreCard() { }
@@ -348,7 +348,7 @@ final class ScoreCard {
         LinearLayout band = new LinearLayout(c);
         band.setOrientation(LinearLayout.VERTICAL);
         band.setGravity(Gravity.CENTER);
-        band.setBackground(bandGround(d, false));
+        band.setBackground(bandGround(d));
         // The competition's logo alone in the band (no club crest under it): large, filling the band (it was the
         // small size it has above a crest, lost on its own); with a crest under it, as before.
         boolean alone = d.crest == null || d.f1;
@@ -369,7 +369,6 @@ final class ScoreCard {
         FrameLayout bandBox = new FrameLayout(c);
         bandBox.setBackground(band.getBackground());
         band.setBackground(null);
-        if (d.f1) bandBox.addView(stripes(c, d), new FrameLayout.LayoutParams(bandW + STRIPE_PERIOD_PX(), h));
         bandBox.addView(band, new FrameLayout.LayoutParams(bandW, h));
         card.addView(bandBox, new LinearLayout.LayoutParams(bandW, h));
 
@@ -460,9 +459,8 @@ final class ScoreCard {
         // Its ground is the box's (below): one solid colour, no streaks (the family's ask, 25 Nov).
         boolean ko = "kickoff".equals(d.kind);
         FrameLayout band = new FrameLayout(c);
-        band.setBackground(bandGround(d, false));
+        band.setBackground(bandGround(d));
         int bandW = d.f1 ? px(190) : d.bigMark ? px(230) : d.wideMark ? px(150) : px(120);
-        if (d.f1) band.addView(stripes(c, d), new FrameLayout.LayoutParams(bandW + STRIPE_PERIOD_PX(), h));
         if (d.leagueLogo != null) band.addView(image(c, d.leagueLogo), new FrameLayout.LayoutParams(
                 d.f1 ? px(164) : d.bigMark ? px(200) : d.wideMark ? px(124) : px(40), d.f1 ? px(46) : px(40), Gravity.CENTER));
         bar.addView(band, new LinearLayout.LayoutParams(bandW, h));
@@ -670,14 +668,12 @@ final class ScoreCard {
         return v;
     }
 
-    /** The band's ground: the navy, F1's red, or the card's own colours. */
-    /** The band's ground: the navy, F1's red, or the card's own colours; its stripes too, or (stripes false) not. */
-    private static Drawable bandGround(Data d, boolean withStripes) {
-        if (plainBlack(d)) return new Streaks(0xFF141519, 0xFF0B0C0F, 0, px(14), px(3));
+    /** The band's ground: the navy, F1's red, or the card's own colours, solid. */
+    private static Drawable bandGround(Data d) {
+        if (plainBlack(d)) return new Streaks(0xFF141519, 0xFF141519, 0, px(14), px(3));
         int a = d.band != 0 ? d.band : d.f1 ? 0xFFE10600 : 0xFF1B2591;
-        int b = d.bandDeep != 0 ? d.bandDeep : d.f1 ? 0xFF8E0400 : 0xFF0D1360;
-        // Solid, no stripes (the family's ask, 25 Nov): only F1's red keeps its stripes and its two shades.
-        return d.f1 ? new Streaks(a, b, withStripes ? stripeColour(d) : 0, px(14), px(3)) : new Streaks(a, a, 0, px(14), px(3));
+        // Solid, no stripes (the family's ask, 25 Nov), F1's red too.
+        return new Streaks(a, a, 0, px(14), px(3));
     }
 
     /** The fights' pop-ups (UFC, boxing): black all over, band too, with no stripes and nothing moving. */
@@ -685,31 +681,9 @@ final class ScoreCard {
         return d.dark && !d.f1;
     }
 
-    private static int stripeColour(Data d) {
-        return d.f1 || d.band != 0 ? 0x1AFFFFFF : 0x17FFFFFF;
-    }
-
-    /** One stripe and its gap, the distance the band's stripes drift in one beat. */
-    private static int STRIPE_PERIOD_PX() {
-        return Math.max(4, px(14)) + Math.max(1, px(3));
-    }
-
-    /**
-     * The band's light stripes on their own, a period wider than the band: drawn once into a layer, so for a goal or
-     * an incident they can drift along slightly (alive()) with nothing redrawn.
-     */
-    private static View stripes(Context c, Data d) {
-        View v = new View(c);
-        v.setBackground(new Streaks(0, 0, stripeColour(d), px(14), px(3)));
-        v.setLayerType(View.LAYER_TYPE_HARDWARE, null);
-        v.setTranslationX(-STRIPE_PERIOD_PX());
-        v.setTag("stripes");
-        return v;
-    }
-
     /** The stage's ground without its streaks: pale; plain black for F1 and fights (no streaks, nothing moving). */
     private static Drawable stageFill(Data d, int gap, int width) {
-        return d.dark ? new Streaks(0xFF141519, 0xFF0B0C0F, 0, gap, width) : new Streaks(0xFFF6F7FD, 0xFFF6F7FD, 0, gap, width);
+        return d.dark ? new Streaks(0xFF141519, 0xFF141519, 0, gap, width) : new Streaks(0xFFF6F7FD, 0xFFF6F7FD, 0, gap, width);
     }
 
     /**
@@ -1045,17 +1019,6 @@ final class ScoreCard {
             };
             later.add(tick);
             main.postDelayed(tick, 800L);
-        }
-        // F1's red band only (every other pop-up's band is solid, no stripes): its stripes drift along, slightly.
-        View lines = box.findViewWithTag("stripes");
-        if (lines != null && !d.dark) {
-            android.animation.ObjectAnimator drift = android.animation.ObjectAnimator.ofFloat(lines, View.TRANSLATION_X,
-                    -STRIPE_PERIOD_PX(), 0f);
-            drift.setDuration(1_400);
-            drift.setRepeatCount(android.animation.ValueAnimator.INFINITE);
-            drift.setInterpolator(new android.view.animation.LinearInterpolator());
-            moving.add(drift);
-            drift.start();
         }
         if (!onHome) return;
         View sheen = new View(c);

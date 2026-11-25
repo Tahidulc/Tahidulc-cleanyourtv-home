@@ -1316,9 +1316,9 @@ final class LineupCard {
             @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), r); }
         });
         card.setClipToOutline(true);
-        card.setBackground(new Streaks(F1_BLACK, F1_BLACK_DEEP, 0, px(60), px(4)));
+        card.setBackground(new Streaks(F1_BLACK, F1_BLACK, 0, px(60), px(4)));
         FrameLayout band = new FrameLayout(c);
-        band.setBackground(new Streaks(F1_RED, F1_RED_DEEP, 0x1AFFFFFF, px(14), px(3)));
+        band.setBackground(new Streaks(F1_RED, F1_RED, 0, px(14), px(3)));
         card.addView(band, new FrameLayout.LayoutParams(px(F1_BAND), h));
         FrameLayout stage = new FrameLayout(c);
         stage.setClipChildren(true);
@@ -1781,12 +1781,12 @@ final class LineupCard {
             @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), r); }
         });
         box.setClipToOutline(true);
-        box.setBackground(new Streaks(F1_BLACK, F1_BLACK_DEEP, 0, px(50), px(30)));
+        box.setBackground(new Streaks(F1_BLACK, F1_BLACK, 0, px(50), px(30)));
         LinearLayout row = new LinearLayout(c);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
         FrameLayout band = new FrameLayout(c);
-        band.setBackground(new Streaks(F1_RED, F1_RED_DEEP, 0x1AFFFFFF, px(14), px(3)));
+        band.setBackground(new Streaks(F1_RED, F1_RED, 0, px(14), px(3)));
         ImageView mark = new ImageView(c);
         mark.setImageBitmap(sharp(f.mark));
         mark.setScaleType(ImageView.ScaleType.FIT_CENTER);
