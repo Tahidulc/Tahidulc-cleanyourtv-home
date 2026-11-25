@@ -41,6 +41,25 @@ public final class GoalLooks {
         return ALL[Math.floorMod(i + (step < 0 ? -1 : 1), ALL.length)];
     }
 
+    /** Pure: the choices an app offers, in order: all of them, or without the 3D shirt in an app that has none (Homefield TV). */
+    public static String[] offered(boolean shirt) {
+        if (shirt) return ALL.clone();
+        String[] out = new String[ALL.length - 1];
+        int n = 0;
+        for (String k : ALL) if (!SHIRT.equals(k)) out[n++] = k;
+        return out;
+    }
+
+    /** Pure: the choice step places on among those an app offers (round from the last to the first). */
+    public static String next(String now, int step, boolean shirt) {
+        String[] all = offered(shirt);
+        String k = of(now);
+        int i = 0;
+        for (int j = 0; j < all.length; j++) if (all[j].equals(k)) i = j;
+        if (!shirt && SHIRT.equals(k)) i = indexOf(BAND);
+        return all[Math.floorMod(i + (step < 0 ? -1 : 1), all.length)];
+    }
+
     private static int indexOf(String k) {
         for (int i = 0; i < ALL.length; i++) if (ALL[i].equals(k)) return i;
         return 0;

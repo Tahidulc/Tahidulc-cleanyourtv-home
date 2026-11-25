@@ -45,6 +45,17 @@ public class GoalRevealTest {
         assertEquals(GoalLooks.TODAY, GoalLooks.next(GoalLooks.GENERIC, 1));
         assertEquals(GoalLooks.CLUBS, GoalLooks.next(GoalLooks.GENERIC, -1));
         assertEquals(GoalLooks.BAND, GoalLooks.next("nonsense", 1));
+        // an app with no 3D shirt (Homefield TV) never offers it
+        assertEquals(GoalLooks.ALL.length, GoalLooks.offered(true).length);
+        assertEquals(GoalLooks.ALL.length - 1, GoalLooks.offered(false).length);
+        for (String o : GoalLooks.offered(false)) assertNotEquals(GoalLooks.SHIRT, o);
+        assertEquals(GoalLooks.CLUBS, GoalLooks.next(GoalLooks.BURST, 1, false));
+        assertEquals(GoalLooks.SHIRT, GoalLooks.next(GoalLooks.BURST, 1, true));
+        assertEquals(GoalLooks.BURST, GoalLooks.next(GoalLooks.CLUBS, -1, false));
+        assertEquals(GoalLooks.TODAY, GoalLooks.next(GoalLooks.GENERIC, 1, false));
+        String round = GoalLooks.DEFAULT;
+        for (int i = 0; i < GoalLooks.offered(false).length; i++) round = GoalLooks.next(round, 1, false);
+        assertEquals(GoalLooks.DEFAULT, round);
     }
 
     @Test
