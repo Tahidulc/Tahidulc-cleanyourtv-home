@@ -87,6 +87,22 @@ public final class Names {
         return info(name, "").key;
     }
 
+    /**
+     * A word every channel whose name reads as this one most likely has in its plain, lower-case name (the name's longest
+     * word that Names keeps as it is: no quality or country tag, no number word, three letters or more), or null when
+     * it has none. Lets a name be looked for by reading only the names with that word in them.
+     */
+    public static String hint(String name) {
+        String best = null;
+        for (String t : tokens(name)) {
+            // "Disney+" is read as "disneyplus": its name has "disney".
+            if (t.endsWith("plus") && t.length() > 4) t = t.substring(0, t.length() - 4);
+            if (t.length() < 3 || QUALITY.contains(t) || COUNTRY.contains(t) || WORDS.containsKey(t)) continue;
+            if (best == null || t.length() > best.length()) best = t;
+        }
+        return best;
+    }
+
     /** A 4K or UHD channel ("Sky Sports Main Event UHD", "UK: SKY SPORTS F1 4K"). */
     public static boolean uhd(String name) {
         return info(name, null).quality >= 4;

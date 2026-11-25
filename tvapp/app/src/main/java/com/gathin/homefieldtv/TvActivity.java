@@ -82,6 +82,10 @@ public final class TvActivity extends Activity {
         // Settings → Appearance, read before any screen draws; and whether this start is a fresh one (General → Start on).
         com.gathin.homefieldtv.prefs.Look.load(this);
         boolean fresh = state == null && reopenSettings < 0;
+        // The TV launcher's channel (PlayChannel): the picture first. Only what playing needs is made now; Home, the
+        // films' catalogue and the update check once the channel is on (afterChannel), What's new and a problem's note
+        // at the next ordinary start, the playlists' refresh once the picture has started (Library.holdRefresh).
+        channelFirst = reopenSettings < 0 && PlayChannel.asks(getIntent());
         // The theme's colours before any screen is made, its dark ground behind them all.
         Theme.apply(this);
         // Settings → Appearance → Animations: Full or Lite (Automatic: Lite on a slower TV), before any screen draws.
@@ -111,34 +115,39 @@ public final class TvActivity extends Activity {
         live = new LiveTv(this, video);
         live.addListener(awake);
         Library lib = Library.get(this);
+        if (channelFirst) lib.holdRefresh(PlayChannel.QUIET_MS);
         lib.addListener(channels);
         lib.ensure();
         Catalog cat = Catalog.get(this);
         cat.addListener(catalog);
-        cat.ensure();
+        if (!channelFirst) cat.ensure();
         // The shell first, so every page is put under it (push raises it); the app starts with the remote on its Home.
         tabs = new TabBar(this);
         screens.addView(tabs, full());
-        push(new HomeScreen(this));
+        // A channel from the launcher: Home in its place under it, made only when it is first needed (or afterChannel).
+        if (channelFirst) homeUnbuilt(new HomeScreen(this));
+        else push(new HomeScreen(this));
         tabs.enter();
         // Homefield TV's own updates: the folder made (for one to be put in), a quiet look, What's new once after one.
         Updates.folder(this);
         Updates.addListener(updates);
-        Updates.check(this, null);
-        // Automatic updates: the update address looked at as the app opens (Settings › About › Updates).
-        AutoUpdate.opened(this, true);
-        // If something goes wrong: a line once when the app had a problem last time (its note in Settings › About).
-        Exec.io(() -> {
-            if (com.gathin.homefieldtv.engine.Problems.takeUntold() == null) return;
-            Exec.main(() -> {
-                if (!isFinishing()) {
-                    android.widget.Toast.makeText(this, "Homefield TV had a problem last time. Settings › About has a note of it.",
-                            android.widget.Toast.LENGTH_LONG).show();
-                }
+        if (!channelFirst) {
+            Updates.check(this, null);
+            // Automatic updates: the update address looked at as the app opens (Settings › About › Updates).
+            AutoUpdate.opened(this, true);
+            // If something goes wrong: a line once when the app had a problem last time (its note in Settings › About).
+            Exec.io(() -> {
+                if (com.gathin.homefieldtv.engine.Problems.takeUntold() == null) return;
+                Exec.main(() -> {
+                    if (!isFinishing()) {
+                        android.widget.Toast.makeText(this, "Homefield TV had a problem last time. Settings › About has a note of it.",
+                                android.widget.Toast.LENGTH_LONG).show();
+                    }
+                });
             });
-        });
-        String[] news = Updates.whatsNew(this);
-        if (news != null && reopenSettings < 0) push(new WhatsNewScreen(this, news[0], news[1]));
+            String[] news = Updates.whatsNew(this);
+            if (news != null && reopenSettings < 0) push(new WhatsNewScreen(this, news[0], news[1]));
+        }
         // Started again for a new theme: back on Settings where it was chosen, its panel there at once.
         if (reopenSettings >= 0) {
             push(new SettingsScreen(this, reopenSettings));
@@ -146,8 +155,12 @@ public final class TvActivity extends Activity {
         }
         handleCast(getIntent());
         handleReminder(getIntent());
-        // The TV launcher's channel card (PlayChannel): straight on to that channel, Home kept out of sight meanwhile.
+        // The TV launcher's channel (PlayChannel): straight on to that channel, Home kept out of sight meanwhile.
         boolean asked = PlayChannel.handle(this, getIntent(), true);
+        if (channelFirst) {
+            h.removeCallbacks(afterChannel);
+            h.postDelayed(afterChannel, AFTER_CHANNEL_MS);
+        }
         // The cards the launcher shows for this app (ChannelCards, served by ChannelCardsProvider) kept up to date.
         ChannelCards.start(this);
         // Reminders' alarm made again (Android forgets it when the app is updated or stopped).
@@ -156,6 +169,52 @@ public final class TvActivity extends Activity {
         // the channel a reminder's card or the launcher's card was for, still waiting for the channels to be read).
         // (Not in the JVM tests, which drive the screens from Home themselves; StartUp is tested on its own.)
         if (fresh && !asked && top() instanceof HomeScreen && reminderKey == null && !Guard.underTest()) StartUp.open(this);
+    }
+
+    // ---- the launcher's channel first (PlayChannel) -----------------------------------------------------------------
+
+    /** What the launcher's channel put off is done this long after it was asked for (the picture up by then). */
+    static final long AFTER_CHANNEL_MS = 6_000L;
+    /** A channel from the launcher is on its way (from onCreate or onNewIntent until onResume): what can wait, waits. */
+    private boolean channelFirst;
+    /** Started afresh for the launcher's channel: Updates' quiet look still to come (afterChannel). */
+    private boolean checkLater;
+    private final Runnable afterChannel = this::afterChannel;
+
+    /**
+     * The launcher's channel is on: what it put off, done now. The films' catalogue read (and refreshed when due), the
+     * update folder looked in, Home made out of sight under the picture so Back to it is at once. What's new and a note of
+     * a problem last time wait for the next ordinary start (a page over the channel would cover it).
+     */
+    private void afterChannel() {
+        h.removeCallbacks(afterChannel);
+        if (isFinishing() || isDestroyed()) return;
+        Catalog.get(this).ensure();
+        if (checkLater) {
+            checkLater = false;
+            Updates.check(this, null);
+        }
+        homeView();
+    }
+
+    /** Home put in its place at the foot of the stack without its page made (homeView makes it when first needed). */
+    private void homeUnbuilt(HomeScreen home) {
+        stack.add(home);
+        checkLater = true;
+        if (tabs != null) tabs.pushed(home);
+    }
+
+    /**
+     * Home's page, made and put in its place under every other page the first time it is needed (a start for the
+     * launcher's channel leaves it till then): shown when it is on top, else out of sight.
+     */
+    View homeView() {
+        Screen home = stack.get(0);
+        if (home.built()) return home.view();
+        View v = home.view();
+        v.setVisibility(top() == home ? View.VISIBLE : View.GONE);
+        screens.addView(v, 0, full());
+        return v;
     }
 
     /** The phone stopped what it sent: Home comes back without its mini TV playing, once. */
@@ -187,7 +246,13 @@ public final class TvActivity extends Activity {
         else leftForOwn = true;
         handleCast(intent);
         handleReminder(intent);
-        PlayChannel.handle(this, intent, false);
+        // The launcher's channel: changed in place when the picture is up; what can wait (onResume's catalogue and
+        // update look) waits until it is on (afterChannel).
+        if (PlayChannel.handle(this, intent, false)) {
+            channelFirst = true;
+            h.removeCallbacks(afterChannel);
+            h.postDelayed(afterChannel, AFTER_CHANNEL_MS);
+        }
     }
 
     /** OK on a reminder's card: its channel full screen (once the playlists are in); an old one is let go. */
@@ -284,12 +349,16 @@ public final class TvActivity extends Activity {
         resumed = true;
         Cast.hold(this);
         Updates.resumed(this);
-        AutoUpdate.opened(this, false);
+        // Coming back for the launcher's channel: no update looked for (its installer would come over the picture), the
+        // catalogue once the channel is on (afterChannel).
+        boolean channel = channelFirst;
+        channelFirst = false;
+        if (!channel) AutoUpdate.opened(this, false);
         // A reminder due now comes as a panel inside the app (ReminderScreen).
         ReminderCard.front = new java.lang.ref.WeakReference<>(this);
         nextMinute();
         Library.get(this).ensure();
-        Catalog.get(this).ensure();
+        if (!channel) Catalog.get(this).ensure();
         // Coming back (Settings → General → Start on: Last channel): the channel watched last, full screen with its card.
         boolean back = stoppedAt > 0 && StartUp.playOnReturn(com.gathin.homefieldtv.prefs.General.start(this), reopened,
                 android.os.SystemClock.elapsedRealtime() - stoppedAt, leftForOwn);
@@ -340,6 +409,7 @@ public final class TvActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        h.removeCallbacks(afterChannel);
         FrameStats.stop(this);
         Library.get(this).removeListener(channels);
         Catalog.get(this).removeListener(catalog);
@@ -392,7 +462,7 @@ public final class TvActivity extends Activity {
             v.setVisibility(View.VISIBLE);
             s.opening();
         } else {
-            crossFade(v, was == null ? null : was.view(), false);
+            crossFade(v, was == null || !was.built() ? null : was.view(), false);
         }
         covered();
         if (resumed) s.shown();
@@ -413,8 +483,9 @@ public final class TvActivity extends Activity {
         if (resumed) s.hidden();
         Screen t = top();
         if (tabs != null) tabs.follow(t);
+        // Home's page made now when the launcher's channel started the app without it.
+        View under = t == stack.get(0) ? homeView() : t.view();
         FrameStats.on(t);
-        View under = t.view();
         under.animate().cancel();
         under.setAlpha(1f);
         under.setVisibility(View.VISIBLE);
@@ -444,13 +515,14 @@ public final class TvActivity extends Activity {
     void fromHome(Screen s) {
         Screen was = top();
         if (was != null && resumed) was.hidden();
-        View showing = was == null ? null : was.view();
+        // (Home not made yet, for the launcher's channel: nothing of it to fade or hide.)
+        View showing = was == null || !was.built() ? null : was.view();
         boolean homeShowing = was == stack.get(0);
         while (stack.size() > 1) {
             Screen x = stack.remove(stack.size() - 1);
             if (x.view() != showing) detach(x.view());
         }
-        if (!homeShowing) stack.get(0).view().setVisibility(View.GONE);
+        if (!homeShowing && stack.get(0).built()) stack.get(0).view().setVisibility(View.GONE);
         stack.add(s);
         (s.overVideo() ? over : screens).addView(s.view(), full());
         if (tabs != null) tabs.pushed(s);

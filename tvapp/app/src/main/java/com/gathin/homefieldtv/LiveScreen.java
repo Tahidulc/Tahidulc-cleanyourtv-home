@@ -168,6 +168,28 @@ final class LiveScreen extends Screen implements LiveTv.Listener, DialogCard.Hos
         seen = false;
     }
 
+    /** Whether this screen plays live (not about to open a programme from the archive). */
+    boolean live() {
+        return catchupFrom < 0;
+    }
+
+    /**
+     * The TV launcher's channel (PlayChannel) while this screen is on top: that channel in place, no screen made again,
+     * its card up, after its PIN where it is locked. Out of sight (the launcher in front), it plays as the app comes back.
+     */
+    void switchTo(Channel c) {
+        if (c == null) return;
+        PinScreen.forChannel(tv, c, () -> {
+            if (tv.showing(this)) {
+                tv.live.play(c);
+                switched();
+            } else {
+                start = c;
+                seen = false;
+            }
+        });
+    }
+
     /** A channel from a list over this screen (History): played when this screen is next shown, its card up. */
     void tuneFromList(Channel c) {
         if (c == null) return;

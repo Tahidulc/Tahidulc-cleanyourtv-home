@@ -285,9 +285,41 @@ public final class Library {
      * only.
      */
     public List<Channel> named(String name) {
-        String k = Names.key(name);
-        List<Channel> l = k.isEmpty() ? null : current.index.byName().get(k);
+        return withKey(Names.key(name));
+    }
+
+    /** Every channel (hidden ones too) whose name's key (Names.key) is this one, in the list's order. As named(). */
+    public List<Channel> withKey(String key) {
+        List<Channel> l = key == null || key.isEmpty() ? null : current.index.byName().get(key);
         return l == null ? Collections.<Channel>emptyList() : Collections.unmodifiableList(l);
+    }
+
+    /**
+     * As named(), without making the index of every name when it isn't made yet (it is kept in memory once made): only
+     * the names with the name's own word in them (Names.hint) are read, a quick pass over the plain names the lists keep.
+     * The index when it is made, or the name has no such word. Off the main thread.
+     */
+    public List<Channel> sameName(String name) {
+        String k = Names.key(name);
+        if (k.isEmpty()) return Collections.emptyList();
+        Lists.Index ix = current.index;
+        String hint = ix.byNameMade() ? null : Names.hint(name);
+        if (hint == null) return withKey(k);
+        List<Channel> out = new ArrayList<>();
+        for (int i = 0; i < ix.channels.size(); i++) {
+            if (ix.lower[i].contains(hint) && k.equals(Names.key(ix.channels.get(i).name))) out.add(ix.channels.get(i));
+        }
+        return Collections.unmodifiableList(out);
+    }
+
+    /** Every name's key the channels have (ChannelMatch's looser readings). As named(): off the main thread the first time. */
+    public java.util.Collection<String> nameKeys() {
+        return Collections.unmodifiableSet(current.index.byName().keySet());
+    }
+
+    /** Whether every channel's name has been read since the channels were (named() is then a lookup: at once). */
+    public boolean namesRead() {
+        return current.index.byNameMade();
     }
 
     /** Whether a channel is in the lists (not hidden, not locked away), as the lists made last say. At once. */
@@ -732,9 +764,31 @@ public final class Library {
         });
     }
 
+    /** Until when the playlists and the guide are not read again (a channel from the launcher starting: holdRefresh). */
+    private volatile long quietUntil;
+    private final AtomicBoolean quietWaiting = new AtomicBoolean();
+
+    /**
+     * A channel is starting (the launcher's PLAY_CHANNEL): for ms, the playlists and the guide are not read again from
+     * their providers (the copy on the TV plays it); a read that falls due meanwhile comes once they are past. With no
+     * channels on the TV yet they are read at once all the same.
+     */
+    public void holdRefresh(long ms) {
+        quietUntil = Math.max(quietUntil, System.currentTimeMillis() + ms);
+    }
+
     private void maybeRefresh() {
         if (Sources.inUse(app).isEmpty()) return;
         long now = System.currentTimeMillis();
+        if (now < quietUntil && !current.index.channels.isEmpty()) {
+            if (quietWaiting.compareAndSet(false, true)) {
+                Exec.main.postDelayed(() -> {
+                    quietWaiting.set(false);
+                    maybeRefresh();
+                }, quietUntil - now + 50L);
+            }
+            return;
+        }
         // Settings → Guide: how often the playlists and the guide are read again, and on each start if chosen.
         boolean start = GuidePrefs.firstStart(app);
         if (current.index.channels.isEmpty() || start || GuidePrefs.listsDue(app, loadedAt, now)

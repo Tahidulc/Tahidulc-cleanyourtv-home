@@ -8,26 +8,48 @@ import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.engine.PlayRequest;
-import com.gathin.homefieldtv.prefs.Parental;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 /**
- * The TV launcher's "play this channel" (PlayRequest.ACTION, from a card of Homefield TV's on its dock): Homefield TV
- * straight on that channel, full screen with its info card, whether it was running or not. Started afresh, Home is kept
- * out of sight (and Settings' Start on not used) until the channel is found, the moment the channels are read; then it
- * plays as from the guide (TvActivity.watch: after the PIN for a locked channel, Home under the PIN's pad then, as ever).
- * One row per channel: the row is played, its best version (or the one chosen in its Quality). A channel that isn't
- * found by its key, its name or its number, or channels that aren't in within WAIT_MS, leave Home showing with a note.
+ * The TV launcher's "play this channel" (PlayRequest.ACTION: every channel link on it, from its guide, its cards, its
+ * scores and alerts): Homefield TV straight on that channel, full screen with its info card, whether it was running or
+ * not, from the channels kept on the TV (nothing read again from the provider first).
+ *
+ * <p>Started afresh (TvActivity: the fast path), only what playing needs is made: Home is not built, What's new, the
+ * update checks and the playlists' refresh wait until the picture is up (or for the next ordinary start), and Home stays
+ * out of sight until the channel is found, the moment the channels are read. Running with the picture up, the channel
+ * changes in place (LiveScreen.switchTo: no screen made again); otherwise it plays as from the guide (TvActivity.watch).
+ * A locked channel asks for its PIN first, as from anywhere in the app.
+ *
+ * <p>Found by its key, else by its names as ChannelMatch reads them (at once on the main thread when every channel's name
+ * has been read and one reads the same; else off it, every reading tried), else its number. One row per channel: the row
+ * is played, its best version (or the one chosen in its Quality). Nothing found, or channels that aren't in within
+ * WAIT_MS: the TV guide (Live TV) with a note, rather than nothing.
  */
 final class PlayChannel {
     private PlayChannel() {}
 
     static final long WAIT_MS = 30_000L;
+    /** The playlists and the guide not read again for this long while a channel from the launcher starts. */
+    static final long QUIET_MS = 20_000L;
 
     /** The request being waited for (one at a time: a newer one takes its place). */
     private static Pending pending;
+
+    /** The request in an intent, or null (another intent, an empty or stale request). Nothing taken from it. */
+    static PlayRequest request(Intent i) {
+        if (i == null || !PlayRequest.ACTION.equals(i.getAction())) return null;
+        return PlayRequest.of(i.getAction(), i.getStringExtra(PlayRequest.EXTRA_KEY), i.getStringExtra(PlayRequest.EXTRA_NAME),
+                names(i.getExtras()), number(i.getExtras()), i.getLongExtra(PlayRequest.EXTRA_AT, 0L), System.currentTimeMillis());
+    }
+
+    /** Whether the intent asks for a channel (TvActivity's fast path), without taking it. */
+    static boolean asks(Intent i) {
+        return request(i) != null;
+    }
 
     /**
      * An intent for TvActivity (onCreate: starting true; onNewIntent: false): true when it asks for a channel, which is
@@ -36,11 +58,11 @@ final class PlayChannel {
      */
     static boolean handle(TvActivity tv, Intent i, boolean starting) {
         if (i == null || !PlayRequest.ACTION.equals(i.getAction())) return false;
-        PlayRequest r = PlayRequest.of(i.getAction(), i.getStringExtra(PlayRequest.EXTRA_KEY), i.getStringExtra(PlayRequest.EXTRA_NAME),
-                number(i.getExtras()), i.getLongExtra(PlayRequest.EXTRA_AT, 0L), System.currentTimeMillis());
+        PlayRequest r = request(i);
         i.setAction(Intent.ACTION_MAIN);
         i.removeExtra(PlayRequest.EXTRA_KEY);
         i.removeExtra(PlayRequest.EXTRA_NAME);
+        i.removeExtra(PlayRequest.EXTRA_NAMES);
         i.removeExtra(PlayRequest.EXTRA_NUMBER);
         i.removeExtra(PlayRequest.EXTRA_AT);
         if (r == null) return false;
@@ -66,6 +88,19 @@ final class PlayChannel {
         return 0;
     }
 
+    /** The names however they were given (a String array, a list, or one line of them separated by commas from adb's --esa). */
+    static String[] names(Bundle b) {
+        Object o = b == null ? null : b.get(PlayRequest.EXTRA_NAMES);
+        if (o instanceof String[]) return (String[]) o;
+        if (o instanceof List) {
+            List<String> out = new ArrayList<>();
+            for (Object x : (List<?>) o) if (x != null) out.add(x.toString());
+            return out.toArray(new String[0]);
+        }
+        if (o instanceof String) return ((String) o).split(",");
+        return null;
+    }
+
     /** Library's lookups as the request finds a channel: rows only (one row per channel), listed ones by name. */
     static PlayRequest.Finder finder(Library lib) {
         return new PlayRequest.Finder() {
@@ -74,22 +109,39 @@ final class PlayChannel {
             }
 
             @Override public List<Channel> named(String name) {
+                // Only the names with its word in them read, unless every name has been (no index made for it).
+                return rows(lib.sameName(name));
+            }
+
+            @Override public List<Channel> withKey(String key) {
+                return rows(lib.withKey(key));
+            }
+
+            @Override public Collection<String> keys() {
+                return lib.nameKeys();
+            }
+
+            @Override public Channel numbered(int number) {
+                return lib.numbered(number);
+            }
+
+            /** The listed ones' rows, once each, in the lists' order. */
+            private List<Channel> rows(List<Channel> all) {
                 List<Channel> out = new ArrayList<>();
-                for (Channel c : lib.named(name)) {
+                for (Channel c : all) {
                     if (!lib.listed(c)) continue;
                     Channel row = lib.row(c);
                     if (row != null && !out.contains(row)) out.add(row);
                 }
                 return out;
             }
-
-            @Override public Channel numbered(int number) {
-                return lib.numbered(number);
-            }
         };
     }
 
-    /** One request: found by its key as soon as the channels are in, else by its name or number off the main thread. */
+    /**
+     * One request: found by its key, or by a name read the same, at once as soon as the channels are in (the names read
+     * already); else off the main thread, every reading of every name tried, then its number.
+     */
     private static final class Pending implements Runnable {
         final TvActivity tv;
         final PlayRequest r;
@@ -110,6 +162,8 @@ final class PlayChannel {
         void start() {
             // Started afresh: Home stays out of sight while the channels are read (a moment from their copy on the TV).
             if (starting) tv.screens.setVisibility(View.INVISIBLE);
+            // The picture first: the playlists and the guide read again from their providers once it has started.
+            lib.holdRefresh(QUIET_MS);
             lib.addListener(this);
             Exec.main.postDelayed(giveUp, WAIT_MS);
             run();
@@ -126,19 +180,21 @@ final class PlayChannel {
                 if (System.currentTimeMillis() > until) gaveUp(null);
                 return;
             }
-            Channel c = r.byKey(finder(lib));
+            PlayRequest.Finder f = finder(lib);
+            // At once: by its key, or (every name read already) a name that reads the same.
+            Channel c = lib.namesRead() ? r.exact(f) : r.byKey(f);
             if (c != null) {
                 play(c);
                 return;
             }
             if (asking) return;
             asking = true;
-            // By name (every channel's name read the first time) or number: off the main thread.
-            Exec.work(() -> {
-                Channel f = r.find(finder(lib));
+            // Every reading of every name (every channel's name read the first time), then its number: off the main thread.
+            Exec.io(() -> {
+                Channel found = r.find(f);
                 Exec.main(() -> {
                     if (done) return;
-                    if (f != null) play(f);
+                    if (found != null) play(found);
                     else gaveUp(r.said() + " isn't in your playlists");
                 });
             });
@@ -146,20 +202,31 @@ final class PlayChannel {
 
         private void play(Channel c) {
             finish();
-            // A locked channel: its PIN's pad over Home, as from anywhere in the app (never past it).
-            boolean pin = Parental.blocks(tv, c);
-            if (starting && !pin) tv.homeScreen().view().setVisibility(View.GONE);
             tv.screens.setVisibility(View.VISIBLE);
+            // Running with the picture up: the channel changed in place, no screen made again (after its PIN when locked).
+            Screen top = tv.top();
+            if (!starting && top instanceof LiveScreen && ((LiveScreen) top).live()) {
+                ((LiveScreen) top).switchTo(c);
+                return;
+            }
+            // A locked channel: its PIN's pad over Home, as from anywhere in the app (never past it); Home made for it then.
+            // Else a Home that was made is kept out from under the picture as it comes in.
+            HomeScreen home = tv.homeScreen();
+            boolean pin = com.gathin.homefieldtv.prefs.Parental.blocks(tv, c);
+            if (pin && tv.top() == home) tv.homeView();
+            else if (starting && home.built()) home.view().setVisibility(View.GONE);
             tv.watch(c);
         }
 
+        /** Not found (or the channels not in): Live TV's guide rather than nothing, with a note. */
         private void gaveUp(String note) {
             if (done) return;
             finish();
             tv.screens.setVisibility(View.VISIBLE);
             if (tv.isFinishing() || tv.isDestroyed()) return;
-            android.widget.Toast.makeText(tv, note != null ? note : "Couldn't open " + r.said() + ": the channels aren't in yet",
-                    android.widget.Toast.LENGTH_LONG).show();
+            android.widget.Toast.makeText(tv, (note != null ? note : "Couldn't open " + r.said() + ": the channels aren't in yet")
+                    + ". Here's the guide.", android.widget.Toast.LENGTH_LONG).show();
+            tv.toGuide();
         }
 
         void finish() {

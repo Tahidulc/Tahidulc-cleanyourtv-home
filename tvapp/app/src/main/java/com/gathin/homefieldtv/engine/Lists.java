@@ -79,6 +79,11 @@ final class Lists {
             versionsAt = Versions.group(ch, lower);
         }
 
+        /** Whether byName has been made (it is then at once). */
+        boolean byNameMade() {
+            return byName != null;
+        }
+
         Map<String, List<Channel>> byName() {
             Map<String, List<Channel>> m = byName;
             if (m != null) return m;

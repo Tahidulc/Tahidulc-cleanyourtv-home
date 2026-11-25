@@ -3,6 +3,7 @@ package com.gathin.homefieldtv;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.robolectric.Shadows.shadowOf;
 
@@ -46,7 +47,7 @@ import java.util.List;
  * The TV launcher's way into Homefield TV: the cards it reads (the recent channels newest first and one row per channel,
  * the favourites, the sport on now; locked channels never on them; answered from the file, not the playlists) and its
  * "play this channel" (straight on to the channel full screen, started afresh or running, by key, else name; never past
- * the PIN). Invented channels.
+ * the PIN; nothing found, the guide). Invented channels.
  */
 @RunWith(RobolectricTestRunner.class)
 @LooperMode(LooperMode.Mode.PAUSED)
@@ -200,13 +201,13 @@ public class ChannelCardsTest {
     }
 
     @Test public void startedAfreshStraightOnToTheChannelItsBestVersion() {
-        // Kestrel One's SD key: its row plays, from its best version (FHD), full screen; Home never comes up.
+        // Kestrel One's SD key: its row plays, from its best version (FHD), full screen; Home never comes up (not even made).
         tv = Robolectric.buildActivity(TvActivity.class, play("c:1", "Kestrel One", 103)).setup();
         TvActivity a = tv.get();
         idle();
         assertTrue(a.top() instanceof LiveScreen);
         assertEquals("c:3", playing(a));
-        assertEquals(View.GONE, a.homeScreen().view().getVisibility());
+        assertFalse(a.homeScreen().built());
         assertEquals(View.VISIBLE, a.screens.getVisibility());
         // Taken once: the intent no longer asks (the activity made again opens as usual).
         assertFalse(PlayRequest.ACTION.equals(a.getIntent().getAction()));
@@ -221,14 +222,16 @@ public class ChannelCardsTest {
         idle();
         assertTrue(a.top() instanceof LiveScreen);
         assertEquals("c:4", playing(a));
-        // A key from before the playlist was read again: found by its name.
+        Screen live = a.top();
+        // A key from before the playlist was read again: found by its name, changed in place (the same screen).
         tv.newIntent(play("p9|gone", "Harbour TV", 999));
         idle();
         assertEquals("c:5", playing(a));
-        // Nothing finds it: the app as it was, a note said.
+        assertSame(live, a.top());
+        // Nothing finds it: Live TV's guide rather than nothing, a note said.
         tv.newIntent(play("p9|gone", "No Such Channel", 999));
         idle();
-        assertEquals("c:5", playing(a));
+        assertTrue(a.top() instanceof GuideScreen);
         assertEquals(View.VISIBLE, a.screens.getVisibility());
     }
 

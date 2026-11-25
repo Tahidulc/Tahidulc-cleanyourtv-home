@@ -31,7 +31,7 @@ public class PlayRequestTest {
         Lookups with(Channel row, String... otherKeys) {
             keys.put(row.key, row);
             for (String k : otherKeys) keys.put(k, row);
-            names.computeIfAbsent(row.name, n -> new ArrayList<>()).add(row);
+            names.computeIfAbsent(Names.key(row.name), n -> new ArrayList<>()).add(row);
             numbers.put(row.number, row);
             return this;
         }
@@ -41,9 +41,17 @@ public class PlayRequestTest {
         }
 
         @Override public List<Channel> named(String name) {
+            return withKey(Names.key(name));
+        }
+
+        @Override public List<Channel> withKey(String key) {
             namesAsked++;
-            List<Channel> l = names.get(name);
+            List<Channel> l = names.get(key);
             return l == null ? Collections.emptyList() : l;
+        }
+
+        @Override public java.util.Collection<String> keys() {
+            return names.keySet();
         }
 
         @Override public Channel numbered(int number) {
@@ -90,6 +98,44 @@ public class PlayRequestTest {
         int asked = f.namesAsked;
         assertNull(PlayRequest.of(PlayRequest.ACTION, "", "Kestrel One", 0, 0, NOW).byKey(f));
         assertEquals(asked, f.namesAsked);
+    }
+
+    @Test public void theNamesInOrderTheOneWantedFirst() {
+        // The launcher's CHANNEL_NAMES with its CHANNEL_NAME (the one wanted) first; blanks and repeats out.
+        PlayRequest r = PlayRequest.of(PlayRequest.ACTION, null, " Kestrel One UHD ",
+                new String[]{"Kestrel One UHD", " ", null, "Kestrel One", "Kestrel One HD"}, 0, NOW, NOW);
+        assertNotNull(r);
+        assertEquals("", r.key);
+        assertEquals("Kestrel One UHD", r.name);
+        assertEquals(java.util.Arrays.asList("Kestrel One UHD", "Kestrel One", "Kestrel One HD"), r.names);
+        // The names alone are enough (an older launcher's name alone too); at most MOST_NAMES.
+        assertEquals("Harbour TV", PlayRequest.of(PlayRequest.ACTION, null, null, new String[]{"Harbour TV"}, 0, 0, NOW).name);
+        String[] many = new String[12];
+        for (int i = 0; i < many.length; i++) many[i] = "North Sports " + (i + 1);
+        assertEquals(PlayRequest.MOST_NAMES, PlayRequest.of(PlayRequest.ACTION, null, null, many, 0, 0, NOW).names.size());
+        assertNull(PlayRequest.of(PlayRequest.ACTION, null, null, new String[]{" ", null}, 0, 0, NOW));
+        assertEquals("com.gathin.homefieldtv.extra.CHANNEL_NAMES", PlayRequest.EXTRA_NAMES);
+    }
+
+    @Test public void foundByTheFirstNameReadTheSameElseALooserReading() {
+        Channel one = ch("p0|1", "UK: KESTREL ONE FHD", 101), two = ch("p0|2", "Kestrel Two London", 102),
+                harbour = ch("p0|5", "Harbour TV +1", 105);
+        Lookups f = new Lookups().with(one).with(two).with(harbour);
+        // Tolerantly, at once: case, quality, a UK tag.
+        assertSame(one, PlayRequest.of(PlayRequest.ACTION, null, "kestrel one", null, 0, 0, NOW).exact(f));
+        // The one wanted missing: the next name that reads the same, before any looser reading of the first.
+        assertSame(one, PlayRequest.of(PlayRequest.ACTION, null, "Kestrel Two West", new String[]{"Kestrel One HD"}, 0, 0, NOW).find(f));
+        // Nothing reads the same: its region's channel (Kestrel Two London for Kestrel Two), never a +1 for the channel.
+        assertSame(two, PlayRequest.of(PlayRequest.ACTION, null, "Kestrel Two", null, 0, 0, NOW).find(f));
+        assertNull(PlayRequest.of(PlayRequest.ACTION, null, "Kestrel Two", null, 0, 0, NOW).exact(f));
+        assertNull(PlayRequest.of(PlayRequest.ACTION, null, "Harbour TV", null, 0, 0, NOW).find(f));
+        // No name found: the number, as before.
+        assertSame(harbour, PlayRequest.of(PlayRequest.ACTION, null, "Harbour TV", null, 105, 0, NOW).find(f));
+        // A game's own channel by its teams.
+        Channel game = ch("p0|9", "Peacock 03: Riverside vs Fogbell", 900);
+        f.with(game);
+        assertSame(game, PlayRequest.of(PlayRequest.ACTION, null, "match:Riverside|Fogbell", null, 0, 0, NOW).find(f));
+        assertEquals("Riverside v Fogbell", PlayRequest.of(PlayRequest.ACTION, null, "match:Riverside|Fogbell", null, 0, 0, NOW).said());
     }
 
     @Test public void whatANoteCallsIt() {
