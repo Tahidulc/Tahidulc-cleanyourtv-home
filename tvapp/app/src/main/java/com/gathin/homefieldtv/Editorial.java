@@ -32,11 +32,12 @@ import java.util.List;
  * under the row its score, year, genre and length (or its episode), then three lines of its story; the next row under it,
  * dimmed. Moving along, the card left shrinks back to a poster as the next one grows, its picture cross-fading from
  * poster to backdrop (Lite: the width alone, no cross-fade). Down goes to the next row, the page rising (past the last,
- * back to the first); Up to the one before. Home, Movies and TV Shows have a big carousel above the rows (1500 x 580, the
- * next one peeking in, page dots under it): its picture, what it is, its logo or name, its score, year, genre, age and
- * length, its story and View Details; Left and Right along it as far as its ends, and its own steps (heroNext, timed by
- * EditorialPage) on round from its last to its first while it is in sight. Over the page's own blurred picture (Ground). Only what is in sight is drawn; nothing is made while drawing
- * but a card's words as it comes into focus. Once the remote's wide card has settled, its trailer may play in it
+ * back to the first); Up to the one before. Home, Movies and TV Shows have a carousel above the rows: ONE card across the
+ * page (1740 x 580, nothing of the next at its side, page dots under it): its picture, what it is, its logo or name, its
+ * score, year, genre, age and length, its story and View Details; Left and Right along it as far as its ends, and its own
+ * steps (heroNext, timed by EditorialPage) on round from its last to its first while it is in sight, the old card sliding
+ * out as the new one slides in (Lite: cross-fading). Over the page's own blurred picture (Ground). Only what is in sight
+ * is drawn; nothing is made while drawing but a card's words as it comes into focus. Once the remote's wide card has settled, its trailer may play in it
  * (EditorialPage's Trailer, in a window over the card where trailerSpot says it is).
  */
 final class Editorial extends View {
@@ -117,7 +118,13 @@ final class Editorial extends View {
     // ---- places (design px) ------------------------------------------------------------------------------------------
     static final float LEFT = 90f, ROW_Y = 150f, HEAD = 52f, CARD_H = 440f, WIDE_W = 760f, POSTER_W = 280f, GAP = 16f,
             BLOCK = 700f, INFO = 46f, STORY = 76f, STORY_W = 840f, CARD_R = 18f;
-    static final float HERO_T = 150f, HERO_W = 1500f, HERO_H = 580f, HERO_GAP = 30f, HERO_R = 40f, DOTS_Y = 762f, FIRST_ROW = 806f;
+    /**
+     * The carousel: ONE card across the page (the family: "the top card carousel should be one card that goes
+     * automatically or I can scroll through"), nothing of the next peeking at its side; a move slides the old card out a
+     * screen's width (HERO_TRAVEL) as the new one slides in (Lite: one cross-fades into the other), the dots under it.
+     */
+    static final float HERO_T = 150f, HERO_W = 1920f - 2 * LEFT, HERO_H = 580f, HERO_TRAVEL = 1920f, HERO_R = 40f, DOTS_Y = 762f,
+            FIRST_ROW = 806f;
     /**
      * The boxes a title's logo (TMDB's title art) is fitted inside, whole and at its own shape, never cropped (Pics.FIT,
      * drawn at its own pixels, as the cover page draws it): the carousel's, at the foot left of its words, and a wide
@@ -132,7 +139,10 @@ final class Editorial extends View {
     private final List<Card> hero = new ArrayList<>();
     private final List<Row> rows = new ArrayList<>();
     private int heroAt, row, area = HERO;
-    private final Glide y = new Glide(DOWN_MS), heroX = new Glide(HERO_MS);
+    private final Glide y = new Glide(DOWN_MS);
+    /** The carousel's move: 0 to 100 of the way from the card it left (heroWas, -1: none) to heroAt, in heroDir. */
+    private final Glide heroSlide = new Glide(HERO_MS, 100f);
+    private int heroWas = -1, heroDir = 1, heroDrawn;
     /** The card growing in the remote's row (0 to 100 of the way to wide), and the one shrinking back (100 to 0). */
     private final Glide grow = new Glide(GROW_MS, 100f), shrink = new Glide(GROW_MS, 100f);
     private Card growing, shrinking;
@@ -153,8 +163,8 @@ final class Editorial extends View {
     private Object wordsKey;
     private String note = "", noteWhy = "";
 
-    private final TextPaint headP, quietHead, lineP, scoreP, storyP, heroStoryP, kickP, nameP, chipP, peekP, noteP, whyP;
-    private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), edge = new Paint(Paint.ANTI_ALIAS_FLAG), dim = new Paint(Paint.ANTI_ALIAS_FLAG),
+    private final TextPaint headP, quietHead, lineP, scoreP, storyP, heroStoryP, kickP, nameP, chipP, noteP, whyP;
+    private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), edge = new Paint(Paint.ANTI_ALIAS_FLAG),
             shade = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG), foot = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG),
             cardFoot = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG), thumbP = new Paint(Paint.ANTI_ALIAS_FLAG),
             chipFill = new Paint(Paint.ANTI_ALIAS_FLAG), frame = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -176,12 +186,9 @@ final class Editorial extends View {
         nameP = Type.paint(26f, Type.BOLD, Look07.L1);
         nameP.setShadowLayer(Ui.f(10f), 0, Ui.f(2f), 0x99000000);
         chipP = Type.paint(17f, Type.BOLD, Look07.L1);
-        peekP = Type.paint(30f, Type.BOLD, Look07.L1);
-        peekP.setShadowLayer(Ui.f(14f), 0, Ui.f(2f), 0x99000000);
         noteP = Type.paint(Type.H2, Type.BOLD, Look07.L1);
         whyP = Type.paint(Type.SUB, Type.MEDIUM, Look07.L2);
         edge.setStyle(Paint.Style.STROKE);
-        dim.setColor(0x59000000);
         frame.setColor(Look07.CARD_FRAME);
         chipFill.setColor(0xB3000000);
         thumbP.setColor(Look07.GREEN);
@@ -236,10 +243,11 @@ final class Editorial extends View {
     boolean trailerSpot(RectF out) {
         if (active && area == HERO) {
             // The carousel's card, once it has slid into place: its trailer plays behind its words.
-            if (heroAt >= hero.size() || Math.abs(heroX.value() + heroAt * (HERO_W + HERO_GAP)) > 0.5f || Math.abs(y.value()) > 0.5f) {
+            if (heroAt >= hero.size() || heroSliding() || Math.abs(y.value()) > 0.5f) {
                 return false;
             }
-            float g = 1f + 0.018f * Math.max(0f, Math.min(1f, heroLift.of(hero.get(heroAt))));
+            // As lifted once it has settled (the remote has rested there long before a trailer starts): steady.
+            float g = 1.018f;
             float x = Ui.f(LEFT), top = Ui.f(HERO_T), w = Ui.f(HERO_W), h = Ui.f(HERO_H);
             out.set(x + w / 2f - w * g / 2f, top + h / 2f - h * g / 2f, x + w / 2f + w * g / 2f, top + h / 2f + h * g / 2f);
             return true;
@@ -248,7 +256,8 @@ final class Editorial extends View {
         Card on = rw == null ? null : focusCard();
         if (on == null || on != growing || grow.value() < 99.5f || shrinking != null && shrink.value() > 0.5f) return false;
         if (Math.abs(y.value() - rise(row)) > 0.5f || Math.abs(rw.x.value() - target(rw)) > 0.5f) return false;
-        float g = 1f + 0.02f * Math.max(0f, Math.min(1f, cardLift.of(on)));
+        // As lifted once it has settled (a trailer starts long after): the window steady, never following the spring.
+        float g = 1.02f;
         float x = Ui.f(LEFT), top = Ui.f(top(row) + HEAD) - Ui.f(y.value()), w = Ui.f(WIDE_W), h = Ui.f(CARD_H);
         out.set(x, top + h / 2f - h * g / 2f, x + w * g, top + h / 2f + h * g / 2f);
         return true;
@@ -275,10 +284,10 @@ final class Editorial extends View {
         }
         hero.clear();
         hero.addAll(carousel);
-        for (Card c : hero) if (c.shortName.isEmpty()) c.shortName = Ui.fit(c.name, peekP, Ui.f(250f));
         heroAt = 0;
         for (int i = 0; i < hero.size() && heroWas != null; i++) if (key(hero.get(i)).equals(heroWas)) heroAt = i;
-        heroX.jump(-heroAt * (HERO_W + HERO_GAP));
+        heroWas = -1;
+        heroSlide.jump(100f);
         List<Row> before = new ArrayList<>(rows);
         rows.clear();
         rows.addAll(list);
@@ -418,11 +427,11 @@ final class Editorial extends View {
             switch (code) {
                 case KeyEvent.KEYCODE_DPAD_LEFT:
                     // By hand: as far as its ends (its own steps go round), and its own steps wait.
-                    if (heroAt > 0) toHero(heroAt - 1);
+                    if (heroAt > 0) toHero(heroAt - 1, -1);
                     if (host != null) host.heroMoved();
                     return true;
                 case KeyEvent.KEYCODE_DPAD_RIGHT:
-                    if (heroAt < hero.size() - 1) toHero(heroAt + 1);
+                    if (heroAt < hero.size() - 1) toHero(heroAt + 1, 1);
                     if (host != null) host.heroMoved();
                     return true;
                 case KeyEvent.KEYCODE_DPAD_UP:
@@ -464,10 +473,20 @@ final class Editorial extends View {
         }
     }
 
-    private void toHero(int i) {
+    /** To another of the carousel's titles, the old card going out on the side away from dir (+1: on, -1: back). */
+    private void toHero(int i, int dir) {
+        if (i == heroAt) return;
+        heroWas = heroAt;
         heroAt = i;
-        heroX.to(-heroAt * (HERO_W + HERO_GAP));
+        heroDir = dir;
+        heroSlide.jump(0f);
+        heroSlide.to(100f);
         told(true);
+    }
+
+    /** Whether the carousel's card is still on its way in. */
+    private boolean heroSliding() {
+        return heroWas >= 0 && heroSlide.value() < 99.5f;
     }
 
     /**
@@ -477,13 +496,18 @@ final class Editorial extends View {
      */
     boolean heroNext() {
         if (!heroInSight() || hero.size() < 2) return false;
-        toHero((heroAt + 1) % hero.size());
+        toHero((heroAt + 1) % hero.size(), 1);
         return true;
     }
 
     /** Whether the carousel is what the page shows (the remote on it, or on the tab bar over it): not risen to the rows. */
     boolean heroInSight() {
         return !hero.isEmpty() && area == HERO && Math.abs(y.value()) < 0.5f;
+    }
+
+    /** Tests: how many of the carousel's cards the last frame drew (one at rest, two while one slides in). */
+    int previewHeroDrawn() {
+        return heroDrawn;
     }
 
     /** Tests: the carousel's title art (or its name), as last drawn. */
@@ -549,7 +573,8 @@ final class Editorial extends View {
             if (hero.isEmpty()) return;
             area = HERO;
             heroAt = Math.max(0, Math.min(i, hero.size() - 1));
-            heroX.jump(-heroAt * (HERO_W + HERO_GAP));
+            heroWas = -1;
+            heroSlide.jump(100f);
             y.jump(0f);
         } else {
             if (rowIndex >= rows.size()) return;
@@ -603,7 +628,7 @@ final class Editorial extends View {
         int w = getWidth(), h = getHeight();
         boolean moving = ground.draw(c, w, h);
         moving |= y.step();
-        moving |= heroX.step();
+        moving |= heroSlide.step();
         moving |= grow.step();
         moving |= shrink.step();
         Card on = active && area == ROWS ? focusCard() : null;
@@ -643,15 +668,21 @@ final class Editorial extends View {
     // ---- the carousel -------------------------------------------------------------------------------------------------
 
     private void drawHero(Canvas c, int screenW, int alpha, int words) {
-        float cw = Ui.f(HERO_W), ch = Ui.f(HERO_H), stepX = Ui.f(HERO_W + HERO_GAP), top = Ui.f(HERO_T);
-        float x0 = Ui.f(LEFT) + Ui.f(heroX.value());
-        int first = Math.max(0, (int) Math.floor(-x0 / stepX) - 1), last = Math.min(hero.size() - 1, (int) Math.ceil((screenW - x0) / stepX));
-        for (int k = first; k <= last; k++) {
-            float x = x0 + k * stepX;
-            if (x > screenW || x + cw < 0 || k == heroAt) continue;
-            heroCard(c, hero.get(k), x, top, cw, ch, false, alpha, words);
+        float cw = Ui.f(HERO_W), ch = Ui.f(HERO_H), travel = Ui.f(HERO_TRAVEL), top = Ui.f(HERO_T), left = Ui.f(LEFT);
+        heroDrawn = 0;
+        if (heroAt < hero.size()) {
+            // One card: the one in front; while it comes, the one it left going (no other card is ever drawn).
+            boolean going = heroSliding() && heroWas < hero.size() && heroWas != heroAt;
+            float k = going ? Math.max(0f, Math.min(1f, heroSlide.value() / 100f)) : 1f;
+            if (Motion.lite()) {
+                // Lite: one cross-fades into the other in place, nothing sliding.
+                if (going) heroCard(c, hero.get(heroWas), left, top, cw, ch, false, Math.round(alpha * (1f - k)), words);
+                heroCard(c, hero.get(heroAt), left, top, cw, ch, true, going ? Math.round(alpha * k) : alpha, words);
+            } else {
+                if (going) heroCard(c, hero.get(heroWas), left - heroDir * k * travel, top, cw, ch, false, alpha, words);
+                heroCard(c, hero.get(heroAt), left + heroDir * (1f - k) * travel, top, cw, ch, true, alpha, words);
+            }
         }
-        if (heroAt < hero.size()) heroCard(c, hero.get(heroAt), x0 + heroAt * stepX, top, cw, ch, true, alpha, words);
         // Its dots, on glass under it.
         int n = Math.min(hero.size(), 12);
         if (n > 1) {
@@ -675,6 +706,7 @@ final class Editorial extends View {
 
     /** One carousel card at (x, y); the remote's (here) with its words and View Details. */
     private void heroCard(Canvas c, Card card, float x, float y, float w, float h, boolean here, int alpha, int words) {
+        heroDrawn++;
         float rad = Ui.f(HERO_R);
         float up = here ? Math.max(0f, Math.min(1.1f, heroLift.of(card))) : 0f;
         c.save();
@@ -693,13 +725,7 @@ final class Editorial extends View {
             c.drawRoundRect(0, 0, w, h, rad, rad, fill);
         }
         if (!here) {
-            // The cards either side: quieter, so the eye stays on the remote's; the next one's name at its foot.
-            dim.setAlpha(0x59 * alpha / 255);
-            c.drawRoundRect(0, 0, w, h, rad, rad, dim);
-            if (!card.shortName.isEmpty()) {
-                peekP.setAlpha(alpha);
-                c.drawText(card.shortName, Ui.f(40f), h - Ui.f(46f), peekP);
-            }
+            // The card going out: its picture alone (its words went with it).
             c.restore();
             return;
         }
@@ -791,8 +817,7 @@ final class Editorial extends View {
         @Override protected void onDraw(Canvas c) {
             if (!heroTrailer || area != HERO || heroAt >= hero.size()) return;
             Card card = hero.get(heroAt);
-            float w = Ui.f(HERO_W), h = Ui.f(HERO_H), x = Ui.f(LEFT) + Ui.f(heroX.value()) + heroAt * Ui.f(HERO_W + HERO_GAP),
-                    y = Ui.f(HERO_T) - Ui.f(Editorial.this.y.value());
+            float w = Ui.f(HERO_W), h = Ui.f(HERO_H), x = Ui.f(LEFT), y = Ui.f(HERO_T) - Ui.f(Editorial.this.y.value());
             float up = Math.max(0f, Math.min(1.1f, heroLift.of(card)));
             c.save();
             if (up > 0.001f) c.scale(1f + 0.018f * up, 1f + 0.018f * up, x + w / 2f, y + h / 2f);

@@ -57,22 +57,24 @@ wordmark are Homefield; it carries no Sky logo or name.
   its poster into a wide card (its backdrop, TMDB's logo or its name, how far it was watched and its episode), the one
   it left shrinking back as the row slides it to the left (Lite: no cross-fade of the pictures); under the row its score,
   year, genre and length, and three lines of its story; the next row dimmed under it. Down past the last row goes back
-  to the first; Back goes up to the tab bar. When the remote rests on a title in a row (about a second and a half; two
-  and a half on the Lite motion tier), its trailer plays inside the wide card ("Can you implement trailers to
-  automatically play over a poster when I'm on it"): TMDB's trailers for it (the official trailer, then a teaser, the
+  to the first; Back goes up to the tab bar. When the remote rests on a title in a row for 3 seconds (on every motion
+  tier: "put trailers of what panel I'm on after 3 seconds"), its trailer plays inside the wide card ("Can you implement
+  trailers to automatically play over a poster when I'm on it"): TMDB's trailers for it (the official trailer, then a teaser, the
   family's language first) or the playlist's own, on YouTube's own embedded player (no controls, muted unless Settings
   say otherwise) in one WebView kept for the app; the card's picture cross-fades to the video once it is playing (Lite:
   no cross-fade) and back as the remote moves on or the trailer ends. One that won't play (embedding turned off, an
   error, nothing within four seconds) is let go quietly for the next, or the poster stays; nothing is ever said on
   screen. It stops at once as the remote moves, goes up to the tab bar or anything comes over the page, and the player
   is let go of whole when the app is left, so nothing plays in the background. Home, Movies and TV Shows each open on a
-  carousel of featured titles ("a carousel of titles that I can move myself and will move automatically"): what is
-  trending today with what the playlists added this week (refreshed with the rows), the next title peeking in, its
-  facts, View Details and small page dots under it. It moves on by itself every 7 seconds (the page's picture
-  cross-fading, the card and its words sliding in), from its last back round to its first, while it is what the page
+  carousel of featured titles ("the top card carousel should be one card that goes automatically or I can scroll
+  through"): what is trending today with what the playlists added this week (refreshed with the rows), ONE card across
+  the page with nothing of the next at its side, its facts, View Details and small page dots under it. It moves on by
+  itself every 7 seconds (the page's picture cross-fading, the old card sliding out as the new one and its words slide
+  in; on the Lite tier the cards cross-fade instead), from its last back round to its first, while it is what the page
   shows (the remote on it, or up on the tab bar over it), never while the remote is in the rows below; Left and Right
-  move it by hand, as far as its ends, and hold its own steps for 15 seconds. On a title the remote rests on, its
-  trailer plays behind the card's words, as in a poster, and the carousel waits while it does. OK opens a title's page, whose buttons are then a menu down the left: Play (or Resume), Trailer, More
+  move it by hand, as far as its ends, and hold its own steps for 15 seconds. On a title the remote rests on for 3
+  seconds, its trailer plays behind the card's words, as in a poster; the carousel waits while it does and moves on 2
+  seconds after it ends (or as the remote moves it). OK opens a title's page, whose buttons are then a menu down the left: Play (or Resume), Trailer, More
   episodes, Add to My List, More like this. Settings › Appearance › Home style: Classic brings back Home's one big card
   at a time and Movies' and TV Shows' pills.
 

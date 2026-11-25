@@ -56,8 +56,8 @@ import java.util.Set;
  * automatically") is its featured titles from the living rows (what is trending today with what the playlists added this
  * week, refreshed with the rows): it moves on by itself every AUTO_MS while it is what the page shows (the remote on it,
  * or up on the tab bar over it), never while the remote is in the rows; a move by hand (Left or Right, as far as its
- * ends) holds it PAUSE_MS; and on a title the remote rests on its trailer may play behind its words, as on a poster,
- * holding it while it plays.
+ * ends) holds it PAUSE_MS; and on a title the remote rests on its trailer plays behind its words after 3 s, as on a
+ * poster, holding it while it plays and moving on AFTER_MS once it is over.
  */
 final class EditorialPage implements Editorial.Host, Trailer.Host {
     /** The TMDB rows asked for as the page opens, and how far past the remote's row they are asked for. */
@@ -153,6 +153,14 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
 
     @Override public void heroMoved() {
         autoIn(PAUSE_MS);
+    }
+
+    /** How soon the carousel moves on once the trailer that held it is over. */
+    static final long AFTER_MS = 2000;
+
+    /** A carousel card's trailer over (it ended, or none of its trailers would play): on to the next shortly after. */
+    @Override public void finished(boolean played) {
+        if (played && view != null && view.heroInSight()) autoIn(AFTER_MS);
     }
 
     /** The carousel's next own step a full AUTO_MS after a title comes to its front (by hand: heroMoved, after this). */

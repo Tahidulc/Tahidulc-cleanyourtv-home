@@ -39,7 +39,7 @@ import java.util.List;
 
 /**
  * A trailer in the poster the remote rests on (Home, Movies and TV Shows), with YouTube's player stood in for: nothing
- * until the remote has rested (1.5 s; longer on Lite), then its best trailer; the card's picture gives way only once it
+ * until the remote has rested (3 s, the same on Lite), then its best trailer; the card's picture gives way only once it
  * really plays; Right (or up to the tab bar, or the page going) stops it at once; one that fails or never starts is let
  * go for the next, and none left leaves the poster quietly; Trailers off in Settings: none; the app out of sight: the
  * player let go of whole.
@@ -245,15 +245,16 @@ public class TrailerTest {
         idle(50);
     }
 
-    @Test public void liteRestsLongerSoundAndOffAreTheSettings() {
+    @Test public void threeSecondsOnEveryTierSoundAndOffAreTheSettings() {
+        assertEquals("the family: \"after 3 seconds\"", 3000L, Trailer.REST_MS);
         EditorialPage home = home();
-        // Lite (as Settings' Animations would have it): the next card rests longer.
+        // Lite (as Settings' Animations would have it): the same 3 s.
         Motion.force(true);
         press(KeyEvent.KEYCODE_DPAD_RIGHT);
         draw(home);
-        idle(Trailer.REST_MS + 100);
-        assertTrue("Lite: not yet", stub.played.isEmpty());
-        idle(Trailer.REST_LITE_MS - Trailer.REST_MS);
+        idle(Trailer.REST_MS - 300);
+        assertTrue("Lite: not before 3 s", stub.played.isEmpty());
+        idle(400);
         assertEquals(1, stub.played.size());
         Motion.force(false);
         // Sound on in Settings: with its sound.

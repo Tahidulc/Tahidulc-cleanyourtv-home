@@ -24,8 +24,9 @@ import java.util.List;
 
 /**
  * A title's trailer playing in the poster card the remote rests on, on the Editorial Home, Movies and TV Shows: "Can you
- * implement trailers to automatically play over a poster when I'm on it". Once the remote has rested on a card for
- * REST_MS (REST_LITE_MS on the Lite motion tier) and the card has grown into its wide picture, its trailer plays inside
+ * implement trailers to automatically play over a poster when I'm on it"; "put trailers of what panel I'm on after 3
+ * seconds"). Once the remote has rested on a card for REST_MS (3 s, on every motion tier) and the card has grown into its
+ * wide picture (or the carousel's card has slid in), its trailer plays inside
  * the card, muted unless Settings › Appearance › Home says Sound on; the card's picture cross-fades to the video once it
  * is really playing (Lite: no cross-fade) and back as the remote moves on or the trailer ends. On the carousel the window
  * goes under its words (under()), so the trailer plays behind them.
@@ -76,10 +77,13 @@ final class Trailer {
 
         /** A trailer is now shown in the card (true), or no longer is (false). */
         void showing(boolean on);
+
+        /** The card's trailer is over (it ended, or none would play); played: one was tried. Not when the remote moved. */
+        void finished(boolean played);
     }
 
     /** How long the remote rests before its trailer starts (Full, Lite), how long it may take to start, the watch. */
-    static final long REST_MS = 1500, REST_LITE_MS = 2500, START_MS = 4000, WATCH_MS = 400, FADE_IN_MS = 320, FADE_OUT_MS = 180;
+    static final long REST_MS = 3000, START_MS = 4000, WATCH_MS = 400, FADE_IN_MS = 320, FADE_OUT_MS = 180;
     /** At most this many of a title's trailers are tried. */
     static final int TRIES = 3;
     /** Where it is with the card the remote is on. */
@@ -105,6 +109,8 @@ final class Trailer {
     private int tried, state = IDLE;
     /** Its rest was over before its trailers were known: it starts as they come. */
     private boolean due;
+    /** One of the card's trailers was tried (asked of the player). */
+    private boolean played;
     private final Runnable start = this::start, timeout = this::timedOut, watch = this::watch;
     private final Listener listener = new Listener() {
         @Override public void playing() {
@@ -123,6 +129,7 @@ final class Trailer {
                 h.removeCallbacks(watch);
                 state = DONE;
                 hide(true);
+                host.finished(true);
             }
         }
     };
@@ -149,7 +156,8 @@ final class Trailer {
         due = false;
         if (!TrailerPrefs.on(tv)) return;
         state = RESTING;
-        h.postDelayed(start, Motion.lite() ? REST_LITE_MS : REST_MS);
+        played = false;
+        h.postDelayed(start, REST_MS);
     }
 
     /** A card's trailers (YouTube keys, best first; empty: none), as they become known. */
@@ -221,6 +229,7 @@ final class Trailer {
         }
         place(p);
         state = LOADING;
+        played = true;
         p.play(keys.get(tried), TrailerPrefs.sound(tv));
         h.postDelayed(timeout, START_MS);
         h.removeCallbacks(watch);
@@ -254,6 +263,7 @@ final class Trailer {
         if (player != null && (state == LOADING || state == SHOWN)) player.stop();
         state = DONE;
         hide(false);
+        host.finished(played);
     }
 
     /** While one plays: still allowed, and the card still where it was? Else it goes. */

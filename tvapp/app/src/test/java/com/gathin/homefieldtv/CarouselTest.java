@@ -53,6 +53,7 @@ public class CarouselTest {
     @After public void after() {
         EditorialPageTest.drain();
         Trailer.standIn = null;
+        Motion.force(false);
         if (tv != null) tv.pause().stop().destroy();
         tv = null;
         EditorialData.clear();
@@ -172,8 +173,48 @@ public class CarouselTest {
         idle(EditorialPage.AUTO_MS * 2);
         assertEquals("held while its trailer plays", 0, view.heroAt());
         // The trailer ends: the poster back, and on it goes.
+        // The trailer ends: the poster back, and on it goes shortly after.
         stub.l.ended();
-        idle(EditorialPage.AUTO_MS + 100);
+        idle(EditorialPage.AFTER_MS + 100);
         assertEquals(1, view.heroAt());
+    }
+
+    /** The page drawn once (its glides stepped as far as the clock has gone). */
+    private static void drawOnce(Editorial view) {
+        android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(1920, 1080, android.graphics.Bitmap.Config.ARGB_8888);
+        view.draw(new android.graphics.Canvas(b));
+        b.recycle();
+    }
+
+    /** Frames drawn a sixtieth of a second apart, as on screen (the glides stepped through). */
+    private static void frames(Editorial view, int n) {
+        for (int i = 0; i < n; i++) {
+            idle(16);
+            drawOnce(view);
+        }
+    }
+
+    @Test public void oneCardAcrossThePageNothingOfTheNextAtItsSide() {
+        Editorial view = home(null);
+        assertEquals("one card across the page", 1920f - 2 * Editorial.LEFT, Editorial.HERO_W, 0.01f);
+        drawOnce(view);
+        assertEquals("at rest: the one card alone", 1, view.previewHeroDrawn());
+        // Moving on: the old card slides out as the new one slides in, then the new one alone.
+        Exec.inline = false;
+        press(KeyEvent.KEYCODE_DPAD_RIGHT);
+        drawOnce(view);
+        assertEquals("while it slides: the one going and the one coming", 2, view.previewHeroDrawn());
+        frames(view, 60);
+        assertEquals(1, view.previewHeroDrawn());
+        // Lite: the two cross-fade in place, then the new one alone.
+        Motion.force(true);
+        press(KeyEvent.KEYCODE_DPAD_RIGHT);
+        drawOnce(view);
+        assertEquals(2, view.previewHeroDrawn());
+        frames(view, 60);
+        assertEquals(1, view.previewHeroDrawn());
+        Motion.force(false);
+        Exec.inline = true;
+        assertEquals(2, view.heroAt());
     }
 }
