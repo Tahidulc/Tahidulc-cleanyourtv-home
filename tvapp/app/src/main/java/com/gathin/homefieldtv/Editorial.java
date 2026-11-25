@@ -3,9 +3,11 @@ package com.gathin.homefieldtv;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.ComposeShader;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.graphics.PorterDuff;
 import android.graphics.RectF;
 import android.graphics.Shader;
 import android.os.SystemClock;
@@ -37,8 +39,16 @@ import java.util.List;
  * score, year, genre, age and length, its story and View Details; Left and Right along it as far as its ends, and its own
  * steps (heroNext, timed by EditorialPage) on round from its last to its first while it is in sight, the old card sliding
  * out as the new one slides in (Lite: cross-fading). Over the page's own blurred picture (Ground). Only what is in sight
- * is drawn; nothing is made while drawing but a card's words as it comes into focus. Once the remote's wide card has settled, its trailer may play in it
+ * is drawn; nothing is made while drawing but a card's words as they first show. Once the remote's wide card has settled, its trailer may play in it
  * (EditorialPage's Trailer, in a window over the card where trailerSpot says it is).
+ *
+ * <p>A frame is kept light for a slow graphics chip, the look as it was: the page's ground is one layer, also while it
+ * cross-fades (Ground); a poster that hides the card's frame is drawn without the frame under it; a grown card's foot and
+ * the carousel card's shade and foot go with their picture in one draw (Composed); under a card drawn whole the shadow's
+ * middle it hides is left out (Shadows.underSolid). A direction held down (its repeats): the remote moves on with each
+ * repeat, nothing is read for the titles it only passes (their backdrops, the page's picture, the read-ahead: the host is
+ * told once it lands), and once it is let go the row or the page lands at once (Glide.land) rather than gliding on after
+ * the remote; the carousel takes a held key's next step once its slide is nearly in (HERO_HELD), never piling slides up.
  */
 final class Editorial extends View {
     interface Host {
@@ -62,6 +72,12 @@ final class Editorial extends View {
 
         /** The remote is near the end of a row whose source has more (a TMDB row's next page). */
         void more(Row row);
+
+        /**
+         * A held key let go (no repeat for HOLD_GAP): the remote's card is where it landed. While a key is held the
+         * pictures the remote passes are not read (focused tells the host of each card; holding() is true meanwhile).
+         */
+        void landed(Row row, Card card);
     }
 
     /** Where the remote is: the carousel, the rows. */
@@ -135,6 +151,13 @@ final class Editorial extends View {
     static final int DIM = 107;
     /** How long the page takes to rise to a row, the carousel to slide, a card to grow, the words to come in after. */
     static final long DOWN_MS = 380, HERO_MS = 420, GROW_MS = 300, WORDS_DELAY = 110, WORDS_MS = 340;
+    /**
+     * A key held (its repeats, 20 a second): let go once no repeat has come for HOLD_GAP; the row (or the page) then
+     * lands within LAND_MS from wherever its glide had got to, at its own speed (nothing glides on after the remote). The
+     * carousel takes a held key's next step only once its slide is HERO_HELD of the way in (never a backlog of slides).
+     */
+    static final long HOLD_GAP = 130, LAND_MS = 110;
+    static final float HERO_HELD = 96f;
 
     private final List<Card> hero = new ArrayList<>();
     private final List<Row> rows = new ArrayList<>();
@@ -171,6 +194,15 @@ final class Editorial extends View {
     private final Path thumb = new Path();
     private final RectF r = new RectF();
     private final Runnable redraw = this::invalidate;
+    /** A key is held (its repeats coming): the pictures passed are not read, the glides land once it is let go. */
+    private boolean holding;
+    private final Runnable letGo = this::letGo;
+    /** The pictures with what is drawn over them as one shader (a wide card's foot, the carousel's shade and foot). */
+    private final Composed overWide = new Composed(), overHero = new Composed();
+    private Shader wideFootPx, heroShadePx;
+    private float wideFootFor = -1f, heroShadeFor = -1f;
+    /** The words under the remote's row laid out when they are first drawn (none made while a key is held). */
+    private boolean storyDue;
 
     Editorial(Context c) {
         super(c);
@@ -423,15 +455,31 @@ final class Editorial extends View {
     // ---- the remote ---------------------------------------------------------------------------------------------
 
     boolean key(int code) {
+        return key(code, 0);
+    }
+
+    /**
+     * A key, its repeat count as the remote's KeyEvent has it (0: pressed; 1 on: held). Held, the remote moves on each
+     * repeat (the carousel once its slide is nearly in), the pictures it passes are not read, and once it is let go the
+     * row or the page lands at once (letGo).
+     */
+    boolean key(int code, int repeat) {
+        boolean arrow = code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT || code == KeyEvent.KEYCODE_DPAD_UP
+                || code == KeyEvent.KEYCODE_DPAD_DOWN;
+        if (arrow) {
+            removeCallbacks(letGo);
+            holding = repeat > 0 && !Exec.inline;
+            if (holding) postDelayed(letGo, HOLD_GAP);
+        }
         if (area == HERO) {
             switch (code) {
                 case KeyEvent.KEYCODE_DPAD_LEFT:
                     // By hand: as far as its ends (its own steps go round), and its own steps wait.
-                    if (heroAt > 0) toHero(heroAt - 1, -1);
+                    if (heroAt > 0 && heroMay(repeat)) toHero(heroAt - 1, -1);
                     if (host != null) host.heroMoved();
                     return true;
                 case KeyEvent.KEYCODE_DPAD_RIGHT:
-                    if (heroAt < hero.size() - 1) toHero(heroAt + 1, 1);
+                    if (heroAt < hero.size() - 1 && heroMay(repeat)) toHero(heroAt + 1, 1);
                     if (host != null) host.heroMoved();
                     return true;
                 case KeyEvent.KEYCODE_DPAD_UP:
@@ -473,15 +521,46 @@ final class Editorial extends View {
         }
     }
 
+    /** Whether a key's repeat may move the carousel now: a press always; held, once its slide is nearly in. */
+    private boolean heroMay(int repeat) {
+        return repeat <= 0 || !heroSliding() || heroSlide.value() >= HERO_HELD;
+    }
+
     /** To another of the carousel's titles, the old card going out on the side away from dir (+1: on, -1: back). */
     private void toHero(int i, int dir) {
         if (i == heroAt) return;
+        // Nearly in (the one before it gone from sight): it goes on from just where it is, as the one going (no jump).
+        float from = 0f;
+        if (heroSliding() && heroSlide.value() >= HERO_HELD) from = (dir == heroDir ? -1f : 1f) * (100f - heroSlide.value());
         heroWas = heroAt;
         heroAt = i;
         heroDir = dir;
-        heroSlide.jump(0f);
+        heroSlide.jump(from);
         heroSlide.to(100f);
         told(true);
+    }
+
+    /** No repeat for HOLD_GAP: the held key was let go. The glide lands; the host told where the remote is. */
+    private void letGo() {
+        if (!holding) return;
+        holding = false;
+        Row rw = area == ROWS ? current() : null;
+        if (rw != null) rw.x.land(LAND_MS);
+        y.land(LAND_MS);
+        Card c = card();
+        if (host != null && c != null) host.landed(rw, c);
+        invalidate();
+    }
+
+    @Override protected void onDetachedFromWindow() {
+        super.onDetachedFromWindow();
+        removeCallbacks(letGo);
+        holding = false;
+    }
+
+    /** Whether a key is held now (its repeats coming): nothing the remote passes is read meanwhile. */
+    boolean holding() {
+        return holding;
     }
 
     /** Whether the carousel's card is still on its way in. */
@@ -508,6 +587,27 @@ final class Editorial extends View {
     /** Tests: how many of the carousel's cards the last frame drew (one at rest, two while one slides in). */
     int previewHeroDrawn() {
         return heroDrawn;
+    }
+
+    /** Tests: how many times a wide card's backdrop was asked for and not there yet (read). */
+    int widesAsked;
+
+    /** Tests: the page's picture (Ground), where the carousel's slide is (0 to 100), the remote's row's glide. */
+    String previewGround() {
+        return ground.url();
+    }
+
+    float previewHeroSlide() {
+        return heroSlide.value();
+    }
+
+    Glide previewRowGlide() {
+        Row rw = current();
+        return rw == null ? null : rw.x;
+    }
+
+    Glide previewPageGlide() {
+        return y;
     }
 
     /** Tests: the carousel's title art (or its name), as last drawn. */
@@ -673,14 +773,15 @@ final class Editorial extends View {
         if (heroAt < hero.size()) {
             // One card: the one in front; while it comes, the one it left going (no other card is ever drawn).
             boolean going = heroSliding() && heroWas < hero.size() && heroWas != heroAt;
-            float k = going ? Math.max(0f, Math.min(1f, heroSlide.value() / 100f)) : 1f;
+            // (Below 0 at first when a held key's step went on from a card nearly in: the one going starts where it was.)
+            float at = going ? Math.min(1f, heroSlide.value() / 100f) : 1f, k = Math.max(0f, at);
             if (Motion.lite()) {
                 // Lite: one cross-fades into the other in place, nothing sliding.
                 if (going) heroCard(c, hero.get(heroWas), left, top, cw, ch, false, Math.round(alpha * (1f - k)), words);
                 heroCard(c, hero.get(heroAt), left, top, cw, ch, true, going ? Math.round(alpha * k) : alpha, words);
             } else {
-                if (going) heroCard(c, hero.get(heroWas), left - heroDir * k * travel, top, cw, ch, false, alpha, words);
-                heroCard(c, hero.get(heroAt), left + heroDir * (1f - k) * travel, top, cw, ch, true, alpha, words);
+                if (going) heroCard(c, hero.get(heroWas), left - heroDir * at * travel, top, cw, ch, false, alpha, words);
+                heroCard(c, hero.get(heroAt), left + heroDir * (1f - at) * travel, top, cw, ch, true, alpha, words);
             }
         }
         // Its dots, on glass under it.
@@ -713,10 +814,16 @@ final class Editorial extends View {
         if (up > 0.001f) c.scale(1f + 0.018f * up, 1f + 0.018f * up, x + w / 2f, y + h / 2f);
         r.set(x, y, x + w, y + h);
         Bitmap b = card.wide.isEmpty() ? null : Pics.get(card.wide, Math.round(w), Math.round(h), Pics.FACE, redraw);
-        Shadows.under(c, r, rad, Look07.SH_HERO, (here ? 0.7f + 0.3f * Math.min(1f, up) : 0.5f) * alpha / 255f);
+        float k = (here ? 0.7f + 0.3f * Math.min(1f, up) : 0.5f) * alpha / 255f;
+        // Under a card drawn whole and opaque, the shadow's middle it hides is left out (only its foot shows past it).
+        if (alpha >= 255) Shadows.underSolid(c, r, rad, Look07.SH_HERO, k);
+        else Shadows.under(c, r, rad, Look07.SH_HERO, k);
         c.translate(x, y);
+        // The card in front, whole: its picture with its words' shade and its foot over it, in one draw.
+        boolean shaded = here && b != null && alpha >= 255 && Composed.able();
         if (b != null) {
             Paint p = shaders.paint(b, w, h, 0f);
+            if (shaded) p = overHero.paint(b, p, heroShade(w, h));
             p.setAlpha(alpha);
             c.drawRoundRect(0, 0, w, h, rad, rad, p);
             p.setAlpha(255);
@@ -729,27 +836,47 @@ final class Editorial extends View {
             c.restore();
             return;
         }
-        heroOver(c, card, w, h, up, alpha, words);
+        heroOver(c, card, w, h, up, alpha, words, !shaded);
         c.restore();
     }
 
     /**
-     * The carousel card's words over its picture (card px, at its top left): its words' shade, its foot, what it is, its
-     * mark, facts and story and View Details, and its edge as it lifts. Drawn again over its trailer (Over).
+     * The carousel card's shade and foot as one shader in its own px (w x h): the words' side deep on the left, clear by
+     * 64 % of its width, and its foot, as heroOver draws them (made when the size changes).
      */
-    private void heroOver(Canvas c, Card card, float w, float h, float up, int alpha, int words) {
+    private Shader heroShade(float w, float h) {
+        if (heroShadeFor != w * 10_000f + h) {
+            heroShadeFor = w * 10_000f + h;
+            Shader side = new LinearGradient(0, 0, w * 0.64f, 0, new int[]{0xF208080E, 0xD908080E, 0x6608080E, 0x0008080E},
+                    new float[]{0f, 0.35f, 0.7f, 1f}, Shader.TileMode.CLAMP);
+            Shader foot = new LinearGradient(0, 0, 0, h, new int[]{0x00000000, 0x00000000, 0xA6000000}, new float[]{0f, 0.45f, 1f},
+                    Shader.TileMode.CLAMP);
+            // The foot over the side's shade, as heroOver draws them.
+            heroShadePx = new ComposeShader(side, foot, PorterDuff.Mode.SRC_OVER);
+        }
+        return heroShadePx;
+    }
+
+    /**
+     * The carousel card's words over its picture (card px, at its top left): its words' shade and its foot (unless they
+     * were drawn with its picture), what it is, its mark, facts and story and View Details, and its edge as it lifts.
+     * Drawn again over its trailer (Over).
+     */
+    private void heroOver(Canvas c, Card card, float w, float h, float up, int alpha, int words, boolean shadeToo) {
         float rad = Ui.f(HERO_R);
         float fadeEnd = w * 0.64f;
-        shade.setAlpha(alpha);
-        foot.setAlpha(alpha);
-        c.save();
-        c.scale(fadeEnd, 1f);
-        c.drawRoundRect(0, 0, 1f, h, rad / fadeEnd, rad, shade);
-        c.restore();
-        c.save();
-        c.scale(w, h);
-        c.drawRoundRect(0, 0.45f, 1f, 1f, rad / w, rad / h, foot);
-        c.restore();
+        if (shadeToo) {
+            shade.setAlpha(alpha);
+            foot.setAlpha(alpha);
+            c.save();
+            c.scale(fadeEnd, 1f);
+            c.drawRoundRect(0, 0, 1f, h, rad / fadeEnd, rad, shade);
+            c.restore();
+            c.save();
+            c.scale(w, h);
+            c.drawRoundRect(0, 0.45f, 1f, 1f, rad / w, rad / h, foot);
+            c.restore();
+        }
         heroWords(card);
         int a = Math.min(alpha, words);
         if (a > 2) {
@@ -822,7 +949,7 @@ final class Editorial extends View {
             c.save();
             if (up > 0.001f) c.scale(1f + 0.018f * up, 1f + 0.018f * up, x + w / 2f, y + h / 2f);
             c.translate(x, y);
-            heroOver(c, card, w, h, up, 255, 255);
+            heroOver(c, card, w, h, up, 255, 255, true);
             c.restore();
         }
     }
@@ -944,9 +1071,25 @@ final class Editorial extends View {
         c.save();
         if (up > 0.001f) c.scale(1f + 0.02f * up, 1f + 0.02f * up, x, y + h / 2f);
         r.set(x, y, x + w, y + h);
-        if (a > 200) Shadows.under(c, r, rad, up > 0.001f ? Look07.SH_CARD_UP : Look07.SH_CARD, up > 0.001f ? Math.min(1f, up) : 1f);
+        if (a > 200) {
+            float[] spec = up > 0.001f ? Look07.SH_CARD_UP : Look07.SH_CARD;
+            float k = up > 0.001f ? Math.min(1f, up) : 1f;
+            // Whole and opaque: the shadow's middle under it left out (but for the foot of a lifted card's, showing past it).
+            if (a >= 255) Shadows.underSolid(c, r, rad, spec, k);
+            else Shadows.under(c, r, rad, spec, k);
+        }
         c.translate(x, y);
-        Bitmap wide = g > 0.001f && !card.wide.isEmpty() ? Pics.get(card.wide, Math.round(ww), Math.round(h), Pics.CROP, redraw) : null;
+        // A key held: the backdrops of the cards the remote passes are not read (only those read already are drawn);
+        // the one it lands on is, once it is let go.
+        Bitmap wide = null;
+        if (g > 0.001f && !card.wide.isEmpty()) {
+            if (holding) {
+                wide = Pics.cached(card.wide, Math.round(ww), Math.round(h), Pics.CROP);
+            } else {
+                wide = Pics.get(card.wide, Math.round(ww), Math.round(h), Pics.CROP, redraw);
+                if (wide == null) widesAsked++;
+            }
+        }
         Bitmap poster = (g < 0.999f || wide == null) && !card.poster.isEmpty()
                 ? Pics.get(card.poster, Math.round(pw), Math.round(h), Pics.CROP, redraw) : null;
         float posterA, wideA;
@@ -960,7 +1103,10 @@ final class Editorial extends View {
             posterA = poster == null ? 0f : wide == null ? 1f : 1f - g;
         }
         frame.setAlpha(a);
-        if (wideA < 0.999f) c.drawRoundRect(0, 0, w, h, rad, rad, frame);
+        // The frame shows only where the pictures over it let it: not under an opaque poster drawn whole at its own width.
+        boolean posterWhole = poster != null && !poster.hasAlpha() && a >= 255 && posterA >= 0.999f && wideA <= 0.001f
+                && Math.abs(w - pw) < 0.5f;
+        if (wideA < 0.999f && !posterWhole) c.drawRoundRect(0, 0, w, h, rad, rad, frame);
         if (posterA > 0.001f && poster != null) {
             // The poster at its own width, in the middle of the card as it grows.
             Paint p = shaders.paint(poster, pw, h, 0f);
@@ -977,9 +1123,12 @@ final class Editorial extends View {
             nameP.setAlpha(a);
             c.drawText(card.shortName, Ui.f(16f), h - Ui.f(24f), nameP);
         }
+        // Grown and whole: its backdrop with its foot darkened over it, in one draw.
+        boolean footed = wide != null && wideA >= 0.999f && a >= 255 && g >= 0.999f && Math.abs(w - ww) < 0.5f && Composed.able();
         if (wideA > 0.001f && wide != null) {
             // The backdrop at the wide card's width, its middle shown while it is narrower.
             Paint p = shaders.paint(wide, ww, h, 0f);
+            if (footed) p = overWide.paint(wide, p, wideFoot(h));
             p.setAlpha(Math.round(a * wideA));
             float dx = (w - ww) / 2f;
             c.save();
@@ -991,11 +1140,13 @@ final class Editorial extends View {
         if (g > 0.5f) {
             // The wide card: its foot darkened, its logo (or name), its episode.
             int ga = Math.round(a * Math.min(1f, (g - 0.5f) * 2f));
-            cardFoot.setAlpha(ga);
-            c.save();
-            c.scale(w, h);
-            c.drawRoundRect(0, 0, 1f, 1f, rad / w, rad / h, cardFoot);
-            c.restore();
+            if (!footed) {
+                cardFoot.setAlpha(ga);
+                c.save();
+                c.scale(w, h);
+                c.drawRoundRect(0, 0, 1f, 1f, rad / w, rad / h, cardFoot);
+                c.restore();
+            }
             Hero07.Mark m = markOf(card);
             float mh = m.height(redraw);
             m.draw(c, Ui.f(26f), h - Ui.f(card.progress >= 0f ? 40f : 28f) - mh, ga, redraw);
@@ -1009,6 +1160,16 @@ final class Editorial extends View {
             c.drawRoundRect(r, rad, rad, edge);
         }
         c.restore();
+    }
+
+    /** A wide card's foot as cardFoot draws it, in the card's own px (h tall): made when the size changes. */
+    private Shader wideFoot(float h) {
+        if (wideFootFor != h) {
+            wideFootFor = h;
+            wideFootPx = new LinearGradient(0, 0, 0, h, new int[]{0x00000000, 0x00000000, 0xB3000000}, new float[]{0f, 0.5f, 1f},
+                    Shader.TileMode.CLAMP);
+        }
+        return wideFootPx;
     }
 
     /** "S2:E4" on a dark chip at the wide card's foot right. */
@@ -1050,9 +1211,15 @@ final class Editorial extends View {
                 a = Exec.inline ? a : 0;
                 invalidate();
             }
-            story = card.story.isEmpty() ? null : Hero07.lines(card.story, storyP, Ui.px(STORY_W), 3, Ui.f(24f * 1.4f));
+            // Laid out as they are first drawn (a held key passing titles lays out none of them).
+            story = null;
+            storyDue = true;
         }
         if (a <= 2) return;
+        if (storyDue) {
+            storyDue = false;
+            story = card.story.isEmpty() ? null : Hero07.lines(card.story, storyP, Ui.px(STORY_W), 3, Ui.f(24f * 1.4f));
+        }
         float x = Ui.f(LEFT), cy = top + Ui.f(HEAD + CARD_H + INFO);
         facts(c, x, cy, card, a, false);
         if (story != null) {
@@ -1088,6 +1255,47 @@ final class Editorial extends View {
         shrink.jump(100f * (1f - k));
         rw.x.jump(target(rw) + (1f - k) * (POSTER_W + GAP) * (from < rw.focus ? 1f : -1f));
         invalidate();
+    }
+
+    /**
+     * A picture's paint with a shade composed over it (Shaders' paint, then the shade over it, as one shader: one draw
+     * fills the card once where two or three did), for a card drawn whole and opaque: made when its picture changes,
+     * the last few kept, so a frame makes nothing. The picture in it is smoothed as its own paint smooths it (Android 13
+     * on: its shader set to; Android 12 leaves a composed picture unsmoothed whatever the paint says, so there it is
+     * not composed: able()).
+     */
+    static final class Composed {
+        private static final int COUNT = 3;
+        private final Bitmap[] bitmaps = new Bitmap[COUNT];
+        private final Shader[] overs = new Shader[COUNT];
+        private final Paint[] paints = new Paint[COUNT];
+        private final android.graphics.Matrix m = new android.graphics.Matrix();
+        private int next;
+
+        /** Whether a picture composed with a shade is drawn smoothed here (not on Android 12, 12L). */
+        static boolean able() {
+            return android.os.Build.VERSION.SDK_INT >= 33 || android.os.Build.VERSION.SDK_INT <= 30;
+        }
+
+        /** The picture b as its paint draws it (Shaders: placed by its shader), with over composed over it (card px). */
+        Paint paint(Bitmap b, Paint picture, Shader over) {
+            for (int i = 0; i < COUNT; i++) if (bitmaps[i] == b && overs[i] == over && paints[i] != null) return paints[i];
+            int i = next;
+            next = (next + 1) % COUNT;
+            Paint p = paints[i] != null ? paints[i] : new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG | Paint.DITHER_FLAG);
+            android.graphics.BitmapShader s = new android.graphics.BitmapShader(b, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
+            m.reset();
+            picture.getShader().getLocalMatrix(m);
+            s.setLocalMatrix(m);
+            // A composed picture takes no smoothing from the paint: its own (as the paint's: bilinear).
+            if (android.os.Build.VERSION.SDK_INT >= 33) s.setFilterMode(android.graphics.BitmapShader.FILTER_MODE_LINEAR);
+            p.setShader(new ComposeShader(s, over, PorterDuff.Mode.SRC_OVER));
+            p.setAlpha(255);
+            paints[i] = p;
+            bitmaps[i] = b;
+            overs[i] = over;
+            return p;
+        }
     }
 
     /** Tests: how wide the remote's card is now, and the card before it (design px). */

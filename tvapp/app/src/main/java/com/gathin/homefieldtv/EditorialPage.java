@@ -468,7 +468,10 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
             trailer.moved();
             return;
         }
-        view.ground(card.wide);
+        // A key held: the page's picture and the read-ahead wait until it is let go (landed), so nothing is read for the
+        // titles the remote only passes.
+        boolean passing = view.holding();
+        if (!passing) view.ground(card.wide);
         restingOn = card;
         // Its trailer, after a rest, the remote in the page (the carousel's behind its words).
         if (!view.active()) trailer.moved();
@@ -478,13 +481,20 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
         }
         if (Exec.inline) rested();
         else h.postDelayed(rested, 450);
-        readAhead(row == null);
+        if (!passing) readAhead(row == null);
         if (row != null) {
             // The rows past the remote's, asked for now.
             int at = -1;
             for (int i = 0; i < entries.size(); i++) if (entries.get(i).id.equals(row.id)) at = i;
             ahead(at);
         }
+    }
+
+    /** A held key let go on a card: the page's picture and the pictures either side of it, as a press would have them. */
+    @Override public void landed(Editorial.Row row, Editorial.Card card) {
+        if (view == null || card == null) return;
+        view.ground(card.wide);
+        readAhead(row == null);
     }
 
     /** The backdrops a key either side of the remote's card, read after what is on screen, at the size they are drawn. */
@@ -495,6 +505,12 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
             if (carousel) Pics.prefetch(c.wide, Ui.px(Editorial.HERO_W), Ui.px(Editorial.HERO_H), Pics.FACE);
             else Pics.prefetch(c.wide, Ui.px(Editorial.WIDE_W), Ui.px(Editorial.CARD_H), Pics.CROP);
             if (view.getWidth() > 0 && along == 1) Pics.prefetch(c.wide, view.getWidth(), view.getHeight(), Pics.BLUR);
+        }
+        if (carousel) return;
+        // The posters just past the right of the screen (the next to slide into sight), read before they are needed.
+        for (int along = 5; along <= 6; along++) {
+            Editorial.Card c = view.near(along);
+            if (c != null && !c.poster.isEmpty()) Pics.prefetch(c.poster, Ui.px(Editorial.POSTER_W), Ui.px(Editorial.CARD_H), Pics.CROP);
         }
     }
 
@@ -707,6 +723,11 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
 
     boolean key(int code) {
         return view.key(code);
+    }
+
+    /** A key with its repeat count (held: its repeats), as the remote sends it. */
+    boolean key(int code, android.view.KeyEvent e) {
+        return view.key(code, e == null ? 0 : e.getRepeatCount());
     }
 
     void ok() {

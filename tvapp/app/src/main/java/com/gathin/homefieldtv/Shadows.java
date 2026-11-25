@@ -26,6 +26,8 @@ import java.util.Map;
  *                                                              argument scales its opacity, for a fade or a lift)
  *   Shadows.under(c, rect, radius, spec, 1f)                   the same under a box that is opaque (drawn over it at
  *                                                              once, whole): the part the box hides is not drawn at all
+ *   Shadows.underSolid(c, rect, radius, spec, 1f)              under a box drawn fully opaque: also when only a strip
+ *                                                              at the shadow's foot shows past it (an offset shadow)
  *   Shadows.glow(c, rect, radius, Look07.GLOW_CHANNEL, 1f)     the same in white: a soft light round the box
  * </pre>
  */
@@ -45,11 +47,14 @@ final class Shadows {
         /** Its corner slice (sprite px), and how far past the box the blur reaches (screen px). */
         final int corner;
         final float reach;
+        /** The opacity of its middle (the one pixel stretched over it), 0 to 255. */
+        final int middle;
 
-        Sprite(Bitmap bitmap, int corner, float reach) {
+        Sprite(Bitmap bitmap, int corner, float reach, int middle) {
             this.bitmap = bitmap;
             this.corner = corner;
             this.reach = reach;
+            this.middle = middle;
             full = new NinePatch(bitmap, chunk(corner, corner + 1, false));
             hollow = new NinePatch(bitmap, chunk(corner, corner + 1, true));
         }
@@ -57,7 +62,9 @@ final class Shadows {
 
     private static final Map<Long, Sprite> SPRITES = new HashMap<>();
     private static final Paint PAINT = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG),
-            GLOW = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
+            GLOW = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG),
+            /** A hollow shadow's middle where the box leaves it showing: flat, as the stretched middle pixel is. */
+            MIDDLE = new Paint();
 
     static {
         GLOW.setColorFilter(new PorterDuffColorFilter(0xFFFFFFFF, PorterDuff.Mode.SRC_IN));
@@ -116,7 +123,7 @@ final class Shadows {
         StackBlur.blur(px, size, size, Math.max(1, Math.round(sigma * 2.45f)));
         Bitmap b = Bitmap.createBitmap(px, size, size, Bitmap.Config.ARGB_8888);
         b.prepareToDraw();
-        s = new Sprite(b, corner, reach);
+        s = new Sprite(b, corner, reach, px[corner * size + corner] >>> 24);
         made++;
         SPRITES.put(k, s);
         remember(k, s);
@@ -175,7 +182,7 @@ final class Shadows {
      * px), its opacity scaled by k (0 to 1).
      */
     static void draw(Canvas c, RectF r, float radius, float[] spec, float k) {
-        draw(c, r, radius, spec, k, PAINT, false);
+        draw(c, r, radius, spec, k, PAINT, false, false);
     }
 
     /**
@@ -183,15 +190,24 @@ final class Shadows {
      * the part the box hides is left out (one region less to fill), where the shadow's offset lets it.
      */
     static void under(Canvas c, RectF r, float radius, float[] spec, float k) {
-        draw(c, r, radius, spec, k, PAINT, true);
+        draw(c, r, radius, spec, k, PAINT, true, false);
+    }
+
+    /**
+     * As under, for a box drawn whole and fully opaque over it now (the Editorial pages' cards and carousel): where the
+     * box hides all of the shadow's middle but a strip at its foot (a shadow offset down, as a lifted card's), the middle
+     * is left out all the same and the strip drawn flat in its shade (the same pixels, the box's area not filled twice).
+     */
+    static void underSolid(Canvas c, RectF r, float radius, float[] spec, float k) {
+        draw(c, r, radius, spec, k, PAINT, true, true);
     }
 
     /** A soft white light round the box r (CSS: a white box-shadow), of kind spec, its opacity scaled by k. */
     static void glow(Canvas c, RectF r, float radius, float[] spec, float k) {
-        draw(c, r, radius, spec, k, GLOW, false);
+        draw(c, r, radius, spec, k, GLOW, false, false);
     }
 
-    private static void draw(Canvas c, RectF r, float radius, float[] spec, float k, Paint paint, boolean opaqueBox) {
+    private static void draw(Canvas c, RectF r, float radius, float[] spec, float k, Paint paint, boolean opaqueBox, boolean solid) {
         int alpha = Math.round(spec[3] * Math.max(0f, Math.min(1f, k)));
         if (alpha <= 0) return;
         float spread = Ui.f(spec[2]);
@@ -204,6 +220,17 @@ final class Shadows {
         float l = BOX.left - reach, t = BOX.top - reach, rr = BOX.right + reach, b = BOX.bottom + reach;
         // The middle region (stretched from the sprite's middle pixel): left out when the opaque box covers it all.
         boolean hollow = opaqueBox && covers(r, radius, l + cs, t + cs, rr - cs, b - cs);
+        // Covered but for a strip at its foot (a shadow offset down, as a lifted card's): hollow all the same, and that
+        // strip drawn flat in the middle's own shade (the same pixels; the box's whole middle not filled under it).
+        float strip = -1f;
+        if (solid && !hollow && rr - l > 2 * cs + 1f && b - t > 2 * cs + 1f) {
+            float y = coveredTo(r, radius, l + cs, t + cs, rr - cs, b - cs);
+            if (y > t + cs) {
+                hollow = true;
+                // From a little above where the box ends: its own soft edge has the shadow under it as before.
+                strip = Math.max(t + cs, y - Math.max(2f, Ui.f(2f)));
+            }
+        }
         // Drawn at the sprite's own scale (its corners at a quarter size), stretched to the box: one call. A box smaller
         // than two corners has them shrunk to share the room (as the nine-patch does).
         c.save();
@@ -213,7 +240,25 @@ final class Shadows {
         NinePatch np = hollow ? s.hollow : s.full;
         np.setPaint(paint);
         np.draw(c, DST);
+        if (strip >= 0f) {
+            MIDDLE.setColor(Math.round(s.middle * alpha / 255f) << 24);
+            c.drawRect(s.corner, (strip - t) * SCALE, DST.right - s.corner, DST.bottom - s.corner, MIDDLE);
+        }
         c.restore();
+    }
+
+    /**
+     * Pure: how far down the rect (l, t, r2, b) lies wholly inside the box r with its corners rounded by rad: the lowest
+     * y such that (l, t, r2, y) is inside (b when it all is), or -1 when not even its top is.
+     */
+    static float coveredTo(RectF r, float rad, float l, float t, float r2, float b) {
+        if (r2 <= l || b <= t || !inside(r, rad, l, t) || !inside(r, rad, r2, t)) return -1f;
+        // How far in from the nearer side the rect's sides are, within the rounding: the box's foot curves up there.
+        float dx = Math.max(Math.max(0f, r.left + rad - l), Math.max(0f, r2 - (r.right - rad)));
+        if (dx > rad) return -1f;
+        float foot = dx <= 0f ? r.bottom : r.bottom - rad + (float) Math.sqrt(Math.max(0f, rad * rad - dx * dx));
+        float y = Math.min(b, foot);
+        return y > t ? y : -1f;
     }
 
     /** Tests: a hollow nine-patch's corner (its size in the sprite, the middle left undrawn inside it), else -1. */

@@ -1,6 +1,7 @@
 package com.gathin.homefieldtv;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.robolectric.Shadows.shadowOf;
 
@@ -20,7 +21,8 @@ import org.robolectric.annotation.LooperMode;
 
 /**
  * The speed work's own parts: the glide every list scrolls with (a single step eases out in about its time and stops
- * dead on its place; a key held at 20 repeats a second glides on with no step back, no restart and no jump), and the
+ * dead on its place; a key held at 20 repeats a second glides on with no step back, no restart and no jump; let go, it
+ * lands at once, its speed kept and quicker to stop), and the
  * frames a second the player's chip shows (the stream's own, else counted from its frames: only the usual rates, only
  * once two runs agree, never a guess).
  */
@@ -84,6 +86,66 @@ public class SmoothTest {
         float target = g.target();
         while (g.step(t += 16)) assertTrue(g.value() <= target + 1e-3f);
         assertEquals(target, g.value(), 0f);
+    }
+
+    /**
+     * A row's glide held at 20 repeats a second (each repeat a poster's step, a frame every 16 ms) for a while; at the
+     * last repeat clock[0] is the time and moved[0] the most it moved in a frame.
+     */
+    private static void held(Glide g, long[] clock, float[] moved, int repeats) {
+        g.jump(0f);
+        long t = 1000;
+        for (int repeat = 0; repeat < repeats; repeat++) {
+            g.to(g.target() + 296f);
+            for (int f = 0; f < 3; f++) {
+                float v = g.value();
+                g.step(t += 16);
+                if (repeat > 6) moved[0] = Math.max(moved[0], g.value() - v);
+            }
+        }
+        clock[0] = t;
+    }
+
+    @Test public void letGoAHeldGlideLandsAtOnceWithNoJump() {
+        long[] clock = new long[1];
+        float[] moved = new float[1];
+        // Its own pace: it trails the remote by a couple of steps, and glides on for 600 ms after the last repeat.
+        Glide own = new Glide(Look07.SCROLL_MS);
+        held(own, clock, moved, 30);
+        long t = clock[0];
+        int ownFrames = 0;
+        while (own.step(t += 16)) ownFrames++;
+        // Let go (Editorial: no repeat for HOLD_GAP, its own pace meanwhile), then landing: the rest of the way within
+        // about LAND_MS more, its speed kept (no jump, never quicker than it went while held), never past its place.
+        Glide g = new Glide(Look07.SCROLL_MS);
+        moved[0] = 0f;
+        held(g, clock, moved, 30);
+        float target = g.target(), heldMove = moved[0], before = g.value(), biggest = 0f;
+        t = clock[0];
+        int frames = 0;
+        for (; frames * 16 < Editorial.HOLD_GAP; frames++) {
+            assertTrue(g.step(t += 16));
+            biggest = Math.max(biggest, g.value() - before);
+            before = g.value();
+        }
+        g.land(Editorial.LAND_MS);
+        assertTrue(g.landing());
+        while (g.step(t += 16)) {
+            float v = g.value();
+            assertTrue("never past its place", v <= target + 1e-3f);
+            assertTrue("never back", v >= before - 1e-3f);
+            biggest = Math.max(biggest, v - before);
+            before = v;
+            frames++;
+        }
+        assertEquals(target, g.value(), 0f);
+        assertTrue("at rest " + frames + " frames after the last repeat (its own pace: " + ownFrames + ")",
+                frames * 16 <= Editorial.HOLD_GAP + 2 * Editorial.LAND_MS && frames < ownFrames * 0.6f);
+        // No jump: no frame after the last repeat moves it further than a frame of the hold did.
+        assertTrue("a frame's move " + biggest + " (held: " + heldMove + ")", biggest <= heldMove + 1f);
+        // A new move after it goes at its own pace again.
+        g.to(g.target() + 296f);
+        assertFalse(g.landing());
     }
 
     @Test public void sentBackHalfWayItTurnsWithoutAJump() {

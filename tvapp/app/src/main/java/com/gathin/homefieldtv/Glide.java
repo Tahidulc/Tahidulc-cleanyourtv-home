@@ -17,6 +17,9 @@ import com.gathin.homefieldtv.engine.Exec;
  *                                            no restart and no snap)
  *   g.jump(target)                           there at once (a new list)
  *   g.shift(d)                               the place and where it goes moved together (what is drawn doesn't move)
+ *   g.land(ms)                               a held key let go: the rest of the way done within about ms (its own
+ *                                            speed kept, quicker to stop), so nothing glides on after the remote; the
+ *                                            next move goes at its own pace again
  *   if (g.step()) postInvalidateOnAnimation();   in onDraw: the frame's step; true while it still moves
  *   g.value()                                where to draw it now
  * </pre>
@@ -32,6 +35,8 @@ final class Glide {
     static final float KICK = 0.25f;
 
     private final float omega, near;
+    /** The spring as it is now: its own (omega), or quicker while it lands (land). */
+    private float rate;
     /** The spring's damping (1: critical, no overshoot) and its start's share of the quickest kick (springy). */
     private float zeta = 1f, kickShare = 1f;
     private float value, target, velocity;
@@ -46,6 +51,7 @@ final class Glide {
     /** ms: about how long a single step takes; unit: how many design pixels one of its values is. */
     Glide(long ms, float unit) {
         omega = 5f / Math.max(0.016f, ms / 1000f);
+        rate = omega;
         near = NEAR / Math.max(1e-6f, unit);
     }
 
@@ -78,6 +84,21 @@ final class Glide {
         value = target = to;
         velocity = 0f;
         last = 0;
+        rate = omega;
+    }
+
+    /**
+     * A held key let go: the rest of the way (wherever it is, its speed kept) done within about ms, as a quicker spring,
+     * where its own would take longer; no jump. Until it is at rest or sent somewhere else.
+     */
+    void land(long ms) {
+        if (last == 0 || Exec.inline) return;
+        rate = Math.max(omega, 5f / Math.max(0.016f, ms / 1000f));
+    }
+
+    /** Whether it is landing (land): quicker than its own pace until it rests. */
+    boolean landing() {
+        return last != 0 && rate > omega;
     }
 
     /** Sent to a new place (see the class's note). */
@@ -87,6 +108,7 @@ final class Glide {
             return;
         }
         if (to == target && last == 0) return;
+        rate = omega;
         float e = to - value;
         // From rest (or a tap after a tap that has nearly finished): its quickest start, easing out from there. Moving
         // already (a held key): its speed kept, the spring turning it smoothly.
@@ -121,13 +143,13 @@ final class Glide {
         last = Math.max(1L, now);
         float e0 = value - target, v0 = velocity, e1, v1;
         if (zeta >= 1f) {
-            float ex = (float) Math.exp(-omega * dt);
-            float c = v0 + omega * e0;
+            float ex = (float) Math.exp(-rate * dt);
+            float c = v0 + rate * e0;
             e1 = (e0 + c * dt) * ex;
-            v1 = (v0 - omega * c * dt) * ex;
+            v1 = (v0 - rate * c * dt) * ex;
         } else {
             // Underdamped (springy): followed exactly too.
-            float zw = zeta * omega, wd = omega * (float) Math.sqrt(1f - zeta * zeta);
+            float zw = zeta * rate, wd = rate * (float) Math.sqrt(1f - zeta * zeta);
             float ex = (float) Math.exp(-zw * dt), cos = (float) Math.cos(wd * dt), sin = (float) Math.sin(wd * dt);
             float b = (v0 + zw * e0) / wd;
             e1 = ex * (e0 * cos + b * sin);
@@ -136,7 +158,7 @@ final class Glide {
         value = target + e1;
         velocity = v1;
         // Done: under a quarter pixel from its place and slower than a pixel a frame or so.
-        if (Math.abs(e1) < near && Math.abs(v1) < 2f * omega * near) {
+        if (Math.abs(e1) < near && Math.abs(v1) < 2f * rate * near) {
             jump(target);
             return false;
         }

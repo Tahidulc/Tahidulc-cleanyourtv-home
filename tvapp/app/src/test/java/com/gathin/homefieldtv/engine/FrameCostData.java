@@ -126,19 +126,20 @@ public final class FrameCostData {
         return save(dir, "logo" + i, b);
     }
 
+    /** A poster, opaque as TMDB's and the playlists' are (JPEG): read as the TV reads them, in 16-bit colour. */
     private static String poster(File dir, String name, int i) throws IOException {
-        return picture(dir, name, 400, 600, i);
+        return picture(dir, name, 400, 600, i, true);
     }
 
     private static String backdrop(File dir, String name, int i) throws IOException {
-        return picture(dir, name, 1280, 720, i);
+        return picture(dir, name, 1280, 720, i, true);
     }
 
     private static String programme(File dir, int i) throws IOException {
-        return picture(dir, "prog" + i, 640, 360, i);
+        return picture(dir, "prog" + i, 640, 360, i, false);
     }
 
-    private static String picture(File dir, String name, int w, int h, int i) throws IOException {
+    private static String picture(File dir, String name, int w, int h, int i, boolean opaque) throws IOException {
         File f = new File(dir, name + ".png");
         if (f.exists()) return "file:" + f.getPath();
         Bitmap b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
@@ -153,6 +154,7 @@ public final class FrameCostData {
         c.drawCircle(w * 0.66f, h * 0.38f, d, p);
         p.setColor(0x66000000);
         c.drawRect(0, h * 0.7f, w, h, p);
+        if (opaque) b.setHasAlpha(false);
         return save(dir, name, b);
     }
 

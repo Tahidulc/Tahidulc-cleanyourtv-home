@@ -467,7 +467,7 @@ final class BrowseScreen extends Screen implements CineRows.Host {
     // ---- the remote -----------------------------------------------------------------------------------------------
 
     @Override boolean key(int code, KeyEvent e) {
-        if (editorial != null) return editorial.key(code);
+        if (editorial != null) return editorial.key(code, e);
         return rows.key(code);
     }
 

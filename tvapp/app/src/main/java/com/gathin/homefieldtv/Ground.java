@@ -25,8 +25,12 @@ import java.lang.ref.WeakReference;
  * Pics' budget) and drawn scaled up. Frost draws the same blurred picture inside its frosted panels, so they look like
  * frosted glass over this ground.
  *
- * <p>It costs one full screen of fill when settled: the picture and its dim are a single shader (the dim composed over
- * the picture), drawn once; the plain ground (no picture) is one gradient. A cross-fade adds the one leaving. In Motion's
+ * <p>It costs one full screen of fill, settled or not: the picture and its dim are a single shader (the dim composed over
+ * the picture), drawn once; the plain ground (no picture) is one gradient. A cross-fade (a picture to the next, a colour
+ * to a picture or to the next colour) is mixed at the blurred pictures' own small size on the processor each frame (an
+ * eighth of the screen across: a few hundred KB, Mixer) and that one picture drawn with the dim, so the graphics chip
+ * never fills the screen twice for it (the same pixels as the two drawn one over the other: the mix and the scaling up
+ * are both linear). In Motion's
  * Lite tier the big picture is not swapped while the remote moves: the ground is the picture's own colour under the dim,
  * cross-fading from one colour to the next (no picture read or drawn), and the picture comes in once the remote has
  * rested REST_MS on something (Frost's panels take that colour meanwhile, so nothing is sampled while moving; once the
@@ -76,6 +80,58 @@ final class Ground {
         }
     }
 
+    /**
+     * A cross-fade as one picture: what is under (a blurred picture, else a colour) with the picture coming in over it at
+     * an opacity, mixed on the processor at the blurred pictures' own small size into a picture kept for it, then drawn
+     * once over the screen with the dim (one screen of fill instead of two or three). Nothing is made a frame: the picture
+     * and its shader are made once for the size.
+     */
+    static final class Mixer {
+        private final Layer layer = new Layer();
+        private final Paint over = new Paint(Paint.FILTER_BITMAP_FLAG);
+        private Bitmap bitmap;
+        private Canvas canvas;
+        private final RectF dst = new RectF();
+        private Shader dim;
+
+        /** Where the ground lies and its dim (the screen's size changed). */
+        void placed(RectF where, Shader d) {
+            dst.set(where);
+            dim = d;
+            if (bitmap != null) layer.set(bitmap, dst, dim);
+        }
+
+        /**
+         * One draw of the screen (w x h): under (a picture; null: the colour) with over (a picture, or null) at alpha a over
+         * it, the dim over both. False (nothing drawn) when it can't be: pictures of two sizes, or the ground not placed.
+         */
+        boolean draw(Canvas c, int w, int h, Bitmap under, int colour, Bitmap over, int a) {
+            if (dim == null || w <= 0 || h <= 0) return false;
+            Bitmap sized = over != null ? over : under;
+            if (under != null && over != null && (under.getWidth() != over.getWidth() || under.getHeight() != over.getHeight())) return false;
+            int bw = sized != null ? sized.getWidth() : Math.max(2, Math.round(w / (float) Look07.BLUR_DOWNSCALE));
+            int bh = sized != null ? sized.getHeight() : Math.max(2, Math.round(h / (float) Look07.BLUR_DOWNSCALE));
+            if (bitmap == null || bitmap.getWidth() != bw || bitmap.getHeight() != bh) {
+                // (The one before is left to the collector: a frame being drawn may still hold it.)
+                bitmap = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888);
+                canvas = new Canvas(bitmap);
+                layer.set(bitmap, dst, dim);
+            }
+            if (under != null) canvas.drawBitmap(under, 0, 0, null);
+            else canvas.drawColor(colour | 0xFF000000);
+            if (over != null && a > 0) {
+                this.over.setAlpha(Math.min(255, a));
+                canvas.drawBitmap(over, 0, 0, this.over);
+            }
+            // A canvas's drawing leaves the picture's mark of change as it was: a pixel set again (to itself: it is opaque)
+            // gives it a new one, so the graphics chip's copy follows (sent again at the frame's sync, before it is drawn).
+            bitmap.setPixel(0, 0, bitmap.getPixel(0, 0));
+            layer.paint.setAlpha(255);
+            c.drawRect(0, 0, w, h, layer.paint);
+            return true;
+        }
+    }
+
     private final View owner;
     private final Runnable redraw;
     private String url = "";
@@ -84,6 +140,10 @@ final class Ground {
     private int w, h;
     private LinearGradient dim;
     private final Paint plain = new Paint(Paint.DITHER_FLAG);
+    /** The colour under the plain ground's dim (the theme's ground as it was made). */
+    private int plainColour = Look07.GROUND;
+    /** Cross-fades mixed into one picture (one screen of fill). */
+    private final Mixer mixer = new Mixer();
     /** Where the blurred picture lies (screen px): past the screen's edges, as the mock-ups' -90 px and scale 1.1. */
     final RectF dst = new RectF();
     /** Lite: the colour shown (cross-fading from tintFrom to tintTo since tintAt) and how far the picture is in (0-1). */
@@ -140,11 +200,13 @@ final class Ground {
             dst.set(w / 2f - cw / 2f, h / 2f - ch / 2f, w / 2f + cw / 2f, h / 2f + ch / 2f);
             dim = new LinearGradient(0, 0, 0, h, Look07.DIM, Look07.DIM_AT, Shader.TileMode.CLAMP);
             int[] over = new int[Look07.DIM.length];
-            for (int i = 0; i < over.length; i++) over[i] = Palette.over(Palette.GROUND, Look07.DIM[i]);
+            plainColour = Palette.GROUND;
+            for (int i = 0; i < over.length; i++) over[i] = Palette.over(plainColour, Look07.DIM[i]);
             plain.setShader(new LinearGradient(0, 0, 0, h, over, Look07.DIM_AT, Shader.TileMode.CLAMP));
             Bitmap s = shown.bitmap, l = leaving.bitmap;
             shown.set(s, dst, dim);
             leaving.set(l, dst, dim);
+            mixer.placed(dst, dim);
             if (dimmedFor != h) {
                 tintNow.setShader(null);
                 tintWas.setShader(null);
@@ -154,7 +216,7 @@ final class Ground {
         return Motion.lite() && !Exec.inline ? lite(c) : full(c);
     }
 
-    /** Full: the picture cross-fading from the one before (each with its dim, one draw each). */
+    /** Full: the picture cross-fading from the one before (the two mixed into one picture, drawn once with the dim). */
     private boolean full(Canvas c) {
         Bitmap b = url.isEmpty() || w <= 0 ? null : Pics.get(url, w, h, Pics.BLUR, redraw);
         if (b != shown.bitmap && (b != null || url.isEmpty() || Pics.failed(url))) {
@@ -174,7 +236,12 @@ final class Ground {
             c.drawRect(0, 0, w, h, shown.paint);
             return false;
         }
-        // Under the one coming in: the one leaving (whole), else the plain ground.
+        // Under the one coming in: the one leaving (whole), else the plain ground; the two mixed into one picture first
+        // (one screen of fill), else drawn one over the other.
+        if (shown.bitmap != null && a > 0 && mixer.draw(c, w, h, leaving.bitmap != null && moving ? leaving.bitmap : null,
+                plainColour, shown.bitmap, a)) {
+            return moving;
+        }
         if (leaving.bitmap != null && moving) {
             leaving.paint.setAlpha(255);
             c.drawRect(0, 0, w, h, leaving.paint);
@@ -228,9 +295,15 @@ final class Ground {
         // A new picture waiting for the old to go first (going out, then the new one in).
         if (want && b != shown.bitmap) moving = true;
         int a = Math.round(255 * picIn);
-        if (a < 255 || shown.bitmap == null) {
+        boolean colour = a < 255 || shown.bitmap == null, picture = shown.bitmap != null && a > 0;
+        float tk = Math.min(1f, (now - tintAt) / (float) TINT_MS);
+        if (colour && tk < 1f) moving = true;
+        // Two or three layers (the colour cross-fading, the picture coming in over it): mixed into one picture, one draw.
+        if (colour && (tk < 1f || picture) && mixer.draw(c, w, h, null, tint(now), picture ? shown.bitmap : null, a)) {
+            colour = picture = false;
+        }
+        if (colour) {
             // The colour: one opaque gradient, and the one it leaves under it while it cross-fades.
-            float tk = Math.min(1f, (now - tintAt) / (float) TINT_MS);
             if (tintNow.getShader() == null) dimmed(tintNow, tintTo);
             if (tk < 1f) {
                 moving = true;
@@ -243,7 +316,7 @@ final class Ground {
             }
             c.drawRect(0, 0, w, h, tintNow);
         }
-        if (shown.bitmap != null && a > 0) {
+        if (picture) {
             shown.paint.setAlpha(a);
             c.drawRect(0, 0, w, h, shown.paint);
         }

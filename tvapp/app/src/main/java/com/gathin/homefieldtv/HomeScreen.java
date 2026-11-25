@@ -545,7 +545,7 @@ final class HomeScreen extends Screen implements HomeCard.Host {
             zap(code == KeyEvent.KEYCODE_CHANNEL_UP ? -1 : 1);
             return true;
         }
-        if (editorial != null) return editorial.key(code);
+        if (editorial != null) return editorial.key(code, e);
         return home.key(code);
     }
 

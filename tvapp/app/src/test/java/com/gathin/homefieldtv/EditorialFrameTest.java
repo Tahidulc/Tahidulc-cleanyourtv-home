@@ -39,7 +39,11 @@ import java.util.List;
  * by EditorialData): along a row (the card left shrinking to its poster as the next grows into its backdrop, the row
  * sliding), Continue Watching, the rows down (the page rising, the next row dimmed), the carousels along and from them
  * down into the rows; in the Full tier and in Lite. Each frame must make next to nothing on the heap, no shadow may be
- * made while moving, and Lite draws nothing in perspective and nothing in a layer.
+ * made while moving, and Lite draws nothing in perspective. Neither tier draws anything in an offscreen layer, and the
+ * graphics chip's work is held where the speed work brought it (the Google TV Streamer's frames measured 29 ms at their
+ * 95th percentile on Full, its chip's own 16 to 22 ms, with 3.2 to 4.1 screens of fill a frame here): the page's ground is
+ * one layer a frame (a cross-fade mixed into one picture, Ground), at most FILL screens of fill a frame (Lite's carousel,
+ * the two cards cross-fading whole, LITE_CAROUSEL), and the pictures sent to the chip each frame stay small.
  */
 @RunWith(RobolectricTestRunner.class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -159,10 +163,23 @@ public class EditorialFrameTest {
             assertEquals(r.name + ": shadows made while moving", 0, r.sprites);
             if (r.name.endsWith("(Lite)")) {
                 assertEquals(r.name + ": drawn in perspective (Lite has no tilt)", 0.0, r.perspectivePerFrame(), 0.0);
-                assertEquals(r.name + ": offscreen layers (Lite has none)", 0.0, r.layersPerFrame(), 0.0);
             }
+            assertEquals(r.name + ": offscreen layers", 0.0, r.layersPerFrame(), 0.0);
+            // The ground: one whole screen a frame, also while it cross-fades (before: two).
+            assertTrue(r.name + ": " + r.fullPerFrame() + " whole screens filled a frame", r.fullPerFrame() <= 1.0 + 1e-9);
+            double budget = r.name.contains("carousel (Lite)") ? LITE_CAROUSEL : FILL;
+            assertTrue(r.name + ": " + r.fillPerFrame() + " screens of fill a frame (at most " + budget + ")", r.fillPerFrame() <= budget);
+            assertTrue(r.name + ": " + r.uploadKbPerFrame() + " KB of pictures sent to the chip a frame", r.uploadKbPerFrame() <= UPLOAD_KB);
         }
     }
+
+    /**
+     * The graphics chip's fill a frame, in whole screens (FrameMeter): at most FILL (was 3.2 to 4.1 before the speed work),
+     * Lite's carousel cross-fading its two cards whole at most LITE_CAROUSEL (was 5.0).
+     */
+    static final double FILL = 2.75, LITE_CAROUSEL = 3.75;
+    /** The pictures sent to the chip a frame, on average (the ground's mixed cross-fade is 127 KB a frame). */
+    static final double UPLOAD_KB = 160;
 
     private void scenarios(String tier) {
         // Home: along a row (the card left shrinking to a poster as the next grows), then down the rows.

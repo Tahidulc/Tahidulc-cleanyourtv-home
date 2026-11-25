@@ -34,7 +34,9 @@ import java.util.Locale;
  *   thread's allocations), and how long it took (nanoseconds on this machine: a guide, not the TV's).</li>
  *   <li>The graphics chip's part: the whole screen drawn again within the frame's damage (the bounds of the views drawn
  *   again: the TV redraws only that), each call's area added up: the fill, in whole screens' worth (the overdraw
- *   estimate: on the TCL's Mali-G52 each full screen of fill is about 2 ms).</li>
+ *   estimate: on the TCL's Mali-G52 each full screen of fill is about 2 ms), the calls among them that fill (nearly) the
+ *   whole screen (full: a page's ground is one; two is a cross-fade drawn as two layers), and the pictures it is handed
+ *   for the first time (uploads: a picture new to it, or one changed since, is sent to its memory before it is drawn).</li>
  * </ul>
  */
 final class FrameMeter {
@@ -45,7 +47,11 @@ final class FrameMeter {
 
     /** A canvas that draws nothing and counts (nothing made per call, so what is measured is the app's own work). */
     static final class Counting extends Canvas {
-        int ops, layers, perspective, nodes;
+        int ops, layers, perspective, nodes, full;
+        /** The bytes of pictures drawn this frame that the chip had not been sent before (new, or changed since). */
+        long uploaded;
+        /** Every picture sent to the chip so far, with its mark of change as it was sent (the chip's own copies). */
+        final java.util.Map<Bitmap, Integer> sent = new java.util.WeakHashMap<>();
         /** The fill, and the part of it that reads a picture (a bitmap, a nine-patch, a picture's shader): the costlier kind. */
         double area, textured;
         /** Set by the call being counted: it reads a picture. */
@@ -64,9 +70,45 @@ final class FrameMeter {
         }
 
         void reset() {
-            ops = layers = perspective = nodes = 0;
+            ops = layers = perspective = nodes = full = 0;
             area = textured = 0;
+            uploaded = 0;
         }
+
+        /** A picture drawn: counted as sent to the chip when it is new to it or changed since it was sent. */
+        private void sent(Bitmap bm) {
+            if (!areas || bm == null || bm.isRecycled()) return;
+            int gen = bm.getGenerationId();
+            Integer was = sent.put(bm, gen);
+            if (was == null || was != gen) uploaded += bm.getAllocationByteCount();
+        }
+
+        /** The pictures a paint's shader draws (a picture's shader, or two composed). */
+        private void sent(android.graphics.Shader sh) {
+            if (!areas || sh == null) return;
+            try {
+                if (sh instanceof android.graphics.BitmapShader) {
+                    if (BITMAP == null) {
+                        BITMAP = android.graphics.BitmapShader.class.getDeclaredField("mBitmap");
+                        BITMAP.setAccessible(true);
+                    }
+                    sent((Bitmap) BITMAP.get(sh));
+                } else if (sh instanceof android.graphics.ComposeShader) {
+                    if (SHADER_A == null) {
+                        SHADER_A = android.graphics.ComposeShader.class.getDeclaredField("mShaderA");
+                        SHADER_B = android.graphics.ComposeShader.class.getDeclaredField("mShaderB");
+                        SHADER_A.setAccessible(true);
+                        SHADER_B.setAccessible(true);
+                    }
+                    sent((android.graphics.Shader) SHADER_A.get(sh));
+                    sent((android.graphics.Shader) SHADER_B.get(sh));
+                }
+            } catch (ReflectiveOperationException e) {
+                throw new AssertionError(e);
+            }
+        }
+
+        private static java.lang.reflect.Field BITMAP, SHADER_A, SHADER_B;
 
         @Override public boolean isHardwareAccelerated() {
             return hardware;
@@ -80,6 +122,7 @@ final class FrameMeter {
         private void fill(float l, float t, float r, float bo, Paint p) {
             android.graphics.Shader sh = p == null ? null : p.getShader();
             tex = sh instanceof android.graphics.BitmapShader || sh instanceof android.graphics.ComposeShader;
+            sent(sh);
             fill(l, t, r, bo);
             tex = false;
         }
@@ -110,6 +153,7 @@ final class FrameMeter {
             if (!b.intersect(0, 0, W, H)) return;
             double a = (double) b.width() * b.height();
             area += a;
+            if (a >= 0.9 * SCREEN) full++;
             if (tex) textured += a;
             if (trace != null) {
                 String where = "?";
@@ -241,24 +285,29 @@ final class FrameMeter {
         }
 
         @Override public void drawBitmap(Bitmap bm, float left, float top, Paint p) {
+            sent(bm);
             picture(left, top, left + bm.getWidth(), top + bm.getHeight());
         }
 
         @Override public void drawBitmap(Bitmap bm, Rect src, RectF dst, Paint p) {
+            sent(bm);
             picture(dst.left, dst.top, dst.right, dst.bottom);
         }
 
         @Override public void drawBitmap(Bitmap bm, Rect src, Rect dst, Paint p) {
+            sent(bm);
             picture(dst.left, dst.top, dst.right, dst.bottom);
         }
 
         @Override public void drawBitmap(Bitmap bm, Matrix matrix, Paint p) {
+            sent(bm);
             b.set(0, 0, bm.getWidth(), bm.getHeight());
             matrix.mapRect(b);
             picture(b.left, b.top, b.right, b.bottom);
         }
 
         @Override public void drawPatch(NinePatch patch, RectF dst, Paint p) {
+            sent(patch.getBitmap());
             int corner = areas ? Shadows.hollowCorner(patch) : -1;
             tex = true;
             if (corner < 0) {
@@ -371,7 +420,7 @@ final class FrameMeter {
         final String name;
         int frames, idle;
         /** ops: the calls the app's drawing makes; rec: those recorded again on the TV's canvas (a kept part is one). */
-        long ops, rec, bytes, layers, perspective, nodes, sprites;
+        long ops, rec, bytes, layers, perspective, nodes, sprites, full, uploaded;
         double fill, textured, damage;
         final List<Long> nanos = new ArrayList<>(), frameBytes = new ArrayList<>();
         /** Tracing: the bytes made by each kind of view. */
@@ -429,6 +478,16 @@ final class FrameMeter {
             return frames == 0 ? 0 : perspective / (double) frames;
         }
 
+        /** The calls a frame makes that fill (nearly) the whole screen: the ground's layers. */
+        double fullPerFrame() {
+            return frames == 0 ? 0 : full / (double) frames;
+        }
+
+        /** The KB of pictures sent to the chip each frame, on average (new pictures, and any changed since sent). */
+        double uploadKbPerFrame() {
+            return frames == 0 ? 0 : uploaded / 1024.0 / frames;
+        }
+
         double medianMs() {
             if (nanos.isEmpty()) return 0;
             long[] n = new long[nanos.size()];
@@ -444,14 +503,14 @@ final class FrameMeter {
         }
 
         String row() {
-            return String.format(Locale.ROOT, "%-30s %6d %6.0f %6.0f %6d %7d %6.2f %6.2f %6.0f%% %6.2f %6.2f %6.2f", name, frames, opsPerFrame(),
-                    recPerFrame(), bytesMedian(), bytesPerFrame(), fillPerFrame(), texturedPerFrame(), damagePerFrame() * 100, layersPerFrame(),
-                    perspectivePerFrame(), medianMs());
+            return String.format(Locale.ROOT, "%-30s %6d %6.0f %6.0f %6d %7d %6.2f %6.2f %6.0f%% %6.2f %6.2f %6.2f %6.2f %7.1f", name, frames,
+                    opsPerFrame(), recPerFrame(), bytesMedian(), bytesPerFrame(), fillPerFrame(), texturedPerFrame(), damagePerFrame() * 100,
+                    layersPerFrame(), perspectivePerFrame(), fullPerFrame(), medianMs(), uploadKbPerFrame());
         }
 
         static String header() {
-            return String.format(Locale.ROOT, "%-30s %6s %6s %6s %6s %7s %6s %6s %7s %6s %6s %6s", "screen (a frame of motion)", "frames", "ops",
-                    "rec", "bytes", "mean", "fill", "tex", "damage", "layers", "persp", "ui ms");
+            return String.format(Locale.ROOT, "%-30s %6s %6s %6s %6s %7s %6s %6s %7s %6s %6s %6s %6s %7s", "screen (a frame of motion)", "frames",
+                    "ops", "rec", "bytes", "mean", "fill", "tex", "damage", "layers", "persp", "full", "ui ms", "up KB");
         }
     }
 
@@ -549,6 +608,8 @@ final class FrameMeter {
         gpu.restoreToCount(save);
         run.fill += gpu.area;
         run.textured += gpu.textured;
+        run.full += gpu.full;
+        run.uploaded += gpu.uploaded;
         if (TRACE && run.frames == 20) {
             gpu.reset();
             gpu.trace = new java.util.HashMap<>();
