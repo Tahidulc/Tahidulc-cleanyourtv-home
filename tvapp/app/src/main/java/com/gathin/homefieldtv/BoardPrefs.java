@@ -374,4 +374,17 @@ final class BoardPrefs {
     static void setGoalSound(Context c, String key) {
         prefs(c).edit().putString("goal_sound", key).apply();
     }
+
+    /**
+     * The board's goal animation (GoalLooks: as today unless the family chooses another: the GOAL band, the flip, the
+     * burst, each club's own, the generic; Homefield TV has no 3D shirt), from the hold-OK menu.
+     */
+    static String goalLook(Context c) {
+        String k = com.gathin.broadcast.GoalLooks.of(prefs(c).getString("goal_look", com.gathin.broadcast.GoalLooks.DEFAULT));
+        return com.gathin.broadcast.GoalLooks.SHIRT.equals(k) ? com.gathin.broadcast.GoalLooks.DEFAULT : k;
+    }
+
+    static void setGoalLook(Context c, String key) {
+        prefs(c).edit().putString("goal_look", com.gathin.broadcast.GoalLooks.of(key)).apply();
+    }
 }

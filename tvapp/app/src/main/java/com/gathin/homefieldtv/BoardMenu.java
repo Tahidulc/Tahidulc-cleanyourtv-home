@@ -79,15 +79,17 @@ final class BoardMenu extends View {
         /** One of My scoreboards in use, "" for none. */
         String mine = "";
         String timing = "", usual = "", popups = "", sound = "";
+        /** The goal animation chosen, in words (GoalLooks.name). */
+        String goalLook = com.gathin.broadcast.GoalLooks.name(com.gathin.broadcast.GoalLooks.DEFAULT);
         /** The channel on now ("" when there is none), and the line under the title (BoardLayer.menuLine). */
         String channel = "", note = "";
     }
 
     /** The lines, in order: the two switches the family uses on TiviMate first, then the rest as the launcher orders them. */
     static final int M_BOARD = 0, M_LOGO = 1, M_LOOK = 2, M_MOVE = 3, M_MOVE_LOGO = 4, M_LINEUPS = 5, M_MINE = 6, M_NEW = 7,
-            M_TIMING = 8, M_USUAL = 9, M_NOW = 10, M_ASK = 11, M_ALERTS = 12, M_VAR = 13, M_POPUPS = 14, M_SOUND = 15,
-            M_SWISH = 16, M_RESET = 17;
-    static final int LINES = 18;
+            M_TIMING = 8, M_USUAL = 9, M_NOW = 10, M_ASK = 11, M_ALERTS = 12, M_VAR = 13, M_POPUPS = 14, M_GOAL = 15,
+            M_SOUND = 16, M_SWISH = 17, M_RESET = 18;
+    static final int LINES = 19;
 
     static final String HEAD = "Scoreboard and logo  ·  Up and Down, Left and Right, OK  ·  Back to close";
 
@@ -109,7 +111,8 @@ final class BoardMenu extends View {
                 "Alerts beside the board:  ‹  " + onOff(m.alerts) + "  ›",
                 "VAR explained:  ‹  " + onOff(m.var) + "  ›",
                 "Kick-off and goal pop-ups:  ‹  " + m.popups + "  ›",
-                "Goal sound:  ‹  " + m.sound + "  ›",
+                "Goal animation:  ‹  " + m.goalLook + "  ›",
+                "Goal sound:  ‹  " + m.sound + "  ›  ·  it plays as it is chosen",
                 "Swishes:  ‹  " + onOff(m.swish) + "  ›",
                 "Back to the standard places:  ‹  " + (m.every ? "Every channel" : "This channel") + "  ›  ·  OK: put them back"};
     }

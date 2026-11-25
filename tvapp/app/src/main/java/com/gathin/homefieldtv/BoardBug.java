@@ -30,7 +30,8 @@ import java.util.Objects;
  * still, nothing flashing), the minutes added in a tab of their own beside it).
  *
  * <p>It comes and goes as broadcasters' do (its first block opening out of a thin line, the rest wiping out of it
- * behind a bright edge), and a goal is shown as theirs are: a white hit, the scorers' colour sweeping across it from
+ * behind a bright edge), and a goal is shown as theirs are (the family's choice of goal animation, GoalLooks; as today
+ * unless another is chosen): a white hit, the scorers' colour sweeping across it from
  * their side with their crest and GOAL, held with a shine running over it, then on out the far side, and the new score
  * popping up big and settling while that side glows. What folds out under it (the stats, the alerts) takes its look
  * (StripLook).
@@ -304,6 +305,17 @@ final class BoardBug extends View {
     private boolean htFaceGame, pensClockGame;
     /** The score before the goal on now: its new figure rolls or flips in from it. */
     private String scoreWas = "";
+    /**
+     * The new goal animations (GoalLooks' Club animations and Generic, GoalReveal): the choice in use, the clubs' ESPN
+     * ids, the animation of the goal on now and its drawing; the score drawn this frame (the one before the goal while
+     * the animation covers it, null: the look's); the scorers' part of the board as each look drew it this frame
+     * ({home, away}, inside the edge), whether it was, and whether their letters are at its right end.
+     */
+    private String goalLook = com.gathin.broadcast.GoalLooks.DEFAULT, homeId = "", awayId = "", drawnScore;
+    private com.gathin.broadcast.ClubGoals.Club revealClub;
+    private final com.gathin.broadcast.GoalReveal reveal = new com.gathin.broadcast.GoalReveal();
+    private final RectF[] part = {new RectF(), new RectF()};
+    private final boolean[] partSet = new boolean[2], partRight = new boolean[2];
     /** The ground's weather over the board (BoardFx.weather): its sky and when it began (0: none). */
     private com.gathin.broadcast.BoardFx.Sky weatherSky;
     private long weatherAt, weatherFrozen = -1;
@@ -437,7 +449,7 @@ final class BoardBug extends View {
         d.away = look.away;
         d.homeName = homeName;
         d.awayName = awayName;
-        d.score = look.score;
+        d.score = score();
         d.clock = look.clock;
         d.comp = compName;
         d.homeColour = look.homeColour;
@@ -543,10 +555,13 @@ final class BoardBug extends View {
         goalFrozen = -1;
         removeCallbacks(scoreSwish);
         int set = goalSetNow();
+        revealClub = revealFor(goalLook, side, homeId, awayId, homeName, awayName, look);
         // The family's swish on the new score, every look (its own switch): as it comes out from under today's band, or as
-        // it lands rolling up in the sequence's burst; the Lab's sets their own sounds.
+        // it lands rolling up in the sequence's burst, or as the new animations' last sweep uncovers it; the Lab's sets
+        // their own sounds.
         if (set == com.gathin.broadcast.BoardFx.GOAL_BAND) postDelayed(scoreSwish, scoreSwishAt());
         else if (set == com.gathin.broadcast.BoardFx.GOAL_SEQUENCE) postDelayed(scoreSwish, com.gathin.broadcast.BoardFx.seqSwishAt());
+        else if (set == com.gathin.broadcast.BoardFx.GOAL_REVEAL) postDelayed(scoreSwish, com.gathin.broadcast.GoalReveal.swishAt());
         labGoalSounds(set);
         postInvalidateOnAnimation();
     }
@@ -567,14 +582,46 @@ final class BoardBug extends View {
         return pensClockGame;
     }
 
-    /** The goal set drawn now (setFor). */
+    /** The goal set drawn now (setFor): the family's choice (GoalLooks), as today the game's own. */
     int goalSetNow() {
-        return setFor(style, goalSet);
+        return setFor(style, com.gathin.broadcast.GoalLooks.set(goalLook, goalSet));
     }
 
-    /** Pure: the goal set a look draws for a game's set: the 3D kits look keeps its own gold GOAL (today's timing); the rest the game's. */
+    /**
+     * Pure: the goal set a look draws for a set: the 3D kits look keeps its own gold GOAL (today's timing) but for the new
+     * animations, which every look draws; the rest the set given.
+     */
     static int setFor(Style style, int gameSet) {
-        return style == Style.KITS ? com.gathin.broadcast.BoardFx.GOAL_BAND : gameSet;
+        return style == Style.KITS && gameSet != com.gathin.broadcast.BoardFx.GOAL_REVEAL ? com.gathin.broadcast.BoardFx.GOAL_BAND : gameSet;
+    }
+
+    /** The family's choice of goal animation (GoalLooks' values); kept for the goals to come. */
+    void goalLook(String key) {
+        String k = com.gathin.broadcast.GoalLooks.of(key);
+        if (k.equals(goalLook)) return;
+        goalLook = k;
+        invalidate();
+    }
+
+    String goalLook() {
+        return goalLook;
+    }
+
+    /** The clubs' ESPN ids, for their own goal animations (ClubGoals). */
+    void teams(String home, String away) {
+        homeId = home == null ? "" : home;
+        awayId = away == null ? "" : away;
+    }
+
+    /**
+     * Pure: the new animation a goal for side (1 home, 2 away) plays under a choice: the club's own (ESPN's id, else its
+     * names), else the generic in its colour on the board; null when the choice is one of the boards' own.
+     */
+    static com.gathin.broadcast.ClubGoals.Club revealFor(String choice, int side, String homeId, String awayId, String homeName,
+            String awayName, Look look) {
+        boolean away = side == 2;
+        return com.gathin.broadcast.GoalLooks.clubFor(choice, away ? awayId : homeId, away ? look.awayColour : look.homeColour,
+                away ? awayName : homeName, away ? look.away : look.home);
     }
 
     /** Whether the look's score rolls up like an odometer (Floodlight, Stadium LED). */
@@ -589,19 +636,24 @@ final class BoardBug extends View {
             case com.gathin.broadcast.BoardFx.GOAL_FLIP: return com.gathin.broadcast.BoardFx.FLIP_MS;
             case com.gathin.broadcast.BoardFx.GOAL_BURST: return com.gathin.broadcast.BoardFx.BURST_MS;
             case com.gathin.broadcast.BoardFx.GOAL_SEQUENCE: return com.gathin.broadcast.BoardFx.seqMs();
+            case com.gathin.broadcast.BoardFx.GOAL_REVEAL: return com.gathin.broadcast.GoalReveal.TOTAL_MS;
             default: return BAND_OUT + BAND_MS;
         }
     }
 
-    /** Pure: when the net shivers in a set, in ms from the goal (after the band in today's, after the burst in the sequence). */
+    /** Pure: when the net shivers in a set, in ms from the goal (after the band in today's, after the burst in the sequence; never in the new ones: NO_MESH). */
     static long meshAt(int set) {
         switch (set) {
+            case com.gathin.broadcast.BoardFx.GOAL_REVEAL: return NO_MESH;
             case com.gathin.broadcast.BoardFx.GOAL_FLIP: return com.gathin.broadcast.BoardFx.MESH_AFTER_FLIP;
             case com.gathin.broadcast.BoardFx.GOAL_BURST: return com.gathin.broadcast.BoardFx.MESH_AFTER_BURST;
             case com.gathin.broadcast.BoardFx.GOAL_SEQUENCE: return com.gathin.broadcast.BoardFx.seqMeshAt();
             default: return RIPPLE_AT;
         }
     }
+
+    /** A set with no net's shiver (the new animations): its net "comes" long after the goal is over. */
+    static final long NO_MESH = 3_600_000L;
 
     /** Pure: whether today's GOAL band is across the board t ms into a goal of a set (its own, or the sequence's first part). */
     static boolean bandOn(int set, long t) {
@@ -614,7 +666,7 @@ final class BoardBug extends View {
      * burst's from the goal, the sequence's burst from SEQ_BURST_AT (the band gone); -1 when none is on.
      */
     static long labAt(int set, long t) {
-        if (t < 0 || set == com.gathin.broadcast.BoardFx.GOAL_BAND) return -1;
+        if (t < 0 || set == com.gathin.broadcast.BoardFx.GOAL_BAND || set == com.gathin.broadcast.BoardFx.GOAL_REVEAL) return -1;
         long lt = set == com.gathin.broadcast.BoardFx.GOAL_SEQUENCE ? com.gathin.broadcast.BoardFx.seqBurst(t) : t;
         long len = set == com.gathin.broadcast.BoardFx.GOAL_FLIP ? com.gathin.broadcast.BoardFx.FLIP_MS : com.gathin.broadcast.BoardFx.BURST_MS;
         return lt >= 0 && lt < len ? lt : -1;
@@ -623,6 +675,7 @@ final class BoardBug extends View {
     /** Pure: the whole goal's length in a set: its moment and the net's shiver (and today's glow after the band). */
     static long goalMs(int set) {
         if (set == com.gathin.broadcast.BoardFx.GOAL_BAND) return GOAL_MS;
+        if (set == com.gathin.broadcast.BoardFx.GOAL_REVEAL) return com.gathin.broadcast.GoalReveal.TOTAL_MS;
         return Math.max(setMs(set), meshAt(set) + com.gathin.broadcast.BoardFx.MESH_MS);
     }
 
@@ -635,7 +688,7 @@ final class BoardBug extends View {
      * band goes. {0, 1} before and after.
      */
     static float[] moveAt(int set, boolean rolls, long t) {
-        if (t < 0 || t >= goalMs(set)) return new float[]{0f, 1f};
+        if (t < 0 || t >= goalMs(set) || set == com.gathin.broadcast.BoardFx.GOAL_REVEAL) return new float[]{0f, 1f};
         switch (set) {
             case com.gathin.broadcast.BoardFx.GOAL_FLIP:
                 return new float[]{rolls ? CompBug.MOVE_ROLL : CompBug.MOVE_FLIP, com.gathin.broadcast.BoardFx.flipMove(t)};
@@ -704,6 +757,10 @@ final class BoardBug extends View {
         } else if (set == com.gathin.broadcast.BoardFx.GOAL_SEQUENCE) {
             // the crest's burst as the band goes (its score's landing has the family's swish, as after today's band)
             out.put(com.gathin.broadcast.Sfx.BURST, com.gathin.broadcast.BoardFx.SEQ_BURST_AT);
+        } else if (set == com.gathin.broadcast.BoardFx.GOAL_REVEAL) {
+            // the new animations: the crest's burst sound quietly on GOAL!'s burst; no net
+            out.put(com.gathin.broadcast.Sfx.BURST, com.gathin.broadcast.GoalReveal.BURST_FROM);
+            return out;
         }
         out.put(com.gathin.broadcast.Sfx.NET, meshAt(set));
         return out;
@@ -1077,6 +1134,43 @@ final class BoardBug extends View {
         return Math.max(h * 1.4f, measure(look.score, h * 0.56f) + h * 0.6f);
     }
 
+    /** The score drawn now: the one before the goal while the new animations cover it (GoalReveal.newScore), else the look's. */
+    private String score() {
+        return drawnScore != null ? drawnScore : look.score;
+    }
+
+    /** Pure: the score a board draws t ms into a goal of a set (-1: none on): the one before under the new animations. */
+    static String scoreDrawn(int set, long t, String before, String now) {
+        boolean under = set == com.gathin.broadcast.BoardFx.GOAL_REVEAL && t >= 0 && t < com.gathin.broadcast.GoalReveal.TOTAL_MS
+                && !com.gathin.broadcast.GoalReveal.newScore(t);
+        return under && before != null && !before.isEmpty() ? before : now;
+    }
+
+    /** The scorers' part of the board as a look draws it (inside the edge; their letters at its right end when right). */
+    private void part(int side, float l, float t, float r, float b, boolean right) {
+        part[side - 1].set(l, t, r, b);
+        partSet[side - 1] = true;
+        partRight[side - 1] = right;
+    }
+
+    /**
+     * Pure: whether the new animations play over the whole board for a look: a competition's look (its own shapes, its
+     * row), a look that drew no part for the scorers, or a part too short for the crest, the motif and GOAL!.
+     */
+    static boolean revealWhole(CompBug.Kind kind, boolean partDrawn, float partW, float partH) {
+        return kind != null || !partDrawn || partH <= 0 || partW < partH * 3.2f;
+    }
+
+    /**
+     * Pure: whether the new animations over a competition's look are laid only where the look has drawn (its pills, its
+     * segments, its slanted ends), or over its whole row: the Premier League's world feed, whose score stands proud of
+     * its row through a gap in it (its figures would show through as shapes), and Ligue 1's, whose two rows leave a
+     * corner empty beside its clock (GOAL! would be cut there).
+     */
+    static boolean revealOnShape(CompBug.Kind kind) {
+        return kind != CompBug.Kind.PL && kind != CompBug.Kind.LIGUE1;
+    }
+
     private float clockW(int h) {
         if (look.clock.isEmpty()) return 0;
         return measure("88:88".length() >= look.clock.length() ? "88:88" : look.clock, h * 0.44f) + h * 0.6f;
@@ -1104,6 +1198,11 @@ final class BoardBug extends View {
         long gt = goalFrozen >= 0 ? goalFrozen : goalAt > 0 ? now - goalAt : -1;
         int set = goalSetNow();
         boolean goalOn = gt >= 0 && gt < goalMs(set);
+        // The new animations (GoalReveal): over the scorers' part each look marks as it draws, the score before the goal
+        // drawn under them until their last sweep covers it.
+        boolean revealing = goalOn && set == com.gathin.broadcast.BoardFx.GOAL_REVEAL && revealClub != null;
+        drawnScore = scoreDrawn(revealing ? set : -1, gt, scoreWas, look.score);
+        partSet[0] = partSet[1] = false;
         // Today's band: the new score pops up big as the band goes, and settles (an odometer look rolls it in instead).
         flash = goalOn && set == com.gathin.broadcast.BoardFx.GOAL_BAND && !rolls() ? glow(gt) : 0f;
         scoreZoom = 1f + 0.38f * flash * flash;
@@ -1121,7 +1220,7 @@ final class BoardBug extends View {
         cv.clipPath(clip);
         // The net shivering after every goal (the Lab's net) at its own moment in each set; the ground's weather lightly
         // over it all two or three times a game.
-        long mesh = gt < 0 ? -1 : gt - meshAt(set);
+        long mesh = gt < 0 || set == com.gathin.broadcast.BoardFx.GOAL_REVEAL ? -1 : gt - meshAt(set);
         boolean meshing = mesh >= 0 && mesh < com.gathin.broadcast.BoardFx.MESH_MS;
         long wt = weatherSky == null ? -1 : weatherFrozen >= 0 ? weatherFrozen : weatherAt > 0 ? now - weatherAt : -1;
         boolean weathering = wt >= 0 && wt < com.gathin.broadcast.BoardFx.WEATHER_MS;
@@ -1131,7 +1230,7 @@ final class BoardBug extends View {
         // the GOAL band across the board (its own set, or the sequence's first part); the Lab's flip or burst, how far in
         boolean banding = goalOn && bandOn(set, gt);
         long lab = goalOn ? labAt(set, gt) : -1;
-        boolean layered = kind() != null && (lab >= 0 || meshing || weathering);
+        boolean layered = kind() != null && (lab >= 0 || meshing || weathering || revealing);
         int base = layered ? cv.saveLayer(0, 0, body, h, null) : -1;
         fill.setShader(null);
         fill.setColor(p.ground);
@@ -1172,7 +1271,7 @@ final class BoardBug extends View {
                 if (bw / (float) ch >= 2.0f) card(cv, bw, ch, now);
                 else cardTall(cv, bw, ch, now);
             }
-            else if (style == Style.KITS) kitsRow(cv, bw, ch, now, goalOn ? gt : -1);
+            else if (style == Style.KITS) kitsRow(cv, bw, ch, now, goalOn && !revealing ? gt : -1);
             else if (bw / (float) ch >= 3.6f) oneRow(cv, 0, 0, bw, ch);
             else twoRows(cv, bw, ch);
             // In added time a board with no block of its own (Minimal) has the shine pass over it all.
@@ -1198,6 +1297,12 @@ final class BoardBug extends View {
                 else burstMoment(cv, body, mh, lab);
                 if (a >= 0) cv.restoreToCount(a);
             }
+        }
+        if (revealing) {
+            // kept to the look's own shapes (a competition's look on its layer), its row where it has one
+            int a = atop(cv, layered && revealOnShape(ck), body, mh);
+            revealMoment(cv, body, mh, gt);
+            if (a >= 0) cv.restoreToCount(a);
         }
         if (meshing) {
             int a = atop(cv, layered, body, mh);
@@ -1379,6 +1484,23 @@ final class BoardBug extends View {
         fx.crestBurst(cv, cx, cy, rad, home ? homeCrest : awayCrest, colour, t);
     }
 
+    /**
+     * The new animations t ms in (GoalReveal): over the scorers' part of the board as the look drew it (their name, the
+     * score and on to the far end; their row on Stacked), or over the whole board (or its row) where a part makes no
+     * sense (revealWhole); their letters from the scorers' end.
+     */
+    private void revealMoment(Canvas cv, int w, int h, long t) {
+        int side = flashSide == 2 ? 2 : 1;
+        RectF a = part[side - 1];
+        CompBug.Kind k = kind();
+        boolean whole = revealWhole(k, partSet[side - 1], a.width(), a.height());
+        float x = whole ? 0 : a.left + inset, y = whole ? 0 : a.top + inset, aw = whole ? w : a.width(), ah = whole ? h : a.height();
+        boolean right = whole ? side == 2 : partRight[side - 1];
+        reveal.prepare(revealClub, side == 2 ? look.away : look.home, side == 2 ? awayCrest : homeCrest, right, aw, ah,
+                text.getTypeface());
+        reveal.draw(cv, x, y, t);
+    }
+
     /** The clubs, the score and the clock along one row in (x, y, w, h). */
     private void oneRow(Canvas cv, float x, float y, float w, float h) {
         int hi = Math.round(h);
@@ -1414,11 +1536,15 @@ final class BoardBug extends View {
             cx += h;
         }
         float crest = withCrests ? crestW : 0;
+        float teamsL = cx;
         cx = side(cv, cx, y, h, strip, crest, codeW, k, true);
         scoreBlock(cv, cx, y, score, h);
-        scoreWords(cv, look.score, scoreWas, cx + score / 2, y, h, h * 0.56f * k * scoreZoom, p.scoreInk);
+        scoreWords(cv, score(), scoreWas, cx + score / 2, y, h, h * 0.56f * k * scoreZoom, p.scoreInk);
         cx += score;
         cx = side(cv, cx, y, h, strip, crest, codeW, k, false);
+        // the scorers' part for the new animations: their name, the score and on to the other's end
+        part(1, teamsL, y, cx, y + h, false);
+        part(2, teamsL, y, cx, y + h, true);
         if (clock > 0) clock(cv, cx, y, x + w - cx, h, k);
     }
 
@@ -1628,7 +1754,7 @@ final class BoardBug extends View {
             float pk = Math.max(0.05f, eBack(kprog(gt, HIT_MS, HIT_MS + 300)));
             words(cv, "GOAL", x + score / 2, 0, h, h * 0.56f * k * pk, KIT_INK);
         } else {
-            words(cv, look.score, x + score / 2, 0, h, h * 0.56f * k * scoreZoom, p.scoreInk);
+            words(cv, score(), x + score / 2, 0, h, h * 0.56f * k * scoreZoom, p.scoreInk);
         }
         x += score;
         fill.setColor(KIT_CODE);
@@ -1641,6 +1767,8 @@ final class BoardBug extends View {
         cv.drawRect(x, 0, x + kit, h, fill);
         fill.setShader(null);
         x += kit;
+        part(1, homeAt, 0, x, h, false);
+        part(2, homeAt, 0, x, h, true);
         if (clock > 0) clock(cv, x, 0, clock, h, k);
         // the shirts, standing in their cells: in with a whole turn as the board opens, then swaying
         kitShirt(cv, true, homeAt + kit / 2, h / 2f, h, now);
@@ -1723,7 +1851,7 @@ final class BoardBug extends View {
         float extra = Math.max(0, w - need * k);
         float cx = side(cv, 0, 0, h, strip * k, withCrests ? crestW : 0, codeW * k + extra / 2, k, true);
         scoreBlock(cv, cx, 0, score * k, h);
-        scoreWords(cv, look.score, scoreWas, cx + score * k / 2, 0, h, h * 0.56f * k * scoreZoom, p.scoreInk);
+        scoreWords(cv, score(), scoreWas, cx + score * k / 2, 0, h, h * 0.56f * k * scoreZoom, p.scoreInk);
         side(cv, cx + score * k, 0, h, strip * k, withCrests ? crestW : 0, codeW * k + extra / 2, k, false);
     }
 
@@ -1751,10 +1879,13 @@ final class BoardBug extends View {
         crestSide(cv, cx, 0, hc, h, true);
         cx += hc;
         scoreBlock(cv, cx, 0, score, h);
-        scoreWords(cv, look.score, scoreWas, cx + score / 2, 0, h, h * 0.56f * k * scoreZoom, p.scoreInk);
+        scoreWords(cv, score(), scoreWas, cx + score / 2, 0, h, h * 0.56f * k * scoreZoom, p.scoreInk);
         cx += score;
         crestSide(cv, cx, 0, ac, h, false);
-        cx += ac + pad;
+        cx += ac;
+        part(1, pad, 0, cx, h, false);
+        part(2, pad, 0, cx, h, true);
+        cx += pad;
         if (clock > 0) clock(cv, cx, 0, w - cx, h, k);
     }
 
@@ -1766,7 +1897,7 @@ final class BoardBug extends View {
         crestSide(cv, cx, 0, hc * k, top, true);
         cx += hc * k;
         scoreBlock(cv, cx, 0, score * k, top);
-        scoreWords(cv, look.score, scoreWas, cx + score * k / 2, 0, top, top * 0.56f * k * scoreZoom, p.scoreInk);
+        scoreWords(cv, score(), scoreWas, cx + score * k / 2, 0, top, top * 0.56f * k * scoreZoom, p.scoreInk);
         cx += score * k;
         crestSide(cv, cx, 0, ac * k, top, false);
         fill.setColor(p.clock != 0 ? p.clock : p.ground);
@@ -1806,7 +1937,7 @@ final class BoardBug extends View {
 
     /** "2–1" as {"2", "1"}; none when it is not a score. */
     private String[] goals() {
-        return goalsOf(look.score);
+        return goalsOf(score());
     }
 
     /** Pure: a score's two figures ("2–1": {"2", "1"}); two empties when it has not two (before kick-off). */
@@ -1827,6 +1958,9 @@ final class BoardBug extends View {
         String[] g = goals();
         stackedRow(cv, 0, 0, w, r, strip * k, crest * k, goalsW * k, true, g[0], k);
         stackedRow(cv, 0, r, w, r, strip * k, crest * k, goalsW * k, false, g[1], k);
+        // each club's row its own part, its letters at the left
+        part(1, 0, 0, w, r, false);
+        part(2, 0, r, w, 2 * r, false);
         fill.setColor(0x26FFFFFF);
         float line = Math.max(1f, h * 0.008f);
         cv.drawRect(strip * k, r - line, w, r + line, fill);
@@ -1865,6 +1999,8 @@ final class BoardBug extends View {
         String[] g = goals();
         stackedRow(cv, cx, 0, rw, r, strip, crest, goalsW, true, g[0], k);
         stackedRow(cv, cx, r, rw, h - r, strip, crest, goalsW, false, g[1], k);
+        part(1, cx, 0, cx + rw, r, false);
+        part(2, cx, r, cx + rw, h, false);
         fill.setColor(0x26FFFFFF);
         float line = Math.max(1f, h * 0.008f);
         cv.drawRect(cx + strip, r - line, cx + rw, r + line, fill);
@@ -1938,7 +2074,7 @@ final class BoardBug extends View {
 
     /** "2 - 1", spaced as the results cards set it ("v" before kick-off). */
     private String cardScore() {
-        return cardScoreOf(look.score);
+        return cardScoreOf(score());
     }
 
     /** Pure: a score as Card spaces it ("2 - 1"; as it is before kick-off). */
@@ -2252,7 +2388,7 @@ final class BoardBug extends View {
 
     /** Minimal: one line, "LIV  2–1  MUN   67:23 +2". */
     private String[] minimalParts() {
-        return new String[]{look.home + "  " + look.score + "  " + look.away, look.clock, addedOutside ? "" : look.added};
+        return new String[]{look.home + "  " + score() + "  " + look.away, look.clock, addedOutside ? "" : look.added};
     }
 
     private float minimalWidth(int h) {

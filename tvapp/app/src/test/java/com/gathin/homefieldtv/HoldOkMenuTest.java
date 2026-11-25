@@ -210,7 +210,8 @@ public class HoldOkMenuTest {
                 "Alerts beside the board:  ‹  On  ›",
                 "VAR explained:  ‹  Off  ›",
                 "Kick-off and goal pop-ups:  ‹  In my scoreboard's look  ›",
-                "Goal sound:  ‹  Swoosh  ›",
+                "Goal animation:  ‹  As today  ›",
+                "Goal sound:  ‹  Swoosh  ›  ·  it plays as it is chosen",
                 "Swishes:  ‹  On  ›",
                 "Back to the standard places:  ‹  Every channel  ›  ·  OK: put them back"}, BoardMenu.menuLines(m));
         // None of My scoreboards in use: the launcher's words.
@@ -566,6 +567,17 @@ public class HoldOkMenuTest {
         String popups = BoardPrefs.popupStyle(app);
         press(a, KeyEvent.KEYCODE_DPAD_RIGHT);
         assertEquals(BoardPrefs.nextPopup(popups, 1), BoardPrefs.popupStyle(app));
+        // the goal animation: Club animations two steps on (no 3D shirt here), back to as today
+        assertEquals(com.gathin.broadcast.GoalLooks.TODAY, BoardPrefs.goalLook(app));
+        downTo(a, b, BoardMenu.M_GOAL);
+        press(a, KeyEvent.KEYCODE_DPAD_RIGHT);
+        assertEquals(com.gathin.broadcast.GoalLooks.BAND, BoardPrefs.goalLook(app));
+        press(a, KeyEvent.KEYCODE_DPAD_LEFT);
+        press(a, KeyEvent.KEYCODE_DPAD_LEFT);
+        press(a, KeyEvent.KEYCODE_DPAD_LEFT);
+        assertEquals(com.gathin.broadcast.GoalLooks.CLUBS, BoardPrefs.goalLook(app));
+        assertTrue(BoardMenu.menuLines(b.menuState())[BoardMenu.M_GOAL].contains("‹  Club animations  ›"));
+        assertEquals(com.gathin.broadcast.GoalLooks.CLUBS, b.bug.goalLook());
         downTo(a, b, BoardMenu.M_SOUND);
         String sound = BoardPrefs.goalSound(app);
         press(a, KeyEvent.KEYCODE_DPAD_RIGHT);

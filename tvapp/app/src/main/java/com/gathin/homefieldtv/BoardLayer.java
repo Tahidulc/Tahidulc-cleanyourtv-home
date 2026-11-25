@@ -60,7 +60,8 @@ import java.util.Set;
  * Whistle, the launcher's and the phone's one rule from the data), never early. At each kick-off a card asks for OK as it
  * happens on the screen: from then the clock is the channel's own and the wait is set. It comes and goes as a broadcaster's does (BoardBug, the launcher's
  * board copied whole, in the Scoreboard Lab's looks or By competition): up twenty minutes before kick-off, resting at
- * half time once its moment has passed, gone a minute after full time; a goal sweeps across it with the family's sounds.
+ * half time once its moment has passed, gone a minute after full time; a goal sweeps across it with the family's sounds
+ * (or plays the goal animation chosen in the hold-OK menu: GoalLooks, each club's own among them).
  *
  * <p>Out of it, in its look (BoardDrop): the cards, the substitutions, VAR explained, the minutes added, half and full
  * time, each once the picture reaches it (AsSeen: the channel's delay since the scores had it, and the board's clock past
@@ -494,6 +495,8 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         bug.game(g.id);
         bug.competition(g.slug, boardComp(g));
         bug.names(full(g.homeFull, g.homeName), full(g.awayFull, g.awayName));
+        bug.teams(g.homeId, g.awayId);
+        bug.goalLook(BoardPrefs.goalLook(getContext()));
         bug.crests(g.homeLogo != null || g.awayLogo != null);
         loadImages();
         nextPoll = 0;
@@ -1083,6 +1086,9 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         Context c = getContext();
         lastChange = now;
         if (up) {
+            // drawn as the family chose (GoalLooks), the clubs' own animations found by ESPN's ids
+            bug.goalLook(BoardPrefs.goalLook(c));
+            if (game != null) bug.teams(game.homeId, game.awayId);
             bug.goal(side);
             Sfx.goal(c, BoardPrefs.goalSound(c));
         }
@@ -2063,6 +2069,7 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
             m.var = BoardPrefs.varExplainedOn(c);
             m.popups = BoardPrefs.popupWords(BoardPrefs.popupStyle(c));
             m.sound = Sfx.goalName(BoardPrefs.goalSound(c));
+            m.goalLook = com.gathin.broadcast.GoalLooks.name(BoardPrefs.goalLook(c));
             m.swish = BoardPrefs.swishOn(c);
             m.every = resetEvery;
             m.live = game != null && logo.live;
@@ -2099,6 +2106,11 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
                 case BoardMenu.M_ALERTS: BoardPrefs.setDropsOn(c, !BoardPrefs.dropsOn(c)); break;
                 case BoardMenu.M_VAR: BoardPrefs.setVarExplainedOn(c, !BoardPrefs.varExplainedOn(c)); break;
                 case BoardMenu.M_POPUPS: BoardPrefs.setPopupStyle(c, BoardPrefs.nextPopup(BoardPrefs.popupStyle(c), step)); break;
+                case BoardMenu.M_GOAL:
+                    // the goal's animation on the board (GoalLooks; no 3D shirt here), for the goals to come
+                    BoardPrefs.setGoalLook(c, com.gathin.broadcast.GoalLooks.next(BoardPrefs.goalLook(c), step, false));
+                    bug.goalLook(BoardPrefs.goalLook(c));
+                    break;
                 case BoardMenu.M_SOUND: {
                     String now = BoardPrefs.goalSound(c);
                     int i = 0;
