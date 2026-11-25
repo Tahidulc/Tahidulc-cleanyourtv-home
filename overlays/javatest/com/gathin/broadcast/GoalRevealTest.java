@@ -162,6 +162,27 @@ public class GoalRevealTest {
     }
 
     @Test
+    public void theMiddleIsCoveredFromTheFirstSweepOverItToTheLastSweepPastIt() {
+        assertFalse(GoalReveal.middleCovered(-1));
+        assertFalse(GoalReveal.middleCovered(0));
+        // the first sweep reaches the middle early, and covers it from then
+        long from = -1, to = -1;
+        for (long t = 0; t <= GoalReveal.TOTAL_MS; t += 5) {
+            boolean on = GoalReveal.middleCovered(t);
+            if (on && from < 0) from = t;
+            if (!on && from >= 0 && to < 0) to = t;
+            if (from >= 0 && to < 0) assertTrue(t + " ms", GoalReveal.bandFrom(t) <= 0.5f || GoalReveal.dark(t));
+        }
+        assertTrue(from > 0 && from < GoalReveal.SWEEP_IN);
+        // through the dark strip and the second sweep, until the last one passes the middle
+        assertTrue(to > GoalReveal.OUT_FROM && to < GoalReveal.TOTAL_MS);
+        for (long t = from; t < to; t += 5) assertTrue(t + " ms", GoalReveal.middleCovered(t));
+        for (long t = to; t <= GoalReveal.TOTAL_MS + 100; t += 5) assertFalse(t + " ms", GoalReveal.middleCovered(t));
+        // the new score is under it by the time it is uncovered
+        assertTrue(GoalReveal.newScore(to));
+    }
+
+    @Test
     public void theCrestTurnsToFaceUsThenSlidesBesideTheLetters() {
         assertEquals(0f, GoalReveal.crestEdge(GoalReveal.CREST_FROM), 1e-6);
         assertEquals(1f, GoalReveal.crestEdge(GoalReveal.CREST_EDGE), 1e-6);

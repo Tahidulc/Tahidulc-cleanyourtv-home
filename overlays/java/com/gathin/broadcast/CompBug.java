@@ -91,6 +91,11 @@ public final class CompBug {
         public String[] before;
         /** Half time's face: each score turned over in its own small block (white with dark figures on a dark board). */
         public boolean htFace;
+        /**
+         * The look's own score figures (and its mark) that stand out of its row left out: a goal animation covers the row
+         * (GoalReveal.middleCovered), and nothing of the score may show round it until it uncovers the new one.
+         */
+        public boolean figuresAway;
     }
 
     /** How a goal's new score comes in (Data.move). */
@@ -879,7 +884,9 @@ public final class CompBug {
         fill.setColor(d.stoppage ? RED : 0xFF37003C);
         cv.drawRect(r, fill);
         words(cv, d.clock, (x[2] + x[5]) / 2f, bb + u * 0.4f, u * 0.66f, x[5] - x[2] - u * 0.3f, INK, mont7, 0);
-        // The scores large, then the lion between them.
+        // The scores large, then the lion between them (both standing out of the row: left out while a goal animation
+        // covers it, Data.figuresAway).
+        if (d.figuresAway) return;
         if (sc != null) {
             bigDigit(cv, d, sc[0], 1, (x[2] + x[3]) / 2f, cy - u * 0.06f, u * 1.85f);
             bigDigit(cv, d, sc[1], 2, (x[4] + x[5]) / 2f, cy - u * 0.06f, u * 1.85f);
@@ -907,9 +914,12 @@ public final class CompBug {
             scoreOne(cv, d, sc[0], 1, (x[2] + x[3]) / 2f, cy, u * 0.768f, INK, mont7);
             scoreOne(cv, d, sc[1], 2, (x[4] + x[5]) / 2f, cy, u * 0.768f, INK, mont7);
         }
-        // The trophy (the competition's logo: its white trophy cut out, else the logo), standing on the clock's tab.
+        // The trophy (the competition's logo: its white trophy cut out, else the logo), standing on the clock's tab (left
+        // out while a goal animation covers the row: it stands into it, Data.figuresAway).
         float tt = bt + u * 0.55f;
         Bitmap trophy = emblem(d.logo, E_WHITE_MARK);
+        // the trophy and the clock's tab under it stand into the row: both away while a goal animation covers it
+        if (d.figuresAway) return;
         if (trophy != null && trophy != d.logo) {
             fit(trophy, mid - u * 0.9f, 0, mid + u * 0.9f, tt + u * 0.02f, 0f, 1f);
             r2.set(r);
@@ -1166,7 +1176,21 @@ public final class CompBug {
             swoop(cv, x[1] - u * 0.05f, bt, bb, 0xFFD42A38, 1);
             swoop(cv, right - u * 0.28f, bt, bb, 0xFF2E5FC9, -1);
         }
-        // The blade and the ball with the logo.
+        // The blade and the ball with the logo (standing out of the row below it: left out while a goal animation covers
+        // the row, Data.figuresAway).
+        if (!d.figuresAway) blade(cv, d, x, u, bt, bb);
+        else rect(cv, x[0], bt, x[0] + u * 1.95f, bb, 0xFF2D3E8F);   // its part of the row alone, under the animation
+        // The clock's tab under the home name.
+        float cw = Math.max(u * 1.9f, tw(d.clock, u * 0.775f, bsemi7) + u * 0.7f), cl = x[1] - u * 0.05f;
+        r.set(cl, bb - u * 0.08f, cl + cw, bb + u * 0.78f);
+        fill.setColor(d.stoppage ? RED : 0xFF16224F);
+        cv.drawRoundRect(r, u * 0.3f, u * 0.3f, fill);
+        rect(cv, cl, bb - u * 0.08f, cl + cw, bb + u * 0.2f, d.stoppage ? RED : 0xFF16224F);
+        words(cv, d.clock, cl + cw / 2f, bb + u * 0.36f, u * 0.775f, cw - u * 0.3f, INK, bsemi7, 0);
+    }
+
+    /** The 2008 and 2012 boards' navy blade and the ball with the logo in it, at their start. */
+    private void blade(Canvas cv, Data d, float[] x, float u, float bt, float bb) {
         path.reset();
         path.moveTo(x[0], bt);
         path.lineTo(x[0] + u * 1.95f, bt);
@@ -1182,13 +1206,6 @@ public final class CompBug {
         cv.drawCircle(bx, by, br, fill);
         fill.setShader(null);
         logoIn(cv, emblem(d.logoLight != null ? d.logoLight : d.logo, E_MARK), bx - br * 0.68f, by - br * 0.68f, bx + br * 0.68f, by + br * 0.68f, 0f, null);
-        // The clock's tab under the home name.
-        float cw = Math.max(u * 1.9f, tw(d.clock, u * 0.775f, bsemi7) + u * 0.7f), cl = x[1] - u * 0.05f;
-        r.set(cl, bb - u * 0.08f, cl + cw, bb + u * 0.78f);
-        fill.setColor(d.stoppage ? RED : 0xFF16224F);
-        cv.drawRoundRect(r, u * 0.3f, u * 0.3f, fill);
-        rect(cv, cl, bb - u * 0.08f, cl + cw, bb + u * 0.2f, d.stoppage ? RED : 0xFF16224F);
-        words(cv, d.clock, cl + cw / 2f, bb + u * 0.36f, u * 0.775f, cw - u * 0.3f, INK, bsemi7, 0);
     }
 
     /** Two slanted stripes (a club's colour, then white), leaning back as the 2008 board's did. */

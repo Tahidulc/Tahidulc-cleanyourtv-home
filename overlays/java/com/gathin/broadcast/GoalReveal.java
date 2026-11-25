@@ -72,6 +72,17 @@ public final class GoalReveal {
         return t < 0 || t >= SCORE_AT;
     }
 
+    /**
+     * Pure: whether the strip's middle is under the animation t ms in (a sweep over it, or the dark strip): a look's own
+     * score standing out of its row over its middle (the Premier League's world feed) is left out meanwhile, so nothing of
+     * the score shows round the animation, and the new one comes as the last sweep passes.
+     */
+    public static boolean middleCovered(long t) {
+        if (t < 0 || t >= TOTAL_MS) return false;
+        if (dark(t)) return true;
+        return bandFrom(t) <= 0.5f && bandTo(t) >= 0.5f;
+    }
+
     /** Pure: whether the dark strip is down (the first sweep has covered it all, the second not yet). */
     public static boolean dark(long t) {
         return t >= SWEEP_IN && t < SCORE_AT;
