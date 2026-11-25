@@ -52,6 +52,8 @@ public final class BoardFx {
      * the net, one after the other.
      */
     public static final int GOAL_BAND = 0, GOAL_FLIP = 1, GOAL_BURST = 2, GOAL_SEQUENCE = 3;
+    /** The new goal animations, chosen (GoalLooks): each club's own or the generic, drawn by GoalReveal; never a game's own. */
+    public static final int GOAL_REVEAL = 4;
 
     /**
      * Pure: the goal set a game's goals come in: the sequence, every game and every goal (the family's choice, 16 Nov

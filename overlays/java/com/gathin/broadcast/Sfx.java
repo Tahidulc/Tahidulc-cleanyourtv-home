@@ -45,11 +45,17 @@ public final class Sfx {
     public static final float QUIET = 0.6f;
     /**
      * The goal sounds over the board's goal animation (goal-KEY.ogg), and their names, in the order offered. "swoosh" is
-     * the family's own pick (a stock swoosh they supplied), cut so its loudest moment lands as the GOAL band does.
+     * the family's own pick (a stock swoosh they supplied), cut so its loudest moment lands as the GOAL band does; the
+     * last six (tools/reveal_goal_synth.py) are timed to the new goal animations' stages (GoalReveal: the sweep, the
+     * crest's turn, the motif, GOAL!'s burst, the sweep off), the rest (tools/goal_synth.py) to the GOAL band's.
      */
-    public static final String[] GOALS = {"off", "swoosh", "roar", "hit", "horn", "swish", "drums", "stab", "boom", "rumble", "sting"};
+    public static final String[] GOALS = {"off", "swoosh", "roar", "hit", "horn", "swish", "drums", "stab", "boom", "rumble", "sting",
+            "ting", "brass", "crowd", "riser", "bells", "thunder"};
     public static final String[] GOAL_NAMES = {"Off", "Your swoosh", "Stadium roar", "Broadcast hit", "Goal horn", "Swish and chime",
-            "Drum hit", "Synth stab", "Broadcast boom", "Swipe and rumble", "Score sting"};
+            "Drum hit", "Synth stab", "Broadcast boom", "Swipe and rumble", "Score sting", "Whoosh and ting", "Brass swell",
+            "Crowd rise", "Riser and drop", "Bells", "Thunder and sparkle"};
+    /** The goal sounds made for the new goal animations (GoalReveal), timed to their stages. */
+    public static final String[] REVEAL_GOALS = {"ting", "brass", "crowd", "riser", "bells", "thunder"};
     /** The goal sound unless another is chosen: the family's swoosh. */
     public static final String GOAL_DEFAULT = "swoosh";
     /** Its loudest moment, in ms from its start (it starts with the goal): the GOAL band landing across the board. */
@@ -58,6 +64,12 @@ public final class Sfx {
     /** Pure: the goal sound after this one (off, then each in turn). */
     public static String nextGoal(String key) {
         for (int i = 0; i < GOALS.length; i++) if (GOALS[i].equals(key)) return GOALS[(i + 1) % GOALS.length];
+        return GOALS[0];
+    }
+
+    /** Pure: the goal sound before this one (round from off to the last). */
+    public static String previousGoal(String key) {
+        for (int i = 0; i < GOALS.length; i++) if (GOALS[i].equals(key)) return GOALS[(i - 1 + GOALS.length) % GOALS.length];
         return GOALS[0];
     }
 
