@@ -708,7 +708,8 @@ and a refresh keeps every title whose row hasn't changed, so the family's 200,00
 120). A while into a channel full screen, half the pictures the screens under it hold are let go; and once only live TV
 has been on screen for 30 seconds (the picture, catch-up, the guide, the channel lists, History), the films and series
 are let go too (91 MB of the JVM's heap for the family's 200,000 down to 0.1, TheFamilysSizeTest), read back from their
-files when Home, Movies, TV shows, a title, Search, My list or Settings opens, Home showing what it showed meanwhile.
+files when Home, Movies, TV shows, a title, Search, My list or Settings opens, Home showing what it showed meanwhile. A
+channel full screen with nothing changing draws no frame at all (LiveFramesTest).
 
 Live TV plays one stream at a time (StreamGate): the channel before is closed before the next connects (at once, even
 one the provider has stopped sending), a newer one always wins, and a film, the archive and an HLS stream wait their
