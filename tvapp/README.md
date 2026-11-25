@@ -403,15 +403,21 @@ wordmark are Homefield; it carries no Sky logo or name.
   someone), and More like this, the poster the remote is on lifted. TMDB's logo, cast photos and seasons' posters come
   with the key the TV launcher hands over (kept in memory only), and are kept on this TV for a fortnight.
 
-- **Choose a source:** Play on a film's page (and From the start, and an episode chosen) first lists every source it
-  has, as the phone's Choose a source: the family's own TorBox files of it, then the playlists' copies, each source
-  under its own heading, each copy with its mark (TorBox's green with a cloud, a playlist's blue with a screen and its
-  name), the logos of its picture, HDR and sound as its name says them (4K Ultra HD, Dolby Vision, HDR10, Dolby Atmos,
-  Dolby and its channels, DTS-HD 7.1…) and its file's kind, and its file's name and size under them. The best is first,
-  marked Best match, with the remote on it: OK plays the one chosen, and the rest stay its backups in that order, for
-  Change source while it plays; Back goes back to the page. With one source it plays straight away. Resume and Continue
-  watching carry on straight away from the copy it was started on (the others after it), and the next episode starts
-  straight away from its best copy, as on the phone.
+- **The cover (Play):** Play on a film's page (and From the start, and an episode chosen) opens its cover, the
+  family's cover B: on the left the poster (an episode's show's), popping in from a little smaller with a slight
+  overshoot and its glow blooming after it; on the right, sliding in one after another, the title as its own logo
+  (TMDB's, in the family's language, else English, else one with no words; the title in words while it comes or
+  without one; an episode's show's logo with "S2 E4 · the episode's name" under it), the rating, year, length and
+  certificate, the story (an episode's own), the cast with their photos (or initials on a tint), and PLAY FROM: every
+  source, every TorBox file of it (none left out), each labelled from its name: TorBox's green tile with its cloud or the
+  playlists' blue one with a television, the picture (4K, 1080p…), where it is from, HDR or Dolby Vision (or SDR), the
+  sound (TrueHD Atmos, DTS-HD MA 7.1, DD+ 5.1, AAC Stereo…), the codec (HEVC, AV1, H.264), the release (REMUX, BluRay,
+  WEB-DL, WEBRip), its size, a series pack's episode file under it. The best is first, marked BEST, with the remote on
+  it (white); a long list scrolls. OK plays the one chosen from where it was left (the rest stay its backups, for
+  Sources while it plays); Back goes back to the page. The page's ground is the colour theme's (Settings › Colour
+  theme), with the poster's own colour glowing over it, kept dark enough for the words to read; on the Lite motion
+  tier it simply fades in. Resume and Continue watching carry on straight away from the copy it was started on (the
+  others after it), and the next episode starts straight away from its best copy, as on the phone.
 - **Player:** films and episodes in the 07 look of the live player ("improve the player whilst watching movies and TV
   shows to have all the features you'd expect and you can choose different sources, subtitles with open subtitles
   support"). OK brings up the overlay: the title (and S1 E3 · the episode's name, or a film's year, length and kind) and

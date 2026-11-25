@@ -11,7 +11,9 @@ import java.util.regex.Pattern;
  * What a film's or episode's name says of its picture's HDR and its sound, read as the phone reads them (its
  * SourceInfo), for the order the copies are offered in and the logos beside each: "Dolby Vision", "HDR10+", "HDR10",
  * "HLG", "HDR"; "Dolby Atmos", "Dolby TrueHD 7.1", "DTS-HD 5.1", "Dolby Digital+ 5.1", "AAC Stereo", "5.1". And that
- * order, the best first, the same as the phone's: with no limit on size. Pure.
+ * order, the best first, the same as the phone's: with no limit on size. And, for the cover a film opens on, a copy's
+ * labels as a release names them (labels): its HDR (or SDR), its sound in short ("TrueHD Atmos", "DTS-HD MA 7.1", "DD+
+ * 5.1", "AAC Stereo"), its codec (HEVC, AV1, H.264) and its release (REMUX, BluRay, WEB-DL, WEBRip, HDTV). Pure.
  */
 public final class Formats {
     private Formats() {}
@@ -102,6 +104,89 @@ public final class Formats {
             MP3 = word("mp3");
     private static final Pattern CHANNELS = Pattern.compile("(?<![0-9.])(7\\.1|5\\.1|2\\.0)(?![0-9])");
     private static final Pattern CH_COUNT = Pattern.compile("(?:^|[\\s\\-])([862])ch(?=$|[\\s\\-])");
+
+    // ---- a copy's labels ------------------------------------------------------------------------------------------
+
+    private static final Pattern SDR = word("sdr"), HEVC = word("hevc|x265|h265|h 265|h-265"), AV1 = word("av1"),
+            AVC = word("x264|h264|h 264|h-264|avc"), VP9 = word("vp9"), REMUX = word("remux|bdremux|bd-remux"),
+            BLURAY = word("bluray|blu-ray|bdrip|brrip|bd-rip"), WEBDL = word("web-dl|webdl|web dl"), WEBRIP = word("webrip|web-rip|web rip"),
+            WEB = word("web"), HDTV = word("hdtv|pdtv"), DVD = word("dvdrip|dvd-rip|dvd"), DTSMA = word("dts-hd ma|dts hd ma|dts-hdma|dts-ma|dts ma|dtshd-ma");
+
+    /**
+     * Pure: what a copy's name says of it, as its row on the cover shows it: its HDR (as hdr(), or "SDR" when the name
+     * says so; hdrKnown when it was read already), its sound in short (sound(), else the words given in audio()'s form
+     * shortened), its codec and its release; those it doesn't say left out.
+     */
+    public static java.util.List<String> labels(String name, String hdrKnown, String soundKnown) {
+        java.util.List<String> out = new java.util.ArrayList<>(4);
+        String h = hdrKnown != null && !hdrKnown.isEmpty() ? hdrKnown : hdr(name);
+        if (h.isEmpty() && SDR.matcher(norm(name)).find()) h = "SDR";
+        if (!h.isEmpty()) out.add(h);
+        String s = sound(name);
+        if (s.isEmpty()) s = shortSound(soundKnown);
+        if (!s.isEmpty()) out.add(s);
+        String c = codec(name);
+        if (!c.isEmpty()) out.add(c);
+        String r = release(name);
+        if (!r.isEmpty()) out.add(r);
+        return out;
+    }
+
+    /**
+     * Pure: the sound a name says, in short as releases write it: "TrueHD Atmos", "DD+ Atmos", "Atmos", "DTS:X",
+     * "DTS-HD MA 7.1", "DTS-HD 5.1", "TrueHD 7.1", "DD+ 5.1", "DD 5.1", "DTS 5.1", "AAC Stereo", "FLAC", "5.1"; or "".
+     */
+    public static String sound(String name) {
+        String n = norm(name);
+        String kind;
+        if (DTSX.matcher(n).find()) kind = "DTS:X";
+        else if (DTSMA.matcher(n).find()) kind = "DTS-HD MA";
+        else if (DTSHD.matcher(n).find()) kind = "DTS-HD";
+        else if (TRUEHD.matcher(n).find()) kind = "TrueHD";
+        else if (DDP.matcher(n).find()) kind = "DD+";
+        else if (DD.matcher(n).find()) kind = "DD";
+        else if (DTS.matcher(n).find()) kind = "DTS";
+        else if (AAC.matcher(n).find()) kind = "AAC";
+        else if (FLAC.matcher(n).find()) kind = "FLAC";
+        else if (OPUS.matcher(n).find()) kind = "Opus";
+        else if (MP3.matcher(n).find()) kind = "MP3";
+        else kind = "";
+        if (ATMOS.matcher(n).find()) return kind.isEmpty() ? "Atmos" : kind + " Atmos";
+        String ch = channels(n);
+        if (kind.isEmpty()) return ch.equals("Stereo") ? "" : ch;
+        return ch.isEmpty() ? kind : kind + " " + ch;
+    }
+
+    /** Pure: audio()'s words in short ("Dolby Atmos" → "Atmos", "Dolby Digital+ 5.1" → "DD+ 5.1"), "" for none. */
+    public static String shortSound(String audio) {
+        String a = audio == null ? "" : audio.trim();
+        if (a.isEmpty()) return "";
+        if (a.startsWith("Dolby Atmos")) return "Atmos";
+        return a.replace("Dolby Digital+", "DD+").replace("Dolby Digital", "DD").replace("Dolby TrueHD", "TrueHD");
+    }
+
+    /** Pure: the picture's codec a name says: "HEVC", "AV1", "H.264", "VP9", or "". */
+    public static String codec(String name) {
+        String n = norm(name);
+        if (HEVC.matcher(n).find()) return "HEVC";
+        if (AV1.matcher(n).find()) return "AV1";
+        if (AVC.matcher(n).find()) return "H.264";
+        if (VP9.matcher(n).find()) return "VP9";
+        return "";
+    }
+
+    /** Pure: the release a name says: "REMUX", "BluRay", "WEB-DL", "WEBRip", "WEB", "HDTV", "DVD", or "". */
+    public static String release(String name) {
+        String n = norm(name);
+        if (REMUX.matcher(n).find()) return "REMUX";
+        if (WEBDL.matcher(n).find()) return "WEB-DL";
+        if (WEBRIP.matcher(n).find()) return "WEBRip";
+        if (BLURAY.matcher(n).find()) return "BluRay";
+        if (WEB.matcher(n).find()) return "WEB";
+        if (HDTV.matcher(n).find()) return "HDTV";
+        if (DVD.matcher(n).find()) return "DVD";
+        return "";
+    }
 
     /** Pure: the HDR a name says: "Dolby Vision", "HDR10+", "HDR10", "HLG", "HDR", or "". */
     public static String hdr(String name) {

@@ -22,8 +22,8 @@ import java.util.List;
  * A film's or a series' page (TitlePage), in 07's shell with its "‹ Movies" (or "‹ TV Shows") line. A film: Play, or
  * Resume (with the minutes left) and From the Start where it was left part-way. A series: Resume S2 E8 (or Play S1 E1)
  * and From the Start. Then round buttons: My List (a tick once on it), the trailer (in the TV's YouTube app) and, where
- * something was started, Remove from Continue watching. Play shows every source first, the best first (VodActivity's Choose a
- * source); Resume carries on straight away from the copy it was started on. TMDB's logo, cast and seasons' colours come
+ * something was started, Remove from Continue watching. Play opens the title's cover with every source on it, the best
+ * first (VodActivity's CoverPage); Resume carries on straight away from the copy it was started on. TMDB's logo, cast and seasons' colours come
  * when it has answered (kept on the TV after, so the page has them at once next time). With Home style Editorial the
  * buttons are a menu down the left, as the family's other film app has them: Play (or Resume), Trailer, More episodes
  * (a series: down to its episodes), Add to My List, More like this (down to it).

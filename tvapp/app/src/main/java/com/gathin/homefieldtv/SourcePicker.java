@@ -25,11 +25,9 @@ import java.util.Locale;
  * Where a film or episode can play from, as the phone's source sheet: TorBox's copies (a green mark with a cloud) and
  * the IPTV playlists' (a blue one with a screen and the playlist's name), so that the two can't be mistaken; beside each
  * mark the logos of the picture, its HDR and its sound as its name says them (4K Ultra HD, Dolby Vision, Dolby Atmos…)
- * and the file's kind, under it the file's name and size. Two ways: before playing (choose: every copy, the best first
- * and marked the best match, the remote on it; OK plays the one chosen, the rest kept as its backups in their order,
- * Back goes back), and while a film plays (open: the player's Sources, or Up on the plain picture; a card at the right,
- * the one playing ticked "Playing"; OK plays the one chosen from the same moment, Back shuts it; it goes by itself after a
- * while untouched). In the 07 look of the player's pickers: a card of 07's dark material, rounded 40, the remote's row
+ * and the file's kind, under it the file's name and size. While a film plays (open: the player's Sources, or Up on the
+ * plain picture; a card at the right, the one playing ticked "Playing"; OK plays the one chosen from the same moment,
+ * Back shuts it; it goes by itself after a while untouched). Before playing, the cover (CoverPage) lists them. In the 07 look of the player's pickers: a card of 07's dark material, rounded 40, the remote's row
  * white with dark words, its marks' logos inked dark on it.
  */
 final class SourcePicker extends View {
@@ -42,22 +40,18 @@ final class SourcePicker extends View {
     private static final long IDLE_MS = 20_000;
     private static final float X = 1032f, W = 840f, TOP = 48f, BOTTOM = 1032f, HEAD = 138f, ROW = 100f, GROUP = 46f, FOOT = 64f,
             RADIUS = 40f;
-    /** Before playing: wider and in the middle, nothing playing behind it. */
-    private static final float CHOOSE_X = 260f, CHOOSE_W = 1400f;
 
     private final List<Catalog.Play> plays = new ArrayList<>();
     private final List<Line> lines = new ArrayList<>();
     private int playing, focus;
     private float scroll;
     private Pick pick;
-    private boolean open, choosing;
-    /** Before playing: what Back does (goes back from the player). */
-    private Runnable back;
+    private boolean open;
     private final Handler h = new Handler(Looper.getMainLooper());
     private final Runnable idle = this::close;
     private final Mark mark = new Mark();
     private final Frost card = new Frost(Look07.MAT_DARK);
-    private final Paint panel = Dark.fill(Palette.PANEL), lit = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint lit = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint chip = Dark.line(0x66FFFFFF, 1.5f), tick = Dark.line(Dark.TEXT, 3.2f);
     /** The logos on the remote's white row: inked dark. */
     private final android.graphics.ColorFilter ink = new android.graphics.PorterDuffColorFilter(Look07.INK,
@@ -102,29 +96,11 @@ final class SourcePicker extends View {
 
     /** Open on the copy playing (its place in plays), the remote on it. */
     void open(List<Catalog.Play> copies, int now, Pick p) {
-        show(copies, now, p, null);
-    }
-
-    /**
-     * Before playing: every copy, the best first (the remote on it, "Best match"); OK plays the one chosen, Back runs
-     * back. It stays until one of them.
-     */
-    void choose(List<Catalog.Play> copies, Pick p, Runnable onBack) {
-        show(copies, -1, p, onBack);
-    }
-
-    boolean isChoosing() {
-        return open && choosing;
-    }
-
-    private void show(List<Catalog.Play> copies, int now, Pick p, Runnable onBack) {
         if (copies.isEmpty()) return;
         plays.clear();
         plays.addAll(copies);
         playing = now;
         pick = p;
-        back = onBack;
-        choosing = onBack != null;
         lines.clear();
         List<List<Integer>> groups = groups(plays);
         for (List<Integer> g : groups) {
@@ -150,16 +126,14 @@ final class SourcePicker extends View {
         h.removeCallbacks(idle);
         if (!open) return;
         open = false;
-        choosing = false;
         pick = null;
-        back = null;
         setVisibility(GONE);
     }
 
     private void poke() {
         h.removeCallbacks(idle);
-        // Before playing it waits for an answer; over a film it goes by itself after a while.
-        if (!choosing) h.postDelayed(idle, IDLE_MS);
+        // Over a film it goes by itself after a while.
+        h.postDelayed(idle, IDLE_MS);
     }
 
     /** A key while open: true when it was the panel's (the volume keys go on to the TV). */
@@ -184,9 +158,7 @@ final class SourcePicker extends View {
                 return true;
             case KeyEvent.KEYCODE_BACK:
             case KeyEvent.KEYCODE_ESCAPE:
-                Runnable b = back;
                 close();
-                if (b != null && e.getRepeatCount() == 0) b.run();
                 return true;
             default:
                 return true;
@@ -328,21 +300,14 @@ final class SourcePicker extends View {
 
     @Override protected void onDraw(Canvas c) {
         if (!open || lines.isEmpty()) return;
-        float x = Ui.f(choosing ? CHOOSE_X : X), w = Ui.f(choosing ? CHOOSE_W : W);
+        float x = Ui.f(X), w = Ui.f(W);
         r.set(x, Ui.f(TOP), x + w, Ui.f(BOTTOM));
-        // As the player's pickers: a card of 07's dark material over the film (before playing, the panel's colour).
+        // As the player's pickers: a card of 07's dark material over the film.
         Shadows.draw(c, r, Ui.f(RADIUS), Look07.SH_PANEL, 1f);
-        if (choosing) {
-            panel.setColor(Palette.PANEL);
-            c.drawRoundRect(r, Ui.f(RADIUS), Ui.f(RADIUS), panel);
-        } else {
-            card.draw(c, r, Ui.f(RADIUS), 1f);
-        }
+        card.draw(c, r, Ui.f(RADIUS), 1f);
         title.setColor(Palette.TEXT1);
-        c.drawText(choosing ? "Choose a source" : "Sources", x + Ui.f(48), Ui.f(TOP + 70), title);
-        String count = choosing
-                ? plays.size() + " sources  ·  the best first  ·  the others stay as backups: change between them while it plays"
-                : plays.size() + " copies  ·  " + (plays.get(0).torbox ? "TorBox's first" : "your playlist's first")
+        c.drawText("Sources", x + Ui.f(48), Ui.f(TOP + 70), title);
+        String count = plays.size() + " copies  ·  " + (plays.get(0).torbox ? "TorBox's first" : "your playlist's first")
                 + "  ·  another carries on from here";
         c.drawText(Ui.fit(count, sub, w - Ui.f(96)), x + Ui.f(48), Ui.f(TOP + 108), sub);
 
@@ -375,8 +340,7 @@ final class SourcePicker extends View {
             ly += lh;
         }
         c.restore();
-        c.drawText(choosing ? "OK plays it  ·  Back goes back" : "OK plays it from here  ·  Back closes", x + Ui.f(48),
-                Ui.f(BOTTOM - 26), hint);
+        c.drawText("OK plays it from here  ·  Back closes", x + Ui.f(48), Ui.f(BOTTOM - 26), hint);
     }
 
     private void drawHeading(Canvas c, Line l, float x, float y) {

@@ -63,14 +63,18 @@ import java.util.Locale;
  *   Back               closes what is open, then stops and keeps the place (Resume and Continue watching)
  * </pre>
  *
+ * <p>Play on a title's page (or an episode chosen) opens on its cover (CoverPage, the family's cover B): the poster
+ * popping in, the title's logo, its facts, story and cast, and PLAY FROM with every source, the best first with the
+ * remote on it; OK plays the one chosen from where it was left (the others its backups), Back goes back to the page.
+ * Resume and Continue watching carry on straight away from the copy it was started on; the next episode starts straight
+ * away from its best copy.
+ *
  * <p>Sources (SourcePicker): every copy it can play from, the best first (Formats: 4K, then 1080p, 720p and the rest;
  * HDR before SDR; Atmos or surround before stereo; the bigger file), each with its mark (TorBox's green, a playlist's
  * blue), its picture's, HDR's and sound's logos, its file's name and size, the one playing ticked; another chosen carries
- * on from the same moment. The family's own TorBox files of it come first (all of them found before anything plays,
- * unless Settings put them last), then the playlists' copies. Play on a title's page (or an episode chosen) shows them
- * all first, as the phone's Choose a source does; Resume and Continue watching carry on straight away from the copy it
- * was started on; the next episode starts straight away from its best copy. A copy that fails, before or while it plays,
- * gives way to the next from the same moment, with a short note at the top.
+ * on from the same moment. The family's own TorBox files of it come first (every one of them, found before anything
+ * plays, unless Settings put them last), then the playlists' copies. A copy that fails, before or while it plays, gives
+ * way to the next from the same moment, with a short note at the top.
  *
  * <p>Subtitles (VodSubs, VodPanels): Off, the stream's own tracks, or OpenSubtitles (by the title's IMDb or TMDB id, the
  * season and episode for an episode, in the family's languages), their timing nudged half a second at a time, their size,
@@ -104,6 +108,8 @@ public final class VodActivity extends Activity implements VodSubs.Listener, Epi
     private VodSubs subs;
     private VodPanels panels;
     private EpisodesPanel episodes;
+    /** The cover Play opens on (null when it carries on straight away: Resume, Continue watching, the next episode). */
+    private CoverPage cover;
     private final Handler h = new Handler(Looper.getMainLooper());
     private Catalog.Title title;
     private Catalog.Episode episode, nextUp;
@@ -194,6 +200,19 @@ public final class VodActivity extends Activity implements VodSubs.Listener, Epi
         panels = new VodPanels(this, card);
         episodes = new EpisodesPanel(this, this);
         root.addView(episodes, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        if (getIntent().getBooleanExtra(CHOOSE, false)) {
+            // Play on a title's page: its cover first, over everything, until a source is chosen.
+            cover = new CoverPage(this, new CoverPage.Host() {
+                @Override public void play(int index) {
+                    playChosen(index);
+                }
+
+                @Override public void back() {
+                    finish();
+                }
+            });
+            root.addView(cover, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        }
         root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> fitSurface());
         setContentView(root);
         // Films' own sound delay (Settings and the player's Audio), not the last channel's.
@@ -247,12 +266,16 @@ public final class VodActivity extends Activity implements VodSubs.Listener, Epi
             return;
         }
         if (episodeId == null || episodeId.isEmpty()) {
-            // A film plays at once; its page (its story, cast, and the ids its subtitles are looked for by) as it comes.
+            // A film plays at once (its cover shows at once); its page (its story, cast, and the ids its subtitles are
+            // looked for by) as it comes.
             Catalog.Title t = title;
+            if (cover != null) cover.show(t, null, cat.cachedDetails(t));
+            readCast();
             start();
             cat.details(t, d -> {
                 if (t != title || d == null) return;
                 details = d;
+                if (cover != null && cover.isOpen()) cover.show(t, null, d);
                 readCast();
                 sub = VodPanels.facts(title, details);
                 subFor = -1f;
@@ -269,24 +292,40 @@ public final class VodActivity extends Activity implements VodSubs.Listener, Epi
                 overlay.invalidate();
                 return;
             }
+            if (cover != null) cover.show(title, episode, d);
             readCast();
             start();
         });
     }
 
-    /** The cast for Info: the provider's, else TMDB's kept on this TV (read off the main thread). */
+    /**
+     * The cast for Info and the cover: the provider's, else TMDB's kept on this TV (with their photos, for the cover),
+     * and TMDB's logo for the cover's title; read off the main thread.
+     */
     private void readCast() {
         cast = details != null ? details.cast : "";
-        if (!cast.isEmpty() || title == null) return;
+        if (title == null) return;
         Catalog.Title t = title;
         android.content.Context app = getApplicationContext();
         Exec.io(() -> {
             Tmdb.Extras x = Tmdb.keptExtras(app, t);
             List<String> names = new ArrayList<>();
-            if (x != null) for (String[] p : x.cast) if (names.size() < 8 && p.length > 0 && !p[0].isEmpty()) names.add(p[0]);
-            String got = String.join(", ", names);
+            List<String[]> faces = new ArrayList<>();
+            if (x != null) {
+                for (String[] p : x.cast) {
+                    if (p.length == 0 || p[0].isEmpty()) continue;
+                    if (names.size() < 8) names.add(p[0]);
+                    if (faces.size() < 6) faces.add(new String[]{p[0], p.length > 2 ? p[2] : ""});
+                }
+            }
+            String got = String.join(", ", names), logo = x == null ? "" : x.logo;
             Exec.main(() -> {
-                if (t == title) cast = got;
+                if (t != title) return;
+                if (cast.isEmpty()) cast = got;
+                if (cover != null) {
+                    if (!faces.isEmpty()) cover.cast(faces);
+                    cover.logo(logo);
+                }
             });
         });
     }
@@ -309,6 +348,7 @@ public final class VodActivity extends Activity implements VodSubs.Listener, Epi
         // TorBox's copies all found before anything plays, as they come first: at once from the library read lately.
         if (!TorBox.fresh(this)) {
             error = "Looking in your TorBox…";
+            if (cover != null) cover.status(error);
             overlay.invalidate();
         }
         android.content.Context app = getApplicationContext();
@@ -361,15 +401,16 @@ public final class VodActivity extends Activity implements VodSubs.Listener, Epi
         if (plays.isEmpty()) {
             error = title != null && title.torbox() ? "It isn't in your TorBox any more, or TorBox is turned off."
                     : "Its playlist has gone from this TV.";
+            if (cover != null) cover.status(error);
             overlay.invalidate();
             return;
         }
         at = 0;
         error = "";
-        if (choose && plays.size() > 1) {
-            // Every source before it plays, the best first, as the phone's Choose a source.
+        if (choose && cover != null) {
+            // Every source on the cover before it plays, the best first with the remote on it.
             choose = false;
-            chooseSource();
+            cover.sources(plays);
             return;
         }
         if (resume) {
@@ -398,17 +439,21 @@ public final class VodActivity extends Activity implements VodSubs.Listener, Epi
         return picker;
     }
 
-    /** Every copy, the best first and the remote on it: OK plays the one chosen (the rest its backups), Back goes back. */
-    private void chooseSource() {
-        setOverlay(false);
-        picker().choose(plays, i -> {
-            List<Catalog.Play> order = Copies.chosenFirst(plays, i);
-            plays.clear();
-            plays.addAll(order);
-            at = 0;
-            Copies.started(this, title.key, episodeId(), plays.get(0));
-            prepare(true);
-        }, this::finish);
+    /** A source chosen on the cover: it plays from where it was left, the rest kept as its backups in their order. */
+    private void playChosen(int i) {
+        if (i < 0 || i >= plays.size() || title == null) return;
+        List<Catalog.Play> order = Copies.chosenFirst(plays, i);
+        plays.clear();
+        plays.addAll(order);
+        at = 0;
+        Copies.started(this, title.key, episodeId(), plays.get(0));
+        cover.close();
+        prepare(true);
+    }
+
+    /** Tests and previews: the cover (null when it isn't shown). */
+    CoverPage cover() {
+        return cover;
     }
 
     private Catalog.Play current() {
@@ -824,10 +869,12 @@ public final class VodActivity extends Activity implements VodSubs.Listener, Epi
 
     @Override public boolean dispatchKeyEvent(KeyEvent e) {
         int code = e.getKeyCode();
-        // The copies' list, the episodes, then the pickers take the keys while open (the volume keys go on to the TV).
+        // The cover, the copies' list, the episodes, then the pickers take the keys while open (the volume keys go on to
+        // the TV).
+        if (cover != null && cover.isOpen()) return cover.key(e) || super.dispatchKeyEvent(e);
         if (picker != null && picker.isOpen()) {
             boolean took = picker.key(e);
-            if (!picker.isOpen() && !picker.isChoosing() && e.getAction() == KeyEvent.ACTION_DOWN && isBack(code)) setOverlay(true);
+            if (!picker.isOpen() && e.getAction() == KeyEvent.ACTION_DOWN && isBack(code)) setOverlay(true);
             return took || super.dispatchKeyEvent(e);
         }
         if (episodes.isOpen()) return episodes.key(e) || super.dispatchKeyEvent(e);
@@ -1135,13 +1182,13 @@ public final class VodActivity extends Activity implements VodSubs.Listener, Epi
         prepare(true);
     }
 
-    /** Previews: these copies as if found, shown before playing as Play shows them. */
+    /** Previews and tests: these copies as if found, on the cover as Play shows them. */
     void previewChoose(List<Catalog.Play> copies) {
         plays.clear();
         plays.addAll(copies);
         at = 0;
         error = "";
-        chooseSource();
+        if (cover != null) cover.sources(plays);
     }
 
     /** Previews: these copies as if found, the one at now playing; the list of them opened when asked. */

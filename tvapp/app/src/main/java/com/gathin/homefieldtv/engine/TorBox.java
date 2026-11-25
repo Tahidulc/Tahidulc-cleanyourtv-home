@@ -44,7 +44,6 @@ public final class TorBox {
     /** The library read again after this long: a film just added to TorBox shows here within it (or at once, Check). */
     private static final long FRESH_MS = 2 * 60_000L;
     /** Every version of a film the account has is offered (TorBox's first, all of them); this only a guard. */
-    private static final int VERSIONS = 12;
     /** After TorBox didn't answer, films play without it this long (then it is asked again; a retry first, at once). */
     private static final long FAILED_MS = 20_000L;
     /** A list read a page at a time, at most this many pages. */
@@ -538,8 +537,9 @@ public final class TorBox {
                     || (f.single && !item.episodic() && item.year > 0 && fits(item, title, alt, want));
             if (match) out.add(f);
         }
+        // Every version, none left out (the family's: "make sure you include all of them").
         sortBest(out);
-        return out.size() > VERSIONS ? new ArrayList<>(out.subList(0, VERSIONS)) : out;
+        return out;
     }
 
     /**
@@ -583,7 +583,7 @@ public final class TorBox {
             Release r = episode(f);
             if (r != null && r.season == season && r.episode == number) out.add(f);
         }
-        return out.size() > VERSIONS ? new ArrayList<>(out.subList(0, VERSIONS)) : out;
+        return out;
     }
 
     // ---- the account's own titles: those no playlist has -------------------------------------------------------------
@@ -937,6 +937,7 @@ public final class TorBox {
         Catalog.Play p = new Catalog.Play(f.stored(), null, null);
         p.torbox = true;
         p.name = f.name;
+        p.item = f.item == null || f.item.equals(f.name) ? "" : f.item;
         p.size = f.size;
         p.picture = picture(f);
         p.kind = Catalog.kindOf(f.name);

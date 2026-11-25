@@ -615,8 +615,9 @@ public final class TvActivity extends Activity {
     }
 
     /**
-     * A film (episode null) or an episode, full screen, from start ms in: with every source shown first (choose: Play on
-     * a title's page, an episode chosen), or straight away from the copy it was started on (Resume, Continue watching).
+     * A film (episode null) or an episode, full screen, from start ms in: on its cover first, every source on it (choose:
+     * Play on a title's page, an episode chosen), or straight away from the copy it was started on (Resume, Continue
+     * watching).
      */
     void play(Catalog.Title t, Catalog.Episode e, long startMs, boolean choose) {
         if (t == null) return;

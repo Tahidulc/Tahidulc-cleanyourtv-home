@@ -367,9 +367,12 @@ public final class Tmdb {
         String k = key(c);
         if (k == null) return had == null ? null : fromKept(had);
         try {
+            // Logos in the family's language too (English and those with no words as before).
+            String family = com.gathin.homefieldtv.prefs.PlayerPrefs.languages(c).get(0);
+            String langs = family.isEmpty() || family.equals("en") ? "en,null" : enc(family) + ",en,null";
             JSONObject j = get(k, (t.series ? "tv/" : "movie/") + m.id + "?append_to_response=credits,images,"
-                    + (t.series ? "content_ratings" : "release_dates") + "&include_image_language=en,null");
-            Extras x = extrasOf(j, t.series);
+                    + (t.series ? "content_ratings" : "release_dates") + "&include_image_language=" + langs);
+            Extras x = extrasOf(j, t.series, family);
             write(f, kept(x).toString());
             return x;
         } catch (IOException | JSONException e) {
@@ -397,18 +400,32 @@ public final class Tmdb {
      * series) or its year (a film), and its age rating in the UK, else the US.
      */
     static Extras extrasOf(JSONObject j, boolean tv) {
-        String logo = "";
-        JSONObject images = j.optJSONObject("images");
+        return extrasOf(j, tv, "en");
+    }
+
+    /**
+     * Pure: a title's logo among TMDB's images: in the family's language, else English, else one with no words (a
+     * logo of no language), each a PNG (its see-through ground; the TV reads no SVG); "" for none.
+     */
+    static String logoOf(JSONObject images, String family) {
         JSONArray logos = images == null ? null : images.optJSONArray("logos");
-        for (String lang : new String[]{"en", ""}) {
-            for (int i = 0; logos != null && i < logos.length() && logo.isEmpty(); i++) {
+        if (logos == null) return "";
+        String fam = family == null ? "" : family.trim().toLowerCase(Locale.ROOT);
+        for (String lang : fam.isEmpty() || fam.equals("en") ? new String[]{"en", ""} : new String[]{fam, "en", ""}) {
+            for (int i = 0; i < logos.length(); i++) {
                 JSONObject o = logos.optJSONObject(i);
                 if (o == null) continue;
                 String l = o.isNull("iso_639_1") ? "" : o.optString("iso_639_1", "");
                 String path = o.optString("file_path", "");
-                if (l.equals(lang) && path.toLowerCase(Locale.ROOT).endsWith(".png")) logo = image(path, "w500");
+                if (l.equals(lang) && path.toLowerCase(Locale.ROOT).endsWith(".png")) return image(path, "w500");
             }
         }
+        return "";
+    }
+
+    /** extrasOf with the family's language for the logo (Settings › Playback › Languages' first). */
+    static Extras extrasOf(JSONObject j, boolean tv, String family) {
+        String logo = logoOf(j.optJSONObject("images"), family);
         List<String[]> cast = new ArrayList<>();
         JSONObject credits = j.optJSONObject("credits");
         JSONArray people = credits == null ? null : credits.optJSONArray("cast");

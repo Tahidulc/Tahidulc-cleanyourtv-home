@@ -364,6 +364,8 @@ public final class Catalog {
         public String kind = "";
         /** The HDR and sound its name says, as Formats words them ("Dolby Vision", "HDR10"; "Dolby Atmos", "DTS-HD 7.1"; ""). */
         public String hdr = "", sound = "";
+        /** A TorBox file's download's name (a series pack's: where its release says what it is), "" otherwise. */
+        public String item = "";
 
         Play(String url, String userAgent, String referrer) {
             this.url = url;
