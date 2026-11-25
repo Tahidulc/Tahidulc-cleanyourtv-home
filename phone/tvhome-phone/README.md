@@ -899,3 +899,10 @@ Sky's, then TMDB by the programme's title (on sports and news channels too, neve
 match's two clubs' crests, then a picture for what it is, then the channel's logo card. Each is fitted to its cell or
 panel without being zoomed in too far: a much wider or narrower space shows the whole picture with its edges faded into
 its own colour, and a guide cell's picture slides with the cell as it scrolls instead of jumping or turning plain.
+
+**The programme's real picture, from the UK guide catalogues (5.46).** As Homefield TV 4.13 finds them: the programme
+is looked up on its channel at its time in the guide's own listing, Sky's (its episode's picture first), Freeview's and
+Virgin Media's public guides, then a match's own artwork (TheSportsDB), then by its title (TVMaze, TMDB's episode still,
+then the series). +1 channels look up the channel an hour earlier. "Image unavailable" cards, one-colour placeholders and
+the channel's own logo are skipped. The drawn pictures, the crests and the logo card are only for a programme none of
+these has. Lookups are paced, kept on the phone and made off the main thread.
