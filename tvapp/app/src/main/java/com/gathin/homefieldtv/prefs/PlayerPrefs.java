@@ -37,16 +37,18 @@ public final class PlayerPrefs {
     /**
      * Pure: a buffer size's {least kept, most kept, kept before it starts, kept before it starts again after a stall},
      * in milliseconds. Live TV keeps less (it is close to live); films and episodes more (Minimal is live TV's only).
+     * Live TV starts as soon as a second is in (Normal), but after a stall it waits for five: a live stream comes no
+     * faster than it plays, so what is kept then is all there is to ride out the next wobble (it was two seconds).
      */
     public static int[] bufferMs(boolean live, int size) {
         int s = Math.max(live ? MINIMAL : SMALL, Math.min(VERY_LARGE, size));
         if (live) {
             switch (s) {
-                case MINIMAL: return new int[]{2_000, 8_000, 500, 1_000};
-                case SMALL: return new int[]{8_000, 25_000, 1_000, 2_000};
-                case LARGE: return new int[]{30_000, 90_000, 2_500, 5_000};
-                case VERY_LARGE: return new int[]{60_000, 180_000, 5_000, 10_000};
-                default: return new int[]{15_000, 50_000, 1_000, 2_000};
+                case MINIMAL: return new int[]{2_000, 8_000, 500, 1_500};
+                case SMALL: return new int[]{8_000, 25_000, 1_000, 3_000};
+                case LARGE: return new int[]{30_000, 90_000, 2_500, 8_000};
+                case VERY_LARGE: return new int[]{60_000, 180_000, 5_000, 15_000};
+                default: return new int[]{15_000, 50_000, 1_000, 5_000};
             }
         }
         switch (s) {
@@ -67,6 +69,20 @@ public final class PlayerPrefs {
         int s = Math.max(live ? MINIMAL : SMALL, Math.min(VERY_LARGE, size));
         int[] mb = live ? new int[]{12, 20, 32, 48, 64} : new int[]{24, 24, 40, 56, 72};
         return mb[s] << 20;
+    }
+
+    /**
+     * Pure: bufferBytes on a TV whose app may use maxHeap bytes of memory (the buffer is kept in it). Where there is room
+     * the cap is raised (half as much again from a 384 MB heap, twice from 512 MB: a 4K channel's Normal then keeps
+     * some 20 seconds, not 10); never more than a sixth of the heap, so a 192 MB TV (the TCL) keeps live TV's Normal at
+     * 32 MB and its Large and Very large there too. 8 MB at the least.
+     */
+    public static int bufferBytes(boolean live, int size, long maxHeap) {
+        long b = bufferBytes(live, size);
+        if (maxHeap >= 512L << 20) b *= 2;
+        else if (maxHeap >= 384L << 20) b = b * 3 / 2;
+        long safe = maxHeap > 0 ? Math.max(8L << 20, maxHeap / 6) : b;
+        return (int) Math.min(Math.min(b, safe), Integer.MAX_VALUE);
     }
 
     public static int buffer(Context c, boolean live) {

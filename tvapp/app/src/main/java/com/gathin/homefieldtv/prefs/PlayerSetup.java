@@ -4,6 +4,7 @@ import android.content.Context;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.OptIn;
+import androidx.media3.common.C;
 import androidx.media3.common.audio.AudioProcessor;
 import androidx.media3.common.audio.ChannelMixingAudioProcessor;
 import androidx.media3.common.audio.ChannelMixingMatrix;
@@ -20,6 +21,7 @@ import androidx.media3.exoplayer.mediacodec.MediaCodecSelector;
 import androidx.media3.exoplayer.mediacodec.MediaCodecUtil;
 import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection;
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
+import androidx.media3.exoplayer.upstream.DefaultAllocator;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -68,13 +70,26 @@ public final class PlayerSetup {
 
     /**
      * The buffer Settings chose for live TV or for films and episodes: its seconds, and at most its bytes
-     * (PlayerPrefs.bufferBytes): Media3 would otherwise allow a video stream some 140 MB of the app's memory.
+     * (PlayerPrefs.bufferBytes, as this TV's memory allows): Media3 would otherwise allow a video stream some 140 MB of
+     * the app's memory.
      */
     public static DefaultLoadControl load(Context c, boolean live) {
         int size = PlayerPrefs.buffer(c, live);
         int[] b = PlayerPrefs.bufferMs(live, size);
-        return new DefaultLoadControl.Builder().setBufferDurationsMs(b[0], b[1], b[2], b[3])
-                .setTargetBufferBytes(PlayerPrefs.bufferBytes(live, size)).setPrioritizeTimeOverSizeThresholds(false).build();
+        DefaultAllocator a = new DefaultAllocator(true, C.DEFAULT_BUFFER_SEGMENT_SIZE);
+        if (live) liveAllocator = a;
+        return new DefaultLoadControl.Builder().setAllocator(a).setBufferDurationsMs(b[0], b[1], b[2], b[3])
+                .setTargetBufferBytes(PlayerPrefs.bufferBytes(live, size, Runtime.getRuntime().maxMemory()))
+                .setPrioritizeTimeOverSizeThresholds(false).build();
+    }
+
+    /** The live player's buffer (its bytes, for the play log); null before one is made. */
+    private static volatile DefaultAllocator liveAllocator;
+
+    /** The bytes the live player keeps now (0: none). */
+    public static long liveBufferBytes() {
+        DefaultAllocator a = liveAllocator;
+        return a == null ? 0 : a.getTotalBytesAllocated();
     }
 
     /** The decoders and the sound's way out as Settings chose. */

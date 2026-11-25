@@ -39,6 +39,13 @@ import java.util.Locale;
  *   p95=22.4 over20=7.9% gpu95=12.1
  * </pre>
  *
+ * And while a channel plays, the play log's line each minute and one for each stall as it ends (PlayDiag: its words):
+ *
+ * <pre>
+ *   2026-11-25 20:37 play type=TS state=playing stalls=1/3.4s channel=4/9.8s start=1.2s reconnects=2/0.3s(eof:1,reset:1) ...
+ *   2026-11-25 20:37 stall 3.4s cause=reconnect:reset http=- quiet=2300ms rate=4.1Mbps est=- buffer=0.2s/1.1MB ...
+ * </pre>
+ *
  * heap: the Java heap in use, its size now and its most; native: the native heap in use (bitmaps' pixels among it); rss:
  * what the process holds in RAM (VmRSS); pics: the picture cache's bytes and its budget, the pictures found in it and
  * read since the start; gc: collections and their time since the start (blocking: those that held up a thread);
@@ -52,12 +59,20 @@ import java.util.Locale;
 final class MemLog {
     private MemLog() {}
 
-    /** A day of lines: one a minute, and a frames line for each minute the app drew. */
-    static final int KEEP = 2 * 24 * 60;
+    /**
+     * A day of lines: one a minute, a frames line for each minute the app drew, and the play log's (PlayDiag): a line a
+     * minute while a channel plays, and one for each stall.
+     */
+    static final int KEEP = 4 * 24 * 60;
     private static final String NAME = "memlog.txt";
 
     /** The line for now: the main thread's part (the player, the screen) given, the rest read here. */
     static void write(Context c, long bufferedMs, String screen) {
+        write(c, bufferedMs, screen, null);
+    }
+
+    /** As above, with the play log's line for the minute (null: nothing played). */
+    static void write(Context c, long bufferedMs, String screen, String play) {
         Context app = c.getApplicationContext();
         Library lib = Library.get(app);
         int channels = lib.count();
@@ -71,11 +86,29 @@ final class MemLog {
             try {
                 File f = file(app);
                 append(f, line(now, lib, channels, catalog, asleep, bufferedMs, screen));
-                if (frames != null) append(f, String.format(Locale.ROOT, "%1$tF %1$tR ", now) + frames);
+                if (frames != null) append(f, stamp(now) + frames);
+                if (play != null) append(f, stamp(now) + play);
             } catch (IOException | RuntimeException ignored) {
                 // no log this minute
             }
         });
+    }
+
+    /** A line of its own now (a stall's: PlayDiag), off the main thread. */
+    static void note(Context c, String line) {
+        Context app = c.getApplicationContext();
+        long now = System.currentTimeMillis();
+        Exec.io(() -> {
+            try {
+                append(file(app), stamp(now) + line);
+            } catch (IOException | RuntimeException ignored) {
+                // not noted
+            }
+        });
+    }
+
+    private static String stamp(long now) {
+        return String.format(Locale.ROOT, "%1$tF %1$tR ", now);
     }
 
     static File file(Context app) {
@@ -141,7 +174,7 @@ final class MemLog {
             w.write(line);
             w.write('\n');
         }
-        if (f.length() < (long) (KEEP + 60) * 260) return;
+        if (f.length() < (long) (KEEP + 60) * 300) return;
         ArrayDeque<String> last = new ArrayDeque<>(KEEP + 1);
         try (BufferedReader r = new BufferedReader(new InputStreamReader(new FileInputStream(f), StandardCharsets.UTF_8))) {
             for (String l; (l = r.readLine()) != null; ) {

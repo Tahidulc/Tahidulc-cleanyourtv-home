@@ -39,7 +39,7 @@ public final class TvActivity extends Activity {
             nextMinute();
             // The memory log's line for this minute (MemLog: written off the main thread).
             Screen t = top();
-            MemLog.write(TvActivity.this, live.buffered(), t == null ? "-" : t.getClass().getSimpleName());
+            MemLog.write(TvActivity.this, live.buffered(), t == null ? "-" : t.getClass().getSimpleName(), live.playLine());
         }
     };
     private final Runnable channels = () -> {

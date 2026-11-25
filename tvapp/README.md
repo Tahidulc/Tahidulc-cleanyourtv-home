@@ -710,6 +710,19 @@ has been on screen for 30 seconds (the picture, catch-up, the guide, the channel
 are let go too (91 MB of the JVM's heap for the family's 200,000 down to 0.1, TheFamilysSizeTest), read back from their
 files when Home, Movies, TV shows, a title, Search, My list or Settings opens, Home showing what it showed meanwhile.
 
+Live TV plays one stream at a time (StreamGate): the channel before is closed before the next connects (at once, even
+one the provider has stopped sending), a newer one always wins, and a film, the archive and an HLS stream wait their
+turn the same way; the launcher lets its own tile and guide previews go before it hands a channel over, and a refusal
+as a channel first connects (the account's connection still held a moment) is asked again for four seconds. A live
+MPEG-TS stream that drops (the provider closes it, a reset, a read timed out, a 5xx, five seconds with no data) is
+connected again by the app itself within a few hundred milliseconds (at once, then 150, 300, 600 ms...) and plays on
+from what was kept: no error, no "Reconnecting…", no spinner; only after 12 seconds of failing (or eight drops in a
+minute) does the player's own trying take over. An HLS stream's loads are tried again after 100, 300 and 700 ms, then
+every 1.5 s, and one fallen behind its live window goes straight back to its live position. Live TV's Normal buffer
+starts a channel once a second is in but, after a stall, waits for five before it plays on; its bytes are capped at a
+sixth of the app's memory where that is less (32 MB on the TCL), raised where there is room (48 MB from a 384 MB heap,
+64 MB from 512). The stream's reading thread is given a little more of the CPU than the screens.
+
 The memory log (Android/data/com.gathin.homefieldtv/files/memlog.txt) has headroom= (how much more the Java heap may take)
 and problems= (out of memory, freezes and trouble in the background since the app started) on each minute's memory line,
 and after it a line of the frame times of each screen used that minute (Android's own measure of every frame drawn):
@@ -719,7 +732,25 @@ and after it a line of the frame times of each screen used that minute (Android'
 ```
 
 motion: the tier (auto-lite, auto-full, lite, full); per screen: frames drawn, their median and 95th percentile (ms),
-the share over 20 ms, and the graphics chip's 95th percentile (Android 12 and later). `FrameCostTest` measures every
+the share over 20 ms, and the graphics chip's 95th percentile (Android 12 and later). While a channel plays, a play line
+each minute, and a line for each stall as it ends (PlayDiag; numbers, kinds and codes only, never an address or login):
+
+```
+2026-11-25 20:37 play type=TS state=playing stalls=1/3.4s channel=4/9.8s start=1.2s reconnects=2/0.3s(eof:1,reset:1) refused=0 gaveup=0 errors=0 rate=6.2Mbps est=- buffer=12.3s/9.8MB conns=1/1 overlap=0 waited=0ms steps=0 retries=0 behind=0 dropped=12 underruns=0
+2026-11-25 20:37 stall 3.4s cause=reconnect:reset http=- quiet=2300ms rate=4.1Mbps est=- buffer=0.2s/1.1MB gc=1/45ms blocking=0 main=120ms type=TS conns=1
+```
+
+type: TS, HLS, HLS-for-TS (the provider's HLS form of a TS channel), archive-TS or archive-HLS; stalls this minute and
+since the channel was put on (how many, how long); start: the last start's time to its picture; reconnects: drops the
+app connected again itself (how long that took in all, by cause), refused: a first connection refused and asked again,
+gaveup: drops it couldn't; rate: what the network gave over the minute (est: Media3's own estimate, HLS); buffer: what
+the player kept ahead, seconds and bytes; conns: stream connections open now and the most at once in the minute,
+overlap: any that opened while another stream's was still open, waited: the longest one waited for the one before;
+steps between a channel's versions, the player's own retries, behind: back to live from behind an HLS window, frames
+dropped and the sound running dry. A stall's cause: error:… (the player's error by its code's name), reconnect:… and
+gaveup:… (eof, reset, timeout, nodata, http503…), load:…, decoder, nodata (the network sent nothing for a second or
+more), else slow; quiet: the longest the network sent nothing during it; gc: collections during it and their time,
+blocking: those that held every thread; main: the longest the main thread was held up. `FrameCostTest` measures every
 screen's frame of motion on the JVM (drawing calls, bytes made, fill in whole screens, layers, perspective) in both
 tiers and keeps each within its budget.
 

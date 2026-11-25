@@ -37,6 +37,7 @@ import com.gathin.homefieldtv.engine.History;
 import com.gathin.homefieldtv.engine.Library;
 import com.gathin.homefieldtv.engine.Names;
 import com.gathin.homefieldtv.engine.RecentChannels;
+import com.gathin.homefieldtv.engine.StreamGate;
 import com.gathin.homefieldtv.engine.Streams;
 import com.gathin.homefieldtv.engine.Versions;
 import com.gathin.homefieldtv.prefs.Abr;
@@ -56,8 +57,11 @@ import java.util.Set;
 
 /**
  * The one live picture: the mini TV on Home and in the guide, and full screen when watching. One player, moved and
- * resized rather than started again, because a provider usually allows one stream at a time. The stream's address is
- * never logged.
+ * resized rather than started again, because a provider usually allows one stream at a time (and StreamGate closes the
+ * stream before when the next one connects). A live MPEG-TS stream that drops is connected again by its own source
+ * (LiveHttp) within a few hundred milliseconds, the picture playing on from what was kept; the tries below are for a
+ * stream that can't be. How it goes is written to the memory log each minute and at each stall (PlayDiag). The stream's
+ * address is never logged.
  *
  * <p>Settings → Player → Picture quality, as the phone plays it (Homefield 5.22). Adaptive (the default): the channel
  * picked stays on screen (its name, number, logo, guide, favourites, recents, scoreboard) while its picture follows the
@@ -184,6 +188,11 @@ final class LiveTv {
     private final long[] stalls = new long[6];
     private int stallCount, failedUps;
     private long stallSince, upTriedAt;
+
+    /** The play log (PlayDiag): a line a minute while a channel plays, and one for each stall, in the memory log. */
+    private final PlayDiag diag = new PlayDiag(this::note);
+    /** Just put back to live from behind an HLS stream's window: the buffering that follows isn't the connection's stall. */
+    private boolean catchingUp;
 
     private final Runnable retry = this::prepare;
     /** Played steadily for STEADY_MS: the tries start from the first again. */
@@ -375,6 +384,17 @@ final class LiveTv {
         return player == null ? 0 : Math.max(0, player.getTotalBufferedDuration());
     }
 
+    /** A stall's line, into the memory log (off the main thread). */
+    private void note(String line) {
+        MemLog.note(app, line);
+    }
+
+    /** The play log's line for the minute (PlayDiag; null when nothing played). Main thread. */
+    String playLine() {
+        String[] names = {"idle", "loading", "playing", "retrying", "failed"};
+        return diag.minute(state >= 0 && state < names.length ? names[state] : "?", buffered());
+    }
+
     /** The player now, for the player's menu (its sound tracks); null when nothing plays. */
     ExoPlayer player() {
         return player;
@@ -541,7 +561,10 @@ final class LiveTv {
         arc = null;
         inWindow = false;
         held = false;
-        if (!same) subs.channelChanged();
+        if (!same) {
+            subs.channelChanged();
+            diag.channel();
+        }
         cur = c;
         PlayerPrefs.useDelay(app, c.key);
         retries = 0;
@@ -616,10 +639,16 @@ final class LiveTv {
         counting = null;
         // Films play with every channel's sound offset.
         PlayerPrefs.useDelay(app, null);
+        diag.stopped();
         if (player != null) {
             player.removeListener(listener);
+            player.removeAnalyticsListener(diag);
             player.release();
             player = null;
+            // A live connection still waiting on a read is closed now, so nothing lingers on the provider's one
+            // connection (the launcher's tile or a film may want it next); a stream started since is left alone.
+            int upTo = StreamGate.lastSession();
+            Exec.io(() -> StreamGate.killUpTo(upTo));
         }
         picture.setVisibility(View.GONE);
         set(IDLE);
@@ -829,13 +858,25 @@ final class LiveTv {
     private void ensure() {
         if (player != null) return;
         // As Settings → Player and Sound say (PlayerSetup): the buffer (Normal starts a channel as soon as a second is
-        // in, two after a stall, as Homefield came), the TV's own decoders first with FFmpeg for the sound it can't play
-        // (AC-3, E-AC-3, MP2), the sound's way out. Automatic subtitles hear a copy while they listen (TAP, after the
-        // mixing down to two speakers when that's on).
+        // in, five after a stall), the TV's own decoders first with FFmpeg for the sound it can't play (AC-3, E-AC-3,
+        // MP2), the sound's way out. Automatic subtitles hear a copy while they listen (TAP, after the mixing down to two
+        // speakers when that's on).
         player = PlayerSetup.builder(app, true, TAP).build();
         player.setAudioAttributes(new AudioAttributes.Builder().setUsage(C.USAGE_MEDIA)
                 .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true);
         player.addListener(listener);
+        // The play log hears the player's own events (stalls, failed loads, errors, dropped frames).
+        ExoPlayer p = player;
+        diag.attach(new PlayDiag.Now() {
+            @Override public boolean wants() {
+                return p.getPlayWhenReady();
+            }
+
+            @Override public long bufferedMs() {
+                return Math.max(0, p.getTotalBufferedDuration());
+            }
+        });
+        player.addAnalyticsListener(diag);
         if (picture instanceof SurfaceView) player.setVideoSurfaceView((SurfaceView) picture);
         // The picture's frames a second, for its chip and Match frame rate (one listener, on the player's thread).
         player.setVideoFrameMetadataListener(meter);
@@ -859,8 +900,10 @@ final class LiveTv {
                 return;
             }
             // From how far into it the picture starts (a stream that can't be moved in starts at its own start).
-            player.setMediaSource(Streams.source(url, PlayerPrefs.agent(app, s.key, s.userAgent), s.referrer,
-                    asHls || Streams.looksHls(url)), arc.offset);
+            boolean hls = asHls || Streams.looksHls(url);
+            diag.starting(hls ? "archive-HLS" : "archive-TS");
+            player.setMediaSource(Streams.source(url, PlayerPrefs.agent(app, s.key, s.userAgent), s.referrer, hls,
+                    Streams.ARCHIVE), arc.offset);
         } else {
             Channel s = stream();
             // The provider's HLS form of an MPEG-TS channel first, so a drop is ridden out on its segments and the
@@ -874,8 +917,10 @@ final class LiveTv {
                 url = hlsUrl;
                 hls = true;
             }
-            // A playlist's own user agent (Settings → Stream problems) over the channel's.
-            player.setMediaSource(Streams.source(url, PlayerPrefs.agent(app, s.key, s.userAgent), s.referrer, hls));
+            // A playlist's own user agent (Settings → Stream problems) over the channel's. Live MPEG-TS connects a dropped
+            // stream again itself (LiveHttp), the player playing on from what it kept.
+            diag.starting(hlsTried ? "HLS-for-TS" : hls ? "HLS" : "TS");
+            player.setMediaSource(Streams.source(url, PlayerPrefs.agent(app, s.key, s.userAgent), s.referrer, hls, Streams.LIVE));
         }
         player.prepare();
         player.setPlayWhenReady(!held);
@@ -969,6 +1014,7 @@ final class LiveTv {
         steppedAt = SystemClock.elapsedRealtime();
         bufferedN = 0;
         retries = 0;
+        diag.step();
         prepare();
     }
 
@@ -1068,6 +1114,7 @@ final class LiveTv {
     private void dropped() {
         if (cur == null) return;
         h.removeCallbacks(retry);
+        diag.retry();
         if (arc != null) {
             archiveFailed(null);
             return;
@@ -1117,6 +1164,28 @@ final class LiveTv {
         int tries = PlayerPrefs.retries(app);
         if (tries < 0 || retries < tries) reconnect();
         else set(FAILED);
+    }
+
+    /** What the player's error leads to (afterError). */
+    static final int DROPPED = 0, ARCHIVE = 1, BACK_TO_LIVE = 2, AS_TS = 3, AS_HLS = 4;
+    /** Put back to live from behind the window this many times running at most (STEADY_MS of playing starts it again). */
+    static final int BEHIND_MOST = 3;
+
+    /**
+     * Pure: what the player's error leads to. From the archive: its own tries. Behind an HLS stream's live window: back
+     * to its live position at once, the same stream (BEHIND_MOST times running). The provider's HLS form of a TS channel
+     * that never played: its MPEG-TS. An address read as MPEG-TS that turned out not to be: as HLS. Else dropped (the
+     * channel's tries: the same stream again, another copy, a step down).
+     */
+    static int afterError(int errorCode, boolean archive, int behindLive, boolean hlsTried, boolean everReady, boolean asHls) {
+        if (archive) return ARCHIVE;
+        if (errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW && behindLive < BEHIND_MOST) return BACK_TO_LIVE;
+        if (hlsTried && !everReady) return AS_TS;
+        if (!asHls && (errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED
+                || errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED)) {
+            return AS_HLS;
+        }
+        return DROPPED;
     }
 
     /**
@@ -1242,6 +1311,7 @@ final class LiveTv {
                 h.postDelayed(steady, STEADY_MS);
                 bufferingSince = 0;
                 everReady = true;
+                catchingUp = false;
                 playedStream = stream();
                 stepDone();
                 if (stallSince > 0) stallEnded();
@@ -1252,9 +1322,10 @@ final class LiveTv {
                 set(PLAYING);
             } else if (s == Player.STATE_BUFFERING) {
                 bufferingSince = SystemClock.elapsedRealtime();
-                // A step between the channel's versions opening is not a stall: the channel plays on, its picture held.
+                // A step between the channel's versions opening is not a stall: the channel plays on, its picture held;
+                // nor is the picture put back to live from behind an HLS stream's window (not the connection's doing).
                 if (state == PLAYING && !stepping) {
-                    if (arc == null && !inWindow && !held) stallBegan();
+                    if (arc == null && !inWindow && !held && !catchingUp) stallBegan();
                     set(LOADING);
                 }
             } else if (s == Player.STATE_ENDED) {
@@ -1268,34 +1339,37 @@ final class LiveTv {
             // Only the kind of error: the stream's address (with the login in it) is never written out.
             android.util.Log.w("HomefieldTv", (arc != null ? "archive: " : "live: ") + e.getErrorCodeName());
             if (player == null) return;
-            if (arc != null) {
-                archiveFailed(e);
-                return;
+            switch (afterError(e.errorCode, arc != null, behindLive, hlsTried, everReady, asHls)) {
+                case ARCHIVE:
+                    archiveFailed(e);
+                    return;
+                case BACK_TO_LIVE:
+                    // Fallen behind the start of the HLS stream's window (a stall, a pause): straight back to its live
+                    // position, the same stream, no wait, no "Reconnecting…" and no step down (a few times running at
+                    // most: a stream that keeps falling behind is taken as dropped, and tried again with its waits).
+                    behindLive++;
+                    inWindow = false;
+                    catchingUp = true;
+                    diag.behind();
+                    player.seekToDefaultPosition();
+                    player.prepare();
+                    player.setPlayWhenReady(!held);
+                    tell();
+                    return;
+                case AS_TS:
+                    // The provider's HLS form never played: its MPEG-TS at once; HLS left alone for the whole playlist a
+                    // while when the provider plainly doesn't offer it (refused, not found, not HLS), not for a dropped
+                    // connection.
+                    refuseHls(Adaptive.notOffered(e.errorCode));
+                    return;
+                case AS_HLS:
+                    // An address with no extension that is really HLS: once more as HLS.
+                    asHls = true;
+                    prepare();
+                    return;
+                default:
+                    dropped();
             }
-            if (e.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW && behindLive < 3) {
-                // Paused or moved back past the start of the stream's window: live again (a few times running at
-                // most: a stream that keeps falling behind is taken as dropped, and tried again with its waits).
-                behindLive++;
-                inWindow = false;
-                player.seekToDefaultPosition();
-                player.prepare();
-                tell();
-                return;
-            }
-            // The provider's HLS form never played: its MPEG-TS at once; HLS left alone for the whole playlist a while
-            // when the provider plainly doesn't offer it (refused, not found, not HLS), not for a dropped connection.
-            if (hlsTried && !everReady) {
-                refuseHls(Adaptive.notOffered(e.errorCode));
-                return;
-            }
-            // An address with no extension that is really HLS: once more as HLS.
-            if (!asHls && (e.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED
-                    || e.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED)) {
-                asHls = true;
-                prepare();
-                return;
-            }
-            dropped();
         }
 
         @Override public void onIsPlayingChanged(boolean playing) {

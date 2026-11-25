@@ -29,11 +29,36 @@ public class PlayerSettingsTest {
                 last = b;
             }
         }
-        // As Homefield came: Normal is the old live and film buffers.
-        assertArrayEquals(new int[]{15_000, 50_000, 1_000, 2_000}, PlayerPrefs.bufferMs(true, PlayerPrefs.NORMAL));
+        // Live TV's Normal (as it comes): it starts as soon as a second is in, but after a stall it waits for five, so the
+        // next wobble doesn't stall it again straight away (it was two); films as they were.
+        assertArrayEquals(new int[]{15_000, 50_000, 1_000, 5_000}, PlayerPrefs.bufferMs(true, PlayerPrefs.NORMAL));
         assertArrayEquals(new int[]{20_000, 60_000, 1_500, 3_000}, PlayerPrefs.bufferMs(false, PlayerPrefs.NORMAL));
+        // Every live size waits after a stall for at least three times what it starts with (Minimal's half second: 1.5).
+        for (int s = PlayerPrefs.MINIMAL; s <= PlayerPrefs.VERY_LARGE; s++) {
+            int[] b = PlayerPrefs.bufferMs(true, s);
+            assertTrue(PlayerPrefs.BUFFER_NAMES[s], b[3] >= 3 * b[2]);
+        }
         // Films have no Minimal: it is Small for them.
         assertArrayEquals(PlayerPrefs.bufferMs(false, PlayerPrefs.SMALL), PlayerPrefs.bufferMs(false, PlayerPrefs.MINIMAL));
+    }
+
+    @Test public void theBuffersBytesAsTheTvsMemoryAllows() {
+        long mb = 1L << 20;
+        // The TCL (a 192 MB heap): live TV's Normal kept at 32 MB, and Large and Very large no higher (a sixth of it).
+        assertEquals(32 * mb, PlayerPrefs.bufferBytes(true, PlayerPrefs.NORMAL, 192 * mb));
+        assertEquals(32 * mb, PlayerPrefs.bufferBytes(true, PlayerPrefs.LARGE, 192 * mb));
+        assertEquals(32 * mb, PlayerPrefs.bufferBytes(true, PlayerPrefs.VERY_LARGE, 192 * mb));
+        assertEquals(12 * mb, PlayerPrefs.bufferBytes(true, PlayerPrefs.MINIMAL, 192 * mb));
+        // Room to spare: half as much again from 384 MB, twice from 512 MB (a 4K channel's Normal then some 20 seconds).
+        assertEquals(48 * mb, PlayerPrefs.bufferBytes(true, PlayerPrefs.NORMAL, 384 * mb));
+        assertEquals(64 * mb, PlayerPrefs.bufferBytes(true, PlayerPrefs.NORMAL, 512 * mb));
+        assertEquals(512 * mb / 6, PlayerPrefs.bufferBytes(true, PlayerPrefs.VERY_LARGE, 512 * mb));
+        // A small heap: never under 8 MB; not known: the size's own.
+        assertEquals(8 * mb, PlayerPrefs.bufferBytes(true, PlayerPrefs.NORMAL, 32 * mb));
+        assertEquals(PlayerPrefs.bufferBytes(true, PlayerPrefs.NORMAL), PlayerPrefs.bufferBytes(true, PlayerPrefs.NORMAL, 0));
+        // Films the same way.
+        assertEquals(32 * mb, PlayerPrefs.bufferBytes(false, PlayerPrefs.NORMAL, 192 * mb));
+        assertEquals(80 * mb, PlayerPrefs.bufferBytes(false, PlayerPrefs.NORMAL, 1024 * mb));
     }
 
     @Test public void thePicturesShapes() {
