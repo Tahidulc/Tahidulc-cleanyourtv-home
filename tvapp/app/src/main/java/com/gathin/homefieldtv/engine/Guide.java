@@ -1,5 +1,8 @@
 package com.gathin.homefieldtv.engine;
 
+import com.gathin.broadcast.PicLinks;
+import com.gathin.broadcast.PicSources;
+
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
 
@@ -19,7 +22,10 @@ import java.util.TimeZone;
  * from an hour ago to twelve hours ahead (further back for a channel with catch-up: its archive, at most three days),
  * so a large guide stays small in memory: repeated titles and descriptions are kept once, a description is cut to a
  * few lines, and past a budget the rest of the guide keeps its titles only (the older programmes have a smaller budget
- * of their own, so what's on now and next keeps its descriptions).
+ * of their own, so what's on now and next keeps its descriptions). Each programme's own picture ({@code <icon src>}, or an
+ * {@code <image>} of it, a landscape one first) is kept small (PicLinks, shared with the phone: an int a programme, the
+ * addresses packed once, at most PIC_BUDGET bytes), and what its categories say it is as a byte (PicSources.categoryCode),
+ * for the programme pictures (ProgrammePictures: the guide's own picture first, its kind's picture where none is found).
  */
 public final class Guide {
     private Guide() {}
@@ -29,6 +35,8 @@ public final class Guide {
     static final int DESC_MAX = 360, DESC_BUDGET = 6_000_000;
     /** Catch-up: the most days of past programmes kept, and their descriptions' own budget (about 3 MB). */
     static final int PAST_DAYS = 3, PAST_BUDGET = 1_500_000;
+    /** The programmes' own pictures' addresses together: at most this many bytes (about 3 MB), the rest left out. */
+    static final int PIC_BUDGET = 3_000_000;
 
     /** One channel's programmes in time order. */
     public static final class Schedule {
@@ -36,17 +44,44 @@ public final class Guide {
         public final String[] title;
         /** Each programme's description ("" when the guide gives none). */
         public final String[] desc;
+        /** Each programme's own picture in links (-1: none); null when the guide gives this channel none. */
+        final int[] pic;
+        final PicLinks links;
+        /** What each programme's categories say it is (PicSources.categoryCode; 0: none); null when the guide gives none. */
+        final byte[] kind;
         /** The longest programme, so that the first one still on at a time is found by its start (from()). */
         private final long longest;
 
         Schedule(long[] start, long[] stop, String[] title, String[] desc) {
+            this(start, stop, title, desc, null, PicLinks.EMPTY, null);
+        }
+
+        Schedule(long[] start, long[] stop, String[] title, String[] desc, int[] pic, PicLinks links, byte[] kind) {
             this.start = start;
             this.stop = stop;
             this.title = title;
             this.desc = desc;
+            this.pic = pic;
+            this.links = links == null ? PicLinks.EMPTY : links;
+            this.kind = kind;
             long l = 0;
             for (int i = 0; i < start.length; i++) l = Math.max(l, stop[i] - start[i]);
             longest = l;
+        }
+
+        /** Programme i's own picture as the guide gives it ("" for none). */
+        public String pic(int i) {
+            return pic == null || i < 0 || i >= pic.length || pic[i] < 0 ? "" : links.get(pic[i]);
+        }
+
+        /** What programme i's categories say it is (a PicSources kind, "" for none). */
+        public String category(int i) {
+            return kind == null || i < 0 || i >= kind.length ? "" : PicSources.categoryWord(kind[i]);
+        }
+
+        /** The same programmes moved to other times (a guide time shift), their pictures and kinds kept. */
+        public Schedule at(long[] start, long[] stop) {
+            return new Schedule(start, stop, title, desc, pic, links, kind);
         }
 
         /** The programme on at t, or -1. */
@@ -97,13 +132,17 @@ public final class Guide {
         int k = b - a;
         long[] st = new long[k], en = new long[k];
         String[] t = new String[k], d = new String[k];
+        int[] p = s.pic == null ? null : new int[k];
+        byte[] kd = s.kind == null ? null : new byte[k];
         for (int i = 0; i < k; i++) {
             st[i] = s.start[a + i];
             en[i] = s.stop[a + i];
             t[i] = s.title[a + i];
             d[i] = st[i] < descTo ? s.desc[a + i] : "";
+            if (p != null) p[i] = s.pic[a + i];
+            if (kd != null) kd[i] = s.kind[a + i];
         }
-        return new Schedule(st, en, t, d);
+        return new Schedule(st, en, t, d, p, s.links, kd);
     }
 
     /**
@@ -113,6 +152,9 @@ public final class Guide {
     static final class Builder {
         private long[] a = new long[8], b = new long[8];
         private String[] t = new String[8], d = new String[8];
+        /** Each programme's picture and kind, made only once one has either. */
+        private int[] p;
+        private byte[] k;
         private int n;
 
         void add(long start, long stop, String title) {
@@ -120,39 +162,65 @@ public final class Guide {
         }
 
         void add(long start, long stop, String title, String desc) {
+            add(start, stop, title, desc, -1, (byte) 0);
+        }
+
+        void add(long start, long stop, String title, String desc, int pic, byte kind) {
             if (n == a.length) {
                 int cap = n + (n >> 1) + 8;
                 a = java.util.Arrays.copyOf(a, cap);
                 b = java.util.Arrays.copyOf(b, cap);
                 t = java.util.Arrays.copyOf(t, cap);
                 d = java.util.Arrays.copyOf(d, cap);
+                if (p != null) {
+                    int old = p.length;
+                    p = java.util.Arrays.copyOf(p, cap);
+                    java.util.Arrays.fill(p, old, cap, -1);
+                }
+                if (k != null) k = java.util.Arrays.copyOf(k, cap);
             }
+            if (pic >= 0 && p == null) {
+                p = new int[a.length];
+                java.util.Arrays.fill(p, -1);
+            }
+            if (kind != 0 && k == null) k = new byte[a.length];
             a[n] = start;
             b[n] = stop;
             t[n] = title == null ? "" : title;
             d[n] = desc == null ? "" : desc;
+            if (p != null) p[n] = pic;
+            if (k != null) k[n] = kind;
             n++;
         }
 
         Schedule build() {
+            return build(PicLinks.EMPTY);
+        }
+
+        /** The schedule, its pictures in links (the guide's, shared by every channel's). */
+        Schedule build(PicLinks links) {
             boolean ordered = true;
             for (int i = 1; i < n && ordered; i++) ordered = a[i - 1] <= a[i];
             long[] s = java.util.Arrays.copyOf(a, n), e = java.util.Arrays.copyOf(b, n);
             String[] ti = java.util.Arrays.copyOf(t, n), de = java.util.Arrays.copyOf(d, n);
+            int[] pi = p == null ? null : java.util.Arrays.copyOf(p, n);
+            byte[] ki = k == null ? null : java.util.Arrays.copyOf(k, n);
             if (!ordered) {
                 // Stable, by start: the order a guide gives for the same start kept.
                 Integer[] order = new Integer[n];
                 for (int i = 0; i < n; i++) order[i] = i;
                 java.util.Arrays.sort(order, (x, y) -> Long.compare(a[x], a[y]));
                 for (int i = 0; i < n; i++) {
-                    int k = order[i];
-                    s[i] = a[k];
-                    e[i] = b[k];
-                    ti[i] = t[k];
-                    de[i] = d[k];
+                    int o = order[i];
+                    s[i] = a[o];
+                    e[i] = b[o];
+                    ti[i] = t[o];
+                    de[i] = d[o];
+                    if (pi != null) pi[i] = p[o];
+                    if (ki != null) ki[i] = k[o];
                 }
             }
-            return new Schedule(s, e, ti, de);
+            return new Schedule(s, e, ti, de, pi, links, ki);
         }
     }
 
@@ -236,6 +304,8 @@ public final class Guide {
         Map<String, Builder> out = new HashMap<>();
         Map<String, List<String>> idKeys = new HashMap<>(byId);
         Map<String, String> pool = new HashMap<>();
+        Map<String, Byte> kinds = new HashMap<>();
+        PicLinks.Builder links = new PicLinks.Builder();
         int[] budget = {DESC_BUDGET}, pastBudget = {PAST_BUDGET};
         try {
             XmlPullParser p = android.util.Xml.newPullParser();
@@ -270,13 +340,34 @@ public final class Guide {
                     }
                     // Kept only for catch-up: its description from the older programmes' own budget.
                     int[] room = b < from ? pastBudget : budget;
-                    String title = "", desc = "";
+                    String title = "", desc = "", icon = "", image = "", cats = "";
+                    int imageRank = 0;
                     int depth = p.getDepth();
                     while ((ev = p.next()) != XmlPullParser.END_DOCUMENT && !(ev == XmlPullParser.END_TAG && p.getDepth() == depth)) {
                         if (ev != XmlPullParser.START_TAG) continue;
                         String inner = p.getName();
                         if ("title".equals(inner) && title.isEmpty()) title = p.nextText().trim();
                         else if ("desc".equals(inner) && desc.isEmpty() && room[0] > 0) desc = shortDesc(p.nextText());
+                        else if ("category".equals(inner) && cats.length() < 80) cats = cats + " | " + p.nextText().trim();
+                        else if ("icon".equals(inner) && icon.isEmpty()) icon = PicLinks.clean(p.getAttributeValue(null, "src"));
+                        else if ("image".equals(inner)) {
+                            // XMLTV 1.1's pictures: a landscape one (backdrop, still) before a poster.
+                            int rank = imageRank(p.getAttributeValue(null, "type"), p.getAttributeValue(null, "orient"));
+                            String u = PicLinks.clean(p.nextText());
+                            if (!u.isEmpty() && rank > imageRank) {
+                                image = u;
+                                imageRank = rank;
+                            }
+                        }
+                    }
+                    // Its own picture while the budget lasts (the programmes after: Sky's, TMDB's or their kind's).
+                    String own = pick(icon, image, imageRank);
+                    int pic = own.isEmpty() || links.bytes() > PIC_BUDGET ? -1 : links.add(own);
+                    byte kind = 0;
+                    if (!cats.isEmpty()) {
+                        Byte had = kinds.get(cats);
+                        if (had == null) kinds.put(cats, had = PicSources.categoryCode(cats));
+                        kind = had;
                     }
                     title = once(pool, title);
                     if (!desc.isEmpty()) {
@@ -287,16 +378,32 @@ public final class Guide {
                     for (String k : keys) {
                         Builder bl = out.get(k);
                         if (bl == null) out.put(k, bl = new Builder());
-                        bl.add(a, b, title, desc);
+                        bl.add(a, b, title, desc, pic, kind);
                     }
                 }
             }
         } catch (XmlPullParserException e) {
             // A guide cut short: what was read so far is kept.
         }
+        PicLinks all = links.build();
         Map<String, Schedule> done = new HashMap<>();
-        for (Map.Entry<String, Builder> e : out.entrySet()) done.put(e.getKey(), e.getValue().build());
+        for (Map.Entry<String, Builder> e : out.entrySet()) done.put(e.getKey(), e.getValue().build(all));
         return done;
+    }
+
+    /** Pure: how well an XMLTV {@code <image>} fills a landscape place: a backdrop or still 3, landscape 2, a poster 1. */
+    static int imageRank(String type, String orient) {
+        String t = type == null ? "" : type.trim().toLowerCase(Locale.ROOT), o = orient == null ? "" : orient.trim().toUpperCase(Locale.ROOT);
+        if (t.equals("backdrop") || t.equals("still") || t.equals("fanart")) return 3;
+        if (t.equals("poster") || o.equals("P")) return 1;
+        return 2;
+    }
+
+    /** Pure: the programme's own picture: a landscape {@code <image>} before its icon, the icon before a poster. */
+    static String pick(String icon, String image, int imageRank) {
+        String i = icon == null ? "" : icon, m = image == null ? "" : image;
+        if (!m.isEmpty() && (imageRank >= 2 || i.isEmpty())) return m;
+        return i;
     }
 
     /** Pure: the earliest end a programme may have to be kept for these channels: from, or further back for catch-up. */

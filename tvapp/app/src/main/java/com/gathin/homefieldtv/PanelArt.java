@@ -14,8 +14,9 @@ import com.gathin.homefieldtv.engine.LogoPack;
 
 /**
  * The picture of what a panel is about, behind its words, as the family asked for the guide's details and the player's
- * info card: the programme's own picture (Sky's public guide, as the archive's card has it: ProgrammePictures), else the
- * channel's logo on a deep ground tinted by its own colour with a soft glow of it (Pics.LOGO_ART). Either is
+ * info card: the programme's own picture (ProgrammePictures: the guide's own, Sky's, TMDB's, a game's crests, its kind's,
+ * else the channel's own; placed by PicPlace, the whole picture seen, never zoomed in), else the channel's logo on a
+ * deep ground tinted by its own colour with a soft glow of it (Pics.LOGO_ART). Either is
  * read off the main thread, at the size it is drawn (or a share of it), darkened a little, its left part and its foot
  * already faded to nothing and its right-hand corners rounded (Pics.ART), so it sinks into the panel's own colour and the
  * words over it stay readable; drawing it is one picture (two while they cross).

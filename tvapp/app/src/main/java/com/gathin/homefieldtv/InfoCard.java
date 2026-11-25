@@ -31,7 +31,9 @@ import java.util.List;
  * press ok when watching a channel it will be at bottom", the channels and then the settings under it) or at the top
  * (TOP_Y 40: catch-up's overlay). Behind its words, as the family asked ("when scrolling through and you see the
  * information panel like this, have a picture of the programme background on this"), the programme's own picture
- * fills the whole card (Pics.FILL_CARD: its faces whole, placed between the words and what's next), with a shade only
+ * fills the whole card (Pics.FILL_CARD, PicPlace's rule: the whole picture at the card's height between the words and
+ * what's next, its faces whole, the card's own colour from the picture's edges continuing smoothly either side; a
+ * picture too small for the card, the next one found or its kind's or channel's own), with a shade only
  * where the words are: from the left under the channel and the programme's words, ending a little past them, and from
  * the right under what's next; the faces stay clear in between, and the words stop before them. As Up and Down (and
  * CH+ and CH−) go through the channels, the picture cross-fades to each programme's (FADE_MS), the channels either side
@@ -100,7 +102,6 @@ final class InfoCard {
     private final TextPaint chipP = Type.paint(16f, Type.BOLD, Look07.L1), nextLabelP = Type.label(Type.LABEL, Look07.L3);
     private final TextPaint nextTitleP = Type.paint(22f, Type.SEMIBOLD, Look07.L1), nextTimeP = Type.clock(18f, Type.MEDIUM, Look07.L3);
     private final RectF r = new RectF();
-    private final float[] lay = new float[PicFill.SIZE];
     /** Laid out once: what the programme is about (for descKey, at descWidth), and its lines' widest. */
     private String descKey = "", whereKey = "", whereText = "", nextKey = "", nextLabel = "";
     private long nextStart = Long.MIN_VALUE;
@@ -205,10 +206,10 @@ final class InfoCard {
         float shown = picture(c, ch, s, i);
         float wordsRight = Ui.f(TEXT_R), faces = r.right;
         if (shown > 0f && pic != null) {
-            float[] f = Pics.faces(picUrl);
-            if (!PicFill.none(f)) {
-                PicFill.layout(f[4], f, pic.getWidth(), pic.getHeight(), true, lay);
-                faces = r.left + lay[PicFill.FL];
+            // Where its faces went as it was made (Pics.placed: PicPlace's layout at the card's size).
+            Pics.Placed pl = Pics.placed(pic);
+            if (pl != null && pl.faces) {
+                faces = r.left + pl.lay[com.gathin.broadcast.PicPlace.FL] * r.width() / pic.getWidth();
                 wordsRight = Math.max(Ui.f(TEXT_X + WORDS_MIN), Math.min(wordsRight, faces - Ui.f(FACE_ROOM)));
             }
         }

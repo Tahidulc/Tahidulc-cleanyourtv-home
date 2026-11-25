@@ -25,7 +25,7 @@ import java.io.FileOutputStream;
 /**
  * The family's dark line through a programme's picture partway along a wide guide cell ("Day 2: … Live"): a picture's
  * own black bars (an invented 4:3 picture pillarboxed in a 16:9 frame) are cropped before it is laid out, the sharp
- * picture over its blurred copy is feathered at both its edges, and a pixel or two of its edge goes too; the cell keeps
+ * picture over its own colour drawn out is feathered at both its edges, and a pixel or two of its edge goes too; the cell keeps
  * its faces whole, and no column of it is black from top to foot.
  */
 @RunWith(RobolectricTestRunner.class)
@@ -61,14 +61,14 @@ public class NoDarkLineTest {
     @Test public void theSharpPictureIsFeatheredAtBothEdgesAndItsFacesStayWhole() {
         // A 4:3 picture (its bars gone) in a very wide cell, its faces near its right edge.
         float w = 1100f, h = 110f;
-        float[] lay = new float[PicFill.SIZE];
-        PicFill.layout(4f / 3f, new float[]{0.62f, 0.18f, 0.97f, 0.62f}, w, h, false, lay);
-        assertEquals(PicFill.AMBIENT, lay[PicFill.KIND], 0f);
-        float least = Math.max(PicFill.FEATHER_MIN_PX, PicFill.FEATHER_MIN * h);
-        assertTrue("left " + lay[PicFill.FEATHER_L], lay[PicFill.FEATHER_L] >= least - 0.01f);
-        assertTrue("right " + lay[PicFill.FEATHER_R], lay[PicFill.FEATHER_R] >= least - 0.01f);
-        assertTrue(lay[PicFill.FL] >= 0f && lay[PicFill.FR] <= w);
-        assertTrue(lay[PicFill.FT] >= 0f && lay[PicFill.FB] <= h);
+        float[] lay = new float[com.gathin.broadcast.PicPlace.SIZE];
+        PicFill.row(480, 360, new float[]{0.62f, 0.18f, 0.97f, 0.62f}, w, h, lay);
+        assertEquals(com.gathin.broadcast.PicPlace.SHOW, lay[com.gathin.broadcast.PicPlace.KIND], 0f);
+        float least = Math.max(com.gathin.broadcast.PicPlace.FEATHER_MIN_PX, com.gathin.broadcast.PicPlace.FEATHER_MIN * h);
+        assertTrue("left " + lay[com.gathin.broadcast.PicPlace.FEATHER_L], lay[com.gathin.broadcast.PicPlace.FEATHER_L] >= least - 0.01f);
+        assertTrue("right " + lay[com.gathin.broadcast.PicPlace.FEATHER_R], lay[com.gathin.broadcast.PicPlace.FEATHER_R] >= least - 0.01f);
+        assertTrue(lay[com.gathin.broadcast.PicPlace.FL] >= 0f && lay[com.gathin.broadcast.PicPlace.FR] <= w);
+        assertTrue(lay[com.gathin.broadcast.PicPlace.FT] >= 0f && lay[com.gathin.broadcast.PicPlace.FB] <= h);
     }
 
     @Test public void aPillarboxedPictureDrawsNoDarkLineInAWideCell() throws Exception {

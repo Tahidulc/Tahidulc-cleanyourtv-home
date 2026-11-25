@@ -11,6 +11,7 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RectF;
 
+import com.gathin.broadcast.PicPlace;
 import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Exec;
 
@@ -27,7 +28,8 @@ import java.io.FileOutputStream;
 
 /**
  * The family's three changes: programme pictures taking up their whole cell at any size with their faces whole
- * (PicFill), channel cells as the logo alone (ChannelLook: no number, no tile, no name; the logo as large as the cell
+ * (PicFill, PicPlace: covering a cell of their shape, else the whole picture at the cell's height beside the words, the
+ * cell's own colour from it behind; never scaled past covering, never a deep crop), channel cells as the logo alone (ChannelLook: no number, no tile, no name; the logo as large as the cell
  * allows at its own shape, its marks small in the corner), on the approved deep, opaque shade of its colour (a pale
  * logo stands out on it).
  */
@@ -42,80 +44,62 @@ public class PanelsLogosTest {
         Exec.inline = false;
     }
 
-    private static void assertCovers(String what, float[] out, float a, float w, float h) {
-        float k = out[PicFill.K];
-        assertTrue(what + ": covers left " + out[PicFill.X], out[PicFill.X] <= 0.01f);
-        assertTrue(what + ": covers right", out[PicFill.X] + a * k >= w - 0.01f);
-        assertTrue(what + ": covers top", out[PicFill.Y] <= 0.01f);
-        assertTrue(what + ": covers foot", out[PicFill.Y] + k >= h - 0.01f);
-    }
-
     private static void assertFacesWhole(String what, float[] out, float w, float h) {
-        assertTrue(what + ": faces' left " + out[PicFill.FL], out[PicFill.FL] >= -0.01f);
-        assertTrue(what + ": faces' right " + out[PicFill.FR], out[PicFill.FR] <= w + 0.01f);
-        assertTrue(what + ": faces' top " + out[PicFill.FT], out[PicFill.FT] >= -0.01f);
-        assertTrue(what + ": faces' foot " + out[PicFill.FB], out[PicFill.FB] <= h + 0.01f);
+        assertTrue(what + ": faces' left " + out[PicPlace.FL], out[PicPlace.FL] >= -1f);
+        assertTrue(what + ": faces' right " + out[PicPlace.FR], out[PicPlace.FR] <= w + 1f);
+        assertTrue(what + ": faces' top " + out[PicPlace.FT], out[PicPlace.FT] >= -1f);
+        assertTrue(what + ": faces' foot " + out[PicPlace.FB], out[PicPlace.FB] <= h + 1f);
     }
 
-    @Test public void aProgrammesPictureTakesUpItsWholeCellWithItsFacesWhole() {
-        float a = 16f / 9f;
-        float[] out = new float[PicFill.SIZE];
-        // The guide's cells (84 high) from a sliver to the window's width, a short row's programme, the info card.
+    @Test public void aProgrammesPictureFillsItsCellSeenWholeWithItsFacesWhole() {
+        float[] out = new float[PicPlace.SIZE];
+        // The guide's cells (84 high) from a sliver to the window's width, a short row's programme, the info card, a tile.
         float[][] cells = {{60, 84}, {150, 84}, {300, 84}, {450, 84}, {600, 84}, {900, 84}, {1340, 84}, {362, 88}, {1824, 322}, {400, 225}};
-        for (float[] box : new float[][]{TWO, GROUP}) {
+        for (float[] box : new float[][]{TWO, GROUP, null}) {
             for (float[] cell : cells) {
                 float w = cell[0], h = cell[1];
-                String what = (box == TWO ? "two" : "group") + " in " + (int) w + "x" + (int) h;
-                PicFill.layout(a, box, w, h, false, out);
-                if (out[PicFill.KIND] == PicFill.COVER) {
-                    assertCovers(what, out, a, w, h);
-                    // A narrow cell may cut a wide group's outer faces; any other keeps them whole.
-                    if (!(box == GROUP && w < PicFill.WIDE * h)) assertFacesWhole(what, out, w, h);
+                String what = (box == TWO ? "two" : box == GROUP ? "group" : "none") + " in " + (int) w + "x" + (int) h;
+                PicFill.row(1280, 720, box, w, h, out);
+                assertTrue(what + ": never past covering", out[PicPlace.K] <= Math.max(w / 1280f, h / 720f) + 1e-4f);
+                if (box != null) assertFacesWhole(what, out, w, h);
+                if (out[PicPlace.KIND] == PicPlace.COVER) {
+                    // Covering only a cell close to its shape: at least 70 % of it shows.
+                    assertTrue(what + ": no deep crop", Math.min(w / out[PicPlace.PW], h / out[PicPlace.PH]) >= PicPlace.KEEP - 0.01f);
                 } else {
-                    // The ambient fill: only for a wide cell; the sharp picture as tall as the cell, its faces whole,
-                    // out from under the words.
-                    assertTrue(what + ": ambient only in a wide cell", w >= PicFill.WIDE * h);
-                    assertTrue(what + ": as tall as the cell", out[PicFill.K] >= h - 0.01f && out[PicFill.Y] <= 0.01f
-                            && out[PicFill.Y] + out[PicFill.K] >= h - 0.01f);
-                    assertFacesWhole(what, out, w, h);
-                    assertTrue(what + ": beside the words " + out[PicFill.FL], out[PicFill.FL] >= PicFill.room(w, h, false) * w - 1f
-                            || out[PicFill.FR] >= w - PicFill.ROOM_H * h - 1f);
+                    // Shown: nearly all of it (its height or its width), inside the cell.
+                    assertTrue(what + ": nearly whole", Math.min(w / out[PicPlace.PW], h / out[PicPlace.PH]) >= PicPlace.SHOW_KEEP - 0.01f
+                            || out[PicPlace.PW] <= w + 0.5f && out[PicPlace.PH] <= h + 0.5f);
                 }
             }
         }
-        // A very wide, short cell cannot cover with two heads whole: the ambient fill, the faces toward the right.
-        PicFill.layout(a, TWO, 1340, 84, false, out);
-        assertEquals(PicFill.AMBIENT, out[PicFill.KIND], 0f);
-        float mid = (out[PicFill.FL] + out[PicFill.FR]) / 2f;
-        assertEquals((PicFill.room(1340, 84, false) + 1f) / 2f * 1340, mid, 30f);
-        // A short row's programme (its words take more of it): its faces past them, at its right.
-        PicFill.layout(a, TWO, 362, 88, false, out);
-        assertTrue("past the words: " + out[PicFill.FL], out[PicFill.FL] >= 0.58f * 362);
+        // A very wide, short cell: the whole picture at its height, its faces in the middle of the part after the words.
+        PicFill.row(1280, 720, TWO, 1340, 84, out);
+        assertEquals(PicPlace.SHOW, out[PicPlace.KIND], 0f);
+        float mid = (out[PicPlace.FL] + out[PicPlace.FR]) / 2f;
+        assertEquals((PicPlace.room(1340, 84) + 1f) / 2f * 1340, mid, 30f);
+        assertTrue("its edges feathered into the cell's own colour", out[PicPlace.FEATHER_L] > 10f && out[PicPlace.FEATHER_R] > 10f);
+        // A short row's programme: the picture at its right, after the words as far as it can be.
+        PicFill.row(1280, 720, TWO, 362, 88, out);
         assertFacesWhole("short row", out, 362, 88);
-        assertTrue("its left edge feathered into the blur", out[PicFill.FEATHER_L] > 10f);
-        // A tile as tall as the picture's shape: covering, the faces in view.
-        PicFill.layout(a, TWO, 400, 225, false, out);
-        assertEquals(PicFill.COVER, out[PicFill.KIND], 0f);
-    }
-
-    @Test public void withNoFacesKnownItCoversFromTheMiddle() {
-        float a = 16f / 9f;
-        float[] out = new float[PicFill.SIZE];
-        PicFill.layout(a, Faces.FALLBACK, 600, 84, false, out);
-        assertEquals(PicFill.COVER, out[PicFill.KIND], 0f);
-        assertCovers("no faces", out, a, 600, 84);
-        assertEquals("the middle across", (600 - a * out[PicFill.K]) / 2f, out[PicFill.X], 0.5f);
-        PicFill.layout(a, null, 1824, 322, true, out);
-        assertCovers("none", out, a, 1824, 322);
+        assertEquals(362 - out[PicPlace.PW], out[PicPlace.X], 0.5f);
+        // A tile as tall as the picture's shape: covering.
+        PicFill.row(1280, 720, TWO, 400, 225, out);
+        assertEquals(PicPlace.COVER, out[PicPlace.KIND], 0f);
     }
 
     @Test public void theInfoCardsFacesAreBetweenItsWordsAndWhatsNext() {
-        float[] out = new float[PicFill.SIZE];
-        PicFill.layout(16f / 9f, TWO, 1824, 322, true, out);
+        float[] out = new float[PicPlace.SIZE];
+        PicFill.card(1280, 720, TWO, 1824, 322, out);
         assertFacesWhole("card", out, 1824, 322);
+        assertEquals(PicPlace.SHOW, out[PicPlace.KIND], 0f);
         // In card px: the words end by about 1000 (their limit before the faces), what's next starts at 1364.
-        assertTrue("right of the words: " + out[PicFill.FL], out[PicFill.FL] >= InfoCard.WORDS_MIN + InfoCard.TEXT_X - InfoCard.X);
-        assertTrue("left of what's next: " + out[PicFill.FR], out[PicFill.FR] <= InfoCard.NEXT_X - InfoCard.X);
+        assertTrue("right of the words: " + out[PicPlace.FL], out[PicPlace.FL] >= InfoCard.WORDS_MIN + InfoCard.TEXT_X - InfoCard.X);
+        assertTrue("left of what's next: " + out[PicPlace.FR], out[PicPlace.FR] <= InfoCard.NEXT_X - InfoCard.X);
+        // Sky's 640 wide picture fills the card without being enlarged past 1.5; an EPG's 240 wide thumbnail would be.
+        PicFill.card(640, 360, null, 1824, 322, out);
+        assertTrue(!PicPlace.tooSmall(out));
+        PicFill.card(240, 135, null, 1824, 322, out);
+        assertTrue(PicPlace.tooSmall(out));
     }
 
     @Test public void theInfoCardsChannelNameSitsUnderItsLogoInsideTheCard() {
@@ -128,16 +112,14 @@ public class PanelsLogosTest {
         assertTrue("inside the card's left", mid - InfoCard.NAME_W / 2f > InfoCard.X);
     }
 
-    @Test public void aCellCutShortShowsItsFaces() {
-        // The picture made for a 900 px programme, faces at 560..700; 200 px of it on screen, words to 120.
-        float x = PicFill.window(900, 200, 560, 700, 120, 8);
-        assertTrue("the faces in the window: " + x, x <= 560 - 8 + 0.01f && x + 200 >= 700 + 8 - 0.01f);
-        // Room beside the words: the faces there; none: centred on them.
-        float wide = PicFill.window(900, 500, 560, 700, 150, 8);
-        assertEquals((560 + 700) / 2f - (150 + 350 / 2f), wide, 0.5f);
-        float narrow = PicFill.window(900, 120, 560, 700, 110, 8);
-        assertEquals((560 + 700) / 2f - 60f, narrow, 0.5f);
-        assertEquals(0f, PicFill.window(900, 900, 560, 700, 110, 8), 0f);
+    @Test public void aCellCutShortKeepsItsPictureGliding() {
+        // The picture made for a 900 px programme (180 px of it, its faces' middle 120 in); the cell cut as the times glide.
+        float last = PicPlace.slide(900, 180, 120, 0, 900, 150);
+        for (int cut = 1; cut < 880; cut++) {
+            float x = PicPlace.slide(900, 180, 120, cut, 900, cut + 150);
+            assertTrue("a jump at " + cut, Math.abs(x - last) <= 1.01f);
+            last = x;
+        }
         // The guide reads a programme's picture at its whole width (so it stays one picture as the times glide).
         Ui.init(RuntimeEnvironment.getApplication());
         long half = 30 * 60_000L;

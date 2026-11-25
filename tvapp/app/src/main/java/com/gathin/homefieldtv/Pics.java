@@ -16,6 +16,9 @@ import android.graphics.Shader;
 import android.os.Looper;
 import android.util.LruCache;
 
+import com.gathin.broadcast.PicArt;
+import com.gathin.broadcast.PicPlace;
+import com.gathin.broadcast.PicSources;
 import com.gathin.homefieldtv.engine.Exec;
 
 import java.io.BufferedInputStream;
@@ -51,6 +54,13 @@ import java.util.Set;
  * colour; trim() lets them go when Android asks (onTrimMemory). A picture is read from its file on disk, never as a
  * whole copy in memory, and handed to the graphics chip as soon as it is made (prepareToDraw), not on the first frame
  * that draws it. Looking one up as a frame draws makes nothing new.
+ *
+ * <p>Programme pictures (FILL, FILL_CARD, SLIDE, PANEL, ART, FACE_MID, CARD) are placed by the rule shared with the phone
+ * (PicPlace): covering only a place close to their own shape, else shown whole at the place's height with the place's
+ * own colour from the picture continuing behind it (PicArt), never enlarged past 1.5 times. A programme's address may be
+ * a chain of them, best first (PicSources: the guide's own, Sky's, TMDB's, then one always there: a game's crests, its
+ * kind's picture or the channel's own), and each place takes the first in it that is large enough there; the made-up
+ * ones ("fixture:", "genre:", "brand:") are drawn here (PicArt) as any other picture is read.
  */
 final class Pics {
     private Pics() {}
@@ -68,8 +78,9 @@ final class Pics {
      */
     static final int POSTER = 6, DARK = 7, DARK_FULL = 8;
     /**
-     * CARD is a programme's picture as a channel's tile on the live screens: CROP with its corners rounded, a little
-     * darker at the top (for the channel's logo) and much darker towards its foot (for the words), done once as it loads.
+     * CARD is a programme's picture as a channel's tile on the live screens: placed by PicPlace (covering a tile of its
+     * shape, else shown whole on its own colour), its corners rounded, a little darker at the top (for the channel's
+     * logo) and much darker towards its foot (for the words), done once as it loads.
      */
     static final int CARD = 9;
     /**
@@ -78,7 +89,7 @@ final class Pics {
      */
     static final int POSTER_WIDE = 10;
     /**
-     * ART is a programme's picture behind a panel's words (the guide's details, the player's info card: PanelArt): CROP,
+     * ART is a programme's picture behind a panel's words (PanelArt): placed by PicPlace after the panel's left fade,
      * darkened a little, faded to nothing over its left part and at its foot (so it sinks into the panel's own colour,
      * whatever the theme), its right-hand corners rounded; done once as it loads.
      */
@@ -111,32 +122,39 @@ final class Pics {
      */
     static final int TINT = 15;
     /**
-     * FACE is a programme's picture cropped to w x h round its faces (found once a picture as it is read: Faces; the
-     * upper middle when none), whole, toward the right (FACE_BIAS) so words on the left stay clear of them; FACE_MID
-     * centres them (a card whose words are under it). ART does the same for a panel's picture, its left fade ending
-     * before the faces. Pics.faces(url) gives the box found.
+     * FACE is a picture cropped to w x h round its faces (found once a picture as it is read: Faces; the upper middle
+     * when none), whole, toward the right (FACE_BIAS) so words on the left stay clear of them (Home's and the films'
+     * pictures). FACE_MID is a programme's picture on a card whose words are under it: placed by PicPlace in the
+     * card's middle (covering a card of its shape, else shown whole on its own colour, faces whole). Pics.faces(url)
+     * gives the box found.
      */
     static final int FACE = 16, FACE_MID = 17;
     /**
-     * PANEL is 07's panel picture (the guide's details panel, the shelf guide's sheet, catch-up's and the reminder's
-     * cards): FACE's crop round the faces, at its own shape, its left edge faded to nothing over at most PANEL_FADE of
-     * its width and ending before the faces, its right-hand corners rounded (PANEL_RADIUS of its height); no darkening
-     * and no foot fade (the family: "you can see faces clearly").
+     * PANEL is 07's panel picture (the guide's details panel): placed by PicPlace after its left fade (covering the box
+     * when the picture is of its shape, else shown whole at its height on its own colour, never zoomed in), its left
+     * edge faded to nothing over at most PANEL_FADE of its width and ending before the faces, its right-hand corners
+     * rounded (PANEL_RADIUS of its height); no darkening and no foot fade (the family: "you can see faces clearly").
      */
     static final int PANEL = 18;
     static final float PANEL_FADE = 0.3f, PANEL_RADIUS = 34f / 330f;
     /**
-     * FILL is a programme's picture filling a whole cell of any size, w x h (the guide's cells, the recent channels' tiles), its
-     * faces whole (PicFill: covering, else the ambient fill: the picture blurred behind and sharp where its faces are);
-     * FILL_CARD the same for the info card, its faces between its words and what's next. Opaque, nothing darkened: the
-     * words' shade is drawn over it where the words are (PicTile.shade).
+     * FILL is a programme's picture filling a whole place of any size, w x h (the recent channels' tiles, the channel
+     * list's card), placed by PicPlace (PicFill): covering a place close to its own shape, else the whole picture (or
+     * nearly) at the place's height beside the words, its faces whole, the place's own colour from its edges drawn out
+     * behind it (PicArt.compose); FILL_CARD the same for the info card and the reminder's, its faces between its words
+     * and what's next. Opaque, nothing darkened: the words' shade is drawn over it where the words are (PicTile.shade).
      */
     static final int FILL = 19, FILL_CARD = 20;
     /**
-     * FILL and FILL_CARD as Motion's Lite tier makes them (kept apart from Full's, the tier changing): an ambient fill's
-     * ground is the picture's own colour rather than its blur, and its sharp picture's edges fade into that colour as it
-     * is drawn (no blur and no second full-size sheet while it is read: lighter on the TV's processor and memory). Asked
-     * for as FILL or FILL_CARD; Pics picks these itself.
+     * SLIDE is a guide cell's picture (PicTile.fill): the picture alone as PicPlace puts it in a cell w x h (its whole
+     * programme's width), its inner edges faded to nothing, with where it goes and its edges' colours (placed()), so the
+     * cell draws its ground and the picture glides along the cell as the guide scrolls (PicPlace.slide), never made again.
+     */
+    static final int SLIDE = 26;
+    /**
+     * FILL and FILL_CARD as Motion's Lite tier asks for them (kept apart from Full's, the tier changing): made the same
+     * way now, as no blur is made for either (the ground is the picture's edges' colours drawn out). Asked for as FILL or
+     * FILL_CARD; Pics picks these itself.
      */
     static final int FILL_LITE = 24, FILL_CARD_LITE = 25;
     /**
@@ -149,6 +167,38 @@ final class Pics {
     static final int CELL_COLOUR = 21, CELL_NONE = 22, CELL_BLACK = 23;
     /** Where across a FACE crop the faces' middle goes (words on the left). */
     static final float FACE_BIAS = 0.62f;
+
+    /**
+     * A programme picture as made (FILL, FILL_CARD, SLIDE, PANEL...): where PicPlace put it in its place (lay), and for
+     * SLIDE where the picture made sits across the place (at) and its edges' colours (edges, null when it covers).
+     */
+    static final class Placed {
+        final float[] lay;
+        final float at;
+        final Bitmap edges;
+        final boolean faces;
+        private BitmapShader ground;
+
+        Placed(float[] lay, float at, Bitmap edges, boolean faces) {
+            this.lay = lay;
+            this.at = at;
+            this.edges = edges;
+            this.faces = faces;
+        }
+
+        /** The ground's shader (made the first time it is drawn: main thread); null when the picture covers its place. */
+        BitmapShader ground() {
+            if (ground == null && edges != null) ground = new BitmapShader(edges, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
+            return ground;
+        }
+    }
+
+    private static final java.util.Map<Bitmap, Placed> PLACED = java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+
+    /** Where a programme picture made by this went in its place, or null (not one of them). */
+    static Placed placed(Bitmap b) {
+        return b == null ? null : PLACED.get(b);
+    }
 
     /** Each picture's faces as found when it was read: {left, top, right, bottom (shares), its width / height}. */
     private static final java.util.Map<String, float[]> FACES = java.util.Collections.synchronizedMap(new java.util.LinkedHashMap<String, float[]>(64, 0.75f, true) {
@@ -441,18 +491,94 @@ final class Pics {
     static final String ON_COLOUR = "on-colour:";
 
     private static Bitmap load(Key k) {
-        if (k.url.startsWith(ON_COLOUR)) return onColour(k.url.substring(ON_COLOUR.length()), k.w, k.h);
-        Source src = source(k.url);
+        if (PicSources.isChain(k.url)) return chained(k);
+        return one(k.url, k.w, k.h, k.mode, false);
+    }
+
+    /**
+     * A chain of pictures (PicSources.chain), best first: the first that can be read and, for a programme picture, is
+     * large enough for this place (PicPlace.MAX_UP); the last one as it is. Its faces kept for the chain's address too.
+     */
+    private static Bitmap chained(Key k) {
+        List<String> parts = PicSources.parts(k.url);
+        for (int i = 0; i < parts.size(); i++) {
+            String u = parts.get(i);
+            Bitmap b = failed.contains(u) ? null : one(u, k.w, k.h, k.mode, i < parts.size() - 1);
+            if (b == null) continue;
+            float[] f = FACES.get(u);
+            if (f != null) FACES.put(k.url, f);
+            return b;
+        }
+        return null;
+    }
+
+    /** One picture at w x h in mode; strict: null when it is too small for a programme picture's place. */
+    private static Bitmap one(String url, int w, int h, int mode, boolean strict) {
+        if (url.startsWith(ON_COLOUR)) return onColour(url.substring(ON_COLOUR.length()), w, h);
+        Source src = PicSources.madeUp(url) ? madeUp(url, w, h) : source(url);
         if (src == null) return null;
         loads++;
         try {
-            return decode(src, k.url, k.w, k.h, k.mode);
+            return decode(src, url, w, h, mode, strict);
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
+    }
+
+    /** Whether a mode is a programme picture's, placed by PicPlace. */
+    static boolean placedMode(int mode) {
+        return mode == FILL || mode == FILL_CARD || mode == FILL_LITE || mode == FILL_CARD_LITE || mode == SLIDE || mode == PANEL
+                || mode == ART || mode == FACE_MID || mode == CARD;
+    }
+
+    /**
+     * A made-up picture (a game's crests, a kind's picture, a channel's colour: PicArt) drawn for a place w x h, 16:9 and
+     * a little taller than it, handed over as a picture's bytes so it is placed and finished as any other.
+     */
+    private static Source madeUp(String url, int w, int h) {
+        int[] size = PicArt.size(w, h);
+        Bitmap b;
+        String kind = PicSources.genreOf(url);
+        if (kind != null) {
+            b = PicArt.genre(kind, size[0], size[1]);
+        } else if (url.startsWith(PicSources.BRAND_AT)) {
+            b = PicArt.brand(PicSources.brandColour(url), size[0], size[1]);
+        } else {
+            String[] crests = PicSources.fixtureCrests(url);
+            int[] cols = PicSources.fixtureColours(url);
+            int cs = Math.round(size[1] * 0.6f);
+            Bitmap home = crest(crests[0], cs), away = crest(crests[1], cs);
+            b = PicArt.fixture(home, away, cols[0], cols[1], size[0], size[1]);
+            if (home != null) home.recycle();
+            if (away != null) away.recycle();
+        }
+        java.io.ByteArrayOutputStream o = new java.io.ByteArrayOutputStream(64 * 1024);
+        b.compress(Bitmap.CompressFormat.PNG, 100, o);
+        b.recycle();
+        // Nothing in it to keep whole: no faces looked for.
+        FACES.put(url, new float[]{Faces.FALLBACK[0], Faces.FALLBACK[1], Faces.FALLBACK[2], Faces.FALLBACK[3], size[0] / (float) size[1]});
+        byte[] bytes = o.toByteArray();
+        return () -> new ByteArrayInputStream(bytes);
+    }
+
+    /** A club's crest read sharp for size x size (null with none, or when it can't be read). */
+    private static Bitmap crest(String url, int size) {
+        if (url == null || url.isEmpty() || failed.contains(url)) return null;
+        Source src = source(url);
+        if (src == null) return null;
+        try {
+            BitmapFactory.Options o = new BitmapFactory.Options();
+            o.inJustDecodeBounds = true;
+            try (InputStream s = src.open()) {
+                BitmapFactory.decodeStream(s, null, o);
+            }
+            return o.outWidth > 0 && o.outHeight > 0 ? sharp(src, o, size, size) : null;
         } catch (IOException e) {
             return null;
         }
     }
 
-    private static Bitmap decode(Source in, String url, int w, int h, int mode) throws IOException {
+    private static Bitmap decode(Source in, String url, int w, int h, int mode, boolean strict) throws IOException {
         BitmapFactory.Options o = new BitmapFactory.Options();
         o.inJustDecodeBounds = true;
         try (InputStream s = in.open()) {
@@ -460,7 +586,7 @@ final class Pics {
         }
         if (o.outWidth <= 0 || o.outHeight <= 0) return null;
         if (mode == BLUR) return blurred(in, url, o, w, h);
-        if (mode == FILL || mode == FILL_CARD || mode == FILL_LITE || mode == FILL_CARD_LITE) return filled(in, o, url, w, h, mode);
+        if (placedMode(mode)) return placed(in, o, url, w, h, mode, strict);
         if (mode == CELL_COLOUR || mode == CELL_NONE || mode == CELL_BLACK) {
             Bitmap logo = sharp(in, o, w, h);
             return logo == null ? null : Logos.cell(url, logo, w, h, mode);
@@ -514,23 +640,19 @@ final class Pics {
             src = ready;
         }
         Paint p = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
-        if (!fit && (mode == FACE || mode == FACE_MID || mode == ART || mode == PANEL)) {
+        if (!fit && mode == FACE) {
             // A programme's picture: its own black bars cropped away, its faces found once (kept by its address), the crop
             // round them, whole.
             src = trimmed(src);
             float[] box = facesOf(url, src);
-            float sw = src.getWidth(), sh = src.getHeight(), bias = mode == FACE_MID ? 0.5f : FACE_BIAS;
+            float sw = src.getWidth(), sh = src.getHeight();
             android.graphics.RectF win = new android.graphics.RectF();
-            Faces.crop(sw, sh, w / (float) h, box, bias, win);
+            Faces.crop(sw, sh, w / (float) h, box, FACE_BIAS, win);
             Bitmap out = Bitmap.createBitmap(w, h, src.hasAlpha() ? Bitmap.Config.ARGB_8888 : Bitmap.Config.RGB_565);
             new Canvas(out).drawBitmap(src, new android.graphics.Rect(Math.round(win.left), Math.round(win.top), Math.round(win.right),
                     Math.round(win.bottom)), new android.graphics.RectF(0, 0, w, h), p);
             src.recycle();
-            if (mode != ART && mode != PANEL) return out;
-            // The panel's picture: its left fade ends before the faces.
-            android.graphics.RectF f = new android.graphics.RectF();
-            Faces.place(sw, sh, w / (float) h, box, bias, w, h, f);
-            return mode == PANEL ? panel(out, f.left) : art(out, true, f.left);
+            return out;
         }
         if (!fit) {
             float sc = Math.max(w / (float) src.getWidth(), h / (float) src.getHeight());
@@ -544,9 +666,7 @@ final class Pics {
             new Canvas(out).drawBitmap(src, m, p);
             if (src != out) src.recycle();
             if (mode == POSTER || mode == POSTER_WIDE) return poster(url, out, mode == POSTER_WIDE);
-            if (mode == CARD) return card(out);
             if (mode == DARK || mode == DARK_FULL) return darkFade(out, mode == DARK_FULL);
-            if (mode == ART) return art(out, true);
             return out;
         }
         float sc = Math.min(w / (float) src.getWidth(), h / (float) src.getHeight());
@@ -833,18 +953,34 @@ final class Pics {
         return 0xFF000000 | (int) (r / n) << 16 | (int) (g / n) << 8 | (int) (b / n);
     }
 
-    /** The ambient fill's blurred ground: its brightness and saturation (a little quieter than the sharp picture over it). */
-    static final float FILL_GROUND_BRIGHT = 0.82f, FILL_GROUND_SATURATE = 1.15f;
+    /** A programme picture's free part in its place: where its words end at the left, and where the free part ends. */
+    static float roomOf(int mode, float w, float h) {
+        if (mode == FILL_CARD || mode == FILL_CARD_LITE) return PicFill.CARD_ROOM;
+        if (mode == PANEL || mode == ART) return PANEL_FADE;
+        if (mode == FACE_MID || mode == CARD) return 0f;
+        return PicPlace.room(w, h);
+    }
+
+    static float endOf(int mode) {
+        return mode == FILL_CARD || mode == FILL_CARD_LITE ? PicFill.CARD_END : 1f;
+    }
 
     /**
-     * FILL and FILL_CARD: the picture read sharp enough to be zoomed as PicFill may (ZOOM past covering), its faces found
-     * once (kept by its address), laid out by PicFill and made once at w x h: covering, or the ambient fill (the picture
-     * blurred to cover the cell, the sharp picture over it with its inner edges feathered into the blur). Opaque.
+     * A programme picture (FILL, FILL_CARD, SLIDE, PANEL, ART, FACE_MID, CARD) placed in w x h by PicPlace: read at the
+     * size it is shown (sampled down while it is read, never enlarged past PicPlace.MAX_UP: null when strict and it would
+     * be, the chain's next then), its own black bars cropped away, its faces found once (kept by its address); then
+     * covering its place, or shown whole with its edges' colours continuing behind it (PicArt.compose), and finished as
+     * its mode asks (the panel's left fade before the faces, the card's rounding and shade). SLIDE: the picture alone,
+     * with where it sits and its edges' colours (placed()). Where it went is kept with the picture made (placed()).
      */
-    private static Bitmap filled(Source in, BitmapFactory.Options o, String url, int w, int h, int mode) throws IOException {
-        float cover = Math.max(w * o.outHeight / (float) o.outWidth, h), need = cover * PicFill.ZOOM;
+    private static Bitmap placed(Source in, BitmapFactory.Options o, String url, int w, int h, int mode, boolean strict) throws IOException {
+        float room = roomOf(mode, w, h), end = endOf(mode);
+        float[] lay = new float[PicPlace.SIZE];
+        float[] known = FACES.get(url);
+        PicPlace.place(o.outWidth, o.outHeight, known, w, h, room, end, lay);
+        if (strict && PicPlace.tooSmall(lay)) return null;
         int sample = 1;
-        while (o.outHeight / (sample * 2) >= need) sample *= 2;
+        while (o.outHeight / (sample * 2) >= lay[PicPlace.PH] && o.outWidth / (sample * 2) >= lay[PicPlace.PW]) sample *= 2;
         BitmapFactory.Options d = new BitmapFactory.Options();
         d.inSampleSize = sample;
         d.inPreferredConfig = Bitmap.Config.RGB_565;
@@ -857,57 +993,30 @@ final class Pics {
         // dark line through a cell (the faces are found in what is left).
         src = trimmed(src);
         float[] f = facesOf(url, src);
-        float sw = src.getWidth(), sh = src.getHeight();
-        float[] lay = new float[PicFill.SIZE];
-        boolean card = mode == FILL_CARD || mode == FILL_CARD_LITE, lite = mode == FILL_LITE || mode == FILL_CARD_LITE;
-        PicFill.layout(sw / sh, f, w, h, card, lay);
-        Bitmap out = Bitmap.createBitmap(w, h, Bitmap.Config.RGB_565);
-        Canvas c = new Canvas(out);
-        Paint p = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG);
-        Matrix m = new Matrix();
-        float k = lay[PicFill.K] / sh;
-        m.setScale(k, k);
-        m.postTranslate(lay[PicFill.X], lay[PicFill.Y]);
-        if (lay[PicFill.KIND] == PicFill.AMBIENT && lite) {
-            // Lite: the picture's own colour behind, the sharp picture over it, its edges faded into that colour as it
-            // is drawn (a mask composed with it: no blur, no second sheet).
-            c.drawColor(ambientColour(src));
-            BitmapShader sharp = new BitmapShader(src, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
-            sharp.setLocalMatrix(m);
-            float x0 = lay[PicFill.X], x1 = x0 + sw * k, fl = lay[PicFill.FEATHER_L], fr = lay[PicFill.FEATHER_R];
-            float w0 = Math.max(1f, x1 - x0), a = Math.max(0f, Math.min(0.49f, fl / w0)), b = Math.max(0f, Math.min(0.49f, fr / w0));
-            Shader mask = new LinearGradient(x0, 0, x1, 0, new int[]{a > 0f ? 0 : 0xFF000000, 0xFF000000, 0xFF000000, b > 0f ? 0 : 0xFF000000},
-                    new float[]{0f, Math.max(0.0001f, a), Math.min(0.9999f, 1f - b), 1f}, Shader.TileMode.CLAMP);
-            Paint q = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG);
-            q.setShader(new ComposeShader(sharp, mask, PorterDuff.Mode.DST_IN));
-            c.drawRect(Math.max(0f, x0), 0, Math.min(w, x1), h, q);
-        } else if (lay[PicFill.KIND] == PicFill.AMBIENT) {
-            fillGround(c, src, w, h, p);
-            // The sharp picture on a clear sheet of its own (the 16-bit picture has no clear), its edges feathered.
-            Bitmap sheet = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
-            Canvas sc = new Canvas(sheet);
-            sc.drawBitmap(src, m, p);
-            Paint cut = new Paint();
-            cut.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_IN));
-            float x0 = lay[PicFill.X], x1 = x0 + sw * k, fl = lay[PicFill.FEATHER_L], fr = lay[PicFill.FEATHER_R];
-            int[] ramp = {0x00000000, 0x8C000000, 0xFF000000};
-            float[] at = {0f, 0.55f, 1f};
-            if (fl > 1f) {
-                cut.setShader(new LinearGradient(x0, 0, x0 + fl, 0, ramp, at, Shader.TileMode.CLAMP));
-                sc.drawRect(x0, 0, x0 + fl, h, cut);
+        PicPlace.place(src.getWidth(), src.getHeight(), f, w, h, room, end, lay);
+        boolean faces = !PicPlace.none(f);
+        Bitmap out;
+        if (mode == SLIDE) {
+            if (lay[PicPlace.KIND] == PicPlace.SHOW && lay[PicPlace.FEATHER_T] == 0f && lay[PicPlace.FEATHER_B] == 0f) {
+                // It glides along its cell: both its edges always feathered (never a hard edge wherever it stops).
+                float least = Math.min(PicPlace.FEATHER * lay[PicPlace.PW], Math.max(PicPlace.FEATHER_MIN_PX, PicPlace.FEATHER_MIN * h));
+                lay[PicPlace.FEATHER_L] = Math.max(lay[PicPlace.FEATHER_L], least);
+                lay[PicPlace.FEATHER_R] = Math.max(lay[PicPlace.FEATHER_R], least);
             }
-            if (fr > 1f) {
-                cut.setShader(new LinearGradient(x1, 0, x1 - fr, 0, ramp, at, Shader.TileMode.CLAMP));
-                sc.drawRect(x1 - fr, 0, x1, h, cut);
-            }
-            c.drawBitmap(sheet, 0, 0, p);
-            sheet.recycle();
-        } else {
-            // Covering: over its own colour, so a part-pixel at an edge never comes out black.
-            c.drawColor(ambientColour(src));
-            c.drawBitmap(src, m, p);
+            float[] at = new float[2];
+            out = PicArt.sharp(src, lay, w, h, at);
+            Bitmap edges = lay[PicPlace.KIND] == PicPlace.COVER ? null : PicArt.edges(src, lay);
+            src.recycle();
+            PLACED.put(out, new Placed(lay, at[0], edges, faces));
+            return out;
         }
+        out = PicArt.compose(src, lay, w, h, Bitmap.Config.RGB_565);
         src.recycle();
+        float facesLeft = faces ? Math.max(0f, lay[PicPlace.FL]) : lay[PicPlace.KIND] == PicPlace.COVER ? w : Math.max(0f, lay[PicPlace.X]);
+        if (mode == PANEL) out = panel(out, facesLeft);
+        else if (mode == ART) out = art(out, true, facesLeft);
+        else if (mode == CARD) out = card(out);
+        PLACED.put(out, new Placed(lay, 0f, null, faces));
         return out;
     }
 
@@ -940,35 +1049,6 @@ final class Pics {
     /** Tests: a picture read now on this thread as a screen would have it (w x h, mode), or null. */
     static Bitmap readNow(String url, int w, int h, int mode) {
         return load(probe(url, w, h, mode).copy());
-    }
-
-    /** Lite's ambient ground: the picture's own colour (its average, quietened as the blurred ground is). */
-    private static int ambientColour(Bitmap src) {
-        Bitmap one = Bitmap.createScaledBitmap(src, 4, 4, true);
-        int[] px = new int[16];
-        one.getPixels(px, 0, 4, 0, 0, 4, 4);
-        if (one != src) one.recycle();
-        int[] avg = {average(px)};
-        StackBlur.colour(avg, FILL_GROUND_SATURATE, FILL_GROUND_BRIGHT);
-        return avg[0] | 0xFF000000;
-    }
-
-    /** The ambient fill's ground: the picture covering w x h at an eighth of its size, stack-blurred once, drawn back up. */
-    private static void fillGround(Canvas c, Bitmap src, int w, int h, Paint p) {
-        int gw = Math.max(2, w / 8), gh = Math.max(2, h / 8);
-        Bitmap g = Bitmap.createBitmap(gw, gh, Bitmap.Config.ARGB_8888);
-        float sc = Math.max(gw / (float) src.getWidth(), gh / (float) src.getHeight());
-        Matrix m = new Matrix();
-        m.setScale(sc, sc);
-        m.postTranslate((gw - src.getWidth() * sc) / 2f, (gh - src.getHeight() * sc) * 0.38f);
-        new Canvas(g).drawBitmap(src, m, p);
-        int[] px = new int[gw * gh];
-        g.getPixels(px, 0, gw, 0, 0, gw, gh);
-        StackBlur.blur(px, gw, gh, Math.max(2, Math.round(Math.min(gw, gh) * 0.6f)));
-        StackBlur.colour(px, FILL_GROUND_SATURATE, FILL_GROUND_BRIGHT);
-        g.setPixels(px, 0, gw, 0, 0, gw, gh);
-        c.drawBitmap(g, null, new android.graphics.RectF(0, 0, w, h), p);
-        g.recycle();
     }
 
     /**

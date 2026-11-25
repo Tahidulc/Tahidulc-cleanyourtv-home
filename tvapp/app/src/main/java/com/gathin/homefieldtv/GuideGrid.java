@@ -42,8 +42,10 @@ import java.util.Map;
  *                         an archive, its HD. The remote's lifts (1.035) with a white ring and a soft glow; its number
  *                         is the grid's content description (accessibility), not drawn
  *   its programmes        cells 84 high with 8 px between, rounded 16: the programme's own picture taking up the whole
- *                         cell whatever its width (PicTile.fill: its faces whole; a cell the window cuts shows the
- *                         picture made for the whole programme, on its faces), a soft shade only under the words, the
+ *                         cell whatever its width (PicTile.fill: covering a cell of its shape, else the whole picture
+ *                         at the cell's height after the words with the cell's own colour from it either side, its
+ *                         faces whole; made once for the whole programme, gliding along a cell the window cuts, never
+ *                         re-cropped), a soft shade only under the words, the
  *                         title (21 px, semibold, one line) and under it the times (16 px) with the minutes left for
  *                         the one on now, a bell on one with a reminder, the catch-up mark on one the archive keeps;
  *                         the one on now with a white line along its foot to the time now over a light foot fade; one
@@ -817,7 +819,7 @@ final class GuideGrid extends View {
         float wordsEnd = tx + Math.max(0f, Math.min(room, wordsW));
         // The picture (where the programme has one), taking up the whole cell; else the cell plain.
         String url = s == null ? null : art.url(ch, s, i);
-        boolean pic = url != null && !url.isEmpty() && tile.fill(c, r, rad, url, fullWidth(a, b), Pics.FILL, wordsEnd, here, done);
+        boolean pic = url != null && !url.isEmpty() && tile.fill(c, r, rad, url, xa + Ui.f(GAP / 2f), fullWidth(a, b), wordsEnd, here, done);
         if (pic) {
             tile.shade(c, r, rad, wordsEnd, Look.progress && onNow);
         } else {

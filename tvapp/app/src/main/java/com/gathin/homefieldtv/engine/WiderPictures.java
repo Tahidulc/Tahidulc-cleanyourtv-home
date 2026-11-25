@@ -17,7 +17,9 @@ import java.util.regex.Pattern;
  * entertainment channel's a series first; a live match or a news bulletin isn't searched): a match by the same name, its
  * wide picture (else its poster). What TMDB said is kept on the TV a fortnight (Tmdb) and the answers in memory, so a
  * title is asked about once; at most one search every SPACING_MS and BURST in a few minutes (the guide asks for every
- * programme it shows), never on the main thread. Null: not asked now (no key, or too soon), "" none found.
+ * programme it shows), never on the main thread; nothing asked for what names no programme of its own (PicQuery.worth,
+ * shared with the phone: a game, a bulletin, a closedown, the channel's own name). Null: not asked now (no key, or too
+ * soon), "" none found.
  */
 public final class WiderPictures {
     private WiderPictures() {}
@@ -100,7 +102,9 @@ public final class WiderPictures {
      */
     public static String find(Context c, String title, String desc, String channelName, String group) {
         Ask a = ask(title, desc, Genres.of(group, channelName));
-        if (!a.search) return "";
+        // Not a game, a bulletin, a closedown or the channel's own name (the shared rule, as the phone has it).
+        if (!a.search || !com.gathin.broadcast.PicQuery.worth(title, channelName,
+                com.gathin.broadcast.PicSources.kindOf(channelName, group, title, desc, ""))) return "";
         String k = a.key();
         synchronized (found) {
             String had = found.get(k);

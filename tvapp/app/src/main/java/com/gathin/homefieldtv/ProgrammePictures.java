@@ -2,6 +2,8 @@ package com.gathin.homefieldtv;
 
 import android.content.Context;
 
+import com.gathin.broadcast.PicSources;
+import com.gathin.broadcast.SkyListing;
 import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.SkyGuide;
@@ -13,13 +15,18 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Programme pictures from Sky's public guide (SkyGuide) for the TV guide and the live screens, remembered while the app
- * runs, by channel and programme start. Where Sky has none, searched wider (WiderPictures: TMDB by the programme's title,
- * the year or series its description gives and the channel's kind, off the main thread and spaced out); where nothing is
- * found, the channel's own picture (ONE_COLOUR: its logo on its own colour, drawn by Pics), so a programme is never
- * blank: in the guide's cells, the info card, the reminder's panel and every screen that asks here. A
- * screen asks only for what the remote has rested on (peek while it moves), so holding Down through the channels asks
- * for nothing; until a picture comes the screens draw the channel's logo on its tile. Main thread only.
+ * Programme pictures for the TV guide and the live screens, remembered while the app runs, by channel and programme
+ * start, in the order shared with the phone app (PicSources): the guide's own picture of the programme (its
+ * {@code <icon>} or {@code <image>}, kept by Guide), Sky's (SkyGuide, Sky's public guide matched by channel and time),
+ * and where neither has one, searched wider (WiderPictures: TMDB by the programme's title, the year or series its
+ * description gives and the channel's kind, matched with care, off the main thread and spaced out); then always one that
+ * is there whatever the size asked: the game's (its clubs' crests on their colours), else its kind's (football, news,
+ * film, kids... drawn in code: PicArt), else the channel's own (ON_COLOUR: its logo on its own colour; with no logo its
+ * name's colour). What is found comes as one chain of addresses, best first (PicSources.chain): Pics takes the first
+ * that is large enough for where it is drawn (never enlarged past 1.5 times), so a programme is never blank: in the
+ * guide's cells, the info card, the reminder's panel and every screen that asks here. A screen asks only for what the
+ * remote has rested on (peek while it moves), so holding Down through the channels asks for nothing; until a picture
+ * comes the screens draw the channel's logo on its tile. Main thread only.
  */
 final class ProgrammePictures {
     private ProgrammePictures() {}
@@ -75,7 +82,9 @@ final class ProgrammePictures {
 
     /** Previews: programme i's picture given straight in (a drawn picture's file: address), as if Sky had answered. */
     static void preview(Channel ch, Guide.Schedule s, int i, String url) {
-        if (ch != null && s != null && i >= 0 && i < s.start.length) known.put(key(ch, s.start[i]), url == null ? "" : url);
+        if (ch != null && s != null && i >= 0 && i < s.start.length) {
+            known.put(key(ch, s.start[i]), url == null || url.isEmpty() ? "" : PicSources.chain(url, fallback(ch, s, i)));
+        }
     }
 
     /** What is known of programme i's picture without asking: its address, "" when Sky has none, null when not known. */
@@ -110,21 +119,22 @@ final class ProgrammePictures {
         waiting.put(k, w);
         long now = System.currentTimeMillis();
         // Sky's programme on at the time: now for the one on now, else a little into it (the two guides' times can differ).
-        long at = s.start[i] <= now && now < s.stop[i] ? now : s.start[i] + Math.min(10 * 60_000L, (s.stop[i] - s.start[i]) / 2);
+        long at = SkyListing.lookAt(s.start[i], s.stop[i], now);
         Key kept = k;
         Context app = c.getApplicationContext();
-        String title = s.title[i], desc = s.desc[i], name = ch.name, group = ch.group, own = ownPicture(ch);
+        String title = s.title[i], desc = s.desc[i], name = ch.name, group = ch.group, epg = s.pic(i), always = fallback(ch, s, i);
         SkyGuide.picture(c, ch.name, at, s.title[i], url -> {
-            if (url != null && !url.isEmpty()) {
-                done(kept, url);
+            if (url != null && !url.isEmpty() || !epg.isEmpty()) {
+                // The guide's own, then Sky's, then the one always there (the next is taken where one is too small).
+                done(kept, PicSources.chain(epg, url, always));
                 return;
             }
-            // Sky has none: searched wider off the main thread; else the channel's own picture (never blank).
+            // Neither has one: searched wider off the main thread; else the one always there (never blank).
             com.gathin.homefieldtv.engine.Exec.io(() -> {
                 String found = com.gathin.homefieldtv.engine.WiderPictures.find(app, title, desc, name, group);
-                String use = found != null && !found.isEmpty() ? found : own;
+                String use = PicSources.chain(found, always);
                 com.gathin.homefieldtv.engine.Exec.main(() -> {
-                    if (found == null && !own.isEmpty()) retry.put(kept, System.currentTimeMillis() + RETRY_MS);
+                    if (found == null) retry.put(kept, System.currentTimeMillis() + RETRY_MS);
                     done(kept, use);
                 });
             });
@@ -139,9 +149,26 @@ final class ProgrammePictures {
         if (w != null) for (Runnable r : w) r.run();
     }
 
-    /** The channel's own picture, for a programme nothing else was found for: its logo on its colour ("" with no logo). */
+    /**
+     * The channel's own picture, for a programme nothing else was found for: its logo on its colour; with no logo, its
+     * name's colour (PicSources.brand); "" with no channel.
+     */
     static String ownPicture(Channel ch) {
-        String logo = ch == null ? "" : com.gathin.homefieldtv.engine.LogoPack.url(ch);
-        return logo == null || logo.isEmpty() ? "" : Pics.ON_COLOUR + logo;
+        if (ch == null) return "";
+        String logo = com.gathin.homefieldtv.engine.LogoPack.url(ch);
+        return logo == null || logo.isEmpty() ? PicSources.brand(PicSources.nameColour(ch.name)) : Pics.ON_COLOUR + logo;
+    }
+
+    /**
+     * Programme i's picture that is always there, whatever the size it is drawn at: its game's (a fixture of clubs the
+     * apps know: their crests on their colours), else its kind's (PicSources.kindOf: from its words, the guide's
+     * categories and the channel), else the channel's own (ownPicture).
+     */
+    static String fallback(Channel ch, Guide.Schedule s, int i) {
+        if (ch == null || s == null || i < 0 || i >= s.start.length) return "";
+        String kind = PicSources.kindOf(ch.name, ch.group, s.title[i], s.desc[i], s.category(i));
+        String game = PicSources.fixtureOf(s.title[i], PicSources.sporting(kind));
+        if (game != null) return game;
+        return kind != null ? PicSources.genre(kind) : ownPicture(ch);
     }
 }

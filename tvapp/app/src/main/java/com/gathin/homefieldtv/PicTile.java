@@ -8,6 +8,7 @@ import android.graphics.RectF;
 import android.graphics.Shader;
 import android.view.View;
 
+import com.gathin.broadcast.PicPlace;
 import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.LogoPack;
@@ -17,13 +18,14 @@ import com.gathin.homefieldtv.engine.LogoPack;
  * (Sky's public guide, through ProgrammePictures), its faces found once as it is read (Faces, kept with it in Pics).
  *
  * <pre>
- *   fill     a programme's cell of any size (the guide's cells, the info card): the picture takes up
- *            the whole cell, as the family asked ("take up the whole panel no matter what size it is"), its faces whole
- *            (PicFill: covering, or for a cell too wide and short for that the ambient fill), made once at the cell's
- *            size (Pics.FILL; a cell cut by the guide's edges shows a window of the picture made for its whole width, on
- *            its faces, beside the words where there is room); then shade() under the words only: a soft shade from
- *            the cell's left that ends a little past them, and a light fade along the foot for the progress line; the
- *            picture clear everywhere else
+ *   fill     a programme's cell of any size (the guide's cells): the cell taken up by its picture, placed by the rule
+ *            shared with the phone (PicPlace, PicFill.row): covering a cell close to its shape, else (a long cell) the
+ *            whole picture at the cell's height after the words, the cell's own colour from the picture's edges
+ *            continuing smoothly either side, its faces whole; made once, pre-scaled, for the whole programme's width
+ *            (Pics.SLIDE); as the guide scrolls and the cell is cut by its edges, the picture glides along the cell
+ *            (PicPlace.slide: its faces at the middle of the part in sight after the words), never re-cropped, never
+ *            jumping; then shade() under the words only: a soft shade from the cell's left that ends a little past
+ *            them, and a light fade along the foot for the progress line; the picture clear everywhere else
  *   COVER    a tile whose words are under it (a card, a strip): the picture fills it, the faces in the middle; with
  *            none (yet), the channel's logo on its tile in its middle (Logos)
  * </pre>
@@ -33,11 +35,11 @@ import com.gathin.homefieldtv.engine.LogoPack;
  *
  * <pre>
  *   PicTile tiles = new PicTile(view);                                          one per view, made with it
- *   if (tiles.fill(c, cell, radius, url, fullW, Pics.FILL, wordsEnd, focused, done))
+ *   if (tiles.fill(c, cell, radius, url, fullLeft, fullW, wordsEnd, focused, done))
  *       tiles.shade(c, cell, radius, wordsEnd, foot);
  *   else the cell plain (its picture is read, or there is none)
- *       cell: screen px, as drawn; fullW: the whole cell's width (the guide's programme, uncut; the size it is read at);
- *       wordsEnd: where its words end (screen px); done: already shown (its picture dimmer)
+ *       cell: screen px, its part in sight; fullLeft, fullW: the whole cell's left and width (the guide's programme,
+ *       uncut; the size it is read at); wordsEnd: where its words end (screen px); done: already shown (dimmer)
  *   tiles.draw(c, cell, radius, ch, s, i, PicTile.COVER, focused, done, settled)   programme i's picture (settled false
  *       while a key is held: only what is known)
  *   tiles.draw(c, cell, radius, url, PicTile.COVER, focused, done)               by address; -1 while it is read
@@ -62,7 +64,8 @@ final class PicTile {
             words = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG), fade = new Paint(Paint.DITHER_FLAG),
             foot = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG);
     private final RectF logo = new RectF();
-    private final float[] lay = new float[PicFill.SIZE];
+    private final android.graphics.Matrix groundAt = new android.graphics.Matrix();
+    private final Paint ground = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG | Paint.DITHER_FLAG);
     private int cellColour = Look07.CELL;
     private float facesLeft, facesRight;
 
@@ -84,29 +87,57 @@ final class PicTile {
     }
 
     /**
-     * Programme picture url filling the cell r (screen px: its part on screen), read for the whole cell (fullW x the
-     * cell's height) in mode (Pics.FILL, FILL_CARD). False while it is read (or can't be): draw the cell plain.
+     * Programme picture url taking up the cell r (screen px: its part in sight) of a programme whose whole cell starts at
+     * fullLeft and is fullW wide (screen px; the size it is read at, Pics.SLIDE): its ground (the picture's edges' colours
+     * drawn out), then the picture, pre-scaled, where PicPlace.slide puts it for the part in sight. Nothing is scaled or
+     * made while drawing (a tiny ground picture stretched aside). False while it is read (or can't be): the cell plain.
      */
-    boolean fill(Canvas c, RectF r, float radius, String url, int fullW, int mode, float wordsEnd, boolean focused, boolean done) {
+    boolean fill(Canvas c, RectF r, float radius, String url, float fullLeft, int fullW, float wordsEnd, boolean focused, boolean done) {
         float w = r.width(), h = r.height();
         if (url == null || url.isEmpty() || w < Ui.f(MIN_W) || h < 2) return false;
         int bw = Math.max(fullW, Math.round(w)), bh = Math.round(h);
-        Bitmap b = Pics.get(url, bw, bh, mode, redraw);
+        Bitmap b = Pics.get(url, bw, bh, Pics.SLIDE, redraw);
         if (b == null) return false;
-        // Where its faces landed in the picture as it was made, and the window on them for a cell cut short.
-        float[] f = Pics.faces(url);
-        PicFill.layout(f == null ? b.getWidth() / (float) b.getHeight() : f[4], f, bw, bh, mode == Pics.FILL_CARD, lay);
-        float ox = PicFill.window(bw, w, lay[PicFill.FL], lay[PicFill.FR], wordsEnd - r.left, Ui.f(8f));
-        facesLeft = r.left + lay[PicFill.FL] - ox;
-        facesRight = r.left + lay[PicFill.FR] - ox;
+        Pics.Placed pl = Pics.placed(b);
+        float[] lay = pl == null ? null : pl.lay;
+        float at = pl == null ? 0f : pl.at;
+        // The picture made starts at at across the whole cell; its subject (its faces' middle, else its own) within it.
+        float subject = lay == null ? b.getWidth() / 2f : lay[PicPlace.X] + lay[PicPlace.SUBJECT] - at;
+        // The whole cell (a programme longer than the window is read at the window's width, but glides along all of it).
+        float full = Math.max(bw, r.right - fullLeft), inL = r.left - fullLeft;
+        float x = PicPlace.slide(full, b.getWidth(), subject, inL, inL + w, wordsEnd - fullLeft);
+        float left = fullLeft + x;
+        boolean dim = done && !focused;
+        if (dim) c.drawRoundRect(r, radius, radius, cell);
+        android.graphics.BitmapShader g = pl == null ? null : pl.ground();
+        if (g != null) {
+            // The cell's own colour from the picture's edges, drawn out either side of where the picture is now.
+            com.gathin.broadcast.PicArt.groundMatrix(pl.edges, lay, groundAt);
+            groundAt.postTranslate(fullLeft + x - at, r.top);
+            g.setLocalMatrix(groundAt);
+            ground.setShader(g);
+            ground.setAlpha(dim ? 150 : 255);
+            c.drawRoundRect(r, radius, radius, ground);
+        }
         Paint p = shaders.paint(b, b.getWidth(), b.getHeight(), 0f);
-        p.setAlpha(done && !focused ? 150 : 255);
-        if (done && !focused) c.drawRoundRect(r, radius, radius, cell);
+        p.setAlpha(dim ? 150 : 255);
         c.save();
-        c.translate(r.left - ox, r.top);
-        c.drawRoundRect(ox, 0, ox + w, h, radius, radius, p);
+        // Only where the picture is (its feathered edges see-through): a clip, never a layer.
+        if (b.getWidth() < bw || x > 0f) c.clipRect(Math.max(r.left, left), r.top, Math.min(r.right, left + b.getWidth()), r.bottom);
+        c.translate(left, r.top);
+        c.drawRoundRect(r.left - left, 0, r.right - left, h, radius, radius, p);
         c.restore();
         p.setAlpha(255);
+        if (lay != null && pl.faces) {
+            facesLeft = left - at + lay[PicPlace.FL];
+            facesRight = left - at + lay[PicPlace.FR];
+        } else if (lay != null && lay[PicPlace.KIND] == PicPlace.SHOW) {
+            facesLeft = left;
+            facesRight = left + b.getWidth();
+        } else {
+            facesLeft = r.right;
+            facesRight = r.right;
+        }
         edge(c, r, radius);
         return true;
     }

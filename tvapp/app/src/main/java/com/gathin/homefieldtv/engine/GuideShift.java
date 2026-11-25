@@ -20,7 +20,7 @@ final class GuideShift {
             a[i] = s.start[i] + ms;
             b[i] = s.stop[i] + ms;
         }
-        return new Guide.Schedule(a, b, s.title, s.desc);
+        return s.at(a, b);
     }
 
     /** Pure: catch-up's earliest times (by channel key) in the guide's own time: moved back by the shift. */

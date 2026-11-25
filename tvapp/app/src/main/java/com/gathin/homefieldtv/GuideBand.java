@@ -33,9 +33,10 @@ import com.gathin.homefieldtv.prefs.ChannelEdits;
  *                   before: "50 FPS", its sound), and the catch-up mark for one the archive keeps (with its length for
  *                   one already shown); a bell and "Reminder set" for one to come with a reminder
  *   what it's about 20 px, up to four lines
- *   its picture     at its own shape on the panel's right (587 x 330), fitted round its faces with its left edge faded
- *                   into the panel and nothing over it (PanelArt, Pics.PANEL), cross-fading as the remote moves; with
- *                   no picture the words take the whole panel
+ *   its picture     on the panel's right (587 x 330): covering the box when it is of its shape, else the whole picture at
+ *                   the box's height on its own colour (PicPlace: never zoomed in, faces whole, never enlarged past 1.5
+ *                   times), its left edge faded into the panel and nothing over it (PanelArt, Pics.PANEL), cross-fading
+ *                   as the remote moves; with no picture the words take the whole panel
  * </pre>
  *
  * The channel number being typed shows in a frosted box at the panel's top right. GuideScreen asks for the picture once
