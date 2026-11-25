@@ -26,7 +26,8 @@ import java.util.List;
  *
  * <p>The scoreboard's: the match centre first (the tap's job before), the tennis or boxing board's Bell now, Next match
  * and Hide; then Scoreboard (on, the board itself, over matches, up by hand), Look (its looks drawn, My scoreboards, the
- * editor, Ask AI's key), Timing (how far behind, "It's just happened", the alerts held), Pop-ups and alerts, Sounds,
+ * editor, Ask AI's key), Timing (how far behind, "It's just happened", the alerts held), Pop-ups and alerts, Goal
+ * animation (GoalLooks: as today, each club's own...), Sounds (the goal sound among them),
  * The channel's own scoreboard, Ad breaks, Place and size, This channel, Tennis, boxing and UFC, Over other apps. The
  * logo's: Logo cover (on, its look drawn, the Whitebrook Road styles, the wordmark, see-through), On the logo (picture
  * tag, LIVE, the competition, Up next, prayer time, the clock, the marks, out in the ad breaks), The channel's own logo,
@@ -166,6 +167,13 @@ final class BoardMenus {
             String k = BoardLab.KEYS[i];
             m.toggle(stats, c.getString(BoardLab.NAMES[i]), null, ScoreBoard.statOn(c, k), on -> ScoreBoard.setStatOn(c, k, on));
         }
+
+        // The goal's animation on the board (GoalLooks): as today unless another is chosen.
+        LinearLayout ga = m.section("Goal animation", EVERY);
+        String[] goalLooks = com.gathin.broadcast.GoalLooks.offered(true), goalNames = new String[goalLooks.length];
+        for (int i = 0; i < goalLooks.length; i++) goalNames[i] = com.gathin.broadcast.GoalLooks.name(goalLooks[i]);
+        m.choice(ga, "Goal animation", "Club animations: each club of the five big leagues its own, any other team the generic",
+                goalLooks, goalNames, ScoreBoard.goalLook(c), k -> ScoreBoard.setGoalLook(c, k));
 
         LinearLayout sd = m.section("Sounds", EVERY);
         m.toggle(sd, "A swish as things slide out", "The scorer, the stats, an alert: out and back in", PlayerIntro.swishOn(c),

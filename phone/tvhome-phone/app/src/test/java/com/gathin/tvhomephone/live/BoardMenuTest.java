@@ -349,8 +349,8 @@ public class BoardMenuTest {
                 "Substitutions", "Penalty shootout tracker", "Milestones", "Shot map at half and full time",
                 "The scorer's shirt in 3D", "Minutes added stay out", "Sponsor strap under alerts", "FotMob stats and pictures",
                 act.getString(R.string.lab_stats_title),
-                // sounds
-                "A swish as things slide out", "A swish on a new score", "Goal sound",
+                // the goal's animation, sounds
+                "Goal animation", "A swish as things slide out", "A swish on a new score", "Goal sound",
                 // the channel's own scoreboard
                 "Cover it", "Away in its replays", act.getString(R.string.live_bug_pop_outs_short), "Read its clock and score",
                 // ad breaks
@@ -369,6 +369,24 @@ public class BoardMenuTest {
         // Rows saying where they hold.
         assertTrue(words.contains("Every channel"));
         assertTrue(words.contains("Just on Northbridge Sport"));
+    }
+
+    @Test public void theGoalAnimationAndTheNewGoalSoundsAreChosenInTheBoardsMenu() {
+        // as today until chosen
+        assertEquals(com.gathin.broadcast.GoalLooks.TODAY, ScoreBoard.goalLook(act));
+        o.boardMenu();
+        View panel = o.menu().panel;
+        for (String k : com.gathin.broadcast.GoalLooks.offered(true)) {
+            assertNotNull("a pill for " + k, viewNamed(panel, "Goal animation: " + com.gathin.broadcast.GoalLooks.name(k)));
+        }
+        viewNamed(panel, "Goal animation: Club animations").performClick();
+        assertEquals(com.gathin.broadcast.GoalLooks.CLUBS, ScoreBoard.goalLook(act));
+        // the six sounds made for the new animations among the goal sounds
+        for (String k : com.gathin.broadcast.Sfx.REVEAL_GOALS) {
+            assertNotNull("a pill for " + k, viewNamed(panel, "Goal sound: " + com.gathin.broadcast.Sfx.goalName(k)));
+        }
+        viewNamed(panel, "Goal sound: Thunder and sparkle").performClick();
+        assertEquals("thunder", PlayerIntro.goalSound(act));
     }
 
     @Test public void everyLogoOptionIsInItsMenu() {

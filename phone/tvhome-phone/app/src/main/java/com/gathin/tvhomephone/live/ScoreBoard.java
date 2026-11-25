@@ -98,6 +98,18 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     /** The scoreboard over the player's picture (on until switched off). */
     static boolean on(Context c) { return prefs(c).getBoolean("on", true); }
 
+    /**
+     * The board's goal animation (GoalLooks: as today unless the family chooses another: the GOAL band, the flip, the
+     * burst, the 3D shirt, each club's own, the generic), from the scoreboard's pop-up menu.
+     */
+    static String goalLook(Context c) {
+        return com.gathin.broadcast.GoalLooks.of(prefs(c).getString("goal_look", com.gathin.broadcast.GoalLooks.DEFAULT));
+    }
+
+    static void setGoalLook(Context c, String key) {
+        prefs(c).edit().putString("goal_look", com.gathin.broadcast.GoalLooks.of(key)).apply();
+    }
+
     static void setOn(Context c, boolean v) { prefs(c).edit().putBoolean("on", v).apply(); }
 
     /**
@@ -922,6 +934,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                     // The game's competition: By competition draws its own look, and its logo with it; the retro looks name the clubs.
                     bug.competition(got.slug, got.leagueName != null && !got.leagueName.isEmpty() ? got.leagueName : got.league);
                     bug.names(got.homeName, got.awayName);
+                    bug.teams(got.homeId, got.awayId);
                     // the 3D kits: the look's two shirts made for the kits worn, a new goal's shirt made ahead of its moment
                     FrameLayout kitRoot = src.kitRoot();
                     if (style(c) == OverlayBug.Style.KITS) PhoneKits.board(c, got, bug, kitInner(), kitRoot);
@@ -978,6 +991,9 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                     if (side > 0) {
                         play.goal(now);
                         labGoal(g, side, l.clock, lastHome, lastAway);
+                        // drawn as the family chose (GoalLooks), the clubs' own animations found by ESPN's ids
+                        bug.goalLook(goalLook(c));
+                        bug.teams(g.homeId, g.awayId);
                         bug.goal(side);
                         com.gathin.broadcast.Sfx.goal(c, PlayerIntro.goalSound(c));
                         // the scorer's shirt out of the board and round to his name and number (its own switch)
@@ -3469,6 +3485,8 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         return test(() -> {
             long now = System.currentTimeMillis();
             Game g = testGame(now);
+            bug.goalLook(goalLook(c));
+            if (g != null) bug.teams(g.homeId, g.awayId);
             bug.goal(side);
             com.gathin.broadcast.Sfx.goal(c, PlayerIntro.goalSound(c));
             if (changed != null) changed.run();

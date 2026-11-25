@@ -28,7 +28,8 @@ import java.util.Objects;
  * over the channel's own scoreboard, that box's size exactly. Wide boxes take one row (the competition, each club's
  * colour, crest and three letters, the score, the clock in minutes and seconds); boxes nearer square take two (the
  * clubs and score over the clock). F1: F1's red block, the session, the lap or the time left, and the first three with
- * their teams' colours. A goal is shown as broadcasters show one: a white hit, the scorers' colour sweeping across it
+ * their teams' colours. A goal is shown as broadcasters show one (or as the family chose: GoalLooks, each club's own
+ * among them, drawn by GoalReveal): a white hit, the scorers' colour sweeping across it
  * from their side with their crest and GOAL, then on out the far side, the new score popping up and settling.
  * What folds out under it (the stats, the alerts) takes its look (StripLook). Card sets it as the clubs' own results
  * cards are: each crest on white with the club's colour down the board's end, the score over the clock on red between,
@@ -412,7 +413,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         d.away = look.away;
         d.homeName = homeName;
         d.awayName = awayName;
-        d.score = look.score;
+        d.score = score();
         d.clock = look.clock;
         d.comp = compName;
         d.homeColour = look.homeColour;
@@ -506,7 +507,8 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         goalFrozen = -1;
         // The score as it was: the new figure moves in from it (the new score comes on the board just after this).
         scoreFrom = look.score;
-        goalSet = setFor(style, gameId);
+        goalSet = setFor(style, gameId, goalLook);
+        revealClub = revealFor(goalLook, side, homeId, awayId, homeName, awayName, look);
         removeCallbacks(scoreSwish);
         for (Runnable r0 : labSounds) removeCallbacks(r0);
         boolean rolls = rollsNow();
@@ -526,6 +528,12 @@ final class OverlayBug extends View implements BurnGuard.Dims {
                 postDelayed(burstSound, com.gathin.broadcast.BoardFx.SEQ_BURST_AT);
                 postDelayed(scoreSwish, com.gathin.broadcast.BoardFx.seqSwishAt());
                 postDelayed(netSound, com.gathin.broadcast.BoardFx.seqMeshAt());
+                break;
+            case com.gathin.broadcast.BoardFx.GOAL_REVEAL:
+                // The new animations (GoalReveal): the crest's burst sound quietly on GOAL!'s burst, the family's swish as
+                // the last sweep uncovers the new score; no net.
+                postDelayed(burstSound, com.gathin.broadcast.GoalReveal.BURST_FROM);
+                postDelayed(scoreSwish, com.gathin.broadcast.GoalReveal.swishAt());
                 break;
             default:
                 // Today's band: the family's swish on the new score, then the net.
@@ -562,6 +570,98 @@ final class OverlayBug extends View implements BurnGuard.Dims {
     /** On a rolling board (Floodlight, Stadium LED) the band's new score rolls up as the band goes, over this. */
     static final long ROLL_BAND_FROM = BAND_OUT + 150, ROLL_BAND_TO = BAND_OUT + 950;
 
+    /**
+     * The new goal animations (GoalLooks' Club animations and Generic, GoalReveal): the choice in use, the clubs' ESPN
+     * ids, the animation of the goal on now and its drawing; the score drawn this frame (the one before the goal while
+     * the animation covers it; null: the look's).
+     */
+    private String goalLook = com.gathin.broadcast.GoalLooks.DEFAULT, homeId = "", awayId = "", drawnScore;
+    private com.gathin.broadcast.ClubGoals.Club revealClub;
+    private final com.gathin.broadcast.GoalReveal reveal = new com.gathin.broadcast.GoalReveal();
+    private final RectF revealArea = new RectF();
+
+    /** The family's choice of goal animation (GoalLooks' values), for the goals to come. */
+    void goalLook(String key) {
+        goalLook = com.gathin.broadcast.GoalLooks.of(key);
+    }
+
+    String goalLook() {
+        return goalLook;
+    }
+
+    /** The clubs' ESPN ids, for their own goal animations (ClubGoals). */
+    void teams(String home, String away) {
+        homeId = home == null ? "" : home;
+        awayId = away == null ? "" : away;
+    }
+
+    /**
+     * Pure: the new animation a goal for side (1 home, 2 away) plays under a choice: the club's own (ESPN's id, else its
+     * names), else the generic in its colour on the board; null when the choice is one of the boards' own.
+     */
+    static com.gathin.broadcast.ClubGoals.Club revealFor(String choice, int side, String homeId, String awayId, String homeName,
+            String awayName, Look look) {
+        boolean away = side == 2;
+        return com.gathin.broadcast.GoalLooks.clubFor(choice, away ? awayId : homeId, away ? look.awayColour : look.homeColour,
+                away ? awayName : homeName, away ? look.away : look.home);
+    }
+
+    /** Pure: the score a board draws t ms into a goal of a set (-1: none on): the one before under the new animations. */
+    static String scoreDrawn(int set, long t, String before, String now) {
+        boolean under = set == com.gathin.broadcast.BoardFx.GOAL_REVEAL && t >= 0 && t < com.gathin.broadcast.GoalReveal.TOTAL_MS
+                && !com.gathin.broadcast.GoalReveal.newScore(t);
+        return under && before != null && !before.isEmpty() ? before : now;
+    }
+
+    /** The score drawn now: the one before the goal while the new animations cover it, else the look's. */
+    private String score() {
+        return drawnScore != null ? drawnScore : look.score;
+    }
+
+    /**
+     * Pure: whether the new animations play over the whole board for a look: a competition's look (its own shapes, its
+     * row), a look that drew no part for the scorers, or a part too short for the crest, the motif and GOAL!.
+     */
+    static boolean revealWhole(CompBug.Kind kind, boolean partDrawn, float partW, float partH) {
+        return kind != null || !partDrawn || partH <= 0 || partW < partH * 3.2f;
+    }
+
+    /**
+     * Pure: whether the new animations over a competition's look are laid only where the look has drawn, or over its
+     * whole row: the Premier League's world feed (its score stands through a gap in its row) and Ligue 1's (a corner
+     * empty beside its clock), as on the TV.
+     */
+    static boolean revealOnShape(CompBug.Kind kind) {
+        return kind != CompBug.Kind.PL && kind != CompBug.Kind.LIGUE1;
+    }
+
+    /**
+     * The new animations t ms in (GoalReveal): over the scorers' name, the score and on to the other's end (both clubs'
+     * parts as the look drew them, on one row), their own row where the clubs are one above the other, else the whole
+     * board (or a competition's row); their letters from the scorers' end.
+     */
+    private void revealMoment(Canvas cv, int w, int h, long t, CompBug.Kind kind) {
+        int side = flashSide == 2 ? 2 : 1;
+        RectF own = partSeen[side - 1], other = partSeen[2 - side];
+        boolean right = side == 2;
+        boolean drawn = kind == null && !own.isEmpty();
+        if (drawn && !other.isEmpty() && Math.abs(own.top - other.top) < 1f && Math.abs(own.bottom - other.bottom) < 1f) {
+            revealArea.set(own);
+            revealArea.union(other);
+        } else if (drawn) {
+            revealArea.set(own);
+            right = false;
+        }
+        boolean whole = revealWhole(kind, drawn, revealArea.width(), revealArea.height());
+        if (whole) {
+            revealArea.set(0, 0, w, h);
+            right = side == 2;
+        }
+        reveal.prepare(revealClub, side == 2 ? look.away : look.home, side == 2 ? awayCrest : homeCrest, right, revealArea.width(),
+                revealArea.height(), text.getTypeface());
+        reveal.draw(cv, revealArea.left, revealArea.top, t);
+    }
+
     /** The game on the board (ESPN's id): its goals' set, half time's face and the shootout's place are its own, every time. */
     void game(String id) {
         gameId = id;
@@ -576,8 +676,17 @@ final class OverlayBug extends View implements BurnGuard.Dims {
      * the sequence (BoardFx.goalSet), a game known or not.
      */
     static int setFor(Style s, String gameId) {
-        if (s == Style.KITS) return com.gathin.broadcast.BoardFx.GOAL_BAND;
-        return com.gathin.broadcast.BoardFx.goalSet(gameId);
+        return setFor(s, gameId, com.gathin.broadcast.GoalLooks.DEFAULT);
+    }
+
+    /**
+     * Pure: the set a look shows a game's goals in under the family's choice (GoalLooks): as today the game's own (the 3D
+     * kits their band); the GOAL band, the flip or the burst on every look but the 3D kits; the new animations on every look.
+     */
+    static int setFor(Style s, String gameId, String choice) {
+        int set = com.gathin.broadcast.GoalLooks.set(choice, com.gathin.broadcast.BoardFx.goalSet(gameId));
+        if (s == Style.KITS && set != com.gathin.broadcast.BoardFx.GOAL_REVEAL) return com.gathin.broadcast.BoardFx.GOAL_BAND;
+        return set;
     }
 
     /** Whether the look's new score rolls up into place whatever the set (Floodlight, Stadium LED). */
@@ -597,6 +706,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
             case com.gathin.broadcast.BoardFx.GOAL_FLIP: return com.gathin.broadcast.BoardFx.FLIP_MS;
             case com.gathin.broadcast.BoardFx.GOAL_BURST: return com.gathin.broadcast.BoardFx.BURST_MS;
             case com.gathin.broadcast.BoardFx.GOAL_SEQUENCE: return com.gathin.broadcast.BoardFx.seqMs();
+            case com.gathin.broadcast.BoardFx.GOAL_REVEAL: return com.gathin.broadcast.GoalReveal.TOTAL_MS;
             default: return GOAL_MS;
         }
     }
@@ -612,9 +722,13 @@ final class OverlayBug extends View implements BurnGuard.Dims {
             case com.gathin.broadcast.BoardFx.GOAL_FLIP: return com.gathin.broadcast.BoardFx.MESH_AFTER_FLIP;
             case com.gathin.broadcast.BoardFx.GOAL_BURST: return com.gathin.broadcast.BoardFx.MESH_AFTER_BURST;
             case com.gathin.broadcast.BoardFx.GOAL_SEQUENCE: return com.gathin.broadcast.BoardFx.seqMeshAt();
+            case com.gathin.broadcast.BoardFx.GOAL_REVEAL: return NO_MESH;
             default: return RIPPLE_AT;
         }
     }
+
+    /** A set with no net's shiver (the new animations): its net "comes" long after the goal is over. */
+    static final long NO_MESH = 3_600_000L;
 
     /** Pure: whether the GOAL band is across the board t ms into a goal of a set (its own, or the sequence's first part). */
     static boolean bandOn(int set, long t) {
@@ -624,7 +738,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
 
     /** Pure: how far into the Lab's flip or burst a goal of a set is, t ms in (the sequence's burst once the band has gone); -1: none. */
     static long labAt(int set, long t) {
-        if (t < 0 || set == com.gathin.broadcast.BoardFx.GOAL_BAND) return -1;
+        if (t < 0 || set == com.gathin.broadcast.BoardFx.GOAL_BAND || set == com.gathin.broadcast.BoardFx.GOAL_REVEAL) return -1;
         long lt = set == com.gathin.broadcast.BoardFx.GOAL_SEQUENCE ? com.gathin.broadcast.BoardFx.seqBurst(t) : t;
         long len = set == com.gathin.broadcast.BoardFx.GOAL_FLIP ? com.gathin.broadcast.BoardFx.FLIP_MS : com.gathin.broadcast.BoardFx.BURST_MS;
         return lt >= 0 && lt < len ? lt : -1;
@@ -640,6 +754,8 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         moveKind = 0;
         moveAt = 1f;
         if (!goalOn || look.f1 || scoreFrom == null || scoreFrom.isEmpty() || scoreFrom.equals(look.score)) return;
+        // the new animations show the new score themselves
+        if (goalSet == com.gathin.broadcast.BoardFx.GOAL_REVEAL) return;
         boolean rolls = rollsNow();
         if (goalSet == com.gathin.broadcast.BoardFx.GOAL_FLIP) {
             moveKind = rolls ? CompBug.MOVE_ROLL : CompBug.MOVE_FLIP;
@@ -871,7 +987,8 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         flashSide = side;
         goalFrozen = t;
         goalAt = t < 0 ? 0 : System.currentTimeMillis() - t;
-        goalSet = setFor(style, gameId);
+        goalSet = setFor(style, gameId, goalLook);
+        revealClub = revealFor(goalLook, side, homeId, awayId, homeName, awayName, look);
         scoreFrom = from == null ? "" : from;
         invalidate();
     }
@@ -1151,6 +1268,10 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         long gt = goalFrozen >= 0 ? goalFrozen : goalAt > 0 ? now - goalAt : -1;
         boolean goalOn = gt >= 0 && gt < goalLen();
         boolean band = goalSet == com.gathin.broadcast.BoardFx.GOAL_BAND;
+        // The new animations (GoalReveal) over the scorers' part each look marks as it draws, the score before the goal
+        // drawn under them until their last sweep covers it.
+        boolean revealing = goalOn && goalSet == com.gathin.broadcast.BoardFx.GOAL_REVEAL && revealClub != null && !look.f1;
+        drawnScore = scoreDrawn(revealing ? goalSet : -1, gt, scoreFrom, look.score);
         // The GOAL band across the board (its own set, or the sequence's first part); the Lab's flip or burst, how far in.
         boolean banding = goalOn && bandOn(goalSet, gt);
         long lab = goalOn ? labAt(goalSet, gt) : -1;
@@ -1180,7 +1301,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         // The Lab's moments over a competition's look are kept to its own shapes (Duo's pills, Floodlight's tab under its
         // row), never the gaps between: the look drawn on a layer of its own while one is on, each moment laid only where
         // the look has drawn.
-        boolean layered = kind() != null && (lab >= 0 || rippling || weathering);
+        boolean layered = kind() != null && (lab >= 0 || rippling || weathering || revealing);
         int base = layered ? cv.saveLayer(0, 0, w, h, null) : -1;
         fill.setShader(null);
         fill.setColor(p.ground);
@@ -1214,7 +1335,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         } else if (style == Style.CARD) {
             card(cv, w, h);
         } else if (style == Style.KITS) {
-            kitsRow(cv, w, h, now, goalOn ? gt : -1);
+            kitsRow(cv, w, h, now, goalOn && !revealing ? gt : -1);
         } else if (w / (float) h >= 3.6f) {
             oneRow(cv, 0, 0, w, h, true);
         } else {
@@ -1240,6 +1361,12 @@ final class OverlayBug extends View implements BurnGuard.Dims {
                 labGoal(cv, w, mh, lab, ck != null);
                 if (a >= 0) cv.restoreToCount(a);
             }
+        }
+        if (revealing) {
+            // kept to the look's own shapes (a competition's look on its layer), its row where it has one
+            int a = atop(cv, layered && revealOnShape(ck), w, mh);
+            revealMoment(cv, w, mh, gt, ck);
+            if (a >= 0) cv.restoreToCount(a);
         }
         // The net shivering across the board after every goal (the Lab's net); VAR checking; FULL TIME stamped.
         if (rippling) {
@@ -1467,7 +1594,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         cx = side(cv, cx, y, h, strip, crests ? crestW : 0, codeW, k, true);
         // The score on its own block.
         scoreBlock(cv, cx, y, score, h);
-        score(cv, look.score, scoreFrom, cx + score / 2, y, h, h * 0.56f * k * scoreZoom, p.scoreInk);
+        score(cv, score(), scoreFrom, cx + score / 2, y, h, h * 0.56f * k * scoreZoom, p.scoreInk);
         cx += score;
         cx = side(cv, cx, y, h, strip, crests ? crestW : 0, codeW, k, false);
         if (withClock && clock > 0) clock(cv, cx, y, x + w - cx, h, k);
@@ -1597,7 +1724,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         float extra = Math.max(0, w - need * k);
         float cx = side(cv, 0, 0, h, strip * k, crests ? crestW : 0, codeW * k + extra / 2, k, true);
         scoreBlock(cv, cx, 0, score * k, h);
-        score(cv, look.score, scoreFrom, cx + score * k / 2, 0, h, h * 0.56f * k * scoreZoom, p.scoreInk);
+        score(cv, score(), scoreFrom, cx + score * k / 2, 0, h, h * 0.56f * k * scoreZoom, p.scoreInk);
         side(cv, cx + score * k, 0, h, strip * k, crests ? crestW : 0, codeW * k + extra / 2, k, false);
     }
 
@@ -1655,7 +1782,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
             for (String c : look.codes) d.append(d.length() == 0 ? "" : " ").append(c);
             return new String[]{"F1", (look.cornerA + " " + look.cornerB).trim(), d.toString()};
         }
-        return new String[]{look.home + "  " + look.score + "  " + look.away, look.clock, addedInside() ? look.added : ""};
+        return new String[]{look.home + "  " + score() + "  " + look.away, look.clock, addedInside() ? look.added : ""};
     }
 
     private float minimalWidth(int h) {
@@ -1728,7 +1855,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         crestSide(cv, cx, 0, hc, h, true);
         cx += hc;
         scoreBlock(cv, cx, 0, score, h);
-        score(cv, look.score, scoreFrom, cx + score / 2, 0, h, h * 0.56f * k * scoreZoom, p.scoreInk);
+        score(cv, score(), scoreFrom, cx + score / 2, 0, h, h * 0.56f * k * scoreZoom, p.scoreInk);
         cx += score;
         crestSide(cv, cx, 0, ac, h, false);
         cx += ac + pad;
@@ -1743,7 +1870,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         crestSide(cv, cx, 0, hc * k, top, true);
         cx += hc * k;
         scoreBlock(cv, cx, 0, score * k, top);
-        score(cv, look.score, scoreFrom, cx + score * k / 2, 0, top, top * 0.56f * k * scoreZoom, p.scoreInk);
+        score(cv, score(), scoreFrom, cx + score * k / 2, 0, top, top * 0.56f * k * scoreZoom, p.scoreInk);
         cx += score * k;
         crestSide(cv, cx, 0, ac * k, top, false);
         fill.setColor(p.clock != 0 ? p.clock : p.ground);
@@ -1789,7 +1916,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
 
     /** "2–1" as {"2", "1"}; none when it is not a score (before kick-off). */
     private String[] goals() {
-        return goals(look.score);
+        return goals(score());
     }
 
     /** Pure: each side's figure in a score ("2–1": {"2", "1"}); {"", ""} when it has not two. */
@@ -1884,7 +2011,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
 
     /** "2 - 1", spaced as the results cards set it ("v" before kick-off). */
     private String cardScore() {
-        return cardScore(look.score);
+        return cardScore(score());
     }
 
     /** Pure: a score as Card sets it ("2–1": "2 - 1"); as it is when it has not two figures. */
@@ -2453,7 +2580,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
             float pk = Math.max(0.05f, eBack(kprog(gt, HIT_MS, HIT_MS + 300)));
             words(cv, "GOAL", x + score / 2, 0, h, h * 0.56f * k * pk, KIT_INK);
         } else {
-            score(cv, look.score, scoreFrom, x + score / 2, 0, h, h * 0.56f * k * scoreZoom, p.scoreInk);
+            score(cv, score(), scoreFrom, x + score / 2, 0, h, h * 0.56f * k * scoreZoom, p.scoreInk);
         }
         x += score;
         fill.setColor(KIT_CODE);
