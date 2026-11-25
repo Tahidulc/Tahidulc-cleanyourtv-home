@@ -44,7 +44,7 @@ import java.util.concurrent.Executors;
  * down; the selected programme's picture and details fill the top. OK puts the channel on (ChannelOpen: Homefield TV
  * straight on it, else TiviMate through the helper); Back closes.
  */
-final class GuideV2 {
+final class GuideV2 implements LivePreviews.Preview {
     private static final int ROWS = 7;
     private static final long WINDOW_MS = 2 * 60 * 60_000L, HALF_HOUR = 30 * 60_000L;
     private static final int GRID_X = 96, GRID_W = 1728, CH_W = 360, LINE_X = GRID_X + CH_W + 16;
@@ -446,6 +446,8 @@ final class GuideV2 {
         }
         android.media.MediaPlayer mp = new android.media.MediaPlayer();
         player = mp;
+        // Let go before Homefield TV is asked to play a channel (one connection at a time on the family's account).
+        LivePreviews.playing(this);
         try {
             mp.setSurface(new android.view.Surface(st));
             java.util.Map<String, String> headers = new java.util.HashMap<>();
@@ -483,11 +485,17 @@ final class GuideV2 {
     }
 
     private void stopPlayer() {
+        LivePreviews.stopped(this);
         android.media.MediaPlayer mp = player;
         player = null;
         if (mp == null) return;
         try { mp.stop(); } catch (Exception ignored) { }
         mp.release();
+    }
+
+    /** A channel about to play in Homefield TV (ChannelOpen): the corner's live channel let go first, its connection closed. */
+    @Override public void stopLive() {
+        if (player != null) stopPreview();
     }
 
     private void stopPreview() {

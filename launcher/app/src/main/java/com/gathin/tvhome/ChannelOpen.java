@@ -101,6 +101,8 @@ final class ChannelOpen {
         Intent i = c.getPackageManager().getLeanbackLaunchIntentForPackage(pkg);
         if (i == null) i = c.getPackageManager().getLaunchIntentForPackage(pkg);
         if (i == null) return false;
+        // Homefield TV may start on the channel watched last: the launcher's own live channel let go first.
+        if (HOMEFIELD.equals(pkg)) LivePreviews.stopAll();
         try {
             c.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         } catch (ActivityNotFoundException | SecurityException e) {
@@ -120,6 +122,8 @@ final class ChannelOpen {
      * caller's, as before: TiviMate); logo and art for the helper's cover only. False when nothing could be opened.
      */
     static boolean open(Context c, String helperPkg, List<String> names, Bitmap logo, Bitmap art) {
+        // Whichever app plays it: the launcher's own live channel (a tile, the guide's corner) let go first.
+        LivePreviews.stopAll();
         if (way(chosen(c), homefieldAnswers(c), names) == TO_HOMEFIELD && inHomefield(c, names)) return true;
         return AppSearchService.tune(c, helperPkg, names, logo, art);
     }
@@ -131,6 +135,9 @@ final class ChannelOpen {
     static boolean inHomefield(Context c, List<String> names) {
         List<Object[]> extras = extras(names, System.currentTimeMillis());
         if (extras.isEmpty()) return false;
+        // The family's account allows one connection: a channel the launcher is playing live itself (a dock tile, the
+        // guide's corner) is let go first, so Homefield TV's own connection isn't refused or the preview's cut.
+        LivePreviews.stopAll();
         Intent i = new Intent(HomefieldCards.ACTION).setPackage(HOMEFIELD).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         for (Object[] e : extras) {
             if (e[1] instanceof String[]) i.putExtra((String) e[0], (String[]) e[1]);

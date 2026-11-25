@@ -17,7 +17,7 @@ import android.widget.FrameLayout;
  * takes it off the tile. The trailer fades in only once YouTube's title and logo have gone from its first seconds,
  * and is drawn larger than the tile so its black bars and corner marks fall outside.
  */
-final class TilePlayer {
+final class TilePlayer implements LivePreviews.Preview {
     /** YouTube shows the video's title over its first seconds: the trailer stays hidden under the picture until then. */
     private static final long TITLE_MS = 4_200L;
     private final Context c;
@@ -338,6 +338,8 @@ final class TilePlayer {
     private void stream(View v, android.view.Surface into, String base, boolean hls) {
         MediaPlayer mp = new MediaPlayer();
         player = mp;
+        // Let go before Homefield TV is asked to play a channel (one connection at a time on the family's account).
+        LivePreviews.playing(this);
         try {
             mp.setSurface(into);
             java.util.Map<String, String> headers = new java.util.HashMap<>();
@@ -385,6 +387,12 @@ final class TilePlayer {
             player.release();
             player = null;
         }
+        LivePreviews.stopped(this);
+    }
+
+    /** A channel about to play in Homefield TV (ChannelOpen): the tile's live channel let go first, its connection closed. */
+    @Override public void stopLive() {
+        if (player != null) stop();
     }
 
     /** Off the tile: the trailer silenced (its page kept for the next), the channel's player let go. */
