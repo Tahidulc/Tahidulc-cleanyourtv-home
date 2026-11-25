@@ -866,3 +866,6 @@ second half as before; all under the same pop-up switch.
 3D shirt, Club animations (each of the top five leagues' 96 clubs its own: a sweep in its colours, its crest turning
 in, what it is known by or its fans' cry, then GOAL! and the new score) and Generic; and six new goal sounds made for
 them. As today stays the default.
+
+**The goal pop-up's scorer (5.42).** After a goal the pop-up shows the score, then a moment later its scorer: a ball,
+the name, the minute and (og) or (pen) as the board marks them.
