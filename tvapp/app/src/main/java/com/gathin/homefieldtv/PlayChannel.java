@@ -189,8 +189,9 @@ final class PlayChannel {
             }
             if (asking) return;
             asking = true;
-            // Every reading of every name (every channel's name read the first time), then its number: off the main thread.
-            Exec.io(() -> {
+            // Every reading of every name, then its number: off the main thread, on the quick work's own thread (never
+            // queued behind a download, as the threads that read playlists and pictures may be).
+            Exec.work(() -> {
                 Channel found = r.find(f);
                 Exec.main(() -> {
                     if (done) return;
