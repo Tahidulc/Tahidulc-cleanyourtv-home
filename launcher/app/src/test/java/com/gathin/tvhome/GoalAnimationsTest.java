@@ -137,6 +137,22 @@ public class GoalAnimationsTest {
         assertTrue(BoardBug.revealOnShape(CompBug.Kind.UCL));
         assertFalse(BoardBug.revealOnShape(CompBug.Kind.PL));
         assertFalse(BoardBug.revealOnShape(CompBug.Kind.LIGUE1));
+        assertFalse(BoardBug.revealOnShape(CompBug.Kind.FACUP));
+        assertFalse(BoardBug.revealOnShape(CompBug.Kind.R2004));
+    }
+
+    @Test
+    public void aCompetitionsScoreStandingOutOfItsRowIsLeftOutWhileTheAnimationCoversIt() {
+        int set = BoardFx.GOAL_REVEAL;
+        assertFalse(BoardBug.figuresAway(set, -1));
+        assertTrue(BoardBug.figuresAway(set, GoalReveal.SWEEP_IN));
+        assertTrue(BoardBug.figuresAway(set, GoalReveal.MORPH_FROM));
+        assertTrue(BoardBug.figuresAway(set, GoalReveal.SCORE_AT));
+        assertFalse(BoardBug.figuresAway(set, GoalReveal.TOTAL_MS));
+        // the boards' own animations never leave it out
+        for (int other : new int[]{BoardFx.GOAL_BAND, BoardFx.GOAL_FLIP, BoardFx.GOAL_BURST, BoardFx.GOAL_SEQUENCE}) {
+            for (long t = 0; t < 6000; t += 250) assertFalse(BoardBug.figuresAway(other, t));
+        }
     }
 
     @Test

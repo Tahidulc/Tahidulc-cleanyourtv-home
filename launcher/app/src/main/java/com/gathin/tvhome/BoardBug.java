@@ -301,6 +301,17 @@ final class BoardBug extends View {
     private final com.gathin.broadcast.GoalReveal reveal = new com.gathin.broadcast.GoalReveal();
     private final RectF[] part = {new RectF(), new RectF()};
     private final boolean[] partSet = new boolean[2], partRight = new boolean[2];
+    /** A competition's look leaving out its score figures standing out of its row this frame (figuresAway). */
+    private boolean figuresAway;
+
+    /**
+     * Pure: whether a competition's look leaves out its own score figures that stand out of its row t ms into a goal of a
+     * set: while the new animations cover the row's middle (GoalReveal.middleCovered), so nothing of the score shows round
+     * them and the new score comes as the last sweep passes.
+     */
+    static boolean figuresAway(int set, long t) {
+        return set == com.gathin.broadcast.BoardFx.GOAL_REVEAL && com.gathin.broadcast.GoalReveal.middleCovered(t);
+    }
     /** The ground's weather over the board (BoardFx.weather): its sky and when it began (0: none). */
     private com.gathin.broadcast.BoardFx.Sky weatherSky;
     private long weatherAt, weatherFrozen = -1;
@@ -444,6 +455,7 @@ final class BoardBug extends View {
         d.moveAt = mv[1];
         d.before = CompBug.scores(scoreWas);
         d.htFace = htFaceNow();
+        d.figuresAway = figuresAway;
         return d;
     }
 
@@ -1145,7 +1157,7 @@ final class BoardBug extends View {
      * corner empty beside its clock (GOAL! would be cut there).
      */
     static boolean revealOnShape(CompBug.Kind kind) {
-        return kind != CompBug.Kind.PL && kind != CompBug.Kind.LIGUE1;
+        return kind != CompBug.Kind.PL && kind != CompBug.Kind.LIGUE1 && kind != CompBug.Kind.FACUP && kind != CompBug.Kind.R2004;
     }
 
     private float clockW(int h) {
@@ -1179,6 +1191,7 @@ final class BoardBug extends View {
         // drawn under them until their last sweep covers it.
         boolean revealing = goalOn && set == com.gathin.broadcast.BoardFx.GOAL_REVEAL && revealClub != null;
         drawnScore = scoreDrawn(revealing ? set : -1, gt, scoreWas, look.score);
+        figuresAway = revealing && figuresAway(set, gt);
         partSet[0] = partSet[1] = false;
         // Today's band: the new score pops up big as the band goes, and settles (an odometer look rolls it in instead).
         flash = goalOn && set == com.gathin.broadcast.BoardFx.GOAL_BAND && !rolls() ? glow(gt) : 0f;

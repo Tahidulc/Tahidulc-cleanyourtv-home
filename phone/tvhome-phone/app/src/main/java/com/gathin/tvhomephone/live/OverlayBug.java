@@ -430,6 +430,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         d.moveAt = moveAt;
         d.before = CompBug.scores(scoreFrom);
         d.htFace = htFaceNow();
+        d.figuresAway = figuresAway;
         return d;
     }
 
@@ -579,6 +580,17 @@ final class OverlayBug extends View implements BurnGuard.Dims {
     private com.gathin.broadcast.ClubGoals.Club revealClub;
     private final com.gathin.broadcast.GoalReveal reveal = new com.gathin.broadcast.GoalReveal();
     private final RectF revealArea = new RectF();
+    /** A competition's look leaving out its score figures standing out of its row this frame (figuresAway). */
+    private boolean figuresAway;
+
+    /**
+     * Pure: whether a competition's look leaves out its own score figures that stand out of its row t ms into a goal of a
+     * set: while the new animations cover the row's middle (GoalReveal.middleCovered), so nothing of the score shows round
+     * them and the new score comes as the last sweep passes.
+     */
+    static boolean figuresAway(int set, long t) {
+        return set == com.gathin.broadcast.BoardFx.GOAL_REVEAL && com.gathin.broadcast.GoalReveal.middleCovered(t);
+    }
 
     /** The family's choice of goal animation (GoalLooks' values), for the goals to come. */
     void goalLook(String key) {
@@ -632,7 +644,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
      * empty beside its clock), as on the TV.
      */
     static boolean revealOnShape(CompBug.Kind kind) {
-        return kind != CompBug.Kind.PL && kind != CompBug.Kind.LIGUE1;
+        return kind != CompBug.Kind.PL && kind != CompBug.Kind.LIGUE1 && kind != CompBug.Kind.FACUP && kind != CompBug.Kind.R2004;
     }
 
     /**
@@ -1272,6 +1284,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         // drawn under them until their last sweep covers it.
         boolean revealing = goalOn && goalSet == com.gathin.broadcast.BoardFx.GOAL_REVEAL && revealClub != null && !look.f1;
         drawnScore = scoreDrawn(revealing ? goalSet : -1, gt, scoreFrom, look.score);
+        figuresAway = revealing && figuresAway(goalSet, gt);
         // The GOAL band across the board (its own set, or the sequence's first part); the Lab's flip or burst, how far in.
         boolean banding = goalOn && bandOn(goalSet, gt);
         long lab = goalOn ? labAt(goalSet, gt) : -1;
