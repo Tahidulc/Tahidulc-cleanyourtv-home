@@ -6,7 +6,8 @@ package com.gathin.tvhome;
  * (ClassicIntro), the ad-break screen (AdBreak), the tennis, boxing and UFC boards (SportCover), the overlays button
  * (OverlayPrompt). As the family asked: only in the channel, that is a channel playing full screen in one of the apps
  * they are made for (TiviMate, Kleva TV), never over that app's guide, channel list or menus, and never over Homefield
- * TV, which has its own scoreboard, logo cover and pop-ups. An app that cannot be told is not taken for a player.
+ * TV, which has its own scoreboard, logo cover and pop-ups (the football alerts are handed to its board instead while it
+ * is up: HomefieldBoard). An app that cannot be told is not taken for a player.
  * Plain Java, for its test.
  */
 final class OverlayScope {
@@ -26,10 +27,12 @@ final class OverlayScope {
 
     /**
      * Whether the overlays may show over front (the app in front; null when it cannot be told) now: one they are made
-     * for, playing its channel full screen (menuUp: its guide, a list or a menu is on its screen).
+     * for, playing its channel full screen (menuUp: its guide, a list or a menu is on its screen). The one rule Homefield
+     * TV keeps over its own player too (InChannel); the launcher cannot see TiviMate's picture's size or whether it is
+     * behind live, so those are taken as they are while TiviMate shows no menu.
      */
     static boolean inChannel(String front, boolean menuUp) {
-        return isPlayer(front) && !menuUp;
+        return com.gathin.broadcast.InChannel.shows(isPlayer(front), true, true, menuUp);
     }
 
     /**

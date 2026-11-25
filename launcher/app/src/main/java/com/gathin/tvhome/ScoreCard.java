@@ -253,7 +253,8 @@ final class ScoreCard {
         if (d.f1) { d.dark = true; d.wideMark = true; }
         onHome = !d.again && (GoalWatchService.laneHome && GoalWatchService.homeInFront || PopupFrame.isShowing());
         // The scoreboard over the channel is up (BoardCover): a game's card folds out from under it instead, in its look.
-        if (!onHome && !d.again && BoardCover.take(c, d)) {
+        // Homefield TV in front with its own scoreboard up over the channel: out of that one instead (HomefieldBoard).
+        if (!onHome && !d.again && (BoardCover.take(c, d) || HomefieldBoard.take(c, d))) {
             if (d.key != null) AlertToday.shown(c, d.key);
             if (d.onShown != null) {
                 try {

@@ -3049,14 +3049,20 @@ public class GoalWatchService extends Service {
             // line-up card in place of the pill (beside the scoreboard, in line with it, while that is up).
             if (sides != null && BoardCover.lineupsOn(this) && (Config.themeFlag(this, "lineup_card", false) || BoardCover.up(this))) {
                 LineupCard.Data card = lineupCard(g, sides, tv, channels);
-                main.post(() -> LineupCard.show(this, card));
+                // Homefield TV in front (where the line-up card never shows): both elevens out of its own scoreboard when
+                // it is up, as they come out of the launcher's over TiviMate.
+                main.post(() -> {
+                    boolean homefield = HomefieldBoard.front.test(this) && HomefieldBoard.takeLineups(this, g, sides,
+                            card.home == null ? null : ScoreCard.onNavy(card.home.crest), card.away == null ? null : ScoreCard.onNavy(card.away.crest));
+                    if (!homefield) LineupCard.show(this, card);
+                });
                 return;
             }
             // No line-ups yet (or no line-up card): the kick-off as a score card.
             if (skyAlerts) {
                 ScoreCard.Data d = kickoffCard(g);
                 main.post(() -> {
-                    if (sides == null || !BoardCover.takeLineups(this, g, sides, d.homeCrest, d.awayCrest)) ScoreCard.show(this, d);
+                    if (sides == null || !takeLineups(g, sides, d.homeCrest, d.awayCrest)) ScoreCard.show(this, d);
                 });
                 return;
             }
@@ -3097,7 +3103,7 @@ public class GoalWatchService extends Service {
                     NotifyPrefs.held(this, "kickoff", NotifyPrefs.homeNow(), null, "alert kick-off " + AlertLog.game(g), g.slug);
                     return;
                 }
-                if (sides != null && BoardCover.takeLineups(this, g, sides,
+                if (sides != null && takeLineups(g, sides,
                         sides[0].crest == null ? null : ScoreCard.onNavy(pictures.get(sides[0].crest)),
                         sides[1].crest == null ? null : ScoreCard.onNavy(pictures.get(sides[1].crest)))) return;
                 queue.add(new Object[]{ready, "reminder", sides, pictures, livePage});
@@ -3959,6 +3965,24 @@ public class GoalWatchService extends Service {
     private long waitingSince;
     static final long WAIT_MAX_MS = 90_000L;
 
+    /**
+     * A game's line out of a scoreboard instead of an alert of its own: the launcher's over TiviMate (BoardCover), else
+     * Homefield TV's own while it is in front with its board up (HomefieldBoard); true when one took it.
+     */
+    private boolean takeLine(Object[] polled) {
+        CharSequence head = (CharSequence) polled[0];
+        ScoresTicker.Game g = (ScoresTicker.Game) polled[1];
+        String sound = (String) polled[5], scoredBy = polled[6] instanceof String ? (String) polled[6] : null;
+        android.graphics.Bitmap home = polled[2] instanceof android.graphics.Bitmap ? (android.graphics.Bitmap) polled[2] : null;
+        android.graphics.Bitmap away = polled[3] instanceof android.graphics.Bitmap ? (android.graphics.Bitmap) polled[3] : null;
+        return BoardCover.takeLine(this, head, g, sound, scoredBy, home, away) || HomefieldBoard.takeLine(this, head, g, sound, scoredBy, home, away);
+    }
+
+    /** The line-ups out of a scoreboard: the launcher's over TiviMate, else Homefield TV's own (HomefieldBoard). */
+    private boolean takeLineups(ScoresTicker.Game g, ScoresTicker.Side[] sides, android.graphics.Bitmap home, android.graphics.Bitmap away) {
+        return BoardCover.takeLineups(this, g, sides, home, away) || HomefieldBoard.takeLineups(this, g, sides, home, away);
+    }
+
     @SuppressWarnings("unchecked")
     /** The kind (NotifyKinds) of one of the queue's alerts: by what it is, else by its sound; null when unknown. */
     private static String queuedKind(Object[] e) {
@@ -4023,11 +4047,10 @@ public class GoalWatchService extends Service {
             main.post(this::showNext);
             return;
         }
-        // The scoreboard over the channel is up: a game's line folds out from under it instead, in its look.
+        // The scoreboard over the channel is up: a game's line folds out from under it instead, in its look (Homefield TV's
+        // own scoreboard while it is in front with it up: HomefieldBoard).
         if (!onLane() && polled.length == 8 && polled[1] instanceof ScoresTicker.Game && polled[5] instanceof String
-                && BoardCover.takeLine(this, (CharSequence) polled[0], (ScoresTicker.Game) polled[1], (String) polled[5], (String) polled[6],
-                        polled[2] instanceof android.graphics.Bitmap ? (android.graphics.Bitmap) polled[2] : null,
-                        polled[3] instanceof android.graphics.Bitmap ? (android.graphics.Bitmap) polled[3] : null)) {
+                && takeLine(polled)) {
             play((String) polled[5]);
             main.post(this::showNext);
             return;

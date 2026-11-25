@@ -19,7 +19,9 @@ import android.os.Process;
  * call("tmdb") answers the same apps with the theme's TMDB key (as /tmdb gives a paired phone). call("aikey") answers
  * Homefield TV alone (its package, signed with this app's key) with the family's Ask AI key as the phone's "Send key to
  * the TVs" left it here (AiKey's private preferences), so Homefield TV can take it when it has none of its own; the key is
- * never logged. Nothing else is served.
+ * never logged. call("alert_switches") answers the same apps with the family's Notifications switches for a game's
+ * football alerts (BoardAlert.KINDS), so Homefield TV's scoreboard holds back what the launcher's would. Nothing else is
+ * served.
  */
 public final class SyncTokenProvider extends ContentProvider {
     static final String AUTHORITY = "com.gathin.tvhome.sync";
@@ -31,10 +33,13 @@ public final class SyncTokenProvider extends ContentProvider {
     }
 
     @Override public Bundle call(String method, String arg, Bundle extras) {
-        if (!"token".equals(method) && !"tmdb".equals(method) && !"aikey".equals(method)) return null;
+        if (!"token".equals(method) && !"tmdb".equals(method) && !"aikey".equals(method)
+                && !com.gathin.broadcast.BoardAlert.ALERT_SWITCHES.equals(method) && !LOGO_EXTRAS.equals(method)) return null;
         Context c = getContext();
         int uid = Binder.getCallingUid();
         if (c == null || !sameSigner(c.getPackageManager(), uid)) throw new SecurityException("not one of the family's own apps");
+        if (com.gathin.broadcast.BoardAlert.ALERT_SWITCHES.equals(method)) return switches(c, extras);
+        if (LOGO_EXTRAS.equals(method)) return logoExtras(c);
         Bundle b = new Bundle();
         if ("aikey".equals(method)) {
             // The family's Ask AI key, for Homefield TV only (its package and this app's signature, both checked): read from
@@ -50,6 +55,72 @@ public final class SyncTokenProvider extends ContentProvider {
         }
         b.putString("token", SyncHub.appToken(c));
         b.putInt("port", DeliveryLink.PORT);
+        return b;
+    }
+
+    /** Homefield TV's logo's extras' question (LogoExtras over its own player). */
+    static final String LOGO_EXTRAS = "logo_extras";
+
+    /**
+     * What the family's logo says besides on Homefield TV, as on the launcher's (LogoExtras, LogoExtrasHere): whether the
+     * prayer times are on, the next prayer (its label, when it begins, its time) and Home's last weather reading (its
+     * temperature, code and whether by day, under three hours old) with its icon as a small picture. Nothing else.
+     */
+    private static Bundle logoExtras(Context c) {
+        Bundle b = new Bundle();
+        long now = System.currentTimeMillis();
+        boolean on = false;
+        try {
+            on = Prayer.on(c);
+            Object[] p = on ? LogoExtrasHere.prayer(c) : null;
+            if (p != null) {
+                b.putString("prayer", (String) p[0]);
+                b.putLong("prayer_at", (Long) p[1]);
+                b.putString("prayer_time", (String) p[2]);
+            }
+        } catch (RuntimeException ignored) {
+            // no prayer times this time
+        }
+        b.putBoolean("prayer_on", on);
+        long[] w = LogoExtrasHere.weather(c, now);
+        if (w != null) {
+            b.putLong("temp", w[0]);
+            b.putInt("code", (int) w[1]);
+            b.putBoolean("day", w[2] == 1);
+            b.putLong("weather_at", now);
+            b.putByteArray("icon", iconPng(c, WeatherLine.icon((int) w[1], w[2] == 1)));
+        }
+        return b;
+    }
+
+    /** A weather icon as a small PNG (64 px), for Homefield TV's clock on its logo; null when it can't be drawn. */
+    private static byte[] iconPng(Context c, int res) {
+        try {
+            android.graphics.drawable.Drawable d = c.getDrawable(res);
+            if (d == null) return null;
+            android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(64, 64, android.graphics.Bitmap.Config.ARGB_8888);
+            d.setBounds(0, 0, 64, 64);
+            d.draw(new android.graphics.Canvas(b));
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            b.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out);
+            return out.toByteArray();
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /**
+     * The family's alert switches (Settings › Notifications) for Homefield TV's scoreboard, so one switch controls both
+     * apps: for each football kind (BoardAlert.KINDS) whether an alert of it may show over an app now, for the game and
+     * competition asked about (extras' game and slug), exactly as the launcher's own check has it (NotifyPrefs.allowed:
+     * Over apps, the kind's own switch and the competition's, Do not disturb, Match mode's quiet, a film night's).
+     * Nothing else of the launcher is read.
+     */
+    private static Bundle switches(Context c, Bundle extras) {
+        String game = extras == null ? null : extras.getString(com.gathin.broadcast.BoardAlert.GAME);
+        String slug = extras == null ? null : extras.getString(com.gathin.broadcast.BoardAlert.SLUG);
+        Bundle b = new Bundle();
+        for (String kind : com.gathin.broadcast.BoardAlert.KINDS) b.putBoolean(kind, NotifyPrefs.allowed(c, kind, false, slug, game));
         return b;
     }
 
