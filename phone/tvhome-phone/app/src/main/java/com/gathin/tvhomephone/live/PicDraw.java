@@ -7,12 +7,18 @@ import android.graphics.Paint;
 import android.graphics.RectF;
 import android.graphics.Shader;
 
+import com.gathin.broadcast.PicArt;
+import com.gathin.broadcast.PicPlace;
+
 /**
- * A programme's picture filling a guide cell or the panel, as Homefield TV draws its cells (its PicTile): the picture
- * made for the whole cell (ProgPics), a window of it on its faces where the cell is cut by the guide's edges, then a
- * soft shade under the words only: from the cell's left, a little stronger there, to where the words end, fading to
- * nothing a little past them and before the faces; and a light fade along the foot under the progress line. Nothing
- * made while drawing: the shades are unit boxes stretched to each cell.
+ * A programme's picture filling a guide cell or the panel, as Homefield TV draws its cells (its PicTile): in a cell, its
+ * ground (the picture's edges' colours drawn out) and the picture made for the whole card (ProgPics.FILL, pre-scaled),
+ * gliding along the card as it is cut by the guide's edges (PicPlace.slide: its faces at the middle of the part in sight
+ * after the words), never re-cropped, never jumping, never swapped for a plain colour as it scrolls; in the panel, the
+ * picture made whole for it. Then a soft shade under the words only: from the cell's left, a little stronger there, to
+ * where the words end, fading to nothing a little past them and before the faces; and a light fade along the foot under
+ * the progress line. Nothing made or scaled while drawing (but a tiny ground picture stretched): the shades are unit
+ * boxes stretched to each cell, clips not layers.
  */
 final class PicDraw {
     /** The shade's colour, its strength at the left and where the words end, and at the foot. */
@@ -20,6 +26,7 @@ final class PicDraw {
     static final float FOOT_SHARE = 0.4f;
 
     private final Paint pic = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG),
+            under = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG | Paint.DITHER_FLAG),
             solid = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG), fade = new Paint(Paint.DITHER_FLAG),
             foot = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG);
     /** The fade past the words (px): as long as fadeW, shorter to stop before the faces, never under fadeMin. */
@@ -38,34 +45,63 @@ final class PicDraw {
                 Shader.TileMode.CLAMP));
     }
 
-    private final android.graphics.Matrix scale = new android.graphics.Matrix();
-    private float ox;
+    private final android.graphics.Matrix scale = new android.graphics.Matrix(), at = new android.graphics.Matrix();
 
-    /**
-     * Where picture m (made for the whole cell) goes in r (screen px, its part in sight): a window of it on its faces,
-     * beside the words (ending wordsEnd) where there is room. Whether its faces are then clear of the words (or it has
-     * none): a cell whose words leave its faces no room takes the picture's own colours instead (ground()).
-     */
+    /** Where picture m (made whole for r, ProgPics.PANEL or BAND) has its faces; always clear (it was placed for r). */
     boolean place(RectF r, ProgPics.Made m, float wordsEnd, float room) {
-        ox = PicFill.window(m.b.getWidth(), r.width(), m.facesLeft, m.facesRight, wordsEnd - r.left, room);
-        facesLeft = r.left + m.facesLeft - ox;
-        return PicFill.clear(m.faces, facesLeft, wordsEnd, gap);
+        facesLeft = r.left + m.facesLeft * r.width() / Math.max(1, m.b.getWidth());
+        return true;
     }
 
-    /** Picture m filling r, as place() put it. */
+    /** Picture m (made whole for r) filling r. */
     void fill(Canvas cv, RectF r, float radius, ProgPics.Made m) {
         float w = r.width(), h = r.height();
         pic.setShader(m.shader());
+        scale.setScale(w / Math.max(1, m.b.getWidth()), h / Math.max(1, m.b.getHeight()));
+        scale.postTranslate(r.left, r.top);
+        m.shader().setLocalMatrix(scale);
+        cv.drawRoundRect(r, radius, radius, pic);
+        pic.setShader(null);
+    }
+
+    /**
+     * A guide card's picture m (ProgPics.FILL, made for the whole card: from fullLeft, full wide) in r, its part in sight,
+     * its words ending at wordsEnd, the view ending at viewRight: its ground drawn out across r, then the picture where
+     * PicPlace.slide puts it for the part in sight.
+     */
+    void cell(Canvas cv, RectF r, float radius, ProgPics.Made m, float fullLeft, float full, float wordsEnd, float viewRight) {
+        float[] lay = m.lay;
+        int bw = m.b.getWidth();
+        boolean covers = lay == null || lay[PicPlace.KIND] == PicPlace.COVER;
+        float subject = lay == null ? bw / 2f : lay[PicPlace.X] + lay[PicPlace.SUBJECT] - m.at;
+        float inR = Math.max(r.left, Math.min(r.right, viewRight)) - fullLeft;
+        float x = covers ? 0f : PicPlace.slide(full, bw, subject, r.left - fullLeft, inR, wordsEnd - fullLeft);
+        float left = fullLeft + x;
+        android.graphics.BitmapShader g = covers ? null : m.groundShader();
+        if (g != null) {
+            PicArt.groundMatrix(m.ground, lay, at);
+            at.postTranslate(left - m.at, r.top);
+            g.setLocalMatrix(at);
+            under.setShader(g);
+            cv.drawRoundRect(r, radius, radius, under);
+            under.setShader(null);
+        }
+        android.graphics.BitmapShader s = m.shader();
+        at.setTranslate(left, r.top);
+        s.setLocalMatrix(at);
+        pic.setShader(s);
         cv.save();
-        cv.translate(r.left - ox, r.top);
-        cv.drawRoundRect(ox, 0, ox + w, h, radius, radius, pic);
+        // Only where the picture is (its feathered edges see-through): a clip, never a layer.
+        if (!covers) cv.clipRect(Math.max(r.left, left), r.top, Math.min(r.right, left + bw), r.bottom);
+        cv.drawRoundRect(r, radius, radius, pic);
         cv.restore();
         pic.setShader(null);
+        facesLeft = m.faces ? left - m.at + lay[PicPlace.FL] : covers ? r.right : left;
     }
 
     /** The picture's own colours filling r, smooth (a few of its pixels drawn up), no faces; false with none kept. */
     boolean ground(Canvas cv, RectF r, float radius, ProgPics.Made m) {
-        android.graphics.BitmapShader s = m.groundShader();
+        android.graphics.BitmapShader s = m.lay == null ? m.groundShader() : null;
         if (s == null) return false;
         scale.setScale(r.width() / m.ground.getWidth(), r.height() / m.ground.getHeight());
         scale.postTranslate(r.left, r.top);

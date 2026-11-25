@@ -740,20 +740,29 @@ straight, the edge strip, what stops it) and Recently watched's order, each chan
 
 **Programme pictures in the guide and its panel, as Homefield TV has them.** Each programme in the guide is a card filled
 by its own picture, and the chosen programme's panel too (upright, the panel with its title, times and Watch; on its side
-and on a tablet, across the top of the pane). The picture is the guide's own (XMLTV's icon, from the playlist's guide or
-the Xtream login's), kept with the listings in a few bytes a programme. A programme without one is looked for on TMDB by
-its title (a film as a film with its year from the title or description, a series as a series, a kids' channel's as a
-series; nothing for a sports or news channel, or for "News" or "To Be Announced"), off the main thread, one search a
-third of a second after the last, the newest asked for first, and what is found is kept so a title is looked for once.
-With nothing found, the card shows the channel's own picture: its logo on its colour. Faces are found once per picture
-(the phone's own face finder) and kept whole and clear: the picture is laid out for each card at the size it is drawn,
-covering it, or for a long, short card sharp where the faces are over its own colours; the words sit on the left over a
-soft shade that ends before the faces. A card too small to keep its faces whole, or whose words leave them no room, shows
-the picture's own colours, never half a face. What's on now is at full brightness with its white line, the others a
+and on a tablet, across the top of the pane). The picture comes in the order Homefield TV takes (overlays' PicSources):
+the guide's own (XMLTV's icon or image, from the playlist's guide or the Xtream login's), kept with the listings in a few
+bytes a programme; else Sky's own programme image for a channel in Sky's guide, found by the channel and the time as the
+TV finds it (SkyPics: so Sky Sports, BBC One, Dave and the rest have the same pictures as on the TV); else looked for on
+TMDB by its title (a film as a film with its year from the title or description, a series as a series, a kids' channel's
+or a sports or news channel's own programme as a series; nothing for a game, a live event, a bulletin, "News" or "To Be
+Announced"), matched with care so a wrong show is never shown, off the main thread, one search a third of a second after
+the last, the newest asked for first, and what is found is kept so a title is looked for once; then a game's own
+picture (its two clubs' crests on their colours), else a picture for what it is (football, motor racing, tennis, news,
+weather, film, kids, nature, music, food... drawn in the app, from its words, the guide's categories and the channel);
+with nothing, the card shows the channel's own picture: its logo on its colour. A picture too small for where it is
+shown (past 1.5 times its size) gives way to the next. Faces are found once per picture (the phone's own face finder) and
+kept whole: the picture is placed by the rule the TV shares (overlays' PicPlace), covering a card close to its own
+shape, else shown whole (or nearly) at the card's height after its words, the card's own colour from the picture's edges
+continuing smoothly either side, never zoomed into a long card; made once for the whole programme, it glides along its
+card as the guide scrolls, never re-cropped and never swapped for a plain colour; the words sit on the left over a soft
+shade that ends before the faces. A card too small to keep its faces whole shows the picture's own colours, never half a
+face. What's on now is at full brightness with its white line, the others a
 little dimmer and what has been shown dimmer still; the chosen card keeps its white ring and lift. The channels' logo
-tiles are as they were. Tests: the guide's picture links (and 90,000 of them staying small), the TMDB search for each
-kind of programme and the result taken, and the cards' layout (faces whole, beside the words, the shade ending before
-them).
+tiles are as they were. Tests: the guide's picture links (and 90,000 of them staying small), the order the pictures are
+looked for in, Sky's pictures for a Sky channel (made-up pages), the TMDB search for each kind of programme and the result
+taken, and the cards' layout (no deep crop, faces whole, beside the words, gliding with no jumps, never enlarged past 1.5
+times).
 
 **Live TV in the 07 look, programme pictures, swipe between channels, scoreboards on time (5.30).** Live TV is no longer
 flat black: a softly lit ground from the channel playing or its logo colour, frosted panels, logo-colour channel tiles,

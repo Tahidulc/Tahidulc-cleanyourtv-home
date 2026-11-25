@@ -1,193 +1,33 @@
 package com.gathin.tvhomephone.live;
 
+import com.gathin.broadcast.PicPlace;
+
 /**
- * Where a programme's picture goes when it fills a guide cell or the programme's panel, whatever its size, with its
- * faces whole (after Homefield TV's PicFill): pure sums, the same at decode (ProgPics: the picture made once at the size
- * drawn) and while drawing (where its faces landed, to keep the words' shade off them).
+ * Where a programme's picture goes in the phone's places, by the rule shared with Homefield TV (PicPlace: covering only
+ * a place close to its own shape, else the whole picture at the place's height beside the words with the place's own
+ * colour from the picture continuing behind it; faces whole; never enlarged past 1.5 times), and the words' shade:
  *
  * <pre>
- *   cover        the picture scaled to cover the cell, its faces (Faces' box) whole with a little room, their middle
- *                toward the cell's free part (the words are on the left) where the picture allows, zooming a little
- *                further (at most ZOOM) when that takes them out from under the words; with no faces known, its
- *                middle, a little above
- *   ambient      a cell so wide and short that covering it would cut the faces (or leave them under the words): the
- *                picture's own colours behind everything, and over them the picture sharp, as tall as the faces need,
- *                its faces in the cell's free part, whole, its inner edges feathered into the colours
+ *   a guide cell   its words (the name or time, and the title) at its left, PicPlace.room() of it; the picture after
+ *   the panel      upright: its words and buttons over its left PANEL_ROOM, the picture after them
+ *   the header     the pane's top: the picture in the middle, fading at its foot
+ *   the band       (PinBackdrop) its words over a share of its left, the picture after them
  * </pre>
- *
- * In units of the picture's height (its width is aspect): layout gives out[KIND] (COVER or AMBIENT), out[K] (cell px for
- * one unit), out[X], out[Y] (where its top left lands), out[FL..FB] (where its faces land, cell px; the whole cell for
- * none) and out[FEATHER_L], out[FEATHER_R] (the sharp picture's feathered edges, 0 for none). whole() says whether the
- * faces came out whole: a cell too small for that shows a clean colour instead, never half a face.
  */
 final class PicFill {
     private PicFill() {}
 
-    static final int KIND = 0, K = 1, X = 2, Y = 3, FL = 4, FT = 5, FR = 6, FB = 7, FEATHER_L = 8, FEATHER_R = 9, SIZE = 10;
-    static final float COVER = 0f, AMBIENT = 1f;
-    /**
-     * A guide cell: its words (the name or time, and the title) take about ROW_WORDS of its height across at its left,
-     * as a share of it between ROW_ROOM_MIN and ROW_ROOM_MAX; its faces go from there to its right.
-     */
-    static final float ROW_WORDS = 2.7f, ROW_ROOM_MIN = 0.3f, ROW_ROOM_MAX = 0.62f;
-    /** The programme's panel upright: its words and buttons take its left PANEL_ROOM, its faces the rest. */
+    /** The programme's panel upright: its words and buttons take its left PANEL_ROOM, its picture the rest. */
     static final float PANEL_ROOM = 0.6f;
-    /** Room kept round the faces: a share of the cell's height above and below, either side at most that too. */
-    static final float ROOM_H = 0.07f, ROOM_W = 0.03f;
-    /** At most this much past covering, to give the faces room beside the words. */
-    static final float ZOOM = 1.6f;
-    /** A cell this many times as wide as tall may take the ambient fill. */
-    static final float WIDE = 2.2f;
-    /** The sharp picture's feathered edge: this share of its width, at most this many times the cell's height. */
-    static final float FEATHER = 0.26f, FEATHER_MAX = 0.9f;
 
-    /** True for Faces' stand-in box (no face found): then there are no faces to keep whole. */
-    static boolean none(float[] box) {
-        return box == null || box[0] == Faces.FALLBACK[0] && box[1] == Faces.FALLBACK[1] && box[2] == Faces.FALLBACK[2]
-                && box[3] == Faces.FALLBACK[3];
-    }
-
-    /** Pure: a guide cell's layout (its words at the left, room() of it). */
-    static void row(float aspect, float[] box, float w, float h, float[] out) {
-        layout(aspect, box, w, h, room(w, h), 1f, false, out);
+    /** Pure: a picture sw x sh (faces box, or null) in a guide cell w x h. */
+    static void row(float sw, float sh, float[] box, float w, float h, float[] out) {
+        PicPlace.place(sw, sh, box, w, h, PicPlace.room(w, h), 1f, out);
     }
 
     /** Pure: the share of a guide cell w x h its words take at its left. */
     static float room(float w, float h) {
-        return Math.max(ROW_ROOM_MIN, Math.min(ROW_ROOM_MAX, ROW_WORDS * h / Math.max(1f, w)));
-    }
-
-    /**
-     * Pure: the layout of a picture (aspect: its width / height; box: its faces, shares, or null) filling w x h, its
-     * words over its left roomShare and its faces between there and endShare; free: laid out for the faces to sit
-     * beside the words whatever its shape (the panel's), else only when the cell is WIDE.
-     */
-    static void layout(float aspect, float[] box, float w, float h, float roomShare, float endShare, boolean free, float[] out) {
-        float a = Math.max(0.05f, aspect);
-        float kc = Math.max(w / a, h);
-        for (int i = 0; i < SIZE; i++) out[i] = 0f;
-        out[KIND] = COVER;
-        if (none(box)) {
-            // No faces: covering, the middle across (toward the free part where it can), a little above the middle down.
-            out[K] = kc;
-            float bias = free ? (roomShare + endShare) / 2f : 0.5f;
-            out[X] = clamp(bias * w - a * kc / 2f, w - a * kc, 0f);
-            out[Y] = (h - kc) * 0.38f;
-            out[FL] = 0f;
-            out[FT] = 0f;
-            out[FR] = w;
-            out[FB] = h;
-            return;
-        }
-        boolean wide = free || w >= WIDE * h;
-        // The free part (cell px) the faces go in, and where across it their middle goes. A narrow cell's words run
-        // across most of it: its faces in the middle there.
-        float room = wide ? roomShare * w : 0f, end = wide ? endShare * w : w;
-        float bias = wide ? (room + end) / (2f * w) : 0.5f;
-        float fl = box[0] * a, fr = box[2] * a, ft = box[1], fb = box[3];
-        float fw = Math.max(0.001f, fr - fl), fh = Math.max(0.001f, fb - ft), fcx = (fl + fr) / 2f, fcy = (ft + fb) / 2f;
-        float my = ROOM_H * h, mx = Math.min(ROOM_W * w, my);
-        // The most it may be scaled with its faces whole (and room round them), and in the free part.
-        float kmax = Math.min((h - 2 * my) / fh, (w - 2 * mx) / fw);
-        float kfree = Math.min(kmax, (end - room - 2 * mx) / fw);
-        if (kmax >= kc) {
-            // Covering holds the faces: as far toward bias as covering allows; zoomed a little (at most ZOOM) when that
-            // takes them out from under the words.
-            float k = kc, x = clamp(bias * w - fcx * k, w - a * k, 0f);
-            if (wide && !inFree(x, k, fl, fr, room, end)) {
-                float need = kc;
-                if (a - fcx > 1e-4f) need = Math.max(need, w * (1f - bias) / (a - fcx));
-                if (fcx > 1e-4f) need = Math.max(need, bias * w / fcx);
-                k = Math.max(kc, Math.min(need, Math.min(kfree, kc * ZOOM)));
-                x = clamp(bias * w - fcx * k, w - a * k, 0f);
-            }
-            if (!wide || inFree(x, k, fl, fr, room, end)) {
-                cover(out, k, x, h, ft, fb, fcy, fl, fr, my);
-                return;
-            }
-        } else if (!wide) {
-            // A narrow cell: covering, centred on the faces (the outer ones may be cut: whole() says so).
-            float x = clamp(w / 2f - fcx * kc, w - a * kc, 0f);
-            cover(out, kc, x, h, ft, fb, fcy, fl, fr, my);
-            return;
-        }
-        // Ambient: the sharp picture as tall as the faces need (covering the height), its faces at bias, whole, in the
-        // free part where they fit there.
-        float ks = Math.max(Math.min(Math.min(kmax, kfree), kc), h);
-        float x = bias * w - fcx * ks;
-        x = Math.max(x, mx - fl * ks);
-        x = Math.min(x, w - mx - fr * ks);
-        out[KIND] = AMBIENT;
-        out[K] = ks;
-        out[X] = x;
-        out[Y] = top(ks, h, ft, fb, fcy, my);
-        faces(out, ks, fl, fr, ft, fb);
-        float pw = a * ks, f = Math.min(FEATHER * pw, FEATHER_MAX * h);
-        out[FEATHER_L] = x > 0.5f ? Math.max(0f, Math.min(f, out[FL] - x - 2f)) : 0f;
-        out[FEATHER_R] = x + pw < w - 0.5f ? Math.max(0f, Math.min(f, x + pw - out[FR] - 2f)) : 0f;
-    }
-
-    /** Pure: whether a layout's faces are whole in the cell w x h (a picture with none always is). */
-    static boolean whole(float[] out, float w, float h) {
-        return out[FL] >= -1f && out[FT] >= -1f && out[FR] <= w + 1f && out[FB] <= h + 1f;
-    }
-
-    /** Whether faces fl..fr (units), scaled by k from x, sit in the free part room..end (a little slack). */
-    private static boolean inFree(float x, float k, float fl, float fr, float room, float end) {
-        return x + fl * k >= room - 0.5f && x + fr * k <= end + 0.5f;
-    }
-
-    private static void cover(float[] out, float k, float x, float h, float ft, float fb, float fcy, float fl, float fr, float my) {
-        out[KIND] = COVER;
-        out[K] = k;
-        out[X] = x;
-        out[Y] = top(k, h, ft, fb, fcy, my);
-        faces(out, k, fl, fr, ft, fb);
-    }
-
-    /** Where the picture's top goes (cell px, 0 or above): its faces whole where they fit, a little above the middle. */
-    private static float top(float k, float h, float ft, float fb, float fcy, float my) {
-        float y = h * 0.46f - fcy * k;
-        if ((fb - ft) * k + 2 * my <= h) {
-            y = Math.min(y, my - ft * k);
-            y = Math.max(y, h - my - fb * k);
-        } else {
-            y = my - ft * k;
-        }
-        return clamp(y, h - k, 0f);
-    }
-
-    private static void faces(float[] out, float k, float fl, float fr, float ft, float fb) {
-        out[FL] = out[X] + fl * k;
-        out[FR] = out[X] + fr * k;
-        out[FT] = out[Y] + ft * k;
-        out[FB] = out[Y] + fb * k;
-    }
-
-    /**
-     * Pure: where a window win wide goes across a picture made full wide (its faces at fl..fr), so its faces show:
-     * beside the words (which end wordsEnd into the window) where there is room for them, else in its middle; whole
-     * where they fit. The window's left, 0 to full - win.
-     */
-    static float window(float full, float win, float fl, float fr, float wordsEnd, float room) {
-        if (win >= full - 0.5f) return 0f;
-        float fw = fr - fl, fc = (fl + fr) / 2f;
-        float side = win - wordsEnd;
-        float at = side >= fw + 2 * room ? wordsEnd + side / 2f : win / 2f;
-        float x = fc - at;
-        if (fw + 2 * room <= win) {
-            x = Math.min(x, fl - room);
-            x = Math.max(x, fr + room - win);
-        }
-        return clamp(x, 0f, full - win);
-    }
-
-    /**
-     * Pure: whether a picture's faces, starting facesLeft across the cell as drawn, are clear of its words (ending
-     * wordsEnd, a little slack); a picture with none always is.
-     */
-    static boolean clear(boolean faces, float facesLeft, float wordsEnd, float slack) {
-        return !faces || facesLeft >= wordsEnd - slack;
+        return PicPlace.room(w, h);
     }
 
     /**
@@ -197,9 +37,5 @@ final class PicFill {
     static float shadeFade(float wordsEnd, float facesLeft, float fade, float least, float gap) {
         float room = facesLeft > wordsEnd ? facesLeft - wordsEnd - gap : fade;
         return Math.max(least, Math.min(fade, room));
-    }
-
-    private static float clamp(float v, float lo, float hi) {
-        return lo > hi ? (lo + hi) / 2f : Math.max(lo, Math.min(hi, v));
     }
 }

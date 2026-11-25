@@ -1,90 +1,56 @@
 package com.gathin.tvhomephone.live;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+
+import com.gathin.broadcast.PicPlace;
 
 import org.junit.Test;
 
-/** A programme's picture filling a guide cell or the panel: its faces whole, and clear of the words' part. */
+/**
+ * The phone's places for a programme's picture, by the rule shared with Homefield TV (PicPlace): a guide card seen whole
+ * after its words (never the deep crop covering a long card would be), the panel's picture right of its words, a small
+ * picture never enlarged past 1.5 times, and the words' shade stopping before the faces.
+ */
 public class PicFillTest {
-    private static final float[] TWO_FACES = {0.40f, 0.15f, 0.75f, 0.60f}, ONE_FACE = {0.55f, 0.20f, 0.70f, 0.55f};
-    private static final float STILL = 16f / 9f;
+    static final float[] TWO_FACES = {0.55f, 0.18f, 0.86f, 0.58f};
 
-    @Test public void aWideCellKeepsItsFacesWholeBesideTheWords() {
-        // An hour's cell on a phone: 567 x 142 px.
-        float w = 567, h = 142;
-        float[] out = new float[PicFill.SIZE];
-        PicFill.row(STILL, TWO_FACES, w, h, out);
-        assertTrue(PicFill.whole(out, w, h));
-        float room = PicFill.room(w, h) * w;
-        assertTrue("faces after the words: " + out[PicFill.FL] + " vs " + room, out[PicFill.FL] >= room - 1f);
-        assertTrue(out[PicFill.FR] <= w);
-        assertTrue(out[PicFill.FT] >= 0f && out[PicFill.FB] <= h);
-        // The picture covers the cell (or its own colours are behind it, the ambient fill).
-        if (out[PicFill.KIND] == PicFill.COVER) {
-            assertTrue(out[PicFill.X] <= 0.5f && out[PicFill.X] + STILL * out[PicFill.K] >= w - 0.5f);
-            assertTrue(out[PicFill.Y] <= 0.5f && out[PicFill.Y] + out[PicFill.K] >= h - 0.5f);
-        }
+    @Test public void aLongGuideCardShowsTheWholePictureAfterItsWords() {
+        // A phone's card (2.625 density): 60 dp high, two hours long.
+        float w = 1290, h = 158;
+        float[] out = new float[PicPlace.SIZE];
+        PicFill.row(780, 439, TWO_FACES, w, h, out);
+        assertEquals(PicPlace.SHOW, out[PicPlace.KIND], 0f);
+        assertTrue(PicPlace.whole(out, w, h));
+        assertTrue("after the words", out[PicPlace.FL] >= PicFill.room(w, h) * w - 1f);
+        assertTrue("nearly all of its height", h / out[PicPlace.PH] >= PicPlace.SHOW_KEEP - 0.01f);
+        // A card of the picture's own shape is covered.
+        PicFill.row(780, 439, TWO_FACES, 280, 158, out);
+        assertEquals(PicPlace.COVER, out[PicPlace.KIND], 0f);
     }
 
-    @Test public void aVeryWideCellTakesTheAmbientFillFacesWhole() {
-        // Two hours on a tablet: 1320 x 124 px.
-        float w = 1320, h = 124;
-        float[] out = new float[PicFill.SIZE];
-        PicFill.row(STILL, TWO_FACES, w, h, out);
-        assertEquals(PicFill.AMBIENT, out[PicFill.KIND], 0f);
-        assertTrue(PicFill.whole(out, w, h));
-        assertTrue(out[PicFill.FL] >= PicFill.room(w, h) * w - 1f);
-        assertTrue(out[PicFill.FEATHER_L] > 0f);
+    @Test public void thePanelsPictureCoversItOrSitsRightOfItsWords() {
+        float w = 1028, h = 470;
+        float[] out = new float[PicPlace.SIZE];
+        // Close to its shape: covering it, no further than that (its faces whole, wherever they are in it).
+        PicPlace.place(1280, 720, new float[]{0.12f, 0.2f, 0.3f, 0.55f}, w, h, PicFill.PANEL_ROOM, 1f, out);
+        assertEquals(PicPlace.COVER, out[PicPlace.KIND], 0f);
+        assertEquals(w / 1280f, out[PicPlace.K], 1e-4f);
+        assertTrue(PicPlace.whole(out, w, h));
+        // A square picture: shown whole at the panel's height, right of its words.
+        PicPlace.place(600, 600, TWO_FACES, w, h, PicFill.PANEL_ROOM, 1f, out);
+        assertEquals(PicPlace.SHOW, out[PicPlace.KIND], 0f);
+        assertTrue(PicPlace.whole(out, w, h));
+        assertTrue("right of the words: " + out[PicPlace.FL], out[PicPlace.FL] >= PicFill.PANEL_ROOM * w - 1f);
+        // Sky's picture at 1280 fills it; an EPG's 300 x 169 thumbnail would be enlarged past 1.5: the next one instead.
+        assertTrue(!PicPlace.tooSmall(1280, 720, null, w, h, PicFill.PANEL_ROOM, 1f));
+        assertTrue(PicPlace.tooSmall(300, 169, null, w, h, PicFill.PANEL_ROOM, 1f));
     }
 
-    @Test public void aSmallCellNeverShowsHalfAFace() {
-        // A narrow cell can't hold faces this wide whole: whole() says so, and the cell takes the picture's colours.
-        float[] wide = {0.05f, 0.10f, 0.95f, 0.70f};
-        float[] out = new float[PicFill.SIZE];
-        PicFill.row(STILL, wide, 120, 142, out);
-        assertFalse(PicFill.whole(out, 120, 142));
-        // With no faces found there is nothing to cut.
-        PicFill.row(STILL, Faces.FALLBACK, 120, 142, out);
-        assertTrue(PicFill.whole(out, 120, 142));
-    }
-
-    @Test public void thePanelPutsTheFacesRightOfItsWords() {
-        // The panel upright: 1080 x 430 px, its words over the left 60 %.
-        float w = 1080, h = 430;
-        float[] out = new float[PicFill.SIZE];
-        PicFill.layout(STILL, ONE_FACE, w, h, PicFill.PANEL_ROOM, 1f, true, out);
-        assertTrue(PicFill.whole(out, w, h));
-        assertTrue("faces at " + out[PicFill.FL], out[PicFill.FL] >= PicFill.PANEL_ROOM * w - 1f);
-        // Faces whose picture puts them at the left are moved over to the right too.
-        float[] left = {0.10f, 0.20f, 0.30f, 0.60f};
-        PicFill.layout(STILL, left, w, h, PicFill.PANEL_ROOM, 1f, true, out);
-        assertTrue(PicFill.whole(out, w, h));
-        assertTrue(out[PicFill.FL] >= PicFill.PANEL_ROOM * w - 1f);
-    }
-
-    @Test public void aCutCellShowsAWindowOnItsFaces() {
-        // A three-hour picture made 1080 wide, faces at 700..820; 400 px of it in sight, the words taking 180.
-        float x = PicFill.window(1080, 400, 700, 820, 180, 20);
-        assertTrue(700 - x >= 180);
-        assertTrue(820 - x <= 400);
-        // In sight whole: no window.
-        assertEquals(0f, PicFill.window(400, 400, 100, 200, 50, 10), 0f);
-    }
-
-    @Test public void theShadeEndsBeforeTheFaces() {
-        float fade = 105, least = 37, gap = 10;
-        // Faces well past the words: the whole fade.
+    @Test public void theShadeStopsBeforeTheFaces() {
+        float fade = 40, least = 14, gap = 4;
         assertEquals(fade, PicFill.shadeFade(200, 500, fade, least, gap), 0.01f);
-        // Faces near: the fade stops short of them.
-        float f = PicFill.shadeFade(200, 270, fade, least, gap);
-        assertTrue(200 + f <= 270 - gap + 0.01f);
-        // Faces so near the words that little is left: never under the least fade.
-        assertEquals(least, PicFill.shadeFade(200, 230, fade, least, gap), 0.01f);
-        // Faces under the words: that cell takes the picture's own colours instead (clear() is false).
-        assertFalse(PicFill.clear(true, 150, 200, gap));
-        assertTrue(PicFill.clear(true, 260, 200, gap));
-        assertTrue(PicFill.clear(false, 0, 200, gap));
+        assertEquals(26f, PicFill.shadeFade(200, 230, fade, least, gap), 0.01f);
+        assertEquals(least, PicFill.shadeFade(200, 210, fade, least, gap), 0.01f);
     }
 }

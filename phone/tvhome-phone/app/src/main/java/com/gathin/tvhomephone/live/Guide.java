@@ -1,5 +1,8 @@
 package com.gathin.tvhomephone.live;
 
+import com.gathin.broadcast.PicLinks;
+import com.gathin.broadcast.PicSources;
+
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
 
@@ -19,7 +22,8 @@ import java.util.TimeZone;
  * from an hour ago to twelve hours ahead, so a large guide stays small in memory: repeated titles and descriptions are
  * kept once, a description is cut to a few lines, and past a budget the rest of the guide keeps its titles only. Each
  * programme's picture ({@code <icon src>}, or an {@code <image>} of it, a landscape one first) is kept too, small
- * (PicLinks: an int a programme, the addresses packed once for the whole guide).
+ * (PicLinks, shared with Homefield TV: an int a programme, the addresses packed once for the whole guide), and what its
+ * categories say it is as a byte (PicSources.categoryCode), for its kind's picture where none is found (ProgArt).
  */
 public final class Guide {
     private Guide() {}
@@ -37,20 +41,37 @@ public final class Guide {
         /** Each programme's picture in links (-1: none); null when the guide gives this channel none. */
         final int[] pic;
         final PicLinks links;
+        /** What each programme's categories say it is (PicSources.categoryCode; 0: none); null when the guide gives none. */
+        final byte[] kind;
         /** Each programme's picture as found to draw (ProgArt), made as it is first drawn; null until then. */
         volatile Object[] art;
 
         Schedule(long[] start, long[] stop, String[] title, String[] desc) {
-            this(start, stop, title, desc, null, PicLinks.EMPTY);
+            this(start, stop, title, desc, null, PicLinks.EMPTY, null);
         }
 
         Schedule(long[] start, long[] stop, String[] title, String[] desc, int[] pic, PicLinks links) {
+            this(start, stop, title, desc, pic, links, null);
+        }
+
+        Schedule(long[] start, long[] stop, String[] title, String[] desc, int[] pic, PicLinks links, byte[] kind) {
             this.start = start;
             this.stop = stop;
             this.title = title;
             this.desc = desc;
             this.pic = pic;
             this.links = links == null ? PicLinks.EMPTY : links;
+            this.kind = kind;
+        }
+
+        /** What programme i's categories say it is (a PicSources kind, "" for none). */
+        public String category(int i) {
+            return kind == null || i < 0 || i >= kind.length ? "" : PicSources.categoryWord(kind[i]);
+        }
+
+        /** Programme i's kind's code (0: none), as kept. */
+        byte kindCode(int i) {
+            return kind == null || i < 0 || i >= kind.length ? 0 : kind[i];
         }
 
         /** Programme i's own picture as the guide gives it ("" for none). */
@@ -79,8 +100,9 @@ public final class Guide {
     static final class Builder {
         final List<long[]> times = new ArrayList<>();
         final List<String> titles = new ArrayList<>(), descs = new ArrayList<>();
-        /** Each programme's picture (into the guide's PicLinks), or null while none has one. */
+        /** Each programme's picture (into the guide's PicLinks), or null while none has one; its kind, the same. */
         private int[] pics;
+        private byte[] kinds;
 
         void add(long a, long b, String t) {
             add(a, b, t, "");
@@ -91,7 +113,16 @@ public final class Guide {
         }
 
         void add(long a, long b, String t, String d, int pic) {
+            add(a, b, t, d, pic, (byte) 0);
+        }
+
+        void add(long a, long b, String t, String d, int pic, byte kind) {
             int at = times.size();
+            if (kind != 0 && kinds == null) kinds = new byte[Math.max(8, at + 1)];
+            if (kinds != null) {
+                if (at >= kinds.length) kinds = java.util.Arrays.copyOf(kinds, Math.max(kinds.length * 2, at + 1));
+                kinds[at] = kind;
+            }
             times.add(new long[]{a, b});
             titles.add(t == null ? "" : t);
             descs.add(d == null ? "" : d);
@@ -121,14 +152,16 @@ public final class Guide {
             long[] s = new long[order.length], e = new long[order.length];
             String[] t = new String[order.length], d = new String[order.length];
             int[] p = pics == null ? null : new int[order.length];
+            byte[] k = kinds == null ? null : new byte[order.length];
             for (int i = 0; i < order.length; i++) {
                 s[i] = times.get(order[i])[0];
                 e[i] = times.get(order[i])[1];
                 t[i] = titles.get(order[i]);
                 d[i] = descs.get(order[i]);
                 if (p != null) p[i] = order[i] < pics.length ? pics[order[i]] : -1;
+                if (k != null) k[i] = order[i] < kinds.length ? kinds[order[i]] : 0;
             }
-            return new Schedule(s, e, t, d, p, links);
+            return new Schedule(s, e, t, d, p, links, k);
         }
     }
 
@@ -183,6 +216,7 @@ public final class Guide {
         Map<String, List<String>> idKeys = new HashMap<>(byId);
         Map<String, String> pool = new HashMap<>();
         PicLinks.Builder links = new PicLinks.Builder();
+        Map<String, Byte> kinds = new HashMap<>();
         int[] budget = {DESC_BUDGET};
         try {
             XmlPullParser p = android.util.Xml.newPullParser();
@@ -215,7 +249,7 @@ public final class Guide {
                         skip(p);
                         continue;
                     }
-                    String title = "", desc = "", icon = "", image = "";
+                    String title = "", desc = "", icon = "", image = "", cats = "";
                     int imageRank = 0;
                     int depth = p.getDepth();
                     while ((ev = p.next()) != XmlPullParser.END_DOCUMENT && !(ev == XmlPullParser.END_TAG && p.getDepth() == depth)) {
@@ -224,6 +258,7 @@ public final class Guide {
                         if ("title".equals(inner) && title.isEmpty()) title = p.nextText().trim();
                         else if ("desc".equals(inner) && desc.isEmpty() && budget[0] > 0) desc = shortDesc(p.nextText());
                         else if ("icon".equals(inner) && icon.isEmpty()) icon = PicLinks.clean(p.getAttributeValue(null, "src"));
+                        else if ("category".equals(inner) && cats.length() < 80) cats = cats + " | " + p.nextText().trim();
                         else if ("image".equals(inner)) {
                             // XMLTV 1.1's pictures: a landscape one (backdrop, still) before a poster.
                             int rank = imageRank(p.getAttributeValue(null, "type"), p.getAttributeValue(null, "orient"));
@@ -235,6 +270,12 @@ public final class Guide {
                         }
                     }
                     int pic = links.add(pick(icon, image, imageRank));
+                    byte kind = 0;
+                    if (!cats.isEmpty()) {
+                        Byte had = kinds.get(cats);
+                        if (had == null) kinds.put(cats, had = PicSources.categoryCode(cats));
+                        kind = had;
+                    }
                     title = once(pool, title);
                     if (!desc.isEmpty()) {
                         String had = pool.get(desc);
@@ -244,7 +285,7 @@ public final class Guide {
                     for (String k : keys) {
                         Builder bl = out.get(k);
                         if (bl == null) out.put(k, bl = new Builder());
-                        bl.add(a, b, title, desc, pic);
+                        bl.add(a, b, title, desc, pic, kind);
                     }
                 }
             }

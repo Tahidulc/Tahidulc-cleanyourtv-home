@@ -2,6 +2,8 @@ package com.gathin.tvhomephone.live;
 
 import android.content.Context;
 
+import com.gathin.broadcast.PicSources;
+import com.gathin.broadcast.SkyListing;
 import com.gathin.tvhomephone.watch.Tmdb;
 
 import java.io.BufferedReader;
@@ -24,16 +26,29 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * A programme's picture for the guide's cells and its panel: the guide's own (its {@code <icon src>}), else TMDB's by
- * its title (ArtQuery: a film as a film with its year, a series as a series, nothing on a sports or news channel),
- * looked for off the main thread, one search at a time and a little apart (SPACING_MS), the newest asked first and only
- * a screenful waiting, so scrolling the guide never floods TMDB. What is found, or that nothing was, is kept in memory
- * and in the app's files (art.tsv), so a title is looked for once. "" for none: the channel's own picture then (its
- * logo on its colour).
+ * A programme's picture for the guide's cells and its panel, in the order Homefield TV takes (PicSources, shared):
  *
  * <pre>
- *   String url = ProgArt.of(c, ch, schedule, i);   main thread: the address, "" for none, null while it is looked for
- *   ProgArt.listen(redraw) / unlisten(redraw)      told (main thread) as searches finish, a few together
+ *   1 the guide's own        its {@code <icon src>} or {@code <image>} (at once, nothing looked for)
+ *   2 Sky's own              Sky's programme image for a channel in Sky's guide (SkyPics: Sky Sports, BBC One, Dave...),
+ *                            by the channel and the time, as Homefield TV's guide has it
+ *   3 TMDB's by its title    ArtQuery: a film as a film with its year, a series as a series, matched with care
+ *                            (PicQuery); not for a game, a live event or a bulletin
+ *   4 the one always there   its game's (its clubs' crests on their colours), else its kind's (football, news, film,
+ *                            kids...: PicSources.kindOf from its words, the guide's categories and the channel; drawn by
+ *                            PicArt), else "" (the channel's own: its logo on its colour, drawn by the guide)
+ * </pre>
+ *
+ * What is found comes as one chain of addresses, best first (PicSources.chain): each place takes the first that is large
+ * enough for it (ProgPics: never enlarged past 1.5 times). Sky and TMDB are looked for off the main thread, one programme
+ * at a time, TMDB a little apart (SPACING_MS), the newest asked first and only a screenful waiting, so scrolling the guide
+ * never floods them. What TMDB found, or that it found nothing, is kept in memory and in the app's files (art.tsv), so a
+ * title is looked for once; Sky's days are kept in memory (SkyPics).
+ *
+ * <pre>
+ *   String url = ProgArt.of(c, ch, schedule, i);   main thread: the address (a chain), "" for the channel's own, null
+ *                                                  while it is looked for
+ *   ProgArt.listen(redraw) / unlisten(redraw)      told (main thread) as looks finish, a few together
  * </pre>
  */
 final class ProgArt {
@@ -45,16 +60,32 @@ final class ProgArt {
     /** TMDB's picture size: enough for the panel across a phone, read smaller for a cell. */
     static final String SIZE = "w780";
 
-    /** One title's search (shared by every programme of it): its picture, null until known ("" for none). */
+    /** One title's TMDB search (shared by every programme of it): its picture, null until known ("" for none). */
     static final class Ask {
         final ArtQuery q;
         final String key;
         volatile String url;
-        boolean queued;
 
         Ask(ArtQuery q, String key) {
             this.q = q;
             this.key = key;
+        }
+    }
+
+    /** One programme's look: its channel and title, when it is on (for Sky), its title's search and the one always there. */
+    static final class Look {
+        final String channel, title, always;
+        final long at;
+        final Ask ask;
+        volatile String url;
+        boolean queued;
+
+        Look(String channel, String title, long at, Ask ask, String always) {
+            this.channel = channel;
+            this.title = title;
+            this.at = at;
+            this.ask = ask;
+            this.always = always;
         }
     }
 
@@ -70,7 +101,7 @@ final class ProgArt {
             return size() > KEEP_MAX;
         }
     };
-    private static final ArrayDeque<Ask> QUEUE = new ArrayDeque<>();
+    private static final ArrayDeque<Look> QUEUE = new ArrayDeque<>();
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "prog-art");
         t.setDaemon(true);
@@ -81,6 +112,7 @@ final class ProgArt {
     private static boolean running, loaded;
     private static int unsaved;
     private static volatile boolean told;
+    private static long lastSearch;
     /** The application's context (never an activity's). */
     @android.annotation.SuppressLint("StaticFieldLeak")
     private static volatile Context app;
@@ -98,8 +130,8 @@ final class ProgArt {
     }
 
     /**
-     * Programme i's picture: its address, "" for none, or null while it is looked for. Main thread; works a programme
-     * out the first time it is asked about, then only reads.
+     * Programme i's picture: its address (a chain), "" for the channel's own, or null while it is looked for. Main
+     * thread; works a programme out the first time it is asked about, then only reads.
      */
     static String of(Context c, Channel ch, Guide.Schedule s, int i) {
         if (s == null || i < 0 || i >= s.start.length) return "";
@@ -108,7 +140,7 @@ final class ProgArt {
         Object a = art[i];
         if (a == null) art[i] = a = resolve(c, ch, s, i);
         if (a instanceof String) return (String) a;
-        Ask k = (Ask) a;
+        Look k = (Look) a;
         String u = k.url;
         if (u != null) {
             art[i] = u;
@@ -118,26 +150,41 @@ final class ProgArt {
         return null;
     }
 
+    /**
+     * Programme i's picture that is always there whatever the size it is drawn at (pure but for the clubs' table): its
+     * game's (two clubs the apps know: their crests on their colours), else its kind's, else "" (the channel's own).
+     */
+    static String fallback(Channel ch, Guide.Schedule s, int i) {
+        if (ch == null || s == null || i < 0 || i >= s.start.length) return "";
+        String title = s.title[i], desc = s.desc == null ? "" : s.desc[i];
+        String kind = PicSources.kindOf(ch.name, ch.group, title, desc, s.category(i));
+        String game = PicSources.fixtureOf(title, PicSources.sporting(kind) || TileKind.sportsChannel(ch.name, ch.group));
+        if (game != null) return game;
+        return kind != null ? PicSources.genre(kind) : "";
+    }
+
     private static Object resolve(Context c, Channel ch, Guide.Schedule s, int i) {
         String own = s.pic(i);
-        if (!own.isEmpty()) return own;
-        if (ch == null) return "";
-        ArtQuery q = ArtQuery.of(ch.name, ch.group, s.title[i], s.desc == null ? "" : s.desc[i]);
-        if (q == null) return "";
+        if (ch == null) return own;
+        String always = fallback(ch, s, i);
+        // The guide's own picture: at once, the one always there after it (a place it is too small for takes that).
+        if (!own.isEmpty()) return PicSources.chain(own, always);
         if (app == null) app = c.getApplicationContext();
-        String key = q.key();
-        Ask k;
-        synchronized (LOCK) {
-            k = ASKS.get(key);
-            if (k == null) {
-                k = new Ask(q, key);
-                String had = loaded ? FOUND.get(key) : null;
-                if (had != null) k.url = url(had);
-                ASKS.put(key, k);
+        ArtQuery q = ArtQuery.of(ch.name, ch.group, s.title[i], s.desc == null ? "" : s.desc[i]);
+        Ask ask = null;
+        if (q != null) {
+            String key = q.key();
+            synchronized (LOCK) {
+                ask = ASKS.get(key);
+                if (ask == null) {
+                    ask = new Ask(q, key);
+                    String had = loaded ? FOUND.get(key) : null;
+                    if (had != null) ask.url = url(had);
+                    ASKS.put(key, ask);
+                }
             }
         }
-        String u = k.url;
-        if (u != null) return u;
+        Look k = new Look(ch.name, s.title[i], SkyListing.lookAt(s.start[i], s.stop[i], System.currentTimeMillis()), ask, always);
         ask(k);
         return k;
     }
@@ -147,7 +194,7 @@ final class ProgArt {
         return u == null ? "" : u;
     }
 
-    private static void ask(Ask k) {
+    private static void ask(Look k) {
         synchronized (LOCK) {
             if (k.queued || k.url != null) return;
             k.queued = true;
@@ -160,58 +207,76 @@ final class ProgArt {
         }
     }
 
-    /** The searches waiting, newest first, a little apart. */
+    /** The looks waiting, newest first: Sky's, then TMDB's a little apart, then the one always there. */
     private static void work() {
         Context c = app;
         if (!loaded) read(c);
-        long last = 0;
         while (true) {
-            Ask k;
-            String had;
+            Look k;
             synchronized (LOCK) {
                 k = QUEUE.pollFirst();
                 if (k == null) {
                     running = false;
                     break;
                 }
-                had = FOUND.get(k.key);
             }
-            String path = had;
-            if (path == null) {
-                if (c == null || !Tmdb.ready(c)) {
-                    // No TMDB key (no TV paired yet): the channel's picture, not kept.
-                    done(k, "");
-                    continue;
-                }
-                long wait = last + SPACING_MS - System.currentTimeMillis();
-                if (wait > 0) {
-                    try {
-                        Thread.sleep(wait);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        return;
-                    }
-                }
-                last = System.currentTimeMillis();
-                try {
-                    path = k.q.pick(Tmdb.once(c, k.q.path()));
-                } catch (IOException | RuntimeException e) {
-                    // Away from the network or TMDB busy: the channel's picture for now, looked for again next time.
-                    done(k, "");
-                    continue;
-                }
-                synchronized (LOCK) {
-                    FOUND.put(k.key, path);
-                    unsaved++;
-                }
+            String sky = "";
+            try {
+                sky = SkyPics.find(c, k.channel, k.at, k.title);
+            } catch (RuntimeException e) {
+                sky = "";
             }
-            done(k, url(path));
+            if (!sky.isEmpty()) {
+                done(k, PicSources.chain(sky, k.always));
+                continue;
+            }
+            String found = k.ask == null ? "" : search(c, k.ask);
+            if (found == null) return;
+            done(k, PicSources.chain(found, k.always));
             if (unsaved >= 20) write(c);
         }
         if (unsaved > 0) write(c);
     }
 
-    private static void done(Ask k, String url) {
+    /** A title's TMDB picture: kept, else looked for now (a little apart); "" for none or not now, null when stopped. */
+    private static String search(Context c, Ask k) {
+        String u = k.url;
+        if (u != null) return u;
+        String had;
+        synchronized (LOCK) {
+            had = FOUND.get(k.key);
+        }
+        if (had != null) return k.url = url(had);
+        // No TMDB key (no TV paired yet): the one always there, not kept.
+        if (c == null || !Tmdb.ready(c)) return "";
+        long wait = lastSearch + SPACING_MS - System.currentTimeMillis();
+        if (wait > 0) {
+            try {
+                Thread.sleep(wait);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                synchronized (LOCK) {
+                    running = false;
+                }
+                return null;
+            }
+        }
+        lastSearch = System.currentTimeMillis();
+        String path;
+        try {
+            path = k.q.pick(Tmdb.once(c, k.q.path()));
+        } catch (IOException | RuntimeException e) {
+            // Away from the network or TMDB busy: the one always there for now, looked for again next time.
+            return "";
+        }
+        synchronized (LOCK) {
+            FOUND.put(k.key, path);
+            unsaved++;
+        }
+        return k.url = url(path);
+    }
+
+    private static void done(Look k, String url) {
         synchronized (LOCK) {
             k.url = url;
             k.queued = false;

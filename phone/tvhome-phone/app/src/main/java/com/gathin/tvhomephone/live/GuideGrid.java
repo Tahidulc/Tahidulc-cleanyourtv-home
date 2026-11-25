@@ -38,7 +38,9 @@ import java.util.TimeZone;
  * (TvGround), the day in amber at the top left and the times across with an amber dot at now; each channel a row of
  * rounded cards, its logo on a raised tile in the logo's own colour at the row's start (or as it is, or on a black tile:
  * LogoTiles; a star on a favourite), and its programmes as cards after it, each filled by the programme's own picture
- * as Homefield TV's are (ProgArt finds it, ProgPics makes it at the card's size with its faces whole, PicDraw draws it
+ * as Homefield TV's are (ProgArt finds it: the guide's own, Sky's, TMDB's, a game's crests or its kind's picture;
+ * ProgPics makes it once for the whole card, covering a card of its shape, else shown whole at the card's height after
+ * the words on the card's own colour from it, faces whole; PicDraw draws it gliding along the card as the guide scrolls,
  * with a soft shade under the words only; a card too small for its faces in the picture's own colour; with no picture,
  * the channel's logo on its colour; frosted glass while one is looked for), what's on now brighter (the rest a little
  * dimmer) with a white line for how far in it is, the one chosen ringed in white and lifted, one pressed lifting under
@@ -603,7 +605,7 @@ final class GuideGrid extends FrameLayout {
             float k = sel || pressed ? 0 : st.lift;
             st.rect.set(left + k, k, right - k, h - k);
             boolean past = s.stop[i] <= now;
-            if (picture(cv, s, i, r - l - 2 * st.gap, h, on, sel, past, wordsEnd)) edges(cv, sel, pressed);
+            if (picture(cv, s, i, l + st.gap + k, r - l - 2 * st.gap - 2 * k, h, w, on, sel, past, wordsEnd)) edges(cv, sel, pressed);
             else card(cv, left, right, h, on, sel, pressed);
             if (on && Theme.progress) {
                 // How far in it is: a white line on a soft track along the card's foot (Appearance › Progress bars).
@@ -623,12 +625,13 @@ final class GuideGrid extends FrameLayout {
         }
 
         /**
-         * The programme's picture filling st.rect (full: the whole programme's card width, the size it is made at),
-         * dimmer when it isn't on (more so once shown; the one chosen as on), the shade under the words; with none, the
-         * channel's own picture: its logo on its colour. False while it is looked for or read (the glass card then).
+         * The programme's picture filling st.rect (its part in sight; fullLeft, full: the whole programme's card, the
+         * size it is made at), gliding along the card as it scrolls (PicDraw.cell), dimmer when it isn't on (more so once
+         * shown; the one chosen as on), the shade under the words; with none, the channel's own picture: its logo on its
+         * colour. False while it is looked for or read (the glass card then).
          */
-        private boolean picture(Canvas cv, Guide.Schedule s, int i, float full, float h, boolean on, boolean sel, boolean past,
-                                float wordsEnd) {
+        private boolean picture(Canvas cv, Guide.Schedule s, int i, float fullLeft, float full, float h, float viewW, boolean on,
+                                boolean sel, boolean past, float wordsEnd) {
             Context c = getContext();
             RectF rc = st.rect;
             String url = ProgArt.of(c, ch, s, i);
@@ -645,10 +648,10 @@ final class GuideGrid extends FrameLayout {
             ProgPics.Made m = ProgPics.get(c, url, fw, fh, ProgPics.FILL, redraw);
             if (m == null) return false;
             if (m == ProgPics.NONE) return logoCard(cv, on, sel, past, wordsEnd);
-            if (m.b != null && st.art.place(rc, m, wordsEnd, st.pad)) {
-                st.art.fill(cv, rc, st.radius, m);
+            if (m.b != null) {
+                st.art.cell(cv, rc, st.radius, m, fullLeft, Math.max(full, rc.width()), wordsEnd, viewW);
             } else if (!st.art.ground(cv, rc, st.radius, m)) {
-                // Its faces would be cut at this size, or under the words: its own colours, never half a face.
+                // Its faces would be cut at this size: its own colours, never half a face.
                 plain(cv, m.colour, on, sel, past);
                 return true;
             }

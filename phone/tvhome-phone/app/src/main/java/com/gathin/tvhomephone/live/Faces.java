@@ -34,6 +34,11 @@ final class Faces {
         FOUND.put(url, box);
     }
 
+    /** The faces' box found before for a picture (null when it hasn't been read yet). */
+    static float[] known(String url) {
+        return url == null ? null : FOUND.get(url);
+    }
+
     /** The faces' box for a picture read from url: found once, then kept. Not the main thread. */
     static float[] of(String url, Bitmap src) {
         float[] had = FOUND.get(url);
