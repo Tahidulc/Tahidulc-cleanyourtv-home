@@ -77,8 +77,8 @@ import java.util.TimeZone;
  * its ground runs up under the status bar and down under the floating tab bar, the guide's rows scrolling on under it.
  * The look is Homefield TV 2.0's 07 made for a finger (TvLook): a deep, softly lit ground (TvGround: the picture playing
  * in the guide, copied small and blurred once every few seconds, or the chosen channel's colour), panels of tinted
- * glass with a bright hairline, buttons and pills of glass (the chosen one white), Inter. Recently watched (Recents)
- * sits over the guide as a row of cards with "Back to" the channel before; on its side, in the pane under the details.
+ * glass with a bright hairline, buttons and pills of glass (the chosen one white), Inter. Recently watched is the side
+ * menu's Recent (CategoryPanel) and nowhere else here: its room went to the picture and the programme's panel.
  */
 public class LiveTvFragment extends Fragment {
     private static final String S_GROUP = "group", S_KEY = "key", S_START = "start", S_LEFT = "left", S_UPRIGHT = "upright",
@@ -158,8 +158,6 @@ public class LiveTvFragment extends Fragment {
     private OnBackPressedCallback back;
     /** The deep, softly lit ground behind the whole page (07's backdrop). */
     private TvGround ground;
-    /** Recently watched, over the guide (upright) or in the pane beside it (on its side). */
-    private RecentsStrip recents;
     /** The guide's picture copied small for the ground, now and then while it plays (off the main thread). */
     private FrameSampler sampler;
     private final Runnable sample = this::sampleGround;
@@ -176,7 +174,6 @@ public class LiveTvFragment extends Fragment {
             }
             if (details != null) details.refresh();
             if (inline != null) inline.refresh();
-            if (recents != null) recents.tick();
             if (pin != null) pin.refresh();
             if (sport != null && sport.getVisibility() == View.VISIBLE) sport.load();
             listAdapter.notifyItemRangeChanged(0, listAdapter.getItemCount());
@@ -211,17 +208,6 @@ public class LiveTvFragment extends Fragment {
         root.setOrientation(LinearLayout.VERTICAL);
         // No ground of its own: the deep, softly lit one (TvGround) under it all shows through the glass.
         ground = new TvGround(c);
-        recents = new RecentsStrip(c, lib, mode == SIDE);
-        recents.setListener(new RecentsStrip.Listener() {
-            @Override public void play(Channel ch) {
-                if (lib.ready() && grid.channels().contains(ch)) selectNow(ch);
-                LiveTvFragment.this.play(ch);
-            }
-
-            @Override public void menu(Channel ch) {
-                LiveTvFragment.this.menu(ch);
-            }
-        });
 
         buildToolbar(c, root);
         // While casting: "Casting to …" with Stop, under the top bar (it shows and hides itself).
@@ -248,8 +234,10 @@ public class LiveTvFragment extends Fragment {
             ((LinearLayout.LayoutParams) toolbar.getChildAt(0).getLayoutParams()).weight = 0;
             toolbar.getChildAt(0).getLayoutParams().width = -2;
         }
-        // Upright, the order (the family's, 24 Nov): the picture, the programme's details under it, Recently watched
-        // under those, then Your channels; all of it folds away together (added after the details, below).
+        // Upright, the order: the picture, the programme's details under it, then Your channels; all of it folds away
+        // together (added after the details, below). No Recently watched here (the family, 25 Nov: "get rid of the recently
+        // watched on the live tv section. Just keep that for a section in the side menu which it already has. Then use
+        // that space for the information panel and preview screen"): it is the side menu's Recent.
 
         // The categories on the side: the bar at the guide's top (always in sight, the guide, the list or Sport under it)
         // with the button that slides the panel in; docked beside the guide on a tablet on its side with the room.
@@ -264,7 +252,9 @@ public class LiveTvFragment extends Fragment {
         Details.Actions actions = actions();
         if (mode == COMPACT) {
             details = new Details(c, lib, true, Integer.MAX_VALUE);
-            // A rounded panel with the programme's picture, a little in from the edges as the picture above it.
+            // A rounded panel with the programme's picture, a little in from the edges as the picture above it; with
+            // Recently watched gone, it takes that room (at least DETAILS_MIN_DP high, its picture showing more).
+            details.setMinimumHeight(Ui.dp(c, DETAILS_MIN_DP));
             LinearLayout.LayoutParams dp = new LinearLayout.LayoutParams(-1, -2);
             dp.setMargins(Ui.dp(c, 12), Ui.dp(c, 6), Ui.dp(c, 12), Ui.dp(c, 6));
             head.addView(details, dp);
@@ -275,8 +265,10 @@ public class LiveTvFragment extends Fragment {
             band.setBackground(TvLook.mat(c, 24));
             band.setElevation(Ui.dp(c, 4));
             band.setPadding(Ui.dp(c, 14), Ui.dp(c, 14), 0, Ui.dp(c, 6));
-            // The picture about half the tablet's width (288 to 420dp), 16:9, the details beside it.
-            int iw = Math.min(Ui.dp(c, 420), Math.max(Ui.dp(c, 288), getResources().getDisplayMetrics().widthPixels / 2 - Ui.dp(c, 12)));
+            // The picture over half the tablet's width (288 to 540dp), 16:9, the details beside it: the room Recently
+            // watched had, given to the picture and the panel.
+            int iw = Math.min(Ui.dp(c, TABLET_PICTURE_MAX_DP), Math.max(Ui.dp(c, 288),
+                    getResources().getDisplayMetrics().widthPixels * 58 / 100 - Ui.dp(c, 12)));
             band.addView(inline, new LinearLayout.LayoutParams(iw, iw * 9 / 16));
             details = new Details(c, lib, false, Integer.MAX_VALUE);
             band.addView(details, new LinearLayout.LayoutParams(0, -2, 1f));
@@ -319,11 +311,6 @@ public class LiveTvFragment extends Fragment {
             details = new Details(c, lib, false, Integer.MAX_VALUE);
             details.setPadding(Ui.dp(c, 4), Ui.dp(c, 12), Ui.dp(c, 4), Ui.dp(c, 12));
             under.addView(details, new LinearLayout.LayoutParams(-1, -2));
-            // Recently watched in smaller cards, to the pane's edges, under the details (phone and tablet alike).
-            LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-1, -2);
-            rp.leftMargin = rp.rightMargin = -pad;
-            rp.bottomMargin = Ui.dp(c, 8);
-            under.addView(recents, rp);
             ds.addView(under, new FrameLayout.LayoutParams(-1, -2));
             side.addView(ds, new LinearLayout.LayoutParams(-1, 0, 1f));
             LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(sw - gap, -1);
@@ -384,13 +371,15 @@ public class LiveTvFragment extends Fragment {
         return frame;
     }
 
-    /** Upright, under the programme's details: Recently watched, then Your channels (both fold away with them). */
+    /** Upright, under the programme's details: Your channels (folding away with them). */
     private void headTail(Context c, LinearLayout head) {
-        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-1, -2);
-        rp.topMargin = Ui.dp(c, 2);
-        head.addView(recents, rp);
-        head.addView(stripRow, new LinearLayout.LayoutParams(-1, Ui.dp(c, 60)));
+        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-1, Ui.dp(c, 60));
+        sp.topMargin = Ui.dp(c, 2);
+        head.addView(stripRow, sp);
     }
+
+    /** Upright on a phone, the programme's panel at least this high (dp); on a tablet upright, the picture at most this wide. */
+    static final int DETAILS_MIN_DP = 210, TABLET_PICTURE_MAX_DP = 540;
 
     /** A tablet's pane beside the guide on its side (the picture and the details), and the least the guide keeps. */
     private static final int SIDE_TABLET_DP = 380, GUIDE_MIN_DP = 560;
@@ -1089,22 +1078,7 @@ public class LiveTvFragment extends Fragment {
         super.onDestroyView();
     }
 
-    // ---- the ground and Recently watched ------------------------------------------------------------------------
-
-    /**
-     * Recently watched as it is now (Recents: newest first, each merged channel once, hidden ones and the one in the
-     * picture left out), over the guide; not over a search.
-     */
-    private void showRecents() {
-        if (recents == null || !isAdded()) return;
-        if (searching || !lib.ready()) {
-            recents.setVisibility(View.GONE);
-            return;
-        }
-        Channel shown = pb.live() && pb.channel() != null ? pb.channel() : inline.channel();
-        recents.set(Recents.list(Picks.recent(requireContext()), lib::resolve, lib::isHidden, shown == null ? null : shown.key,
-                Recents.SHOWN));
-    }
+    // ---- the ground ---------------------------------------------------------------------------------------------
 
     private Channel tinted;
     private final Runnable retint = () -> {
@@ -1193,7 +1167,6 @@ public class LiveTvFragment extends Fragment {
             favHint.setVisibility(View.GONE);
             sport.setVisibility(View.GONE);
             stripRow.setVisibility(mode == SIDE ? View.INVISIBLE : View.GONE);
-            recents.setVisibility(View.GONE);
             guideBar.setVisibility(View.GONE);
             if (cats.isOpen() && !dock) cats.close(false);
             layDock(false);
@@ -1227,7 +1200,6 @@ public class LiveTvFragment extends Fragment {
         shownFavs = !favs.isEmpty();
         shownRecent = hasRecent;
         setStrip(favs);
-        showRecents();
         timeline(true);
         refreshRows();
         grid.favouritesChanged();
@@ -1501,7 +1473,6 @@ public class LiveTvFragment extends Fragment {
         if (mode == COMPACT) openInline(true);
         inline.play(ch);
         showInline();
-        showRecents();
         // The ground takes the new picture soon after it starts.
         h.removeCallbacks(sample);
         h.postDelayed(sample, 2_500);
@@ -1574,7 +1545,6 @@ public class LiveTvFragment extends Fragment {
 
             @Override public void onShowing(Channel ch) {
                 if (lib.ready() && grid.channels().contains(ch)) selectNow(ch);
-                showRecents();
                 syncPin();
             }
 
@@ -1669,7 +1639,6 @@ public class LiveTvFragment extends Fragment {
         toolbar.setVisibility(View.GONE);
         searchBar.setVisibility(View.VISIBLE);
         stripRow.setVisibility(View.GONE);
-        recents.setVisibility(View.GONE);
         search.requestFocus();
         keyboard(true);
         showBody();

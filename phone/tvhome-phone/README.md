@@ -869,3 +869,8 @@ them. As today stays the default.
 
 **The goal pop-up's scorer (5.42).** After a goal the pop-up shows the score, then a moment later its scorer: a ball,
 the name, the minute and (og) or (pen) as the board marks them.
+
+**Live TV without Recently watched (5.43).** Recently watched is only the side menu's Recent now; its room on Live TV
+went to the picture and the programme's panel: upright on a phone the panel is taller, its programme's picture showing
+more; upright on a tablet the picture is bigger (over half the width), the details beside it; sideways the pane is the
+picture and the details.
