@@ -118,6 +118,12 @@ final class Editorial extends View {
     static final float LEFT = 90f, ROW_Y = 150f, HEAD = 52f, CARD_H = 440f, WIDE_W = 760f, POSTER_W = 280f, GAP = 16f,
             BLOCK = 700f, INFO = 46f, STORY = 76f, STORY_W = 840f, CARD_R = 18f;
     static final float HERO_T = 150f, HERO_W = 1500f, HERO_H = 580f, HERO_GAP = 30f, HERO_R = 40f, DOTS_Y = 762f, FIRST_ROW = 806f;
+    /**
+     * The boxes a title's logo (TMDB's title art) is fitted inside, whole and at its own shape, never cropped (Pics.FIT,
+     * drawn at its own pixels, as the cover page draws it): the carousel's, at the foot left of its words, and a wide
+     * card's, at its foot.
+     */
+    static final float HERO_LOGO_W = 760f, HERO_LOGO_H = 220f, CARD_LOGO_W = WIDE_W * 0.62f, CARD_LOGO_H = 120f;
     /** The next row's pictures: dimmed to this much. */
     static final int DIM = 107;
     /** How long the page takes to rise to a row, the carousel to slide, a card to grow, the words to come in after. */
@@ -480,6 +486,11 @@ final class Editorial extends View {
         return !hero.isEmpty() && area == HERO && Math.abs(y.value()) < 0.5f;
     }
 
+    /** Tests: the carousel's title art (or its name), as last drawn. */
+    Hero07.Mark previewHeroMark() {
+        return heroMark;
+    }
+
     /** Tests: the carousel's title in front (its place), and how many it has. */
     int heroAt() {
         return heroAt;
@@ -795,7 +806,7 @@ final class Editorial extends View {
     private void heroWords(Card card) {
         if (card == heroFor) return;
         heroFor = card;
-        heroMark.set(card.name, card.logo, Ui.f(560f), Ui.f(150f), Ui.f(820f));
+        heroMark.set(card.name, card.logo, Ui.f(HERO_LOGO_W), Ui.f(HERO_LOGO_H), Ui.f(820f));
         heroStory = card.story.isEmpty() ? null : Hero07.lines(card.story, heroStoryP, Ui.px(780f), 2, Ui.f(24f * 1.42f));
     }
 
@@ -996,7 +1007,7 @@ final class Editorial extends View {
         }
         markNext = (i + 1) % marks.length;
         marked[i] = card;
-        marks[i].set(card.name, card.logo, Ui.f(WIDE_W * 0.62f), Ui.f(120f), Ui.f(WIDE_W - 60f));
+        marks[i].set(card.name, card.logo, Ui.f(CARD_LOGO_W), Ui.f(CARD_LOGO_H), Ui.f(WIDE_W - 60f));
         return marks[i];
     }
 

@@ -338,14 +338,26 @@ final class Hero07 {
             return p.measureText(shown);
         }
 
-        /** Drawn with its top left at (x, top), at an opacity. */
+        /** Where the logo was last drawn (the canvas's px as it was then; empty for none, or the name in words). */
+        android.graphics.RectF drawn() {
+            return drawn;
+        }
+
+        private final android.graphics.RectF drawn = new android.graphics.RectF();
+
+        /**
+         * Drawn with its top left at (x, top), at an opacity: a logo whole, fitted inside its box at its own shape (read
+         * so, Pics.FIT) and at its own pixels, so it is crisp and never cropped.
+         */
         void draw(Canvas c, float x, float top, int alpha, Runnable ready) {
             Bitmap b = logo(ready);
             if (b != null) {
                 bmp.setAlpha(alpha);
                 c.drawBitmap(b, x, top, bmp);
+                drawn.set(x, top, x + b.getWidth(), top + b.getHeight());
                 return;
             }
+            drawn.setEmpty();
             if (waiting(ready) || shown.isEmpty()) return;
             p.setAlpha(alpha);
             float lh = p.getTextSize() * 1.02f;
