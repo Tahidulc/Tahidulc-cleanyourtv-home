@@ -857,3 +857,7 @@ Sport and matchday, Your channels, Films and shows, TVs and sync, App), each wit
 now; a tap opens the section on its own page, Back returns to the list where it was. A search at the top finds any
 setting by its words and opens its section there, the setting lit for a moment. A tablet keeps the list and the page
 side by side, with the same headings and search.
+
+**The match pop-ups (5.40).** After a goal the pop-up is the score alone, with no RESTART and no scorer or minute; at
+full time a new FULL TIME pop-up with the final score as the board's full time reaches the picture. Kick-off and the
+second half as before; all under the same pop-up switch.
