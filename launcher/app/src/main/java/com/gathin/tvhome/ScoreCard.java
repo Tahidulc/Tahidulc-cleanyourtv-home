@@ -686,22 +686,10 @@ final class ScoreCard {
         return d.dark ? new Streaks(0xFF141519, 0xFF141519, 0, gap, width) : new Streaks(0xFFF6F7FD, 0xFFF6F7FD, 0, gap, width);
     }
 
-    /**
-     * The streaks' layer: no size of its own, so a pop-up stays as wide as its contents (a layer as wide as its parent
-     * made every card over an app stretch across the screen); DriftBox lays it over the whole box.
-     */
-    /** A pop-up's box, as big as its contents, with its streaks' layer laid over all of it and a period to the left. */
+    /** A pop-up's box, as big as its contents (its ground solid: no streaks' layer over it any more). */
     static final class DriftBox extends FrameLayout {
         DriftBox(Context c) {
             super(c);
-        }
-
-        @Override protected void onLayout(boolean changed, int l, int t, int r, int b) {
-            super.onLayout(changed, l, t, r, b);
-            for (int i = 0; i < getChildCount(); i++) {
-                View v = getChildAt(i);
-                if (v instanceof DriftLines) v.layout(-((DriftLines) v).period, 0, getWidth(), getHeight());
-            }
         }
     }
 
