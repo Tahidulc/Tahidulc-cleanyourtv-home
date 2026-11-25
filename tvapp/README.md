@@ -85,14 +85,18 @@ wordmark are Homefield; it carries no Sky logo or name.
   remote is on: its title, a star for a favourite channel, its times ("10:00 — 11:00") with a bar and the minutes left
   for one on now ("16 min"), the picture's frames a second for the channel playing ("50 FPS", or as last seen on a
   channel watched before), the playlist and the group at the right, and all it says about it; behind the words, across
-  the panel's right-hand part, the programme's picture (in the order the phone app shares, overlays' PicSources: the
-  guide's own picture of it, XMLTV's icon or image, kept in a few bytes a programme; Sky's public UK guide's; where
-  neither has one, searched wider: TMDB by the programme's title tidied, the year or series its description gives and
-  the channel's kind, matched with care, off the main thread and a search at most every second or so; then a game's
-  own picture, its two clubs' crests on their colours; else a picture for what it is, football, motor racing, tennis,
-  news, weather, film, kids, nature, music, food... drawn in the app; else the channel's logo on its own colour, so no
-  programme is blank: the same in the guide's cells, the info card and the reminder's panel; one too small for where it
-  is shown, past 1.5 times its size, gives way to the next), placed by the rule the phone shares (overlays' PicPlace):
+  the panel's right-hand part, the programme's own picture, found as the phone app finds it (overlays' PicFinder): the
+  guide's own picture of it, XMLTV's icon or image, kept in a few bytes a programme; then the programme found by its
+  channel and time, its title the same, in the UK guide catalogues the public websites read: Sky's episode picture
+  (its "Image unavailable" card passed over), Freeview's (the broadcasters' own pictures), Virgin Media's (pay channels
+  too: Sky Sports, TNT Sports, Sky Cinema, Gold, Discovery), then Sky's season or series picture; a game's own picture
+  (TheSportsDB); then by its title: TVMaze's episode, TMDB's episode still, then the series' picture; the channels
+  matched under each one's own names (HD, UK, regions tidied, a +1 channel as its own an hour on), every answer kept on
+  the TV, requests kept apart, a plain user agent and no login. Only with none of those, the last resorts: a game's two
+  clubs' crests on their colours, a picture for what it is (football, motor racing, news, film, kids... drawn in the
+  app), else the channel's logo on its own colour, so no programme is blank: the same in the guide's cells, the info
+  card and the reminder's panel. A placeholder (a plain card, a tiny one, the channel's logo) is never shown, and one
+  too small for where it is shown, past 1.5 times its size, gives way to the next; placed by the rule the phone shares (overlays' PicPlace):
   covering a place close to its own shape, else the whole picture (or nearly) at the place's height beside the words,
   its faces whole, the place's own colour from its edges continuing smoothly behind it, never zoomed into a long cell
   or a short card; faded into the panel from the left, cross-fading to the next programme's as

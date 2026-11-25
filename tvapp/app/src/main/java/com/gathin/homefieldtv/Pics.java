@@ -973,12 +973,24 @@ final class Pics {
      * its mode asks (the panel's left fade before the faces, the card's rounding and shade). SLIDE: the picture alone,
      * with where it sits and its edges' colours (placed()). Where it went is kept with the picture made (placed()).
      */
+    /** Whether a picture read is a placeholder card: a small even sample of it nearly all one colour (PicVet.flat). */
+    static boolean placeholder(Bitmap src) {
+        Bitmap s = Bitmap.createScaledBitmap(src, 24, 14, true);
+        int[] px = new int[24 * 14];
+        s.getPixels(px, 0, 24, 0, 0, 24, 14);
+        if (s != src) s.recycle();
+        return com.gathin.broadcast.PicVet.flat(px);
+    }
+
     private static Bitmap placed(Source in, BitmapFactory.Options o, String url, int w, int h, int mode, boolean strict) throws IOException {
         float room = roomOf(mode, w, h), end = endOf(mode);
         float[] lay = new float[PicPlace.SIZE];
         float[] known = FACES.get(url);
         PicPlace.place(o.outWidth, o.outHeight, known, w, h, room, end, lay);
         if (strict && PicPlace.tooSmall(lay)) return null;
+        // A catalogue's picture that is no programme's (a badge, a tracking pixel): the chain's next.
+        boolean real = !PicSources.madeUp(url);
+        if (real && com.gathin.broadcast.PicVet.tiny(o.outWidth, o.outHeight)) return null;
         int sample = 1;
         while (o.outHeight / (sample * 2) >= lay[PicPlace.PH] && o.outWidth / (sample * 2) >= lay[PicPlace.PW]) sample *= 2;
         BitmapFactory.Options d = new BitmapFactory.Options();
@@ -992,6 +1004,11 @@ final class Pics {
         // Its own black bars (pillarbox, letterbox, a border) and a pixel or two of its edge cropped away first: never a
         // dark line through a cell (the faces are found in what is left).
         src = trimmed(src);
+        if (real && placeholder(src)) {
+            // A placeholder card ("Image unavailable", a plain colour): never shown, the chain's next instead.
+            src.recycle();
+            return null;
+        }
         float[] f = facesOf(url, src);
         PicPlace.place(src.getWidth(), src.getHeight(), f, w, h, room, end, lay);
         boolean faces = !PicPlace.none(f);

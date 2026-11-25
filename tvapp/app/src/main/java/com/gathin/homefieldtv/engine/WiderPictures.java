@@ -124,6 +124,20 @@ public final class WiderPictures {
         return kept;
     }
 
+    /**
+     * A series' episode's own still (TMDB's season, kept a fortnight: Tmdb.season), once find() has matched the series:
+     * its address, "" for none (a film, no episode said, no still, or not matched).
+     */
+    public static String still(Context c, String title, String desc, String channelName, String group, int season, int episode) {
+        if (season <= 0 || episode <= 0) return "";
+        Ask a = ask(title, desc, Genres.of(group, channelName));
+        if (!a.search || a.series < 0) return "";
+        Tmdb.Match m = Tmdb.cached(c, true, a.name, a.year);
+        if (m == null || m.id <= 0) return "";
+        String path = com.gathin.broadcast.PicQuery.still(Tmdb.season(c, m.id, season), episode);
+        return Tmdb.image(path, "w780");
+    }
+
     /** What TMDB said of it before, "" for nothing such, null when it hasn't been asked (or long ago). */
     private static String keptFor(Context c, Ask a) {
         Tmdb.Match first = null, second = null;

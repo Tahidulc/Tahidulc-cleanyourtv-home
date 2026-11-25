@@ -2,8 +2,8 @@ package com.gathin.homefieldtv;
 
 import android.content.Context;
 
+import com.gathin.broadcast.PicFinder;
 import com.gathin.broadcast.PicSources;
-import com.gathin.broadcast.SkyListing;
 import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.SkyGuide;
@@ -16,13 +16,13 @@ import java.util.Map;
 
 /**
  * Programme pictures for the TV guide and the live screens, remembered while the app runs, by channel and programme
- * start, in the order shared with the phone app (PicSources): the guide's own picture of the programme (its
- * {@code <icon>} or {@code <image>}, kept by Guide), Sky's (SkyGuide, Sky's public guide matched by channel and time),
- * and where neither has one, searched wider (WiderPictures: TMDB by the programme's title, the year or series its
- * description gives and the channel's kind, matched with care, off the main thread and spaced out); then always one that
- * is there whatever the size asked: the game's (its clubs' crests on their colours), else its kind's (football, news,
- * film, kids... drawn in code: PicArt), else the channel's own (ON_COLOUR: its logo on its own colour; with no logo its
- * name's colour). What is found comes as one chain of addresses, best first (PicSources.chain): Pics takes the first
+ * start, in the order shared with the phone app (PicFinder, through SkyGuide.finder): the guide's own picture of the
+ * programme (its {@code <icon>} or {@code <image>}, kept by Guide), then the programme found by its channel and time in
+ * the UK guide catalogues (Sky's episode picture, Freeview's, Virgin Media's, Sky's season or series picture), a game's
+ * own picture (TheSportsDB), then by its title (TVMaze, and TMDB through WiderPictures: the episode's still, then the
+ * series' picture), all off the main thread and kept; then always one that is there whatever the size asked, as a last
+ * resort: the game's crests on their colours, else its kind's picture (football, news, film, kids... drawn in code:
+ * PicArt), else the channel's own (ON_COLOUR: its logo on its own colour; with no logo its name's colour). What is found comes as one chain of addresses, best first (PicSources.chain): Pics takes the first
  * that is large enough for where it is drawn (never enlarged past 1.5 times), so a programme is never blank: in the
  * guide's cells, the info card, the reminder's panel and every screen that asks here. A screen asks only for what the
  * remote has rested on (peek while it moves), so holding Down through the channels asks for nothing; until a picture
@@ -40,7 +40,7 @@ final class ProgrammePictures {
         }
     };
     private static final Map<Key, List<Runnable>> waiting = new HashMap<>();
-    /** The channel's own picture given while the wider search was spaced out: asked again after RETRY_MS. */
+    /** A programme's pictures given while a source couldn't be asked (TMDB spaced out): asked again after RETRY_MS. */
     private static final Map<Key, Long> retry = new HashMap<>();
     static final long RETRY_MS = 90_000L;
 
@@ -117,26 +117,24 @@ final class ProgrammePictures {
         w = new ArrayList<>(2);
         if (whenKnown != null) w.add(whenKnown);
         waiting.put(k, w);
-        long now = System.currentTimeMillis();
-        // Sky's programme on at the time: now for the one on now, else a little into it (the two guides' times can differ).
-        long at = SkyListing.lookAt(s.start[i], s.stop[i], now);
         Key kept = k;
-        Context app = c.getApplicationContext();
-        String title = s.title[i], desc = s.desc[i], name = ch.name, group = ch.group, epg = s.pic(i), always = fallback(ch, s, i);
-        SkyGuide.picture(c, ch.name, at, s.title[i], url -> {
-            if (url != null && !url.isEmpty() || !epg.isEmpty()) {
-                // The guide's own, then Sky's, then the one always there (the next is taken where one is too small).
-                done(kept, PicSources.chain(epg, url, always));
-                return;
+        PicFinder finder = SkyGuide.finder(c);
+        PicFinder.Programme p = new PicFinder.Programme(ch.name, ch.group, s.title[i], s.desc[i], s.category(i), s.start[i], s.stop[i],
+                s.pic(i), com.gathin.homefieldtv.engine.LogoPack.url(ch));
+        String always = fallback(ch, s, i);
+        com.gathin.homefieldtv.engine.Exec.io(() -> {
+            PicFinder.Found f;
+            try {
+                f = finder.find(p);
+            } catch (RuntimeException e) {
+                f = null;
             }
-            // Neither has one: searched wider off the main thread; else the one always there (never blank).
-            com.gathin.homefieldtv.engine.Exec.io(() -> {
-                String found = com.gathin.homefieldtv.engine.WiderPictures.find(app, title, desc, name, group);
-                String use = PicSources.chain(found, always);
-                com.gathin.homefieldtv.engine.Exec.main(() -> {
-                    if (found == null) retry.put(kept, System.currentTimeMillis() + RETRY_MS);
-                    done(kept, use);
-                });
+            PicFinder.Found got = f;
+            // What was found, best first, then the one always there (a place takes the first large enough for it).
+            String use = PicSources.chain(got == null ? "" : got.chain, always);
+            com.gathin.homefieldtv.engine.Exec.main(() -> {
+                if (got == null || got.later) retry.put(kept, System.currentTimeMillis() + RETRY_MS);
+                done(kept, use);
             });
         });
         return null;

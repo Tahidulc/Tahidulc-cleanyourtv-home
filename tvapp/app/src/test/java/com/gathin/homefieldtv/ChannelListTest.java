@@ -252,10 +252,14 @@ public class ChannelListTest {
         Map<String, Guide.Schedule> guide = new HashMap<>();
         TvActivity a = open(ch, guide);
         ChannelList list = list(a);
-        // The programme on now's own picture (an invented one, all one blue).
+        // The programme on now's own picture (an invented one: a blue sky over green ground; one all one colour would be
+        // taken for a placeholder card and passed over).
         Context app = made;
         Bitmap pic = Bitmap.createBitmap(640, 360, Bitmap.Config.ARGB_8888);
         pic.eraseColor(0xFF3366CC);
+        android.graphics.Paint ground = new android.graphics.Paint();
+        ground.setColor(0xFF2E7D32);
+        new android.graphics.Canvas(pic).drawRect(0, 230, 640, 360, ground);
         File f = new File(app.getCacheDir(), "list-picture.png");
         try (FileOutputStream o = new FileOutputStream(f)) {
             pic.compress(Bitmap.CompressFormat.PNG, 100, o);
