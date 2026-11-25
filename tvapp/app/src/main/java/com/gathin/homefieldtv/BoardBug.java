@@ -1234,9 +1234,12 @@ final class BoardBug extends View {
         // The net shivering after every goal (the Lab's net) at its own moment in each set; the ground's weather lightly
         // over it all two or three times a game.
         long mesh = gt < 0 || set == com.gathin.broadcast.BoardFx.GOAL_REVEAL ? -1 : gt - meshAt(set);
-        boolean meshing = mesh >= 0 && mesh < com.gathin.broadcast.BoardFx.MESH_MS;
+        // On Lite (the weak TVs) the decorative motion is left still: no net shivering, no weather passing over, no scan
+        // along it for VAR (the alert beside it says so); the board at rest is drawn as ever, and a goal's own moment plays.
+        boolean decor = !Motion.lite() || animFrozen >= 0 || weatherFrozen >= 0;
+        boolean meshing = decor && mesh >= 0 && mesh < com.gathin.broadcast.BoardFx.MESH_MS;
         long wt = weatherSky == null ? -1 : weatherFrozen >= 0 ? weatherFrozen : weatherAt > 0 ? now - weatherAt : -1;
-        boolean weathering = wt >= 0 && wt < com.gathin.broadcast.BoardFx.WEATHER_MS;
+        boolean weathering = decor && wt >= 0 && wt < com.gathin.broadcast.BoardFx.WEATHER_MS;
         // The Lab's moments over a competition's look are kept to its own shapes (Duo's pills, Floodlight's tab under its
         // row), never the gaps between: the look drawn on a layer of its own while one is on, each moment laid only where
         // the look has drawn (as the phone's).
@@ -1322,7 +1325,8 @@ final class BoardBug extends View {
             fx.netMesh(cv, body, mh, mesh);
             if (a >= 0) cv.restoreToCount(a);
         }
-        if (varUntil > now) varScan(cv, body, mh, now);
+        boolean scanning = decor && varUntil > now;
+        if (scanning) varScan(cv, body, mh, now);
         long ft = ftAt > 0 ? now - ftAt : -1;
         if (ft >= 0 && ft < FT_MS) fullTimeStamp(cv, body, mh, ft);
         if (row != null) cv.restore();
@@ -1351,7 +1355,7 @@ final class BoardBug extends View {
             dashFor = -1;
         }
         cv.restore();
-        boolean moving = turning || meshing || varUntil > now || (ft >= 0 && ft < FT_MS) || weathering && weatherFrozen < 0;
+        boolean moving = turning || meshing || scanning || (ft >= 0 && ft < FT_MS) || weathering && weatherFrozen < 0;
         if (moving && !part) postInvalidateOnAnimation();
         if (tab > 0) {
             if (addedTab) addedTabDraw(cv, body, inset, ch, tab, now);
@@ -1799,7 +1803,8 @@ final class BoardBug extends View {
         float drop = eBack(kprog(it, 550, 1200));
         if (drop <= 0.01f) return;
         float spin = (1 - (1 - (float) Math.pow(1 - kprog(it, 550, 1600), 4))) * (float) Math.PI * 2;
-        float sway = (float) Math.sin(now / 1000.0 * 1.1 + (home ? 0 : 1.7)) * 0.28f;
+        // The sway only while something is happening on the board (Full); still, at its middle, otherwise and on Lite.
+        float sway = swaying() ? (float) Math.sin(now / 1000.0 * 1.1 + (home ? 0 : 1.7)) * 0.28f : 0f;
         float rest = kitRest(home), s = size * drop;
         com.gathin.broadcast.KitSheets.Sheet sh = home ? kitHome : kitAway;
         if (sh != null && !sh.bitmap.isRecycled()) {
@@ -1812,11 +1817,30 @@ final class BoardBug extends View {
         }
     }
 
-    /** Drawn again every frame while the shirts turn in, else when either's sway next shows another frame. */
+    /**
+     * Something is happening on the board (a moment's pop-up, an alert out beside it: BoardLayer says), when the kits'
+     * sway may move on Full; at rest the board draws nothing but its clock.
+     */
+    private boolean lively;
+
+    void lively(boolean on) {
+        if (on == lively) return;
+        lively = on;
+        if (style == Style.KITS) invalidate();
+    }
+
+    /** Pure-ish: whether the kits sway now: on Full, while something is happening (or a preview's frozen moment). */
+    private boolean swaying() {
+        return animFrozen >= 0 || lively && !Motion.lite();
+    }
+
+    /** Drawn again every frame while the shirts turn in, else when either's sway next shows another frame (while it sways). */
     private void kitsNext(long now) {
         long it = kitsAt > 0 ? now - kitsAt : 100_000L;
         if (it < 1700) { postInvalidateOnAnimation(); return; }
         if (kitHome == null && kitAway == null) return;
+        // Still: nothing to draw again until something happens.
+        if (!swaying()) return;
         int[] was = {swayFrame(true, now), swayFrame(false, now)};
         for (long dt = 40; dt <= 1000; dt += 40) {
             if (swayFrame(true, now + dt) != was[0] || swayFrame(false, now + dt) != was[1]) {

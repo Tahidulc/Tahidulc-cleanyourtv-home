@@ -1062,9 +1062,30 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         logoUp(clear && (moving == 2 || phase != BoardClock.AWAY && BoardPrefs.logoOn(c) && !leave));
         logo.live = l.live;
         logoParts(logo.parts);
-        logo.invalidate();
+        // Drawn again only when something it shows changed (its look, LIVE, the tag, the competition's logo...): still,
+        // it costs the TV nothing, and the board's clock each second is drawn alone (the family's TCL drew both, and
+        // the strip between them, every second).
+        String drawn = logoKey();
+        if (!drawn.equals(logoDrawn)) {
+            logoDrawn = drawn;
+            logo.invalidate();
+        }
+        // The kits' sway (Full) only while something is happening on the board.
+        bug.lively(popupOn || drop.isOut() || dropping);
         extrasTick(now);
         guard(now);
+    }
+
+    /** What the cover was last drawn with (logoKey). */
+    private String logoDrawn = "";
+
+    /** What the cover shows now, in a few words: when it changes, the cover is drawn again. */
+    private String logoKey() {
+        com.gathin.broadcast.CoverLooks.Parts p = logo.parts;
+        return logo.look + '|' + logo.live + '|' + logo.ringed + '|' + p.tag + '|' + p.liveBar + '|' + p.compOn + '|'
+                + System.identityHashCode(p.comp) + '|' + p.compName + '|' + p.nameOnly + '|' + p.ground + '|' + p.what + '|'
+                + p.style + '|' + p.sub + '|' + p.marks + '|' + System.identityHashCode(bug.stripLook()) + '|'
+                + (ch == null ? "" : ch.key + '|' + ChannelEdits.name(ch));
     }
 
     /**
@@ -1754,6 +1775,10 @@ final class BoardLayer extends FrameLayout implements LiveTv.Listener {
         int lx = Math.round(p.lx * sw), ly = Math.round(p.ly * sh), lw = Math.round(p.lw * sw), lh = Math.round(p.lh * sh);
         size(logo, lw + 2 * edge, lh + 2 * edge, lx - edge, ly - edge);
         logoRect.set(lx - edge, ly - edge, lx + lw + edge, ly + lh + edge);
+        // Event's extras: the cover's corner of the screen (Up next out to its left, the prayer pill under it), so what
+        // they draw again is that corner, never the whole picture.
+        int ew = Math.min(sw, Math.round(lw + 2 * edge + lh * 12f)), eh = Math.min(sh, Math.round(ly + lh * 2.4f + edge));
+        size(extras, ew, eh, Math.max(0, Math.min(sw - ew, lx + lw + edge - ew)), 0);
         BoardBug.StripLook look = bug.stripLook();
         tuck = look.apart ? 0 : Math.max(2, Math.round(vh * look.round)) + 1;
         sideGap = look.apart ? Math.max(2, Math.round(boardH * 0.1f)) : 0;

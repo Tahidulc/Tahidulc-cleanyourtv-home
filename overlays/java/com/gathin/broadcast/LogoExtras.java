@@ -243,7 +243,9 @@ public final class LogoExtras {
         } else {
             mark.clock(false, null, null, "");
         }
-        if (view != null) view.invalidate();
+        // Drawn again only while the panel or the pill is out (or going): its minutes count down; still, nothing to draw
+        // (each comes out with a draw of its own, guide() and prayer(), and draws itself on while it moves).
+        if (view != null && (now < panelUntil + OUT_MS || now < pillUntil + OUT_MS)) view.invalidate();
     }
 
     /** The next programme on the channel watched, off the main thread; out when it is due and not out before. */
