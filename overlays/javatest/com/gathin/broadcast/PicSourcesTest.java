@@ -17,8 +17,8 @@ import java.util.Arrays;
  * channels and programmes; nothing is fetched.
  */
 public class PicSourcesTest {
-    @Test public void theOrderIsTheGuidesOwnTheBroadcastersTheTitleTheGameTheKindTheChannel() {
-        assertEquals(Arrays.asList("epg", "broadcast", "title", "fixture", "genre", "channel"), PicSources.ORDER);
+    @Test public void theOrderIsTheGuidesOwnTheCataloguesTheEventTheTitleThenTheDrawnLastResorts() {
+        assertEquals(Arrays.asList("epg", "catalogues", "event", "title", "fixture", "genre", "channel"), PicSources.ORDER);
     }
 
     @Test public void aChainKeepsWhatWasFoundBestFirstOnceEach() {

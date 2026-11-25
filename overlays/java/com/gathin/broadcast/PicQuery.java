@@ -155,6 +155,35 @@ public final class PicQuery {
         return best == null ? "" : path(best);
     }
 
+    /**
+     * Pure: as pick(), the answer's TMDB id and kind with its picture: {path, id, "tv" or "movie"}; null for none. A series'
+     * id gives its episode's still (still()).
+     */
+    public static String[] pickWithId(JSONObject found, String type, String title, String year) {
+        String p = pick(found, type, title, year);
+        JSONArray r = found == null || p.isEmpty() ? null : found.optJSONArray("results");
+        for (int k = 0; r != null && k < r.length(); k++) {
+            JSONObject o = r.optJSONObject(k);
+            if (o == null || !p.equals(path(o))) continue;
+            String media = o.optString("media_type", "");
+            if (media.isEmpty()) media = o.has("first_air_date") || o.has("name") && !o.has("title") ? "tv" : "movie";
+            return new String[]{p, String.valueOf(o.optInt("id")), media};
+        }
+        return null;
+    }
+
+    /** Pure: an episode's own still from TMDB's season ({"episodes": [{episode_number, still_path}]}); "" for none. */
+    public static String still(JSONObject season, int episode) {
+        JSONArray eps = season == null || episode <= 0 ? null : season.optJSONArray("episodes");
+        for (int i = 0; eps != null && i < eps.length(); i++) {
+            JSONObject e = eps.optJSONObject(i);
+            if (e == null || e.optInt("episode_number") != episode) continue;
+            String s = e.optString("still_path", "");
+            return s.equals("null") ? "" : s;
+        }
+        return "";
+    }
+
     private static String path(JSONObject o) {
         String b = o.optString("backdrop_path", "");
         if (b.isEmpty() || b.equals("null")) b = o.optString("poster_path", "");

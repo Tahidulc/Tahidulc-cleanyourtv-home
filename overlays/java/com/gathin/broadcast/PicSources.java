@@ -15,25 +15,28 @@ import java.util.regex.Pattern;
  *
  * <pre>
  *   1 EPG        the guide's own picture of the programme (XMLTV {@code <icon>} or {@code <image>}, the provider's)
- *   2 BROADCAST  the broadcaster's own (Sky's programme images, matched by channel and time: SkyListing)
- *   3 TITLE      TMDB by the programme's title, year and episode (PicQuery: matched with care), where there is a key
- *   4 FIXTURE    a game's own picture: the two clubs' crests (ESPN's, as the scores have them) on their colours
- *   5 GENRE      a picture by what the programme is (football, news, film, kids...), drawn in code (PicArt)
- *   6 CHANNEL    the channel's own: its logo on its colour (each app's own), else BRAND, its name's colour
+ *   2 CATALOGUES the programme found by its channel and time in the UK guide catalogues (PicFinder, Catalogues): Sky's
+ *                episode picture, Freeview's, Virgin Media's, then Sky's season or series picture
+ *   3 EVENT      a game's own picture (TheSportsDB)
+ *   4 TITLE      by its title: TVMaze's episode, TMDB's episode still, then the series' (PicQuery: matched with care)
+ *   5 FIXTURE    the last resorts, drawn: a game's two clubs' crests (ESPN's, as the scores have them) on their colours
+ *   6 GENRE      a picture by what the programme is (football, news, film, kids...), drawn in code (PicArt)
+ *   7 CHANNEL    the channel's own: its logo on its colour (each app's own), else BRAND, its name's colour
  * </pre>
  *
  * A programme's picture is a chain: the addresses found, best first, then one that is always there (a fixture, a genre,
  * the channel's), kept as one address (chain()), so the screens and the caches see one picture. Each place takes the
- * first in the chain that is large enough for it (PicPlace.tooSmall: never enlarged past 1.5 times); the made-up ones
- * ("fixture:", "genre:", "brand:") are drawn at any size (PicArt). Nothing here fetches anything.
+ * first in the chain that is large enough for it (PicPlace.tooSmall: never enlarged past 1.5 times) and is no
+ * placeholder (PicVet); the made-up ones ("fixture:", "genre:", "brand:") are drawn at any size (PicArt). Nothing here
+ * fetches anything (PicFinder does, through PicFetch).
  */
 public final class PicSources {
     private PicSources() {}
 
     /** The order, for the tests and the READMEs. */
-    public static final String EPG = "epg", BROADCAST = "broadcast", TITLE = "title", FIXTURE = "fixture", GENRE = "genre",
-            CHANNEL = "channel";
-    public static final List<String> ORDER = java.util.Arrays.asList(EPG, BROADCAST, TITLE, FIXTURE, GENRE, CHANNEL);
+    public static final String EPG = "epg", CATALOGUES = "catalogues", EVENT = "event", TITLE = "title", FIXTURE = "fixture",
+            GENRE = "genre", CHANNEL = "channel";
+    public static final List<String> ORDER = java.util.Arrays.asList(EPG, CATALOGUES, EVENT, TITLE, FIXTURE, GENRE, CHANNEL);
 
     /** The made-up pictures' addresses. */
     public static final String FIXTURE_AT = "fixture:", GENRE_AT = "genre:", BRAND_AT = "brand:";

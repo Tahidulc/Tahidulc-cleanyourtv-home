@@ -135,6 +135,39 @@ public final class SkyListing {
         return pick == null ? "" : pick.optString("programmeuuid", "");
     }
 
+    /**
+     * A day's events as a listing (Catalogues.Listing): each programme's picture ids, episode first, then its season's and
+     * its series' ("programme;season;series", "" where Sky gives none).
+     */
+    public static Catalogues.Listing listing(JSONArray events) {
+        int n = events == null ? 0 : events.length();
+        long[] a = new long[n], b = new long[n];
+        String[] t = new String[n], p = new String[n];
+        int k = 0;
+        for (int i = 0; i < n; i++) {
+            JSONObject e = events.optJSONObject(i);
+            if (e == null) continue;
+            a[k] = e.optLong("st") * 1000L;
+            b[k] = a[k] + e.optLong("d") * 1000L;
+            t[k] = e.optString("t");
+            p[k] = e.optString("programmeuuid", "") + ";" + e.optString("seasonuuid", "") + ";" + e.optString("seriesuuid", "");
+            k++;
+        }
+        return new Catalogues.Listing(java.util.Arrays.copyOf(a, k), java.util.Arrays.copyOf(b, k), java.util.Arrays.copyOf(t, k),
+                java.util.Arrays.copyOf(p, k));
+    }
+
+    /** A listing's picture ids ("programme;season;series") as Sky's picture addresses at a width, the episode's first. */
+    public static String[] pictures(String ids, int width) {
+        String[] part = ids == null ? new String[0] : ids.split(";", -1);
+        List<String> out = new ArrayList<>(3);
+        for (String id : part) {
+            String u = picture(id, width);
+            if (!u.isEmpty() && !out.contains(u)) out.add(u);
+        }
+        return out.toArray(new String[0]);
+    }
+
     /** When to look in Sky's guide for a programme from start to stop: now for the one on now, else a little into it. */
     public static long lookAt(long start, long stop, long now) {
         return start <= now && now < stop ? now : start + Math.min(10 * 60_000L, (stop - start) / 2);
