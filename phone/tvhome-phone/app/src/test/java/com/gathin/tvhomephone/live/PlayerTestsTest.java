@@ -39,7 +39,7 @@ public class PlayerTestsTest {
 
     @Test public void bothPopUpStylesHaveEachMomentAndBothLineUpsStyles() {
         for (String g : new String[]{PlayerTests.POPUP, PlayerTests.STRAP}) {
-            assertEquals(java.util.Arrays.asList("kickoff", "restart", "second"), PlayerTests.tests(g));
+            assertEquals(java.util.Arrays.asList("kickoff", "restart", "second", "full"), PlayerTests.tests(g));
         }
         assertEquals(java.util.Arrays.asList("lineups", "stadium", "studio", "intro", "intro:f1", "intro:ufc", "intro:boxing", "intro:football"),
                 PlayerTests.tests(PlayerTests.LINEUPS));

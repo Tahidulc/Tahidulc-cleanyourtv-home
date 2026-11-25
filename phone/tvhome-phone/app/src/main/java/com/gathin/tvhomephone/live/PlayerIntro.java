@@ -310,9 +310,9 @@ final class PlayerIntro {
     }
 
     /**
-     * The moments' pop-ups in the classic look: the kick-off, play starting again after a goal, the second half. The
-     * scoreboard is away while one is on (never on the picture with it) and comes back in once it has gone, with its swish
-     * (ScoreBoard). The strap is the board's own look and folds into it, so it is not one of them.
+     * The moments' pop-ups in the classic look: the kick-off, play starting again after a goal, the second half, full
+     * time. The scoreboard is away while one is on (never on the picture with it) and comes back in once it has gone, with
+     * its swish (ScoreBoard). The strap is the board's own look and folds into it, so it is not one of them.
      */
     static boolean moment(String kind) {
         return com.gathin.broadcast.Moments.boardMoment(kind);
@@ -332,20 +332,33 @@ final class PlayerIntro {
 
     // ---- when ---------------------------------------------------------------------------------------------------------
 
-    /** The channel's own game as the picture shows it (each time the scoreboard draws); screenNow: the picture's time. */
+    /**
+     * The channel's own game as the picture shows it (each time the scoreboard draws: its full time the board's own, as the
+     * whistle reaches the picture, OnScreen); screenNow: the picture's time. Its kick-off, second half and full time bring
+     * their pop-ups (Moments), once each.
+     */
     void tick(Game g, long screenNow) {
         if (g == null || g.id == null) return;
         if (showing() && !canShow.getAsBoolean()) stop();
         String was = phases.get(g.id);
-        // The half the scores give, for a game joined part way through (no kick-off or half time seen).
-        String now = Moments.phase(false, g.state, g.halftime, was, g.period >= 1 && g.period <= 4 ? g.period : 0);
+        String now = phase(g, was);
         if (!now.isEmpty()) phases.put(g.id, now);
         String kind = was == null ? null : Moments.moment(was, now);
-        if (kind != null && popupOn(a)) popup(g, kind, "kickoff".equals(kind) ? null : new int[]{g.homeScore, g.awayScore}, null, null);
+        if (kind != null && popupOn(a)) popup(g, kind, momentScore(kind, g), null, null);
         if ("pre".equals(now) && g.kickoff > 0 && lineupsOn(a) && Moments.lineupsDue(lineupsStyle(a), g.kickoff - screenNow)) lineups(g);
         if ("pre".equals(now) && g.kickoff > 0 && matchOn(a) && Moments.matchWarm(g.kickoff - screenNow)) warmMatch(g);
         if ("pre".equals(now) && g.kickoff > 0 && introOn(a) && Moments.introDue(g.kickoff - screenNow)
                 && matchdayWanted(g.id, System.currentTimeMillis())) intro(g);
+    }
+
+    /** Pure: the game's phase on the picture after was (Moments.phase); its half from the scores when joined part way. */
+    static String phase(Game g, String was) {
+        return Moments.phase(false, g.state, g.halftime, was, g.period >= 1 && g.period <= 4 ? g.period : 0);
+    }
+
+    /** Pure: the score a moment's pop-up shows (the game's as the picture has it): none at the kick-off. */
+    static int[] momentScore(String kind, Game g) {
+        return "kickoff".equals(kind) ? null : new int[]{g.homeScore, g.awayScore};
     }
 
     /**
@@ -573,7 +586,7 @@ final class PlayerIntro {
     private int restartSide;
     /**
      * The goals whose restart pop-up came up (Moments.restartKey: the game, the side, that side's goals with it): their
-     * scorer beside the scoreboard is left out, the pop-up said it.
+     * scorer beside the scoreboard is left out, the pop-up stood for it (the score alone, as the family asked).
      */
     private final Set<String> restartsUp = new HashSet<>();
 
@@ -659,7 +672,7 @@ final class PlayerIntro {
             h.post(() -> {
                 if (showing() || !canShow.getAsBoolean() || a.isFinishing()) return;
                 show(BroadcastView.page(a, strap ? "strap" : "kickoff", cfg, this::gone), strap ? "strap" : kind);
-                // A goal's: its scorer beside the scoreboard is left out (ScoreBoard), the pop-up said it.
+                // A goal's: its scorer beside the scoreboard is left out (ScoreBoard), the pop-up stood for it.
                 if ("restart".equals(kind) && g.id != null && g.id.equals(restartGame)) {
                     String k = Moments.restartKey(g.id, restartSide, score);
                     if (k != null) {
@@ -773,7 +786,7 @@ final class PlayerIntro {
 
     /**
      * Tests: the kick-off pop-up in a style ("classic", or "strap" in the scoreboard's look) at a moment ("kickoff",
-     * "restart", "second"), now, whatever the style chosen: on the game watched, else a recent Premier League game (as the
+     * "restart", "second", "full"), now, whatever the style chosen: on the game watched, else a recent Premier League game (as the
      * TV's tries find one), else a made-up one. Nothing is marked shown, so the real moments still come. note: why not now.
      */
     void testPopup(String style, String kind, Game watching, IntConsumer note) {

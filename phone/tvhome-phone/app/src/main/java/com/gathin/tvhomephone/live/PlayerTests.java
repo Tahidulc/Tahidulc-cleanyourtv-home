@@ -36,7 +36,7 @@ final class PlayerTests {
     /** The alerts' row besides the kinds: all of them in turn, and the line-ups' alert. */
     static final String ALL = "all", LINEUPS_ALERT = "lineups_alert";
     /** The kick-off pop-up's moments (both styles), and the line-ups' two styles. */
-    static final String[] MOMENTS = {"kickoff", "restart", "second"};
+    static final String[] MOMENTS = com.gathin.broadcast.Moments.KINDS;
     static final String[] LINEUP_STYLES = {"lineups", "stadium", "studio", "intro"};
     /** The other intros: F1's, UFC's, boxing's and plain football's (no competition). */
     static final String[] SPORT_INTROS = {"intro:f1", "intro:ufc", "intro:boxing", "intro:football"};
@@ -221,7 +221,7 @@ final class PlayerTests {
             case POPUP:
             case STRAP:
                 return c.getString("kickoff".equals(id) ? R.string.live7_kickoff : "restart".equals(id) ? R.string.live7_restart
-                        : R.string.live7_second);
+                        : "full".equals(id) ? R.string.live7_full : R.string.live7_second);
             case LINEUPS:
                 if (id.startsWith("intro:")) return c.getString(sportLabel(id.substring(6)));
                 return c.getString("stadium".equals(id) ? R.string.live35_style_stadium : "studio".equals(id) ? R.string.live_style_studio
