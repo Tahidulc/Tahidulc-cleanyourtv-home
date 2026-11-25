@@ -730,9 +730,11 @@ final class WatchRows {
             String[] football = context.getResources().getStringArray(R.array.football_tv_channels);
             reader.execute(() -> {
                 TvGuide.Watch w = TvGuide.watch(football, g);
-                Bitmap logo = w == null || w.logo == null ? null : ScoresTicker.cachedLogo(context, w.logo, dp(96));
+                // Homefield TV (ChannelOpen) shows its own: no logo fetched for the helper's cover.
+                Bitmap logo = w == null || w.logo == null || ChannelOpen.toHomefield(context) ? null
+                        : ScoresTicker.cachedLogo(context, w.logo, dp(96));
                 main.post(() -> {
-                    if (w == null || !AppSearchService.tune(context, pkg, w.names, logo)) host.onResumeApp();
+                    if (w == null || !ChannelOpen.open(context, pkg, w.names, logo)) host.onResumeApp();
                 });
             });
         });
@@ -783,7 +785,7 @@ final class WatchRows {
         card.addView(logo, llp);
         ImageView still = card.getChildAt(0) instanceof ImageView ? (ImageView) card.getChildAt(0) : null;
         tile.setOnClickListener(v -> {
-            boolean ok = AppSearchService.tune(context, context.getString(R.string.scores_open_package),
+            boolean ok = ChannelOpen.open(context, context.getString(R.string.scores_open_package),
                     java.util.Collections.singletonList(n.channel), bitmapOf(logo), bitmapOf(still));
             if (!ok) open(item);
         });
@@ -806,9 +808,9 @@ final class WatchRows {
         return g;
     }
 
-    /** TiviMate opened on this channel (AppSearchService finds it through TiviMate's own search). */
+    /** The channel put on (ChannelOpen: Homefield TV straight on it, else TiviMate through its own search). */
     private boolean tuneTo(String channel, Bitmap logo) {
-        return AppSearchService.tune(context, context.getString(R.string.scores_open_package),
+        return ChannelOpen.open(context, context.getString(R.string.scores_open_package),
                 java.util.Collections.singletonList(channel), logo);
     }
 

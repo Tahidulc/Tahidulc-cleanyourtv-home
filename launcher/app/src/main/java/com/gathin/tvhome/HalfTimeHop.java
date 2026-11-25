@@ -118,7 +118,7 @@ final class HalfTimeHop {
                 backHold = h >= 0 ? h : 30_000L;
                 awayAt = System.currentTimeMillis();
                 AlertLog.note(a, "half-time hop to " + AlertLog.game(to) + ", back for " + AlertLog.game(from));
-                AppSearchService.tune(a, "ar.tvplayer.tv", w.names, null);
+                ChannelOpen.open(a, ChannelOpen.TIVIMATE, w.names, null);
             });
         }, "HalfTimeHop");
         t.setDaemon(true);
@@ -145,7 +145,7 @@ final class HalfTimeHop {
         Context a = c.getApplicationContext();
         main().postDelayed(() -> {
             AlertLog.note(a, "half-time hop: back for the second half of " + AlertLog.game(g));
-            AppSearchService.tune(a, "ar.tvplayer.tv", names, null);
+            ChannelOpen.open(a, ChannelOpen.TIVIMATE, names, null);
         }, Math.max(0, backHold - TUNE_MS));
     }
 

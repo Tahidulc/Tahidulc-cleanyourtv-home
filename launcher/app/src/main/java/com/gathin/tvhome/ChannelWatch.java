@@ -178,7 +178,7 @@ final class ChannelWatch {
         d.line = (on.isEmpty() ? "Frozen" : on + " frozen") + " for 10 seconds" + (names.size() > 1 ? " · " + (names.size() - 1) + " more to try" : "");
         d.channel = names.get(0);
         d.okWords = "to switch";
-        d.watch = () -> AppSearchService.tune(c, TIVIMATE, names, null);
+        d.watch = () -> ChannelOpen.open(c, TIVIMATE, names, null);
         d.showMs = 20_000L;
         AlertLog.note(c, "picture stopped on " + (on.isEmpty() ? "TiviMate" : on) + ": offered " + names.get(0));
         ScoreCard.show(c, d);
@@ -234,6 +234,6 @@ final class ChannelWatch {
     /** OK on the chip: the 4K channel tuned in TiviMate. */
     static void toFourK(Context c, String name) {
         AlertLog.note(c, "Also in 4K: switching to " + name);
-        AppSearchService.tune(c, TIVIMATE, Collections.singletonList(name), null);
+        ChannelOpen.open(c, TIVIMATE, Collections.singletonList(name), null);
     }
 }

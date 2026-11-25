@@ -557,13 +557,17 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 new ScoresTicker.Host() {
                     @Override public void onScoresOpen(ScoresTicker.Game g) {
                         String pkg = getString(R.string.scores_open_package);
-                        Intent open = getPackageManager().getLeanbackLaunchIntentForPackage(pkg);
-                        if (open == null) return;
-                        try {
-                            startActivity(open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-                            GoalWatchService.onAppOpened(MainActivity.this, pkg);
-                        } catch (Exception ignored) {
-                            return;
+                        // Homefield TV (ChannelOpen): asked for the game's channel straight away, nothing opened first.
+                        boolean homefield = ChannelOpen.toHomefield(MainActivity.this);
+                        if (!homefield) {
+                            Intent open = getPackageManager().getLeanbackLaunchIntentForPackage(pkg);
+                            if (open == null) return;
+                            try {
+                                startActivity(open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                                GoalWatchService.onAppOpened(MainActivity.this, pkg);
+                            } catch (Exception ignored) {
+                                return;
+                            }
                         }
                         // TiviMate opens at once; then the channels showing the game (Sky's guide, ESPN's listing, the
                         // competition's broadcasters), and TiviMate is put on the first it has through its own search.
@@ -571,9 +575,13 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                         int px = Math.round(96 * density);
                         new Thread(() -> {
                             TvGuide.Watch w = TvGuide.watch(football, g);
-                            if (w == null) return;
-                            Bitmap logo = w.logo == null ? null : ScoresTicker.cachedLogo(MainActivity.this, w.logo, px);
-                            handler.post(() -> AppSearchService.tune(MainActivity.this, pkg, w.names, logo));
+                            if (w == null) {
+                                // No channel known for it: Homefield TV opened as TiviMate is.
+                                if (homefield) handler.post(() -> ChannelOpen.openApp(MainActivity.this, ChannelOpen.HOMEFIELD));
+                                return;
+                            }
+                            Bitmap logo = homefield || w.logo == null ? null : ScoresTicker.cachedLogo(MainActivity.this, w.logo, px);
+                            handler.post(() -> ChannelOpen.open(MainActivity.this, pkg, w.names, logo));
                         }).start();
                     }
                     @Override public void onScoresDown() {

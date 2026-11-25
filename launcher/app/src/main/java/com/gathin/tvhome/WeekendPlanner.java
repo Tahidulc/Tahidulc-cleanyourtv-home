@@ -177,7 +177,7 @@ final class WeekendPlanner {
             AlertLog.note(c, "planner: " + p.label + " on now");
             if (p.names.isEmpty()) return;
             GoalWatchService.onAppOpened(c, "ar.tvplayer.tv");
-            AppSearchService.tune(c, "ar.tvplayer.tv", new ArrayList<>(p.names), null);
+            ChannelOpen.open(c, ChannelOpen.TIVIMATE, new ArrayList<>(p.names), null);
             return;
         }
     }

@@ -608,6 +608,10 @@
     <bool name="smart_home_button">true</bool>
     <!-- The app OK on a game box opens. -->
     <string name="scores_open_package" translatable="false">ar.tvplayer.tv</string>
+    <!-- The app every channel link opens in (the TV guide, Home's cards, the scores, the alerts, the phone's channel;
+         ChannelOpen): com.gathin.homefieldtv puts Homefield TV straight on the channel (its PLAY_CHANNEL) when it is on the
+         TV and answers it; empty, or anything else, keeps TiviMate's way through the helper (scores_open_package). -->
+    <string name="channel_app_package" translatable="false">com.gathin.homefieldtv</string>
     <!-- Trending films and TV on this app's row, with a theme's "trending": Apple's charts for trending_country. -->
     <string name="trending_package" translatable="false">com.debridstream.tv</string>
     <string name="trending_country" translatable="false">gb</string>

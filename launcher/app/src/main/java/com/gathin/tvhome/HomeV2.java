@@ -113,7 +113,8 @@ final class HomeV2 {
     /** The rail: a glyph for each kind of dock app, matched on its package. */
     static int glyph(String pkg) {
         if (pkg == null) return R.drawable.ic_v2_apps;
-        if (pkg.equals("ar.tvplayer.tv") || pkg.contains("tivimate")) return R.drawable.ic_v2_tv;
+        // Live TV's apps: TiviMate, and Homefield TV the same.
+        if (LiveRow.app(pkg) || pkg.contains("tivimate")) return R.drawable.ic_v2_tv;
         if (pkg.contains("youtube")) return R.drawable.ic_v2_youtube;
         if (pkg.contains("netflix")) return R.drawable.ic_v2_netflix;
         if (pkg.contains("disney")) return R.drawable.ic_v2_disney;
@@ -121,10 +122,10 @@ final class HomeV2 {
         return R.drawable.ic_v2_play;
     }
 
-    private static String railLabel(String pkg, String label) {
+    static String railLabel(String pkg, String label) {
         if (pkg == null) return "ALL APPS";
-        if (pkg.equals("ar.tvplayer.tv")) return "LIVE TV · ON NOW";
-        if (pkg.equals(HomefieldCards.PKG)) return "HOMEFIELD TV · YOUR CHANNELS NOW";
+        // Homefield TV's row is TiviMate's: live TV's channels on now.
+        if (LiveRow.app(pkg)) return LiveRow.LABEL;
         if (pkg.contains("youtube")) return "YOUTUBE · CONTINUE WATCHING & RECOMMENDED";
         if (pkg.contains("debrid")) return "NEW RELEASES · JUST ADDED";
         return label.toUpperCase(Locale.ROOT) + " · POPULAR NOW";
@@ -2688,8 +2689,8 @@ final class HomeV2 {
         if (i < 0 || i >= railViews.size()) return;
         railIdx = i;
         railSel = i;
-        // The dock next to Homefield TV: its cards read ahead, so they are there as it lands.
-        homefield.near(i);
+        // The dock next to TiviMate or Homefield TV: their live row read ahead, so it is there as the dock lands.
+        liveAhead(i);
         String p = (String) railViews.get(i).getTag();
         if (p == null) {
             // All apps: the same Apps page as the Apps box, showing as when the box is hovered; Right or OK goes in.
@@ -3210,11 +3211,55 @@ final class HomeV2 {
     }
 
     /**
+     * Whether Homefield TV's row is its own cards: read, and not live TV's channels on now (those had none: no channels,
+     * no guide). Its cards are read again (HomefieldCards) only then.
+     */
+    boolean cardsRow() {
+        return LiveRow.cardsRow(rows.get(HomefieldCards.PKG));
+    }
+
+    /** The live rows being read ahead (main thread). */
+    private final java.util.Set<String> readingAhead = new java.util.HashSet<>();
+
+    /**
+     * The dock's focus moved to place i: a live TV app's row (TiviMate's, Homefield TV's) next to it, or on it, read ahead
+     * off the main thread when it hasn't been, so it is there as the dock lands. One read of Sky's guide does for both.
+     */
+    private void liveAhead(int i) {
+        for (int k = i - 1; k <= i + 1; k++) {
+            if (k < 0 || k >= railViews.size()) continue;
+            Object tag = railViews.get(k).getTag();
+            if (!(tag instanceof String) || !LiveRow.app((String) tag)) continue;
+            String p = (String) tag;
+            if (rows.get(p) != null || !readingAhead.add(p)) continue;
+            io.execute(() -> {
+                List<Tile> got;
+                try {
+                    got = read(p);
+                } catch (Exception e) {
+                    got = null;
+                }
+                List<Tile> done = got;
+                main.post(() -> {
+                    readingAhead.remove(p);
+                    if (done == null || done.isEmpty() || rows.get(p) != null) return;
+                    rows.put(p, done);
+                    rowsAt.put(p, System.currentTimeMillis());
+                    // The first cards' pictures ready before the row is shown, at the width the row draws them.
+                    for (int n = 0; n < Math.min(4, done.size()); n++) prefetch(done.get(n).image, px(TILE_W));
+                });
+            });
+        }
+    }
+
+    /**
      * Homefield TV's cards read again (HomefieldCards): kept for its row; on show, the same cards' bars move on in place,
      * and other cards (a programme changed, a channel watched) fill the row unless the remote is on it (then they come
      * the next time the row is shown).
      */
     void homefieldCards(List<Tile> fresh) {
+        // Only while its row is its own cards (live TV's channels on now had none): else the live row stays.
+        if (!cardsRow()) return;
         List<Tile> had = rows.get(HomefieldCards.PKG);
         boolean onShow = HomefieldCards.PKG.equals(mode) && skin == null && had != null && had == shown;
         if (onShow && HomefieldCards.same(had, fresh)) {
@@ -3566,17 +3611,7 @@ final class HomeV2 {
 
     /** Sky's marks for a programme from its guide entry, and its running time. */
     static void skySpecs(Tile t, JSONObject e, String channel) {
-        if (e == null) return;
-        long mins = e.optLong("d") / 60;
-        if (mins > 0) t.duration = mins >= 120 ? (mins / 60) + "h " + (mins % 60 == 0 ? "" : (mins % 60) + "m") : mins + " mins";
-        boolean uhd = channel != null && channel.matches("(?i).*\\b(uhd|4k)\\b.*");
-        if (uhd) t.specs.add("UHD");
-        else if (e.optBoolean("hd")) t.specs.add("HD");
-        if (e.optString("at").contains("D")) t.specs.add("DOLBY");
-        if (e.optBoolean("s")) t.specs.add("S");
-        if (e.optBoolean("ad")) t.specs.add("AD");
-        String r = e.optString("r");
-        if (!r.isEmpty() && !r.equals("--")) t.specs.add("age:" + r);
+        LiveRow.specs(t, e, channel);
     }
 
     private LinearLayout.LayoutParams gapped(int gap) {
@@ -3739,9 +3774,12 @@ final class HomeV2 {
 
     /** One dock app's tiles: what it publishes to Android's TV rows, else what is popular on it from TMDB. */
     private List<Tile> app(String pkg) {
-        if (pkg.equals("ar.tvplayer.tv")) return liveNow(false);
-        // Homefield TV: its own cards (recent channels, favourites, sport on now); an older one without them, its plain row.
-        if (pkg.equals(HomefieldCards.PKG)) {
+        // TiviMate and Homefield TV: live TV's channels on now, the same cards (OK on Homefield TV's opens Homefield TV).
+        // Homefield TV's own cards (recent channels, favourites, sport on now) only when there are none (no channels, no
+        // guide); an older Homefield TV without them, its plain row.
+        if (LiveRow.app(pkg)) {
+            List<Tile> live = liveNow(false, pkg);
+            if (!live.isEmpty() || !HomefieldCards.PKG.equals(pkg)) return live;
             List<Tile> cards = homefield.tiles();
             if (cards != null) return cards;
         }
@@ -3825,11 +3863,28 @@ final class HomeV2 {
         return i >= 0 && !c.isNull(i) ? c.getString(i) : null;
     }
 
-    /** What is on now on the playlist's channels, sport first: OK puts TiviMate on that channel. */
     /** Live TV's first five, in this order: the main channels, as on any British guide. */
     private static final String[] MAIN_FIVE = {"(?i)^bbc one\\b.*", "(?i)^bbc two\\b.*", "(?i)^itv ?1\\b.*", "(?i)^channel 4\\b.*", "(?i)^(channel )?5( (hd|uhd))?$"};
 
+    /** What is on now on the playlist's channels (sport only, or the main five, sport, then news): TiviMate's row. */
     private List<Tile> liveNow(boolean sportOnly) {
+        return liveNow(sportOnly, ChannelOpen.TIVIMATE);
+    }
+
+    /** The same for the dock app pkg's row: TiviMate's and Homefield TV's alike but for OK (LiveRow.ok). */
+    private List<Tile> liveNow(boolean sportOnly, String pkg) {
+        return LiveRow.tiles(onNow(sportOnly), sportOnly, System.currentTimeMillis(), ZoneId.systemDefault(), this::streamOf,
+                LiveRow.ok(pkg, this::tune, this::watchInHomefield));
+    }
+
+    /** The full row's read from Sky's guide, kept this long: TiviMate's row and Homefield TV's are one read. */
+    static final long LIVE_READ_MS = 60_000L;
+    private volatile List<UkTv.Now> liveRead;
+    private volatile String liveReadOf;
+    private volatile long liveReadAt;
+
+    /** Sky's guide for live TV's channels: the main five, then sport, then news (sport alone for For you). Off the main thread. */
+    private List<UkTv.Now> onNow(boolean sportOnly) {
         List<String[]> order = new ArrayList<>();
         if (!sportOnly) {
             // BBC One, BBC Two, ITV1, Channel 4 and 5 first, then the sports channels, then the news.
@@ -3840,43 +3895,21 @@ final class HomeV2 {
         if (!sportOnly) for (String[] c : channels) if (c[2].contains("News") && !order.contains(c) && order.size() < 36) order.add(c);
         if (order.isEmpty()) return new ArrayList<>();
         String[] ids = new String[order.size()];
-        Map<String, String> names = new HashMap<>();
-        for (int i = 0; i < order.size(); i++) {
-            ids[i] = order.get(i)[0] + "|" + order.get(i)[1];
-            names.put(order.get(i)[1], order.get(i)[1]);
-        }
-        List<Tile> out = new ArrayList<>();
-        DateTimeFormatter hm = DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault());
+        for (int i = 0; i < order.size(); i++) ids[i] = order.get(i)[0] + "|" + order.get(i)[1];
+        String of = String.join(",", ids);
         long now = System.currentTimeMillis();
+        List<UkTv.Now> kept = liveRead;
+        if (!sportOnly && kept != null && of.equals(liveReadOf) && now - liveReadAt < LIVE_READ_MS && now >= liveReadAt) return kept;
         // Sky's guide answers for at most 20 channels a time.
-        List<UkTv.Now> now_ = new ArrayList<>();
+        List<UkTv.Now> got = new ArrayList<>();
         for (int from = 0; from < ids.length; from += 20)
-            now_.addAll(UkTv.now(Arrays.copyOfRange(ids, from, Math.min(ids.length, from + 20))));
-        for (UkTv.Now n : now_) {
-            if (sportOnly && !n.title.toLowerCase(Locale.ROOT).startsWith("live")) continue;
-            Tile t = new Tile();
-            t.title = n.title.replaceFirst("^(?i)live:? ", "");
-            t.image = n.image;
-            t.heroImage = n.image == null ? null : n.image.replace("/16-9/640", "/16-9/1280");
-            t.sub = "On now · " + hm.format(Instant.ofEpochMilli(n.start)) + " – " + hm.format(Instant.ofEpochMilli(n.end));
-            t.badge = n.logo;
-            t.heroTop = n.logo;
-            t.heroTitle = t.title;
-            long left = Math.max(1, (n.end - now) / 60_000L);
-            t.heroMeta = n.channel + " · " + left + " min left" + (n.next != null ? " · Next: " + n.next : "");
-            t.heroText = n.synopsis;
-            t.progress = Math.max(0f, Math.min(1f, (now - n.start) / (float) Math.max(1, n.end - n.start)));
-            String channel = n.channel;
-            String logoUrl = n.logo != null && channel != null && channel.matches("(?i).*\\b(uhd|4k)\\b.*") ? n.logo + "#uhd" : n.logo;
-            t.badge = logoUrl;
-            t.heroTop = logoUrl;
-            t.stream = streamOf(channel);
-            t.channel = channel;
-            skySpecs(t, n.raw, channel);
-            t.ok = () -> tune(channel, logoUrl);
-            out.add(t);
+            got.addAll(UkTv.now(Arrays.copyOfRange(ids, from, Math.min(ids.length, from + 20))));
+        if (!sportOnly && !got.isEmpty()) {
+            liveRead = java.util.Collections.unmodifiableList(got);
+            liveReadOf = of;
+            liveReadAt = now;
         }
-        return out;
+        return got;
     }
 
     /** Live sport over the next three days on the playlist's sports channels, from Sky's guide. */
@@ -4076,17 +4109,22 @@ final class HomeV2 {
     }
 
     /**
-     * TiviMate on the first of these channels it has, as v1 does (its own search; a 4K version next to the channel is
-     * preferred). The channel's logo is fetched first when it is not to hand, so the cover always shows the logo.
+     * The first of these channels put on (ChannelOpen): Homefield TV straight on it, at once; else TiviMate on the first
+     * it has, as v1 does (its own search; a 4K version next to the channel is preferred), the channel's logo fetched first
+     * when it is not to hand, so the helper's cover always shows the logo.
      */
     void tune(List<String> channels, String given) {
-        String pkg = "ar.tvplayer.tv";
+        String pkg = ChannelOpen.TIVIMATE;
         players.stop();
+        if (ChannelOpen.toHomefield(a)) {
+            ChannelOpen.open(a, pkg, channels, null);
+            return;
+        }
         String logoUrl = given != null ? given : logoFor(channels);
         // The cover over TiviMate shows the channel's logo large: Sky's full-size picture, trimmed, never a tile's copy.
         if (logoUrl == null) {
             GoalWatchService.onAppOpened(a, pkg);
-            AppSearchService.tune(a, pkg, channels, null);
+            ChannelOpen.open(a, pkg, channels, null);
             return;
         }
         io.execute(() -> {
@@ -4094,9 +4132,20 @@ final class HomeV2 {
             Bitmap logo = logoUrl.contains("newchanlogos") ? trim(got) : got;
             main.post(() -> {
                 GoalWatchService.onAppOpened(a, pkg);
-                AppSearchService.tune(a, pkg, channels, logo);
+                ChannelOpen.open(a, pkg, channels, logo);
             });
         });
+    }
+
+    /**
+     * OK on a card of Homefield TV's row on the dock: Homefield TV straight on that channel (ChannelOpen, whichever app
+     * the other channel links go to); Homefield TV opened as its icon opens it when it can't be asked.
+     */
+    void watchInHomefield(String channel) {
+        players.stop();
+        if (channel == null || !ChannelOpen.homefieldAnswers(a) || !ChannelOpen.inHomefield(a, java.util.Collections.singletonList(channel))) {
+            openApp(HomefieldCards.PKG);
+        }
     }
 
     /**
@@ -4348,7 +4397,7 @@ final class HomeV2 {
         io.execute(() -> {
             TvGuide.Watch w = TvGuide.watch(football, g);
             main.post(() -> {
-                if (w == null || w.names == null || w.names.isEmpty()) { openApp("ar.tvplayer.tv"); return; }
+                if (w == null || w.names == null || w.names.isEmpty()) { openApp(ChannelOpen.app(a, ChannelOpen.TIVIMATE)); return; }
                 tune(w.names, w.logo);
             });
         });

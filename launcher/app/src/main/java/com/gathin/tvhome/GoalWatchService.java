@@ -301,7 +301,7 @@ public class GoalWatchService extends Service {
             d.channelLogo = logo;
             d.channel = names.isEmpty() ? null : names.get(0);
             d.watch = w.length > 2 && w[2] instanceof Runnable ? (Runnable) w[2]
-                    : () -> AppSearchService.tune(this, getString(R.string.scores_open_package), names, logo);
+                    : () -> ChannelOpen.open(this, getString(R.string.scores_open_package), names, logo);
         }
         return d;
     }
@@ -527,7 +527,7 @@ public class GoalWatchService extends Service {
             android.graphics.Bitmap logo = (android.graphics.Bitmap) w[1];
             d.channelLogo = logo;
             d.channel = names.isEmpty() ? null : names.get(0);
-            d.watch = () -> AppSearchService.tune(this, getString(R.string.scores_open_package), names, logo);
+            d.watch = () -> ChannelOpen.open(this, getString(R.string.scores_open_package), names, logo);
         }
         return d;
     }
@@ -728,7 +728,7 @@ public class GoalWatchService extends Service {
             d.channelLogo = logo;
             d.channel = names.isEmpty() ? null : names.get(0);
             d.watch = w.length > 2 && w[2] instanceof Runnable ? (Runnable) w[2]
-                    : () -> AppSearchService.tune(this, getString(R.string.scores_open_package), names, logo);
+                    : () -> ChannelOpen.open(this, getString(R.string.scores_open_package), names, logo);
         }
         return d;
     }
@@ -756,7 +756,7 @@ public class GoalWatchService extends Service {
                     List<String> names = new ArrayList<>(Arrays.asList(channel));
                     k.channelLogo = logo;
                     k.channel = channel;
-                    k.watch = () -> AppSearchService.tune(this, getString(R.string.scores_open_package), names, logo);
+                    k.watch = () -> ChannelOpen.open(this, getString(R.string.scores_open_package), names, logo);
                 }
                 main.post(() -> ScoreCard.show(this, k));
                 return;
@@ -774,7 +774,7 @@ public class GoalWatchService extends Service {
                 List<String> names = new ArrayList<>(Arrays.asList(channel));
                 d.channelLogo = logo;
                 d.channel = channel;
-                d.watch = () -> AppSearchService.tune(this, getString(R.string.scores_open_package), names, logo);
+                d.watch = () -> ChannelOpen.open(this, getString(R.string.scores_open_package), names, logo);
             }
             main.post(() -> ScoreCard.show(this, d));
         });
@@ -1638,7 +1638,7 @@ public class GoalWatchService extends Service {
                     List<String> names = new ArrayList<>(Arrays.asList("Sky Sports Main Event"));
                     d.channelLogo = logo;
                     d.channel = "Sky Sports Main Event";
-                    d.watch = () -> AppSearchService.tune(this, getString(R.string.scores_open_package), names, logo);
+                    d.watch = () -> ChannelOpen.open(this, getString(R.string.scores_open_package), names, logo);
                 }
                 main.post(() -> ScoreCard.show(this, d));
             });
@@ -3135,7 +3135,7 @@ public class GoalWatchService extends Service {
         } else if (w != null) {
             @SuppressWarnings("unchecked") List<String> names = (List<String>) w[0];
             android.graphics.Bitmap logo = (android.graphics.Bitmap) w[1];
-            d.watch = () -> AppSearchService.tune(this, getString(R.string.scores_open_package), names, logo);
+            d.watch = () -> ChannelOpen.open(this, getString(R.string.scores_open_package), names, logo);
         }
         if (w == null && g.id != null && g.id.startsWith("fixture-test-")) {
             // adb's made-up fixture is in no guide: on Sky Sports Main Event, as the other tests are, to show the channel.
@@ -3144,7 +3144,7 @@ public class GoalWatchService extends Service {
             List<String> names = new ArrayList<>(Arrays.asList("Sky Sports Main Event"));
             d.channel = "Sky Sports Main Event";
             d.channelLogo = logo;
-            d.watch = () -> AppSearchService.tune(this, getString(R.string.scores_open_package), names, logo);
+            d.watch = () -> ChannelOpen.open(this, getString(R.string.scores_open_package), names, logo);
         }
         d.remote = Config.themeString(this, "ok_button", "");
         // The kits they wear today: the ones ESPN's line-ups name for the game (Worn), drawn as their Wikipedia articles
@@ -3469,7 +3469,7 @@ public class GoalWatchService extends Service {
         d.channelLogo = logo;
         d.channel = names.isEmpty() ? null : names.get(0);
         d.watch = w.length > 2 && w[2] instanceof Runnable ? (Runnable) w[2]
-                : () -> AppSearchService.tune(this, getString(R.string.scores_open_package), names, logo);
+                : () -> ChannelOpen.open(this, getString(R.string.scores_open_package), names, logo);
         if (w.length > 3 && w[3] instanceof String) d.okWords = (String) w[3];
     }
 
@@ -4271,7 +4271,7 @@ public class GoalWatchService extends Service {
                     || keyCode == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER || keyCode == android.view.KeyEvent.KEYCODE_BUTTON_A;
             endWatch(box, h);
             if (ok && w.length > 2 && w[2] instanceof Runnable) ((Runnable) w[2]).run();
-            else if (ok) AppSearchService.tune(this, getString(R.string.scores_open_package), names, logo);
+            else if (ok) ChannelOpen.open(this, getString(R.string.scores_open_package), names, logo);
             return true;
         });
     }

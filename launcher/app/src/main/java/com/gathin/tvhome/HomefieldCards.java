@@ -29,20 +29,21 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Homefield TV's live TV cards in Home's row while the dock is on Homefield TV (launcher v2), in the row TiviMate's
- * channels on now have and in their look: the programme's picture filling the card, the channel's logo on a chip of its
- * own colour, the title, its times and a bar for how far through; the hero above with the picture, the logo, how long is
- * left, what is next and what it is about. A programme with no picture: the channel's logo on its own colour instead.
+ * Homefield TV's own live TV cards, for its row on the dock (launcher v2) when live TV's channels on now (TiviMate's row,
+ * which Homefield TV's is as it comes: HomeV2.app) have none, with no channels or no guide. In that row's look: the
+ * programme's picture filling the card, the channel's logo on a chip of its own colour, the title, its times and a bar
+ * for how far through; the hero above with the picture, the logo, how long is left, what is next and what it is about. A
+ * programme with no picture: the channel's logo on its own colour instead.
  *
  * <p>What they are, from Homefield TV itself (its ChannelCardsProvider, a signature permission both apps declare): the
  * channels watched last on this TV (newest first), the favourites, then the sport on now, a channel once. OK on a card
  * opens Homefield TV straight on that channel (its PLAY_CHANNEL intent, by the channel's key, its name and number as
- * fallbacks): no search, no accessibility helper, nothing typed, as TiviMate's cards need.
+ * fallbacks): no search, no accessibility helper, nothing typed.
  *
- * <p>Quick: read off the main thread when Home comes up and when the dock comes near Homefield TV, so the row is ready
- * when the dock lands on it; read again every REFRESH_MS while it shows (the bars move on in place); pictures fetched
- * ahead and decoded at the size they are drawn (FIT). A Homefield TV too old to have the cards (or none on the TV, or a
- * provider that says no): null, and the row is the plain app's, as before.
+ * <p>While they are the row (HomeV2.cardsRow): read again off the main thread when Home comes up, and every REFRESH_MS
+ * while they show (the bars move on in place); pictures fetched ahead and decoded at the size they are drawn (FIT). A
+ * Homefield TV too old to have the cards (or none on the TV, or a provider that says no): null, and the row is the plain
+ * app's, as before.
  */
 final class HomefieldCards {
     static final String PKG = "com.gathin.homefieldtv";
@@ -241,17 +242,6 @@ final class HomefieldCards {
         h.main.removeCallbacks(refresh);
     }
 
-    /** The dock's focus moved to the app at place i: Homefield TV's cards read ahead when it is next to it (or it). */
-    void near(int i) {
-        for (int k = i - 1; k <= i + 1; k++) {
-            if (k < 0 || k >= h.railViews.size()) continue;
-            if (PKG.equals(h.railViews.get(k).getTag())) {
-                read(false);
-                return;
-            }
-        }
-    }
-
     /** The row now shows m's tiles: Homefield TV's kept fresh while they show. */
     void rowFor(String m) {
         boolean now = PKG.equals(m);
@@ -263,7 +253,8 @@ final class HomefieldCards {
 
     /** The cards read off the main thread (unless read a moment ago), handed to Home's row, their pictures fetched ahead. */
     private void read(boolean force) {
-        if (!onDock()) return;
+        // Only while its row is these cards (live TV's channels on now had none); else its row is TiviMate's and stays so.
+        if (!onDock() || !h.cardsRow()) return;
         long t = SystemClock.elapsedRealtime();
         if (reading || !force && t - readAt < FRESH_MS) return;
         reading = true;

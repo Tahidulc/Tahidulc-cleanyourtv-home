@@ -41,7 +41,8 @@ import java.util.concurrent.Executors;
 /**
  * Launcher v2's TV guide: the TiviMate playlist's channels (the theme's "guide_channels", in the playlist's order and
  * groups) with what is on them from the public schedule behind Sky's online guide. Two hours across, seven channels
- * down; the selected programme's picture and details fill the top. OK puts TiviMate on the channel; Back closes.
+ * down; the selected programme's picture and details fill the top. OK puts the channel on (ChannelOpen: Homefield TV
+ * straight on it, else TiviMate through the helper); Back closes.
  */
 final class GuideV2 {
     private static final int ROWS = 7;
@@ -516,19 +517,25 @@ final class GuideV2 {
                     onChips = false;
                 } else if (!list.isEmpty()) {
                     String[] ch = list.get(chan);
-                    // OK once: the channel live in the corner. OK again on the same channel: full screen in TiviMate.
+                    // OK once: the channel live in the corner. OK again on the same channel: full screen (ChannelOpen).
                     if (previewing != ch && canPreview(ch)) {
                         preview(ch);
                         return true;
                     }
                     hide();
                     closed.run();
+                    java.util.List<String> names = java.util.Collections.singletonList(ch[1]);
+                    // Homefield TV (ChannelOpen): straight on to the channel now, no logo to fetch for a cover.
+                    if (ChannelOpen.toHomefield(c)) {
+                        ChannelOpen.open(c, ChannelOpen.TIVIMATE, names, null);
+                        return true;
+                    }
                     GoalWatchService.onAppOpened(c, "ar.tvplayer.tv");
                     // The cover over TiviMate shows the channel's logo large: Sky's full-size picture, trimmed (the
                     // guide's own copy is list-sized), fetched first so it is always there.
                     new Thread(() -> {
                         Bitmap got = HomeV2.trim(ScoresTicker.cachedLogo(c, logoUrl(ch[0]), 512));
-                        main.post(() -> AppSearchService.tune(c, "ar.tvplayer.tv", java.util.Collections.singletonList(ch[1]), got));
+                        main.post(() -> ChannelOpen.open(c, ChannelOpen.TIVIMATE, names, got));
                     }).start();
                     return true;
                 }

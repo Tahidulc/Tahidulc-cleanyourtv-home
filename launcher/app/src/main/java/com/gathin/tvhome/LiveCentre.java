@@ -321,7 +321,7 @@ final class LiveCentre {
             }
             @SuppressWarnings("unchecked") List<String> names = (List<String>) w[0];
             GoalWatchService.onAppOpened(app, TIVIMATE);
-            return AppSearchService.tune(app, TIVIMATE, names, (Bitmap) w[1]);
+            return ChannelOpen.open(app, TIVIMATE, names, (Bitmap) w[1]);
         } catch (RuntimeException e) {
             return false;
         }

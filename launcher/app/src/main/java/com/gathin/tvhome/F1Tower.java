@@ -92,7 +92,7 @@ final class F1Tower {
                         @SuppressWarnings("unchecked") List<String> names = (List<String>) w[0];
                         String pkg = app.getString(R.string.scores_open_package);
                         GoalWatchService.onAppOpened(app, pkg);
-                        tuning = AppSearchService.tune(app, pkg, names, (Bitmap) w[1]);
+                        tuning = ChannelOpen.open(app, pkg, names, (Bitmap) w[1]);
                     } catch (RuntimeException ignored) {
                     }
                 }

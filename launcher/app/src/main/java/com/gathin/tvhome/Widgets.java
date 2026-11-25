@@ -410,7 +410,7 @@ final class Widgets {
                 if (where != null && where[0] instanceof List && !((List<?>) where[0]).isEmpty()) {
                     @SuppressWarnings("unchecked") List<String> names = (List<String>) where[0];
                     Bitmap logo = (Bitmap) where[1];
-                    hop = () -> AppSearchService.tune(ctx, ctx.getString(R.string.scores_open_package), names, logo);
+                    hop = () -> ChannelOpen.open(ctx, ctx.getString(R.string.scores_open_package), names, logo);
                     break;
                 }
             }

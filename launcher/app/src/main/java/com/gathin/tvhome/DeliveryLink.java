@@ -358,7 +358,7 @@ final class DeliveryLink {
                 AlertLog.note(context, "channel from the phone: " + names.get(0));
                 new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
                     GoalWatchService.onAppOpened(context, "ar.tvplayer.tv");
-                    AppSearchService.tune(context, "ar.tvplayer.tv", names, null);
+                    ChannelOpen.open(context, ChannelOpen.TIVIMATE, names, null);
                 });
                 reply(s, 200, "{\"ok\":true}");
                 return;

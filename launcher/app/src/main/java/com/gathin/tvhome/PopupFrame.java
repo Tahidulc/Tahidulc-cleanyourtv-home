@@ -459,7 +459,7 @@ final class PopupFrame {
                     @SuppressWarnings("unchecked") List<String> names = (List<String>) w[0];
                     String pkg = app.getString(R.string.scores_open_package);
                     GoalWatchService.onAppOpened(app, pkg);
-                    AppSearchService.tune(app, pkg, names, (android.graphics.Bitmap) w[1]);
+                    ChannelOpen.open(app, pkg, names, (android.graphics.Bitmap) w[1]);
                 } catch (RuntimeException ignored) {
                 }
             });
