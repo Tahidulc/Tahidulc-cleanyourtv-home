@@ -705,7 +705,10 @@ M3U's films and episodes go straight to their file as the playlist is read (an e
 series' page opens); the catalogue's titles keep their id in their key and are looked up and searched from plain arrays,
 and a refresh keeps every title whose row hasn't changed, so the family's 200,000 films and series are held once
 (TheFamilysSizeTest: under 96 MB of the JVM's heap with 27,000 channels and a guide of 90,000 programmes, all under
-120). A while into a channel full screen, half the pictures the screens under it hold are let go.
+120). A while into a channel full screen, half the pictures the screens under it hold are let go; and once only live TV
+has been on screen for 30 seconds (the picture, catch-up, the guide, the channel lists, History), the films and series
+are let go too (91 MB of the JVM's heap for the family's 200,000 down to 0.1, TheFamilysSizeTest), read back from their
+files when Home, Movies, TV shows, a title, Search, My list or Settings opens, Home showing what it showed meanwhile.
 
 The memory log (Android/data/com.gathin.homefieldtv/files/memlog.txt) has headroom= (how much more the Java heap may take)
 and problems= (out of memory, freezes and trouble in the background since the app started) on each minute's memory line,

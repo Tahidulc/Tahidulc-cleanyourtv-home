@@ -42,7 +42,8 @@ import java.util.Locale;
  * heap: the Java heap in use, its size now and its most; native: the native heap in use (bitmaps' pixels among it); rss:
  * what the process holds in RAM (VmRSS); pics: the picture cache's bytes and its budget, the pictures found in it and
  * read since the start; gc: collections and their time since the start (blocking: those that held up a thread);
- * channels, guide (channels, programmes, thousands of characters of descriptions) and catalogue sizes; the player's
+ * channels, guide (channels, programmes, thousands of characters of descriptions) and catalogue sizes ("(asleep)": its
+ * titles let go while only live TV is on screen, read back when a screen shows them); the player's
  * buffer ahead; the screen on top; headroom: how much more the Java heap may take before it is out of memory; problems:
  * since the app started, the out-of-memory errors, the main thread's freezes and the trouble in the background it carried
  * on through (Problems; each noted for Settings' If something goes wrong). Written off the main thread; a line costs well
@@ -60,13 +61,16 @@ final class MemLog {
         Context app = c.getApplicationContext();
         Library lib = Library.get(app);
         int channels = lib.count();
-        int catalog = Catalog.get(app).films().size() + Catalog.get(app).series().size();
+        Catalog cat = Catalog.get(app);
+        // Its size, and whether it is let go while only live TV is on screen (Catalog.sleep).
+        int catalog = cat.size();
+        String asleep = cat.asleep() ? "(asleep)" : "";
         long now = System.currentTimeMillis();
         String frames = FrameStats.line();
         Exec.io(() -> {
             try {
                 File f = file(app);
-                append(f, line(now, lib, channels, catalog, bufferedMs, screen));
+                append(f, line(now, lib, channels, catalog, asleep, bufferedMs, screen));
                 if (frames != null) append(f, String.format(Locale.ROOT, "%1$tF %1$tR ", now) + frames);
             } catch (IOException | RuntimeException ignored) {
                 // no log this minute
@@ -82,17 +86,17 @@ final class MemLog {
         return new File(dir, NAME);
     }
 
-    private static String line(long now, Library lib, int channels, int catalog, long bufferedMs, String screen) {
+    private static String line(long now, Library lib, int channels, int catalog, String asleep, long bufferedMs, String screen) {
         Runtime r = Runtime.getRuntime();
         long used = r.totalMemory() - r.freeMemory();
         long[] g = lib.guideSize();
         return String.format(Locale.ROOT,
                 "%1$tF %1$tR heap=%2$.1f/%3$.1f/%4$.0fMB native=%5$.1fMB rss=%6$dMB pics=%7$.1f/%8$.0fMB(hits=%9$d,reads=%10$d) "
-                        + "gc=%11$s/%12$.1fs blocking=%13$s channels=%14$d guide=%15$dch/%16$dp/%17$dkc catalog=%18$d buffer=%19$.1fs screen=%20$s headroom=%21$.0fMB problems=%22$s",
+                        + "gc=%11$s/%12$.1fs blocking=%13$s channels=%14$d guide=%15$dch/%16$dp/%17$dkc catalog=%18$d%23$s buffer=%19$.1fs screen=%20$s headroom=%21$.0fMB problems=%22$s",
                 now, mb(used), mb(r.totalMemory()), mb(r.maxMemory()), mb(Debug.getNativeHeapAllocatedSize()), rssMb(),
                 mb(Pics.bytes()), mb(Pics.BUDGET), Pics.hits, Pics.loads, stat("art.gc.gc-count"),
                 parse(stat("art.gc.gc-time")) / 1000.0, stat("art.gc.blocking-gc-count"), channels, g[0], g[1], g[2] / 1000,
-                catalog, bufferedMs / 1000.0, screen, mb(r.maxMemory() - used), com.gathin.homefieldtv.engine.Problems.sinceStart());
+                catalog, bufferedMs / 1000.0, screen, mb(r.maxMemory() - used), com.gathin.homefieldtv.engine.Problems.sinceStart(), asleep);
     }
 
     private static double mb(long bytes) {

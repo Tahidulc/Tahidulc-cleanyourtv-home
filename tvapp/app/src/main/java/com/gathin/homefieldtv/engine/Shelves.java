@@ -83,12 +83,15 @@ public final class Shelves {
         final int[] next, pages;
         /** Titles never shown in it (a recommendation row's own watched ones). */
         final Set<String> skip;
-        /** When it was made (ms), and for which catalogue (its lists). */
+        /**
+         * When it was made (ms), and for which catalogue (its list of films, held weakly: a row kept for Home never keeps
+         * the whole catalogue in memory once it has been let go, Catalog.sleep).
+         */
         final long at;
-        final List<Catalog.Title> madeFor;
+        final java.lang.ref.WeakReference<List<Catalog.Title>> madeFor;
 
         Shelf(CategorySet.Entry entry, String title, List<Pick> picks, List<Catalog.Title> all, String[] paths, int[] next,
-              int[] pages, Set<String> skip, List<Catalog.Title> madeFor) {
+              int[] pages, Set<String> skip, java.lang.ref.WeakReference<List<Catalog.Title>> madeFor) {
             this.entry = entry;
             this.title = title == null ? "" : title;
             this.picks = Collections.unmodifiableList(picks);
@@ -126,7 +129,7 @@ public final class Shelves {
     /** The row as made before for this catalogue (null: not yet, or the catalogue changed). */
     public static Shelf kept(Context c, CategorySet.Entry e) {
         Shelf s = KEPT.get(e.toString());
-        return s != null && s.madeFor == Catalog.get(c).films() ? s : null;
+        return s != null && s.madeFor.get() == Catalog.get(c).films() ? s : null;
     }
 
     /** Whether a row kept is old enough to be made again (TMDB's lists move: ten minutes). */
@@ -184,7 +187,7 @@ public final class Shelves {
     }
 
     private static Shelf empty(Context c, CategorySet.Entry e) {
-        return new Shelf(e, e.title, new ArrayList<>(), null, null, null, null, null, Catalog.get(c).films());
+        return new Shelf(e, e.title, new ArrayList<>(), null, null, null, null, null, new java.lang.ref.WeakReference<>(Catalog.get(c).films()));
     }
 
     /** One choice of a source: its "+" parts taken in turn. */
@@ -333,7 +336,7 @@ public final class Shelves {
             n[i] = next.get(i);
             p[i] = pages.get(i);
         }
-        return new Shelf(e, title, picks, all, paths.toArray(new String[0]), n, p, skip, cat.films());
+        return new Shelf(e, title, picks, all, paths.toArray(new String[0]), n, p, skip, new java.lang.ref.WeakReference<>(cat.films()));
     }
 
     /**

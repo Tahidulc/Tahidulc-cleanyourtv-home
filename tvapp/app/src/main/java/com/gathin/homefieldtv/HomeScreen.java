@@ -138,6 +138,9 @@ final class HomeScreen extends Screen implements HomeCard.Host {
         if (home == null) return;
         Library lib = Library.get(tv);
         Catalog cat = Catalog.get(tv);
+        // The films and series let go while live TV played (Catalog.sleep): the sections as they were until they are
+        // read back (catalogChanged fills them then).
+        if (cat.asleep()) return;
         long now = System.currentTimeMillis();
         List<HomeCard.Section> list = new ArrayList<>();
         playlistNames.clear();

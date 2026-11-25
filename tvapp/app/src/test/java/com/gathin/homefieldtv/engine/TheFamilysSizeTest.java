@@ -1,6 +1,7 @@
 package com.gathin.homefieldtv.engine;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
@@ -199,6 +200,60 @@ public class TheFamilysSizeTest {
         assertTrue("guide " + sizes, mb(withGuide - channelsOnly) < GUIDE_MB);
         assertTrue("all " + sizes, mb(withCatalog - base) < ALL_MB);
         assertTrue("refresh " + sizes, mb(afterRefresh - withCatalog) < REFRESH_MB);
+    }
+
+    /**
+     * Live TV on the TCL (a 192 MB heap): the 198,769 films and series let go while only live TV is on screen
+     * (Catalog.sleep, TvActivity after 30 s), with what Home keeps of them meanwhile (a row made for it, the TMDB
+     * matching index, both holding the catalogue they were made from before), and read back when a screen shows them.
+     * While asleep the heap they held is free (at most 4 MB of it kept, Home's own cards among it), nothing says the
+     * catalogue is ready (so nothing is matched against an empty one), and its size is still known for the memory log.
+     */
+    @Test public void theCatalogueIsLetGoWhileLiveTvPlaysAndReadBackAfter() throws Exception {
+        Exec.inline = true;
+        Library lib = Library.get(RuntimeEnvironment.getApplication());
+        app = Library.appOf(lib);
+        lib.clear();
+        Catalog cat = Catalog.get(app);
+        cat.clear();
+        Sources.put(app, "p0", "Home", new Source(Source.XTREAM, null, null, "http://provider.invalid:8080", "family", "made-up"));
+        long now = System.currentTimeMillis();
+        writeCatalogue(Catalog.file(app, "p0"), now);
+
+        long base = MemoryDietTest.used();
+        // As the app starts (Catalog.ensure reads the files the same way).
+        cat.rebuildForTests();
+        assertEquals(TITLES, cat.films().size() + cat.series().size());
+        // What Home made from it before the channel went on: a row of the newest films (kept for Home), the matching index.
+        CategorySet.Entry row = new CategorySet.Entry("home", "new", "New This Week", "new:movie", 0, 0);
+        Shelves.Shelf shelf = Shelves.make(app, row);
+        assertTrue(shelf.picks.size() >= 10);
+        assertTrue(MatchIndex.of(cat).size() >= TITLES);
+        long awake = MemoryDietTest.used();
+
+        // Only live TV on screen a while: let go.
+        cat.sleep();
+        assertTrue(cat.asleep());
+        assertFalse("nothing matched against an empty catalogue meanwhile", cat.ready());
+        assertEquals("its size still known (the memory log)", TITLES, cat.size());
+        assertTrue(cat.films().isEmpty());
+        long asleep = MemoryDietTest.used();
+        sizes.put("catalogue held while a channel plays, before (Home's row and the index holding it)", mb(awake - base));
+        sizes.put("catalogue held while a channel plays, now (asleep)", mb(asleep - base));
+        // Home's row still shows what it showed.
+        assertFalse(shelf.picks.get(0).title.name.isEmpty());
+
+        // Home again: read back from its file.
+        cat.wake();
+        assertFalse(cat.asleep());
+        assertTrue(cat.ready());
+        assertEquals(TITLES, cat.films().size() + cat.series().size());
+        assertNotNull(cat.title(shelf.picks.get(0).title.key));
+        long back = MemoryDietTest.used();
+        sizes.put("catalogue read back (Home)", mb(back - base));
+
+        assertTrue("let go " + sizes, mb(asleep - base) < 4);
+        assertTrue("it was big " + sizes, mb(awake - base) > 40);
     }
 
     /** An M3U playlist of 200,000 films and episodes: written to its catalogue file as it is read, not kept in memory. */

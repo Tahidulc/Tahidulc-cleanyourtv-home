@@ -50,6 +50,8 @@ public final class TvActivity extends Activity {
     private String reminderKey;
     private final Runnable catalog = () -> {
         for (Screen s : new ArrayList<>(stack)) s.catalogChanged();
+        // Read again (a refresh) while only live TV is on screen: let go again in a while.
+        catalogueFollows();
     };
     /** An update found, gone or under way: the dots on Settings drawn again, Settings told. */
     private final Runnable updates = () -> {
@@ -189,7 +191,8 @@ public final class TvActivity extends Activity {
     private void afterChannel() {
         h.removeCallbacks(afterChannel);
         if (isFinishing() || isDestroyed()) return;
-        Catalog.get(this).ensure();
+        // The films and series once a screen shows them (not while the launcher's channel plays: Catalog.sleep).
+        catalogueFollows();
         if (checkLater) {
             checkLater = false;
             Updates.check(this, null);
@@ -336,6 +339,62 @@ public final class TvActivity extends Activity {
         if (level >= TRIM_MEMORY_RUNNING_LOW) {
             Library.get(this).trim(System.currentTimeMillis());
             com.gathin.homefieldtv.engine.SkyGuide.trim();
+            // Only live TV on screen: the films and series let go now, not in a while.
+            if (onlyLiveTv()) Catalog.get(this).sleep();
+        }
+    }
+
+    // ---- the films and series while only live TV is on screen (Catalog.sleep) ---------------------------------
+
+    /** How long only live TV is on screen before the films and series are let go (read back when a screen shows them). */
+    static final long CATALOGUE_SLEEP_MS = 30_000L;
+    private final Runnable catalogueSleep = () -> {
+        if (onlyLiveTv()) Catalog.get(this).sleep();
+    };
+
+    /**
+     * Whether only live TV is on screen: the screen that decides is live TV's, and no screen that shows the films and
+     * series is open under it but Home (Movies under the guide would show nothing while they were read back).
+     */
+    private boolean onlyLiveTv() {
+        if (!liveOnly(beneath(top()))) return false;
+        for (int i = 1; i < stack.size(); i++) if (showsCatalogue(stack.get(i))) return false;
+        return true;
+    }
+
+    /**
+     * Whether a screen shows only live TV (the picture full screen, a programme from the archive, the guide, the channel
+     * lists, what was watched): nothing on it needs the films and series.
+     */
+    static boolean liveOnly(Screen s) {
+        return s instanceof LiveScreen || s instanceof CatchupScreen || s instanceof GuideScreen || s instanceof ChannelListScreen
+                || s instanceof HistoryScreen;
+    }
+
+    /** Whether a screen shows the films and series: Home, Movies and TV shows, a title, Search, My list, Settings. */
+    static boolean showsCatalogue(Screen s) {
+        return s instanceof HomeScreen || s instanceof BrowseScreen || s instanceof TitleScreen || s instanceof SearchScreen
+                || s instanceof MyListScreen || s instanceof ListScreen || s instanceof SettingsScreen;
+    }
+
+    /** The screen that decides: an overlay's (a menu over the guide) is the screen under it, unless it shows them itself. */
+    private Screen beneath(Screen s) {
+        while (s != null && s.overlay() && !showsCatalogue(s) && below(s) != null) s = below(s);
+        return s;
+    }
+
+    /**
+     * The top screen changed (or the app came back): the films and series read back for a screen that shows them, or let
+     * go once only live TV has been on screen CATALOGUE_SLEEP_MS (the TCL's 200,000 titles are some 70 MB of its 192: room
+     * for the player, and far fewer collections while a channel plays).
+     */
+    private void catalogueFollows() {
+        h.removeCallbacks(catalogueSleep);
+        Screen t = beneath(top());
+        if (onlyLiveTv()) {
+            if (!Exec.inline) h.postDelayed(catalogueSleep, CATALOGUE_SLEEP_MS);
+        } else if (showsCatalogue(t)) {
+            Catalog.get(this).wake();
         }
     }
 
@@ -358,7 +417,11 @@ public final class TvActivity extends Activity {
         ReminderCard.front = new java.lang.ref.WeakReference<>(this);
         nextMinute();
         Library.get(this).ensure();
-        if (!channel) Catalog.get(this).ensure();
+        if (!channel) {
+            // The films and series read again when a day old, but not read back while only live TV is on screen.
+            if (!onlyLiveTv()) Catalog.get(this).ensure();
+            catalogueFollows();
+        }
         // Coming back (Settings → General → Start on: Last channel): the channel watched last, full screen with its card.
         boolean back = stoppedAt > 0 && StartUp.playOnReturn(com.gathin.homefieldtv.prefs.General.start(this), reopened,
                 android.os.SystemClock.elapsedRealtime() - stoppedAt, leftForOwn);
@@ -410,6 +473,7 @@ public final class TvActivity extends Activity {
 
     @Override protected void onDestroy() {
         h.removeCallbacks(afterChannel);
+        h.removeCallbacks(catalogueSleep);
         FrameStats.stop(this);
         Library.get(this).removeListener(channels);
         Catalog.get(this).removeListener(catalog);
@@ -468,6 +532,7 @@ public final class TvActivity extends Activity {
         if (resumed) s.shown();
         // Its shown() may have put the live picture up (or taken it away).
         covered();
+        catalogueFollows();
     }
 
     /**
@@ -497,6 +562,7 @@ public final class TvActivity extends Activity {
             // The overlay goes its own way (its panel sliding out), then is taken away.
             covered();
             if (resumed) t.shown();
+            catalogueFollows();
             return;
         } else {
             gone.animate().alpha(0f).setStartDelay(0).setDuration(PAGE_MS).setInterpolator(Fade.EASE).withLayer()
@@ -509,6 +575,7 @@ public final class TvActivity extends Activity {
         covered();
         if (resumed) t.shown();
         covered();
+        catalogueFollows();
     }
 
     /** Back to Home, then s over it, fading in over the screen that was on top. */
@@ -532,6 +599,7 @@ public final class TvActivity extends Activity {
         if (resumed) s.shown();
         // Its shown() may have put the live picture up (or taken it away).
         covered();
+        catalogueFollows();
     }
 
     /** 07's shell (TabBar): a page sends the remote up to it with tabs().enter(). */

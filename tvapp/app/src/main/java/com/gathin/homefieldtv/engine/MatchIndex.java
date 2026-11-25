@@ -37,6 +37,11 @@ public final class MatchIndex {
         return last;
     }
 
+    /** The index made last let go (the catalogue it holds was let go: Catalog.sleep); made again when next asked. */
+    static synchronized void forget() {
+        last = null;
+    }
+
     /** Pure, for the tests: an index of these lists (made now, whatever was made before). */
     public static MatchIndex of(List<Catalog.Title> films, List<Catalog.Title> series) {
         return new MatchIndex(films, series);

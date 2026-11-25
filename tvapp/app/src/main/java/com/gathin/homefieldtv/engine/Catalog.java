@@ -462,6 +462,14 @@ public final class Catalog {
     private volatile boolean read;
     private volatile String status = "";
     private final AtomicBoolean busy = new AtomicBoolean();
+    /** The kept catalogues being read now (once at a time: the screens are told once). */
+    private final AtomicBoolean reading = new AtomicBoolean();
+    /**
+     * Asleep (sleep): the playlists' titles let go while only live TV is on screen, read back from their files when a
+     * screen wants them; how many there were.
+     */
+    private volatile boolean asleep;
+    private volatile int asleepCount;
     private final List<Runnable> listeners = new CopyOnWriteArrayList<>();
     private final Map<String, Details> details = new LinkedHashMap<String, Details>(64, 0.75f, true) {
         @Override protected boolean removeEldestEntry(Map.Entry<String, Details> e) {
@@ -480,7 +488,7 @@ public final class Catalog {
 
     // ---- what the screens read ----------------------------------------------------------------------------------
 
-    public boolean ready() { Model m = model; return !m.films.isEmpty() || !m.series.isEmpty(); }
+    public boolean ready() { Model m = model; return !asleep && (!m.films.isEmpty() || !m.series.isEmpty()); }
     public boolean busy() { return busy.get(); }
     public String status() { return status; }
     public List<Title> films() { return model.films; }
@@ -544,7 +552,10 @@ public final class Catalog {
 
     // ---- loading -------------------------------------------------------------------------------------------------
 
-    /** The kept catalogues read if they haven't been, then read again from the providers when a day old. Any thread. */
+    /**
+     * The kept catalogues read if they haven't been (or were let go while live TV played: sleep), then read again from the
+     * providers when a day old. Any thread.
+     */
     public void ensure() {
         if (read) {
             if (stale()) refresh();
@@ -552,16 +563,75 @@ public final class Catalog {
             else if (System.currentTimeMillis() - ownAt > OWN_MS) ownTitles();
             return;
         }
+        if (!reading.compareAndSet(false, true)) return;
         Exec.io(() -> {
-            synchronized (this) {
-                if (!read) {
-                    setBase(build(Sources.inUse(app)));
-                    read = true;
+            boolean woke;
+            try {
+                synchronized (this) {
+                    woke = asleep;
+                    if (!read) {
+                        setBase(build(Sources.inUse(app)));
+                        read = true;
+                    }
+                    asleep = false;
                 }
+            } finally {
+                reading.set(false);
             }
             changed();
-            ownTitles();
+            // Woken: the family's TorBox titles kept from before, unless it is time they were read again anyway.
+            if (!woke || System.currentTimeMillis() - ownAt > OWN_MS) ownTitles();
             if (stale()) refresh();
+        });
+    }
+
+    /** Whether the playlists' titles are let go now (sleep): ensure() reads them back. */
+    public boolean asleep() {
+        return asleep;
+    }
+
+    /** A screen that shows the films and series is up: read back if they were let go (or never read). Any thread. */
+    public void wake() {
+        // A sleep asked for before this, not yet done (off the main thread), doesn't happen now.
+        wants.incrementAndGet();
+        if (!read) ensure();
+    }
+
+    /** How many times a screen has wanted them (wake): a sleep asked for before the last of them gives way. */
+    private final java.util.concurrent.atomic.AtomicInteger wants = new java.util.concurrent.atomic.AtomicInteger();
+
+    /** How many titles the playlists' catalogue has: those held, or (asleep) those it held before it was let go. */
+    public int size() {
+        Model m = model;
+        return asleep ? asleepCount : m.films.size() + m.series.size();
+    }
+
+    /**
+     * Only live TV on screen for a while (TvActivity): the playlists' films and series let go (the TCL's 200,000 titles
+     * are some 70 MB of its 192), and the indexes and pages made from them, so the player and the collector have the
+     * room. Read back from their files when a screen that shows them is opened (ensure()). Not while they are being read
+     * or refreshed. The family's own TorBox titles stay. The screens aren't told (what they show stays as it is).
+     */
+    public void sleep() {
+        if (!read || asleep || busy.get() || reading.get()) return;
+        int asked = wants.get();
+        Exec.io(() -> {
+            synchronized (this) {
+                if (!read || asleep || busy.get() || reading.get() || wants.get() != asked) return;
+                Model m = base;
+                int n = m.films.size() + m.series.size();
+                if (n == 0) return;
+                asleepCount = n;
+                asleep = true;
+                read = false;
+                base = Model.empty();
+                model = withOwn(base, ownFilms, ownSeries);
+            }
+            synchronized (details) {
+                details.clear();
+            }
+            MatchIndex.forget();
+            Shelves.forget();
         });
     }
 
@@ -599,6 +669,7 @@ public final class Catalog {
                 }
                 setBase(build(in));
                 read = true;
+                asleep = false;
                 synchronized (details) {
                     details.clear();
                 }
@@ -622,6 +693,7 @@ public final class Catalog {
         }
         ownFilms = Collections.emptyList();
         ownSeries = Collections.emptyList();
+        asleep = false;
         setBase(Model.empty());
         synchronized (details) {
             details.clear();
@@ -1695,6 +1767,8 @@ public final class Catalog {
     /** Tests: the catalogue's files read again as the daily refresh reads them (TheFamilysSizeTest). */
     void rebuildForTests() {
         setBase(build(Sources.inUse(app)));
+        read = true;
+        asleep = false;
     }
 
     public void useForPreview(List<String> rows, Map<String, Details> pages) {
@@ -1712,6 +1786,7 @@ public final class Catalog {
             details.putAll(pages);
         }
         read = true;
+        asleep = false;
         changed();
     }
 

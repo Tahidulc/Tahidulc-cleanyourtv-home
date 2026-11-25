@@ -180,6 +180,13 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
     void shown() {
         if (view == null) return;
         view.setActive(tv.tabs() == null || !tv.tabs().active());
+        // The films and series let go while live TV played (Catalog.sleep): the rows as they were until they are read
+        // back (the page is told then, and made again).
+        if (Catalog.get(tv).asleep()) {
+            publish();
+            autoIn(AUTO_MS);
+            return;
+        }
         if (newDay()) {
             // Another day (or part of it): the day's rows picked again, the remote's place kept where its row still is.
             pick();
