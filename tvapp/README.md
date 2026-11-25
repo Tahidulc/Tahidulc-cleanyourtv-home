@@ -200,10 +200,19 @@ wordmark are Homefield; it carries no Sky logo or name.
   with Reset and Apply to all channels; Subtitles, Closed captions (below); Display, Display mode: the picture's shape
   for this channel or all of them (Normal, Full, Zoom, Zoom - 2.35:1, Reduced, 4:3, 16:9, 2.35:1); Sleep timer stops
   the picture after 15 minutes to 4 hours; Channel's options are Watch from the start and Lock this channel. Left
-  brings up the channel list over the picture: the channels of the group playing down the left (each its logo alone on
-  its colour, then what's on with its times and bar), the programmes of the one the remote is on beside them, and its programme in a card at the top right; Left again opens the groups (the
-  playlist, Favourites, All channels, then the family's groups), and OK plays a channel with the list staying. Left
-  held, or Channels list, opens it on its own ground with the picture playing on in a window at the top right. Up held
+  brings up the channel list over the picture, as the family picked it: under a shade from the left, the group's name
+  at the top beside a round Left button, the channels of the group playing down the left as cards, each on its own
+  logo's colour (the family: "make the panels for the channels the same colour as the channel logos are"), its logo on
+  a darker tile of it, then what's on, how far through and the time left (the channel playing marked with three amber
+  bars, the remote's card lifted with a white ring; a colour too light for white words gets a touch of shade until they
+  read). Beside them the programmes of the one the remote is on as a timeline, the one on now on an amber band; at the
+  top right its programme in a card with its own picture, LIVE on it, its times, quality and what it's about. Right
+  goes onto the programmes, Up and Down along them, Left back: those already shown go back as far as the channel's
+  catch-up keeps them, each with the catch-up mark beside its time, and OK plays one from its start; OK on the one on
+  now plays the channel live, on one to come sets its reminder. Left on the channels opens the groups (the playlist,
+  Favourites, All channels, then the family's groups), and OK plays a channel with the list staying. Left held, or
+  Channels list, opens it on its own ground with the same cards and programmes and the picture playing on in a window
+  at the top right. Up held
   brings up History, Right held the programme's description, Down held Search. Back goes to the TV guide with the
   channel in its picture; Back held stops the picture and goes Home. What is up goes after 10 seconds with no key. A
   stream that drops is tried on the same channel in another playlist, then again. Where the provider keeps the

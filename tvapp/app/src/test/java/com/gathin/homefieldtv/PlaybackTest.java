@@ -49,9 +49,12 @@ public class PlaybackTest {
     @Test public void theListKeepsTheRemotesChannelTheSecondRow() {
         assertEquals(0f, ChannelList.scrollFor(0, 10, 1080f), 0f);
         assertEquals(0f, ChannelList.scrollFor(1, 10, 1080f), 0f);
-        // Ten channels: no further than the last row's foot at the screen's.
-        assertEquals(89f + 10 * 125f - 1080f, ChannelList.scrollFor(5, 10, 1080f), 0f);
-        assertEquals(49 * 125f, ChannelList.scrollFor(50, 100, 1080f), 0f);
+        // Ten channels (a card every 116 from y 116, eight whole ones on the screen): at the end the last one whole at
+        // the foot, never one cut at the top.
+        assertEquals(2 * 116f, ChannelList.scrollFor(5, 10, 1080f), 0f);
+        assertEquals(2 * 116f, ChannelList.scrollFor(9, 10, 1080f), 0f);
+        assertEquals(0f, ChannelList.scrollFor(7, 8, 1080f), 0f);
+        assertEquals(49 * 116f, ChannelList.scrollFor(50, 100, 1080f), 0f);
     }
 
     @Test public void wordsAsTheCardsWriteThem() {
