@@ -50,30 +50,44 @@ wordmark are Homefield; it carries no Sky logo or name.
   are matched to them by name and year off the main thread (engine/MatchIndex, about 1.6 MB for 200,000 titles), a page
   at a time as the remote goes along; a row with nothing in the playlists is left out, and without TMDB the rows are the
   playlists' own (the newest, the categories named for a genre). The one exception is Coming Soon: its titles may not be
-  out yet, each saying when it comes ("Coming 18 Dec"; OK plays its trailer in the TV's YouTube app). A row's titles are
+  out yet, each saying when it comes ("Coming 18 Dec"; OK plays its trailer full screen in the app). A row's titles are
   kept a few hours (today's lists three, what is new or coming four, the rest six) and asked for again off the main
   thread when the app comes back to the front after that, or while the page is open for the rows the remote isn't on;
   only the day's rows are kept. One row in focus at a time, under the tab bar: the title the remote is on grows from
-  its poster into a wide card (its backdrop, TMDB's logo or its name, how far it was watched and its episode), the one
+  its poster into a wide card (its backdrop, TMDB's logo, how far it was watched and its episode), the one
   it left shrinking back as the row slides it to the left (Lite: no cross-fade of the pictures); under the row its score,
   year, genre and length, and three lines of its story; the next row dimmed under it. Down past the last row goes back
-  to the first; Back goes up to the tab bar. When the remote rests on a title in a row for 3 seconds (on every motion
-  tier: "put trailers of what panel I'm on after 3 seconds"), its trailer plays inside the wide card ("Can you implement
-  trailers to automatically play over a poster when I'm on it"): TMDB's trailers for it (the official trailer, then a teaser, the
-  family's language first) or the playlist's own, on YouTube's own embedded player (no controls, muted unless Settings
-  say otherwise) in one WebView kept for the app; the card's picture cross-fades to the video once it is playing (Lite:
-  no cross-fade) and back as the remote moves on or the trailer ends. One that won't play (embedding turned off, an
-  error, nothing within four seconds) is let go quietly for the next, or the poster stays; nothing is ever said on
-  screen. It stops at once as the remote moves, goes up to the tab bar or anything comes over the page, and the player
-  is let go of whole when the app is left, so nothing plays in the background. Home, Movies and TV Shows each open on a
+  to the first; Back goes up to the tab bar. A card's logo is TMDB's (the family's language, else English, else one
+  with no words, a light one before a dark one, a dark one given a soft light glow and a light one a soft shadow),
+  looked for ahead for the cards around the remote, the rows above and below, the carousel, Continue Watching and the
+  titles opened lately (two quiet threads of their own, never while a key is held) and kept, so it is there as the remote
+  arrives, and on another page at once; while it is still coming nothing is drawn (never the name first), and it fades
+  in; the name in lettering only when TMDB has no logo for it. When the remote rests on a title in a row (Continue
+  Watching too) for 0.7 seconds, the card grown and nothing moving or held ("Can you have trailers playing quicker so
+  maybe don't wait 3 seconds"), its trailer starts inside the wide card ("Can you implement trailers to automatically
+  play over a poster when I'm on it"): TMDB's trailers for it (the official trailer, then a teaser, the family's language
+  first; an episode on Continue Watching its season's own trailer, then its series') or the playlist's own, on YouTube's
+  own embedded player in one WebView kept for the app. "I don't want to see when you click play on YouTube": YouTube
+  shows its own things over the first seconds of every play (its title bar, a pause button in the middle, Share, More
+  videos, its logo), so the trailer plays hidden and muted until it has played 4.5 seconds with its time moving, and
+  only then does the card's picture cross-fade to it (Lite: no cross-fade); the video fills the card cropped a fifth
+  larger, so the strips YouTube draws at its top and foot fall outside the card, YouTube sends a picture the card's size
+  (480p in a row, 720p on the carousel), captions are switched off ("no subtitles"), and its sound ("Make the trailers
+  have sound too": Settings › Appearance › Home › Sound, on as it comes) fades in over half a second, at the TV's own
+  volume. It cross-fades back to the poster, its sound with it, 20 seconds before its end (before YouTube's end screen
+  can come; a short one a second before) and on any pause, stall or error. One that won't play (embedding turned off, an
+  error, nothing within five seconds) is let go quietly for the next, or the poster stays; nothing is ever said on
+  screen. It and its sound stop at once as the remote moves, goes up to the tab bar or anything comes over the page,
+  and the player is let go of whole when the app is left, so nothing plays in the background. While a trailer's window
+  is up the page under it is kept as one picture, so the video's frames never draw the page again. Home, Movies and TV Shows each open on a
   carousel of featured titles ("the top card carousel should be one card that goes automatically or I can scroll
   through"): what is trending today with what the playlists added this week (refreshed with the rows), ONE card across
   the page with nothing of the next at its side, its facts, View Details and small page dots under it. It moves on by
   itself every 7 seconds (the page's picture cross-fading, the old card sliding out as the new one and its words slide
   in; on the Lite tier the cards cross-fade instead), from its last back round to its first, while it is what the page
   shows (the remote on it, or up on the tab bar over it), never while the remote is in the rows below; Left and Right
-  move it by hand, as far as its ends, and hold its own steps for 15 seconds. On a title the remote rests on for 3
-  seconds, its trailer plays behind the card's words, as in a poster; the carousel waits while it does and moves on 2
+  move it by hand, as far as its ends, and hold its own steps for 15 seconds. On a title the remote rests on once it
+  has slid in, its trailer plays behind the card's words, as in a poster; the carousel waits while it does and moves on 2
   seconds after it ends (or as the remote moves it). OK opens a title's page, whose buttons are then a menu down the left: Play (or Resume), Trailer, More
   episodes, Add to My List, More like this. Settings › Appearance › Home style: Classic brings back Home's one big card
   at a time and Movies' and TV Shows' pills.
@@ -502,7 +516,9 @@ wordmark are Homefield; it carries no Sky logo or name.
   start straight away. Its trailer plays in its top card: once the remote has rested on the cover a moment (never while
   it moves) the poster widens into a 16:9 card and the trailer plays there, on as the remote goes along the rows and
   buttons, the poster coming back when it ends, as anything plays, as the remote goes down the page, as the page goes or
-  as anything comes over it. The page's ground is the colour theme's (Settings › Colour theme), with the poster's own
+  as anything comes over it (with the poster's rules: hidden until clean, cropped, its sound, no captions). The Trailer
+  button plays it full screen in the app: black until it plays clean, with its sound, Back back to the page; the TV's
+  YouTube app only when none of the title's trailers will play embedded. The page's ground is the colour theme's (Settings › Colour theme), with the poster's own
   colour glowing over it, kept dark enough for the words to read; on the Lite motion tier it simply fades in.
 - **Player:** films and episodes in the 07 look of the live player ("improve the player whilst watching movies and TV
   shows to have all the features you'd expect and you can choose different sources, subtitles with open subtitles
@@ -619,7 +635,7 @@ wordmark are Homefield; it carries no Sky logo or name.
   Lime, Yellow, Amber, Orange or Deep orange), each a disc, the pair in use ticked and named ("Indigo • Blue"); OK keeps
   one and the screens start again in it, back on Settings. The themes from before are gone: a TV that had one comes up
   in Indigo • Blue. Then Home style (Editorial as it comes, or Classic), Home (Trailers: a title's trailer in the poster
-  the remote rests on, On as it comes; their Sound, Off as it comes), Posters (Portrait / Landscape), Programme times (24-hour as it comes, or 12-hour) and
+  the remote rests on, On as it comes; their Sound, On as it comes, once switched on for a TV that had it off), Posters (Portrait / Landscape), Programme times (24-hour as it comes, or 12-hour) and
   Animations: Automatic (as it comes), Full or Lite. Lite keeps the look and the motion (cards lift, rows slide,
   pictures cross-fade) but leaves out what a slower TV's graphics chip finds hardest: the cards' tilt and the light
   sweeping across them, a lifted card's picture drifting under its frame, and the page's big blurred picture changing

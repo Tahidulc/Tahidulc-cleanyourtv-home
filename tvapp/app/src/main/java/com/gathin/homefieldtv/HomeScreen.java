@@ -644,7 +644,7 @@ final class HomeScreen extends Screen implements HomeCard.Host {
             Catalog.Details d = Catalog.get(tv).cachedDetails(t);
             String id = d == null ? "" : TitleScreen.trailerId(d.trailer);
             if (!t.series && !id.isEmpty()) {
-                TitleScreen.trailer(tv, id);
+                Trailer.fullScreen(tv, t, id);
             } else {
                 boolean on = MyList.toggle(tv, t.key);
                 Toast.makeText(tv, on ? t.name + " added to My list" : t.name + " taken off My list", Toast.LENGTH_SHORT).show();

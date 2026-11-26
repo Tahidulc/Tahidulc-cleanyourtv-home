@@ -53,6 +53,7 @@ public class CarouselTest {
     @After public void after() {
         EditorialPageTest.drain();
         Trailer.standIn = null;
+        MarksAhead.clear();
         Motion.force(false);
         if (tv != null) tv.pause().stop().destroy();
         tv = null;
@@ -168,11 +169,12 @@ public class CarouselTest {
         page.previewFocus(-1, 0);
         idle(Trailer.REST_MS + 100);
         assertEquals(1, stub.played.size());
-        stub.l.playing();
+        // Its own step waits while it starts hidden, and while it plays.
+        TrailerTest.plays(stub, 150f);
         assertEquals(Trailer.SHOWN, page.trailer().state());
+        assertEquals("held while its trailer starts", 0, view.heroAt());
         idle(EditorialPage.AUTO_MS * 2);
         assertEquals("held while its trailer plays", 0, view.heroAt());
-        // The trailer ends: the poster back, and on it goes.
         // The trailer ends: the poster back, and on it goes shortly after.
         stub.l.ended();
         idle(EditorialPage.AFTER_MS + 100);

@@ -371,13 +371,17 @@ public class TitleCoverTest {
         CoverPage c = s.cover();
         assertEquals(Arrays.asList("Trailer", "My List", "More like this", "Remove"),
                 Arrays.asList(c.pillWords(0), c.pillWords(1), c.pillWords(2), c.pillWords(3)));
-        // Trailer: the trailer itself (the TV's YouTube app as it is today).
+        // Trailer: the trailer itself, full screen here (Trailer.fullScreen: not the TV's YouTube app); Back to the page.
         drainStarted();
         c.focusRow(-1, 0);
         press(KeyEvent.KEYCODE_DPAD_CENTER);
-        Intent trailer = shadowOf(tv.get()).getNextStartedActivity();
-        assertEquals(Intent.ACTION_VIEW, trailer.getAction());
-        assertTrue(trailer.getDataString().endsWith("MadeUpTrail"));
+        idle();
+        assertTrue(tv.get().top() instanceof Trailer.Full);
+        assertEquals("MadeUpTrail+sound", stub.played.get(stub.played.size() - 1));
+        assertNull(shadowOf(tv.get()).getNextStartedActivity());
+        press(KeyEvent.KEYCODE_BACK);
+        idle();
+        assertEquals(s, tv.get().top());
         // My List: on it, ticked; the remote stays on it.
         press(KeyEvent.KEYCODE_DPAD_RIGHT);
         press(KeyEvent.KEYCODE_DPAD_CENTER);
@@ -538,10 +542,10 @@ public class TitleCoverTest {
         }
         assertTrue("not while the remote moves", stub.played.isEmpty());
         rest(Trailer.REST_MS);
-        assertEquals(Arrays.asList("MadeUpTrail"), stub.played);
+        assertEquals("with its sound to come once it is shown (Sound on as it comes)", Arrays.asList("MadeUpTrail+sound"), stub.played);
         assertEquals(0f, c.widened(), 0.01f);
-        // Playing: the poster widens into the 16:9 card, the window over it.
-        stub.l.playing();
+        // Playing clean (hidden until YouTube's own things have gone): the poster widens into the 16:9 card, the window over it.
+        TrailerTest.plays(stub, 150f);
         assertEquals(1f, c.widened(), 0.01f);
         android.graphics.RectF spot = new android.graphics.RectF();
         assertTrue(c.trailerSpot(spot));
@@ -565,7 +569,7 @@ public class TitleCoverTest {
         CoverPage c = s.cover();
         // Going down to More like this.
         rest(Trailer.REST_MS + 100);
-        stub.l.playing();
+        TrailerTest.plays(stub, 150f);
         assertEquals(1f, c.widened(), 0.01f);
         press(KeyEvent.KEYCODE_DPAD_DOWN);
         assertEquals(TitlePage.MORE, s.page().part());
@@ -575,7 +579,7 @@ public class TitleCoverTest {
         press(KeyEvent.KEYCODE_BACK);
         s.shown();
         rest(Trailer.REST_MS + 100);
-        stub.l.playing();
+        TrailerTest.plays(stub, 150f);
         assertEquals(1f, c.widened(), 0.01f);
         press(KeyEvent.KEYCODE_DPAD_CENTER);
         assertFalse(s.trailerCard().busy());
@@ -583,7 +587,7 @@ public class TitleCoverTest {
         // When anything opens over the page.
         s.shown();
         rest(Trailer.REST_MS + 100);
-        stub.l.playing();
+        TrailerTest.plays(stub, 150f);
         tv.get().openSearch();
         idle();
         assertFalse(s.trailerCard().busy());
@@ -593,7 +597,7 @@ public class TitleCoverTest {
         idle();
         leaveTabs();
         rest(Trailer.REST_MS + 100);
-        stub.l.playing();
+        TrailerTest.plays(stub, 150f);
         assertEquals(1f, c.widened(), 0.01f);
         press(KeyEvent.KEYCODE_BACK);
         idle();

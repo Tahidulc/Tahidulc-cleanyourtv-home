@@ -95,6 +95,11 @@ final class Editorial extends View {
         /** Its story, TMDB's logo ("" for its name in lettering), its episode's chip on Continue Watching. */
         String story = "", logo = "", episode = "";
         float progress = -1f;
+        /**
+         * Its logo is still being looked for (TMDB not yet asked or not yet answered): no mark is drawn meanwhile, never its
+         * name; logoFade: it came after the card was first made, so it fades in.
+         */
+        boolean logoPending, logoFade;
         /** The carousel's: what it is ("FILM"), whether it is on My List, its page's details and TMDB's extras. */
         String kicker = "";
         boolean onList;
@@ -384,7 +389,21 @@ final class Editorial extends View {
         if (c == storyFor) storyFor = null;
         if (c == heroFor) heroFor = null;
         for (int i = 0; i < marked.length; i++) if (marked[i] == c) marked[i] = null;
-        invalidate();
+        // Drawn again only where its words show (a wide card, the carousel's front): a poster's words aren't drawn, so
+        // what is read ahead for the cards around the remote draws nothing (nor a still page under a trailer again).
+        if (shows(c)) {
+            invalidate();
+            if (over != null && (heroTrailer || rowTrailer)) over.invalidate();
+        }
+    }
+
+    /** Whether a card's words or mark are drawn now: its row's wide card, one growing or shrinking, the carousel's front. */
+    private boolean shows(Card c) {
+        if (c == growing || c == shrinking) return true;
+        if (heroAt < hero.size() && hero.get(heroAt) == c) return true;
+        if (heroWas >= 0 && heroWas < hero.size() && hero.get(heroWas) == c) return true;
+        for (Row rw : rows) if (rw.focus < rw.cards.size() && rw.cards.get(rw.focus) == c) return true;
+        return false;
     }
 
     boolean isEmpty() {
@@ -725,6 +744,7 @@ final class Editorial extends View {
     // ---- drawing ----------------------------------------------------------------------------------------------------
 
     @Override protected void onDraw(Canvas c) {
+        draws++;
         int w = getWidth(), h = getHeight();
         boolean moving = ground.draw(c, w, h);
         moving |= y.step();
@@ -917,7 +937,7 @@ final class Editorial extends View {
 
     // ---- the carousel's trailer: its words over it ----------------------------------------------------------------
 
-    private boolean heroTrailer;
+    private boolean heroTrailer, rowTrailer;
     private Over over;
 
     /** Whether a trailer plays in the carousel's card now (its words are then drawn again over it). */
@@ -926,9 +946,30 @@ final class Editorial extends View {
         if (over != null) over.invalidate();
     }
 
+    /** Whether a trailer plays in the remote's card in its row now (its logo, episode and progress drawn over it). */
+    void rowTrailer(boolean on) {
+        rowTrailer = on;
+        if (over != null) over.invalidate();
+    }
+
     /**
-     * A view over the trailer's window for the carousel's words: the trailer plays behind the card's words, as the
-     * picture did. It draws only while one plays there (nothing else, nothing made while drawing).
+     * A trailer's window is up over the remote's card (hidden while it starts, then shown), or gone. Meanwhile nothing on
+     * the page moves, so it is kept as one picture of itself (a hardware layer): each of the video's frames then costs the
+     * TV one picture of the page, not the page drawn again (its ground, shadows, cards and words). Let go the moment the
+     * remote moves (the trailer goes first), so nothing moving is ever drawn into a layer.
+     */
+    void still(boolean on) {
+        int want = on ? LAYER_TYPE_HARDWARE : LAYER_TYPE_NONE;
+        if (getLayerType() != want) setLayerType(want, null);
+    }
+
+    /** Tests: how many times the page has been drawn. */
+    int draws;
+
+    /**
+     * A view over the trailer's window for the carousel's words and a row card's logo, episode and progress: the trailer
+     * plays behind them, as the picture did. It draws only while one plays there (nothing else, nothing made while
+     * drawing).
      */
     View over(Context c) {
         if (over == null) over = new Over(c);
@@ -942,6 +983,18 @@ final class Editorial extends View {
         }
 
         @Override protected void onDraw(Canvas c) {
+            if (rowTrailer && area == ROWS && active) {
+                Card card = focusCard();
+                if (card == null || card != growing) return;
+                float w = Ui.f(WIDE_W), h = Ui.f(CARD_H), x = Ui.f(LEFT), y = Ui.f(top(row) + HEAD) - Ui.f(Editorial.this.y.value());
+                float up = Math.max(0f, Math.min(1.1f, cardLift.of(card)));
+                c.save();
+                if (up > 0.001f) c.scale(1f + 0.02f * up, 1f + 0.02f * up, x, y + h / 2f);
+                c.translate(x, y);
+                cardWords(c, card, w, h, 255, 255, true, up);
+                c.restore();
+                return;
+            }
             if (!heroTrailer || area != HERO || heroAt >= hero.size()) return;
             Card card = hero.get(heroAt);
             float w = Ui.f(HERO_W), h = Ui.f(HERO_H), x = Ui.f(LEFT), y = Ui.f(HERO_T) - Ui.f(Editorial.this.y.value());
@@ -958,7 +1011,7 @@ final class Editorial extends View {
     private void heroWords(Card card) {
         if (card == heroFor) return;
         heroFor = card;
-        heroMark.set(card.name, card.logo, Ui.f(HERO_LOGO_W), Ui.f(HERO_LOGO_H), Ui.f(820f));
+        heroMark.set(card.name, card.logo, Ui.f(HERO_LOGO_W), Ui.f(HERO_LOGO_H), Ui.f(820f), card.logoPending, card.logoFade, Pics.MARK);
         heroStory = card.story.isEmpty() ? null : Hero07.lines(card.story, heroStoryP, Ui.px(780f), 2, Ui.f(24f * 1.42f));
     }
 
@@ -1137,10 +1190,20 @@ final class Editorial extends View {
             c.restore();
             p.setAlpha(255);
         }
-        if (g > 0.5f) {
+        cardWords(c, card, w, h, g > 0.5f ? Math.round(a * Math.min(1f, (g - 0.5f) * 2f)) : 0, a, !footed, up);
+        c.restore();
+    }
+
+    /**
+     * What a card has over its picture (card px, at its top left): the wide card's foot darkened (unless drawn with its
+     * picture), its logo (or name) and its episode at ga; its progress at a; its edge as it lifts. Drawn again over its
+     * trailer (Over), so the trailer plays behind them.
+     */
+    private void cardWords(Canvas c, Card card, float w, float h, int ga, int a, boolean foot, float up) {
+        float rad = Ui.f(CARD_R);
+        if (ga > 0) {
             // The wide card: its foot darkened, its logo (or name), its episode.
-            int ga = Math.round(a * Math.min(1f, (g - 0.5f) * 2f));
-            if (!footed) {
+            if (foot) {
                 cardFoot.setAlpha(ga);
                 c.save();
                 c.scale(w, h);
@@ -1152,15 +1215,20 @@ final class Editorial extends View {
             m.draw(c, Ui.f(26f), h - Ui.f(card.progress >= 0f ? 40f : 28f) - mh, ga, redraw);
             if (!card.episode.isEmpty()) chip(c, w, h, card.episode, ga);
         }
-        if (card.progress >= 0f && a > 0) Pills.progressOn(c, Ui.f(16f), h - Ui.f(9f) - Ui.f(5f), w - Ui.f(32f), card.progress);
+        if (card.progress >= 0f && a > 0) {
+            Pills.progressOn(c, Ui.f(16f), h - Ui.f(9f) - Ui.f(5f), w - Ui.f(32f), card.progress);
+            progressDrawn++;
+        }
         if (up > 0.01f) {
             edge.setStrokeWidth(Math.max(1.5f, Ui.f(3f)));
             edge.setColor(Palette.alpha(Look07.L1, Math.round(0xE6 * Math.min(1f, up))));
             r.set(0, 0, w, h);
             c.drawRoundRect(r, rad, rad, edge);
         }
-        c.restore();
     }
+
+    /** Tests: how many times a card's progress has been drawn (on the page, or over its trailer). */
+    int progressDrawn;
 
     /** A wide card's foot as cardFoot draws it, in the card's own px (h tall): made when the size changes. */
     private Shader wideFoot(float h) {
@@ -1182,6 +1250,11 @@ final class Editorial extends View {
         c.drawText(words, r.left + Ui.f(10f), Type.centred(chipP, r.centerY()), chipP);
     }
 
+    /** Tests: a wide card's mark as it is drawn. */
+    Hero07.Mark previewMark(Card card) {
+        return markOf(card);
+    }
+
     /** The mark (logo or lettering) for a wide card: one of three kept, set for a card when it first needs one. */
     private Hero07.Mark markOf(Card card) {
         for (int i = 0; i < marked.length; i++) if (marked[i] == card) return marks[i];
@@ -1193,7 +1266,8 @@ final class Editorial extends View {
         }
         markNext = (i + 1) % marks.length;
         marked[i] = card;
-        marks[i].set(card.name, card.logo, Ui.f(CARD_LOGO_W), Ui.f(CARD_LOGO_H), Ui.f(WIDE_W - 60f));
+        marks[i].set(card.name, card.logo, Ui.f(CARD_LOGO_W), Ui.f(CARD_LOGO_H), Ui.f(WIDE_W - 60f), card.logoPending, card.logoFade,
+                Pics.MARK);
         return marks[i];
     }
 

@@ -134,6 +134,33 @@ public final class Videos {
         return parse(Tmdb.videos(c, tv, id));
     }
 
+    /**
+     * A series' season's own videos (its trailer, where TMDB has one): asked with the launcher's key and kept a few days;
+     * empty when TMDB has none or can't be asked. Off the main thread.
+     */
+    public static List<Video> ofSeason(android.content.Context c, Catalog.Title series, int season) {
+        if (series == null || !series.series || season <= 0) return new ArrayList<>();
+        int id = Tmdb.idOf(c, series);
+        return id <= 0 ? new ArrayList<>() : parse(Tmdb.seasonVideos(c, id, season));
+    }
+
+    /**
+     * Pure: the trailers of an episode's card (Continue Watching): its season's own trailers first where TMDB has them,
+     * then its series' (as trailers() picks each), none twice, at most TRIES.
+     */
+    public static List<String> episode(List<Video> season, List<Video> series, String lang, String playlist) {
+        List<String> out = new ArrayList<>(trailers(season, lang, ""));
+        for (String k : trailers(series, lang, playlist)) if (out.size() < TRIES && !out.contains(k)) out.add(k);
+        return out;
+    }
+
+    /** Pure: the season of an episode from what its card says ("S2 E5 · Pilot", "S2:E5"), 0 when it doesn't say. */
+    public static int seasonOf(String said) {
+        if (said == null) return 0;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("S(\\d+)\\s*[:E ]").matcher(said.trim());
+        return m.lookingAt() ? Integer.parseInt(m.group(1)) : 0;
+    }
+
     /** A video's kind's place: trailers, teasers, then the rest. */
     static int kind(String type) {
         if ("Trailer".equalsIgnoreCase(type)) return 0;

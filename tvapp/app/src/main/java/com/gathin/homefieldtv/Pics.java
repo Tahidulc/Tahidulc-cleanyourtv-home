@@ -158,6 +158,13 @@ final class Pics {
      */
     static final int FILL_LITE = 24, FILL_CARD_LITE = 25;
     /**
+     * MARK is a title's logo (TMDB's title art) on the Editorial pages' cards, fitted whole inside w x h at its own shape
+     * as FIT is. Asked for with a chain of its logos in the family's language (PicSources.chain, best first): the first
+     * that is light enough for a dark card, else the first. A light one has a soft dark shadow made under it and a dark
+     * one a soft light glow, so it reads over any backdrop; made once as it is read, never while drawing.
+     */
+    static final int MARK = 27;
+    /**
      * CELL_COLOUR, CELL_NONE and CELL_BLACK are a channel's logo alone on its cell (ChannelLook), as large as w x h
      * allows at its own shape (the box is the cell less its room), read sharp from the logo itself at that size: on its
      * colour's deep cell (its colours worked out as it is read; a logo that would not read there takes tv-logos' white
@@ -491,8 +498,58 @@ final class Pics {
     static final String ON_COLOUR = "on-colour:";
 
     private static Bitmap load(Key k) {
+        if (k.mode == MARK) return mark(k.url, k.w, k.h);
         if (PicSources.isChain(k.url)) return chained(k);
         return one(k.url, k.w, k.h, k.mode, false);
+    }
+
+    /** A title's logo for a card (MARK): the first of its chain light enough for a dark card, else the first; lit. */
+    private static Bitmap mark(String url, int w, int h) {
+        List<String> parts = PicSources.isChain(url) ? PicSources.parts(url) : Collections.singletonList(url);
+        Bitmap first = null;
+        for (String u : parts) {
+            Bitmap b = failed.contains(u) ? null : one(u, w, h, FIT, false);
+            if (b == null) continue;
+            if (!darkLogo(b)) {
+                if (first != null) first.recycle();
+                return lit(b, false);
+            }
+            if (first == null) first = b;
+            else b.recycle();
+        }
+        return first == null ? null : lit(first, true);
+    }
+
+    /**
+     * A logo with a soft dark shadow made under it (a light one), or a soft light glow (a dark one: it would all but
+     * vanish on the card's dark foot), inside its own size.
+     */
+    static Bitmap lit(Bitmap b, boolean dark) {
+        try {
+            float r = Math.max(2f, Math.min(b.getWidth(), b.getHeight()) * 0.05f);
+            Paint blur = new Paint();
+            blur.setMaskFilter(new android.graphics.BlurMaskFilter(r, android.graphics.BlurMaskFilter.Blur.NORMAL));
+            int[] off = new int[2];
+            Bitmap alpha = b.extractAlpha(blur, off);
+            Bitmap out = Bitmap.createBitmap(b.getWidth(), b.getHeight(), Bitmap.Config.ARGB_8888);
+            Canvas c = new Canvas(out);
+            Paint glow = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+            glow.setColor(dark ? 0xC0FFFFFF : 0x8C000000);
+            if (alpha != null) {
+                c.drawBitmap(alpha, off[0], off[1] + (dark ? 0f : r * 0.3f), glow);
+                alpha.recycle();
+            }
+            c.drawBitmap(b, 0, 0, null);
+            b.recycle();
+            return out;
+        } catch (RuntimeException | OutOfMemoryError e) {
+            return b;
+        }
+    }
+
+    /** Tests: whether a logo is too dark for a dark card (as MARK judges it). */
+    static boolean dark(Bitmap b) {
+        return darkLogo(b);
     }
 
     /**

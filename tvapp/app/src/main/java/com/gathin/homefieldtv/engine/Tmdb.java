@@ -188,6 +188,12 @@ public final class Tmdb {
                 + videoLanguages(c), 3 * 24 * 3600_000L);
     }
 
+    /** A series' season's own videos (its trailer, where TMDB has one), as videos() asks; null when not to be had. */
+    static JSONObject seasonVideos(Context c, int id, int number) {
+        return kept(c, "sv|" + id + "|" + number, "tv/" + id + "/season/" + number + "/videos?include_video_language=" + videoLanguages(c),
+                3 * 24 * 3600_000L);
+    }
+
     /** A series' season as TMDB has it (its episodes' names, stories and stills), kept a fortnight; null when not to be had. */
     static JSONObject season(Context c, int id, int number) {
         return kept(c, "s|" + id + "|" + number, "tv/" + id + "/season/" + number);
@@ -344,6 +350,11 @@ public final class Tmdb {
      */
     public static final class Extras {
         public final String logo, years, age;
+        /**
+         * Its logos for a card's mark (Pics.MARK): the logos in the first of the family's language, English, none and any
+         * other that has one, best first, as a chain (PicSources.chain) when there are several, else logo.
+         */
+        public final String mark;
         public final List<String[]> cast;
         public final Map<Integer, String> seasons;
         public final List<Videos.Video> videos;
@@ -356,7 +367,13 @@ public final class Tmdb {
 
         public Extras(String logo, List<String[]> cast, Map<Integer, String> seasons, String years, String age, List<Videos.Video> videos,
                       boolean old) {
+            this(logo, logo, cast, seasons, years, age, videos, old);
+        }
+
+        public Extras(String logo, String mark, List<String[]> cast, Map<Integer, String> seasons, String years, String age,
+                      List<Videos.Video> videos, boolean old) {
             this.logo = logo == null ? "" : logo;
+            this.mark = mark == null || mark.isEmpty() ? this.logo : mark;
             this.cast = Collections.unmodifiableList(cast == null ? new ArrayList<>() : cast);
             this.seasons = Collections.unmodifiableMap(seasons == null ? new HashMap<>() : seasons);
             this.years = years == null ? "" : years;
@@ -426,24 +443,47 @@ public final class Tmdb {
      * logo of no language), each a PNG (its see-through ground; the TV reads no SVG); "" for none.
      */
     static String logoOf(JSONObject images, String family) {
+        List<String> all = logosOf(images, family);
+        return all.isEmpty() ? "" : all.get(0);
+    }
+
+    /** At most this many of a title's logos are kept for its mark (Pics.MARK picks the first light one). */
+    static final int MARKS = 3;
+
+    /**
+     * Pure: a title's logos for a card's mark, best first (TMDB's order): those of the first language that has a PNG
+     * one, of the family's language, English, none (a logo with no words) and then any other; at most MARKS.
+     */
+    static List<String> logosOf(JSONObject images, String family) {
+        List<String> out = new ArrayList<>();
         JSONArray logos = images == null ? null : images.optJSONArray("logos");
-        if (logos == null) return "";
+        if (logos == null) return out;
         String fam = family == null ? "" : family.trim().toLowerCase(Locale.ROOT);
-        for (String lang : fam.isEmpty() || fam.equals("en") ? new String[]{"en", ""} : new String[]{fam, "en", ""}) {
-            for (int i = 0; i < logos.length(); i++) {
+        String[] order = fam.isEmpty() || fam.equals("en") ? new String[]{"en", "", "*"} : new String[]{fam, "en", "", "*"};
+        for (String lang : order) {
+            for (int i = 0; i < logos.length() && out.size() < MARKS; i++) {
                 JSONObject o = logos.optJSONObject(i);
                 if (o == null) continue;
                 String l = o.isNull("iso_639_1") ? "" : o.optString("iso_639_1", "");
                 String path = o.optString("file_path", "");
-                if (l.equals(lang) && path.toLowerCase(Locale.ROOT).endsWith(".png")) return image(path, "w500");
+                if ((lang.equals("*") || l.equals(lang)) && path.toLowerCase(Locale.ROOT).endsWith(".png")) out.add(image(path, "w500"));
             }
+            if (!out.isEmpty()) return out;
         }
-        return "";
+        return out;
+    }
+
+    /** Pure: a title's logos as one mark: the chain of them (PicSources.chain) when there are several, the one, or "". */
+    static String markOf(List<String> logos) {
+        if (logos.isEmpty()) return "";
+        if (logos.size() == 1) return logos.get(0);
+        return com.gathin.broadcast.PicSources.chain(logos.toArray(new String[0]));
     }
 
     /** extrasOf with the family's language for the logo (Settings › Playback › Languages' first). */
     static Extras extrasOf(JSONObject j, boolean tv, String family) {
-        String logo = logoOf(j.optJSONObject("images"), family);
+        List<String> logos = logosOf(j.optJSONObject("images"), family);
+        String logo = logos.isEmpty() ? "" : logos.get(0);
         List<String[]> cast = new ArrayList<>();
         JSONObject credits = j.optJSONObject("credits");
         JSONArray people = credits == null ? null : credits.optJSONArray("cast");
@@ -489,7 +529,7 @@ public final class Tmdb {
                 }
             }
         }
-        return new Extras(logo, cast, seasons, years, age, Videos.parse(j.optJSONObject("videos")), false);
+        return new Extras(logo, markOf(logos), cast, seasons, years, age, Videos.parse(j.optJSONObject("videos")), false);
     }
 
     /**
@@ -514,7 +554,7 @@ public final class Tmdb {
     /** Pure: extras as they are kept on this TV (only what the page uses, not TMDB's whole page). */
     static JSONObject kept(Extras x) throws JSONException {
         JSONObject o = new JSONObject();
-        o.put("_at", System.currentTimeMillis()).put("logo", x.logo).put("years", x.years).put("age", x.age);
+        o.put("_at", System.currentTimeMillis()).put("logo", x.logo).put("mark", x.mark).put("years", x.years).put("age", x.age);
         JSONArray cast = new JSONArray();
         for (String[] p : x.cast) cast.put(new JSONArray().put(p[0]).put(p[1]).put(p[2]));
         o.put("cast", cast);
@@ -545,8 +585,8 @@ public final class Tmdb {
                 }
             }
         }
-        return new Extras(o.optString("logo", ""), cast, seasons, o.optString("years", ""), o.optString("age", ""),
-                Videos.fromKept(o.optJSONArray("vids")), !o.has("vids"));
+        return new Extras(o.optString("logo", ""), o.optString("mark", ""), cast, seasons, o.optString("years", ""),
+                o.optString("age", ""), Videos.fromKept(o.optJSONArray("vids")), !o.has("vids"));
     }
 
     // ---- asking, and keeping ------------------------------------------------------------------------------------

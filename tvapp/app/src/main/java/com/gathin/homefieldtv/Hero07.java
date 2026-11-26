@@ -272,13 +272,24 @@ final class Hero07 {
 
     // ---- the title's mark ------------------------------------------------------------------------------------------------
 
-    /** TMDB's logo for a title where it has one, at its own shape on the foot of its box; else its name in bold Inter. */
+    /**
+     * TMDB's logo for a title where it has one, at its own shape on the foot of its box; else its name in bold Inter.
+     * While its logo is still being looked for (pending) or read, nothing is drawn (the name never flashes first); a logo
+     * that comes after the card was drawn without it fades in over IN_MS. The name in lettering only once it is known
+     * that there is no logo.
+     */
     static final class Mark {
+        /** How long a logo that came late takes to fade in. */
+        static final long IN_MS = 150;
         private final float maxSize;
         private final TextPaint p;
         private final Paint bmp = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
         private String name = "", logo = "", shown = "";
         private float w, h, room;
+        private int mode = Pics.FIT;
+        private boolean pending, fadeIn, fadeAsked;
+        /** When its logo was first drawn (uptime ms), for its fade in; -1: not yet. */
+        private long came = -1;
 
         /** maxSize: the name's size (design px) when it has no logo; a long one is made smaller to fit. */
         Mark(float maxSize) {
@@ -289,9 +300,26 @@ final class Hero07 {
 
         /** The name, TMDB's logo ("" for none), the box a logo may take and the width the name may (screen px). */
         void set(String title, String logoUrl, float boxW, float boxH, float nameW) {
+            set(title, logoUrl, boxW, boxH, nameW, false, false, Pics.FIT);
+        }
+
+        /**
+         * As set(), with whether its logo is still being looked for (nothing drawn meanwhile), whether it is to fade in
+         * when it comes (it came after the card was first drawn), and how its picture is read (Pics.FIT, Pics.MARK).
+         */
+        void set(String title, String logoUrl, float boxW, float boxH, float nameW, boolean stillPending, boolean fade, int picMode) {
             String t = title == null ? "" : title;
             String l = logoUrl == null ? "" : logoUrl;
-            if (t.equals(name) && l.equals(logo) && boxW == w && boxH == h && nameW == room) return;
+            if (t.equals(name) && l.equals(logo) && boxW == w && boxH == h && nameW == room && stillPending == pending
+                    && fade == fadeAsked && picMode == mode) {
+                return;
+            }
+            if (!t.equals(name) || !l.equals(logo)) came = -1;
+            pending = stillPending;
+            fadeAsked = fade;
+            // A card's logo (MARK) not read yet fades in as it comes too (one read already shows at once).
+            fadeIn = fade || picMode == Pics.MARK && !l.isEmpty() && Pics.cached(l, Math.round(boxW), Math.round(boxH), picMode) == null;
+            mode = picMode;
             name = t;
             logo = l;
             w = boxW;
@@ -309,17 +337,23 @@ final class Hero07 {
 
         /** The logo's picture once read (null while it is, or without one). */
         private Bitmap logo(Runnable ready) {
-            return logo.isEmpty() ? null : Pics.get(logo, Math.round(w), Math.round(h), Pics.FIT, ready);
+            return logo.isEmpty() ? null : Pics.get(logo, Math.round(w), Math.round(h), mode, ready);
         }
 
-        /** Whether the logo is still being read (nothing is drawn meanwhile, so the name never flashes first). */
+        /** Whether the logo is still being looked for or read (nothing is drawn meanwhile, so the name never flashes first). */
         boolean waiting(Runnable ready) {
+            if (pending) return true;
             return !logo.isEmpty() && logo(ready) == null && !Pics.failed(logo);
         }
 
         /** Whether it is the logo (true) or the name in words. */
         boolean isLogo(Runnable ready) {
             return logo(ready) != null;
+        }
+
+        /** Whether it draws the name in lettering now (no logo, and none still coming). */
+        boolean lettering(Runnable ready) {
+            return !waiting(ready) && logo(ready) == null && !shown.isEmpty();
         }
 
         /** How tall it is as drawn now: the logo's own height, else the name's line (CSS line-height 1.02). */
@@ -347,12 +381,23 @@ final class Hero07 {
 
         /**
          * Drawn with its top left at (x, top), at an opacity: a logo whole, fitted inside its box at its own shape (read
-         * so, Pics.FIT) and at its own pixels, so it is crisp and never cropped.
+         * so, Pics.FIT or MARK) and at its own pixels, so it is crisp and never cropped.
          */
         void draw(Canvas c, float x, float top, int alpha, Runnable ready) {
-            Bitmap b = logo(ready);
+            Bitmap b = pending ? null : logo(ready);
             if (b != null) {
-                bmp.setAlpha(alpha);
+                int a = alpha;
+                if (fadeIn && !com.gathin.homefieldtv.engine.Exec.inline) {
+                    long now = android.os.SystemClock.uptimeMillis();
+                    if (came < 0) came = now;
+                    float k = (now - came) / (float) IN_MS;
+                    if (k < 1f) {
+                        a = Math.round(alpha * Math.max(0f, k));
+                        // The next frame of its fade.
+                        if (ready != null) ready.run();
+                    }
+                }
+                bmp.setAlpha(a);
                 c.drawBitmap(b, x, top, bmp);
                 drawn.set(x, top, x + b.getWidth(), top + b.getHeight());
                 return;

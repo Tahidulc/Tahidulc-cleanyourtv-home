@@ -441,9 +441,9 @@ final class TitleScreen extends Screen implements TitlePage.Host, Trailer.Host {
         return m.find() ? m.group(1) : "";
     }
 
-    /** The trailer in the TV's YouTube app (nothing is played here). */
+    /** The trailer full screen here (Trailer.fullScreen; the TV's YouTube app only when none of its trailers will play). */
     private void trailer(String id) {
-        trailer(tv, id);
+        Trailer.fullScreen(tv, title, id);
     }
 
     /** A trailer (its YouTube id) in the TV's YouTube app, from any screen (Home's MENU too). */

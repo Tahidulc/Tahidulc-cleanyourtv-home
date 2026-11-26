@@ -1,6 +1,7 @@
 package com.gathin.homefieldtv;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.robolectric.Shadows.shadowOf;
@@ -170,6 +171,63 @@ public class EditorialFrameTest {
             double budget = r.name.contains("carousel (Lite)") ? LITE_CAROUSEL : FILL;
             assertTrue(r.name + ": " + r.fillPerFrame() + " screens of fill a frame (at most " + budget + ")", r.fillPerFrame() <= budget);
             assertTrue(r.name + ": " + r.uploadKbPerFrame() + " KB of pictures sent to the chip a frame", r.uploadKbPerFrame() <= UPLOAD_KB);
+        }
+    }
+
+    /**
+     * A trailer playing in the remote's card, the remote still (the Streamer: 38 % of its frames janky, the page drawn
+     * again on every one of the video's): YouTube's player stood in for by a view whose every frame is new, as a video's
+     * are. The page under it is kept as one picture (a layer) while the trailer's window is up, so not one of the video's
+     * frames draws the page (its ground, cards, shadows and words) again; and the moment the remote moves the layer is
+     * let go, before the first frame of the motion (which draws in no layer at all).
+     */
+    @Test public void aTrailerPlayingWithTheRemoteStillDrawsNothingOfThePageAFrame() throws Exception {
+        start();
+        Motion.force(false);
+        leaveBar();
+        EditorialPage home = a.homeScreen().editorial();
+        TrailerTest.Stub stub = new TrailerTest.Stub();
+        int[] videoFrames = {0};
+        stub.v = new View(app) {
+            @Override protected void onDraw(android.graphics.Canvas c) {
+                c.drawColor(0xFF203040);
+                videoFrames[0]++;
+                postInvalidateOnAnimation();
+            }
+        };
+        Trailer.standIn = stub;
+        MarksAhead.lookup = (c, t) -> null;
+        try {
+            onRow(home, "top10");
+            Editorial view = home.view();
+            Editorial.Card card = view.card();
+            home.previewExtras(card.title(), TrailerTest.extras(card.title()));
+            for (int f = 0; f < 60; f++) meter.tick();
+            assertEquals("started (hidden) once the remote rested", Trailer.LOADING, home.trailer().state());
+            assertEquals("the page kept as one picture from the moment its window is up", View.LAYER_TYPE_HARDWARE, view.getLayerType());
+            TrailerTest.plays(stub, 150f);
+            assertEquals(Trailer.SHOWN, home.trailer().state());
+            for (int f = 0; f < 5; f++) meter.tick();
+            int drawn = view.draws, frames = videoFrames[0];
+            FrameMeter.Run run = new FrameMeter.Run("Editorial Home: a trailer playing, the remote still");
+            meter.frames(run, 60);
+            System.out.println("\nTRAILER PLAYING: " + (videoFrames[0] - frames) + " video frames, the page drawn " + (view.draws - drawn)
+                    + " times; " + run.row());
+            assertTrue("the video's frames came", videoFrames[0] - frames >= 50);
+            assertEquals("the page drawn again on none of them", drawn, view.draws);
+            // The remote moves: the layer let go in the key press itself, the motion drawn in none.
+            FrameMeter.Run move = new FrameMeter.Run("Editorial Home: on from a trailer");
+            FrameMeter.down(a, KeyEvent.KEYCODE_DPAD_RIGHT, 0);
+            assertEquals(View.LAYER_TYPE_NONE, view.getLayerType());
+            assertFalse(home.trailer().windowUp());
+            meter.frame(move);
+            FrameMeter.up(a, KeyEvent.KEYCODE_DPAD_RIGHT);
+            meter.settle(move, 60);
+            assertEquals("no offscreen layer while it moves", 0.0, move.layersPerFrame(), 0.0);
+        } finally {
+            Trailer.standIn = null;
+            MarksAhead.lookup = null;
+            MarksAhead.clear();
         }
     }
 

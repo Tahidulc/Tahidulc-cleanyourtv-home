@@ -19,6 +19,7 @@ import com.gathin.homefieldtv.engine.Tmdb;
 import com.gathin.homefieldtv.engine.TmdbLists;
 import com.gathin.homefieldtv.engine.Videos;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -240,6 +241,7 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
     void hidden() {
         h.removeCallbacks(rested);
         h.removeCallbacks(auto);
+        MarksAhead.hold(false);
         if (trailer != null) trailer.hidden();
     }
 
@@ -414,8 +416,15 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
     private void words(Editorial.Card c, Catalog.Details d, Tmdb.Extras x) {
         Catalog.Title t = c.title();
         TmdbLists.Item it = c.pick.item;
+        // Found for this title on any page before (MarksAhead keeps them): at once.
+        if (x == null) x = MarksAhead.known(t);
         c.details = d;
         c.extras = x;
+        // Its logo: TMDB's (its logos in the family's language; Pics.MARK takes a light one). None drawn while it is still
+        // looked for, never the name first; the name in lettering only once TMDB has said there is none (or can't say).
+        boolean pending = !looked.contains(t.key) && !MarksAhead.looked(t);
+        c.logoFade |= c.logoPending && !pending;
+        c.logoPending = pending;
         float r = Billboard.rating(d != null && !d.rating.isEmpty() ? d.rating : !t.rating.isEmpty() ? t.rating : it != null ? it.rating : "");
         c.score = r > 0f ? Math.round(r * 10f) + "%" : "";
         c.year = !t.year.isEmpty() ? t.year : it != null ? it.year : "";
@@ -428,7 +437,7 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
         else if (t.series && d != null && !d.seasons.isEmpty()) c.length = d.seasons.size() == 1 ? "1 Season" : d.seasons.size() + " Seasons";
         else c.length = "";
         c.story = d != null && !d.plot.isEmpty() ? d.plot : !t.plot.isEmpty() ? t.plot : it != null ? it.plot : "";
-        c.logo = x == null ? "" : x.logo;
+        c.logo = x == null ? "" : x.mark;
     }
 
     /** A title's wide picture: TMDB's backdrop, its page's, the playlist's, else its poster. */
@@ -460,8 +469,8 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
     private void heroWords(Editorial.Card c) {
         Catalog.Title t = c.title();
         Catalog.Details d = Catalog.get(tv).cachedDetails(t);
-        Tmdb.Extras x = extrasKnown.get(t.key);
-        words(c, d, x);
+        words(c, d, extrasKnown.get(t.key));
+        Tmdb.Extras x = c.extras;
         c.age = x != null && !x.age.isEmpty() ? x.age : d == null ? "" : d.age.trim();
         c.kicker = t.torbox() ? (t.series ? "TV SHOW · " : "FILM · ") + Catalog.TORBOX.toUpperCase(Locale.UK) : t.series ? "TV SHOW" : "FILM";
         c.onList = MyList.has(tv, t.key);
@@ -476,8 +485,9 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
             return;
         }
         // A key held: the page's picture and the read-ahead wait until it is let go (landed), so nothing is read for the
-        // titles the remote only passes.
+        // titles the remote only passes (the logos looked for ahead wait too).
         boolean passing = view.holding();
+        MarksAhead.hold(passing);
         if (!passing) view.ground(card.wide);
         restingOn = card;
         // Its trailer, after a rest, the remote in the page (the carousel's behind its words).
@@ -487,8 +497,11 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
             trailers(card);
         }
         if (Exec.inline) rested();
-        else h.postDelayed(rested, 450);
-        if (!passing) readAhead(row == null);
+        else h.postDelayed(rested, RESTED_MS);
+        if (!passing) {
+            readAhead(row == null);
+            marksAhead();
+        }
         if (row != null) {
             // The rows past the remote's, asked for now.
             int at = -1;
@@ -499,9 +512,91 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
 
     /** A held key let go on a card: the page's picture and the pictures either side of it, as a press would have them. */
     @Override public void landed(Editorial.Row row, Editorial.Card card) {
+        MarksAhead.hold(false);
         if (view == null || card == null) return;
         view.ground(card.wide);
         readAhead(row == null);
+        marksAhead();
+    }
+
+    /** How long the remote rests on a card before its page's details and extras are read (not for the cards it passes). */
+    static final long RESTED_MS = 450;
+    /** The logos looked for ahead: this many either side of the remote along its row, and of the rows above and below. */
+    static final int AROUND = 6, IN_VIEW = 5;
+    /** The titles opened lately from these pages (their logos kept looked for), the last RECENT_MAX. */
+    private static final ArrayDeque<Catalog.Title> RECENT = new ArrayDeque<>();
+    static final int RECENT_MAX = 8;
+
+    /** The logos (and trailers) of the titles near the remote looked for ahead (MarksAhead), the nearest first. */
+    private void marksAhead() {
+        List<Catalog.Title> ts = marksWindow();
+        if (!ts.isEmpty()) MarksAhead.want(tv, ts, got);
+    }
+
+    private final MarksAhead.Got got = this::got;
+
+    /**
+     * The titles whose logos are looked for ahead now, the nearest first: the remote's row, its card and AROUND either
+     * side; the carousel's cards from its front (first when the remote is on it); the rows above and below, their first
+     * IN_VIEW cards from where each is; all of Continue Watching; the titles opened lately. Titles looked for already are
+     * left to MarksAhead (told at once).
+     */
+    List<Catalog.Title> marksWindow() {
+        java.util.LinkedHashSet<Catalog.Title> out = new java.util.LinkedHashSet<>();
+        if (view == null) return new ArrayList<>(out);
+        Editorial.Row on = view.current();
+        List<Editorial.Row> rows = view.rows();
+        if (on == null) hero(out);
+        if (on != null) {
+            int f = on.focus;
+            add(out, on, f);
+            for (int d = 1; d <= AROUND; d++) {
+                add(out, on, f + d);
+                add(out, on, f - d);
+            }
+        }
+        int r = on == null ? -1 : rows.indexOf(on);
+        for (int rr : new int[]{r + 1, r - 1}) {
+            if (rr < 0 || rr >= rows.size() || rr == r) continue;
+            Editorial.Row x = rows.get(rr);
+            for (int k = x.focus; k < x.focus + IN_VIEW; k++) add(out, x, k);
+        }
+        if (on != null) hero(out);
+        for (Editorial.Row x : rows) {
+            if (!x.id.equals("continue")) continue;
+            for (Editorial.Card c : x.cards) if (c.title() != null) out.add(c.title());
+        }
+        synchronized (RECENT) {
+            out.addAll(RECENT);
+        }
+        return new ArrayList<>(out);
+    }
+
+    private void hero(java.util.Set<Catalog.Title> out) {
+        int n = heroCards.size(), at = Math.max(0, Math.min(view.heroAt(), n - 1));
+        for (int d = 0; d < n; d++) {
+            Catalog.Title t = heroCards.get((at + d) % n).title();
+            if (t != null) out.add(t);
+        }
+    }
+
+    private static void add(java.util.Set<Catalog.Title> out, Editorial.Row rw, int k) {
+        if (k < 0 || k >= rw.cards.size()) return;
+        Catalog.Title t = rw.cards.get(k).title();
+        if (t != null) out.add(t);
+    }
+
+    /** A title's extras found (MarksAhead; null: none, or TMDB couldn't be asked): kept, and its cards' words made again. */
+    private void got(Catalog.Title t, Tmdb.Extras x) {
+        if (view == null) return;
+        boolean had = looked.contains(t.key) && (x == null || x == extrasKnown.get(t.key));
+        if (looked.size() > 400) looked.clear();
+        looked.add(t.key);
+        if (x != null) {
+            if (extrasKnown.size() > 200) extrasKnown.clear();
+            extrasKnown.put(t.key, x);
+        }
+        if (!had) known(t);
     }
 
     /** The backdrops a key either side of the remote's card, read after what is on screen, at the size they are drawn. */
@@ -538,23 +633,37 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
                 if (d != null) known(t);
             });
         }
+        // An episode on Continue Watching: its season's own trailer looked for too.
+        int season = seasonOf(card);
+        if (season > 0) seasonVideos(t, season);
         Tmdb.Extras had = extrasKnown.get(t.key);
         if (looked.contains(t.key) && (had == null || !had.old)) return;
+        // Its extras first of all (MarksAhead: kept ones at once, else TMDB asked), as the logos ahead are.
+        MarksAhead.first(tv, t, got);
+    }
+
+    /** A Continue Watching card's season (an episode of a series to carry on), 0 for any other card. */
+    private static int seasonOf(Editorial.Card c) {
+        Catalog.Title t = c.title();
+        if (t == null || !t.series || c.pick.point == null || c.pick.point.episode.isEmpty()) return 0;
+        int s = Videos.seasonOf(HomeScreen.episodeCode(c.pick.point.subtitle));
+        return s > 0 ? s : Videos.seasonOf(c.episode.replace(":", " "));
+    }
+
+    /** Series' seasons' own videos (TMDB's: a season's trailer), by the series' key and the season, once looked for. */
+    private final Map<String, List<Videos.Video>> seasons = new HashMap<>();
+
+    /** A series' season's videos read off the main thread once; its card's trailers handed on again. */
+    private void seasonVideos(Catalog.Title t, int season) {
+        String k = t.key + "|" + season;
+        if (seasons.containsKey(k)) return;
         Exec.io(() -> {
-            Tmdb.Extras x = Tmdb.keptExtras(tv, t);
-            if (x == null || x.old) {
-                Tmdb.Extras asked = Tmdb.extras(tv, t);
-                if (asked != null) x = asked;
-            }
-            Tmdb.Extras got = x;
+            List<Videos.Video> vs = Videos.ofSeason(tv, t, season);
             Runnable done = () -> {
-                if (looked.size() > 400) looked.clear();
-                looked.add(t.key);
-                if (got != null) {
-                    if (extrasKnown.size() > 200) extrasKnown.clear();
-                    extrasKnown.put(t.key, got);
-                }
-                known(t);
+                if (seasons.size() > 100) seasons.clear();
+                seasons.put(k, vs);
+                Editorial.Card on = restingOn;
+                if (on != null && on.title() == t) trailers(on);
             };
             if (Exec.inline) done.run();
             else Exec.main(done);
@@ -594,15 +703,47 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
     /** A card's trailers as far as they are known now (once its extras have been looked for), handed to the trailer. */
     private void trailers(Editorial.Card c) {
         Catalog.Title t = c.title();
-        if (t == null || !looked.contains(t.key)) return;
+        if (t == null || !looked.contains(t.key) && !MarksAhead.looked(t)) return;
         Tmdb.Extras x = extrasKnown.get(t.key);
+        if (x == null) x = MarksAhead.known(t);
         Catalog.Details d = Catalog.get(tv).cachedDetails(t);
-        trailer.keys(t.key, Videos.trailers(x == null ? null : x.videos, Tmdb.language(tv), d == null ? "" : d.trailer));
+        List<Videos.Video> series = x == null ? null : x.videos;
+        String own = d == null ? "" : d.trailer;
+        int season = seasonOf(c);
+        if (season > 0) {
+            // An episode: its season's trailer where TMDB has one, then its series' (once its season has been looked for).
+            List<Videos.Video> vs = seasons.get(t.key + "|" + season);
+            if (vs == null) return;
+            trailer.keys(t.key, Videos.episode(vs, series, Tmdb.language(tv), own));
+            return;
+        }
+        trailer.keys(t.key, Videos.trailers(series, Tmdb.language(tv), own));
     }
 
-    /** The remote's card's place for its trailer, once it has grown and the page has settled. */
+    /** Tests: the trailers a card would hand on now (as trailers() does), empty while they aren't known. */
+    List<String> previewTrailers(Editorial.Card c) {
+        Catalog.Title t = c.title();
+        if (t == null) return new ArrayList<>();
+        Tmdb.Extras x = extrasKnown.get(t.key);
+        if (x == null) x = MarksAhead.known(t);
+        Catalog.Details d = Catalog.get(tv).cachedDetails(t);
+        int season = seasonOf(c);
+        List<Videos.Video> vs = season > 0 ? seasons.get(t.key + "|" + season) : null;
+        if (season > 0 && vs == null) return new ArrayList<>();
+        return season > 0 ? Videos.episode(vs, x == null ? null : x.videos, Tmdb.language(tv), d == null ? "" : d.trailer)
+                : Videos.trailers(x == null ? null : x.videos, Tmdb.language(tv), d == null ? "" : d.trailer);
+    }
+
+    /** Previews and tests: a series' season's own videos as if TMDB had answered. */
+    void previewSeason(Catalog.Title t, int season, List<Videos.Video> vs) {
+        seasons.put(t.key + "|" + season, vs);
+        Editorial.Card on = restingOn;
+        if (on != null && on.title() == t) trailers(on);
+    }
+
+    /** The remote's card's place for its trailer, once it has grown and the page has settled (never while a key is held). */
     @Override public boolean spot(android.graphics.RectF out) {
-        return view != null && view.trailerSpot(out);
+        return view != null && !view.holding() && view.trailerSpot(out);
     }
 
     /** Whether this page is on screen in front (its screen on top, the app in front) with the remote in its rows. */
@@ -613,9 +754,24 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
         return mine && tv.showing(top) && view != null && view.active();
     }
 
-    /** A trailer shows in the card now (or no longer): over the carousel's, its words are drawn again. */
+    /**
+     * A trailer shows in the card now (or no longer): over the carousel's, its words are drawn again; over a row's card,
+     * its logo, its episode and its progress.
+     */
     @Override public void showing(boolean on) {
-        if (view != null) view.heroTrailer(on && view.area() == Editorial.HERO);
+        if (view == null) return;
+        view.heroTrailer(on && view.area() == Editorial.HERO);
+        view.rowTrailer(on && view.area() == Editorial.ROWS);
+    }
+
+    /** The trailer's window up over the card, or gone: the page kept as one picture meanwhile (Editorial.still). */
+    @Override public void window(boolean up) {
+        if (view != null) view.still(up);
+    }
+
+    /** The card's corners as lifted: the carousel's, or a row's. */
+    @Override public float corner() {
+        return view != null && view.area() == Editorial.HERO ? Ui.f(Editorial.HERO_R) * 1.018f : Ui.f(Editorial.CARD_R) * 1.02f;
     }
 
     /** More is known of a title (its details, its extras): its cards' words made again where they are shown. */
@@ -662,15 +818,20 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
         Shelves.Pick p = card.pick;
         if (p.point != null && carryOn(p.point)) return;
         if (p.title != null) {
+            synchronized (RECENT) {
+                RECENT.remove(p.title);
+                RECENT.addFirst(p.title);
+                while (RECENT.size() > RECENT_MAX) RECENT.removeLast();
+            }
             tv.openTitle(p.title);
             return;
         }
         if (p.item == null) return;
-        // A title still to come: its trailer in the TV's YouTube app, else when it comes.
+        // A title still to come: its trailer full screen here (the TV's YouTube app only if none will play), else when it comes.
         List<String> keys = soonKnown.get(p.key());
         if (keys != null && !keys.isEmpty()) {
             trailer.moved();
-            TitleScreen.trailer(tv, keys.get(0));
+            Trailer.fullScreen(tv, keys);
         } else {
             Toast.makeText(tv, p.item.name + ": " + comes(p.item.date).replace("Coming", "coming"), Toast.LENGTH_SHORT).show();
         }
@@ -759,6 +920,7 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
 
     /** Previews and tests: TMDB's extras for a title as if it had answered. */
     void previewExtras(Catalog.Title t, Tmdb.Extras x) {
+        MarksAhead.keep(t, x);
         extrasKnown.put(t.key, x);
         looked.add(t.key);
         known(t);
