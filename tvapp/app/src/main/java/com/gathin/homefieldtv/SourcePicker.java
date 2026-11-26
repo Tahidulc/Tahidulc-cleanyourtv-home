@@ -230,7 +230,8 @@ final class SourcePicker extends View {
         List<String> out = new ArrayList<>();
         String q = Catalog.pictureName(p.picture);
         if (!q.isEmpty()) out.add(q);
-        if (p.hdr != null && !p.hdr.isEmpty()) out.add(p.hdr);
+        // A provider's page may say SDR: no mark for it.
+        if (p.hdr != null && !p.hdr.isEmpty() && !p.hdr.equals("SDR")) out.add(p.hdr);
         String a = p.sound == null ? "" : p.sound;
         if (a.startsWith("Dolby Atmos")) {
             out.add("Dolby Atmos");

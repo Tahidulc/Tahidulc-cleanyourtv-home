@@ -164,17 +164,16 @@ public class SeriesPageTest {
         assertEquals(page.previewFirstOf(2), page.previewEpisode());
     }
 
-    @Test public void downFromTheButtonsRisesToTheSeriesSection() {
+    @Test public void downFromTheCoverRisesToTheSeriesSection() {
         TitlePage page = open();
-        assertEquals(TitlePage.BUTTONS, page.part());
+        assertEquals(TitlePage.COVER, page.part());
         page.toPart(TitlePage.EPISODES);
         draw(page);
-        // With the menu down the left (Editorial, as it comes) what is under it starts MENU_SHIFT lower.
-        float shift = page.previewVertical() ? TitlePage.MENU_SHIFT : 0f;
-        assertEquals(TitlePage.SECTION + shift, page.risen(), 0.5f);
+        // The section is a screen down, under the cover.
+        assertEquals(TitlePage.SECTION, page.risen(), 0.5f);
         press(KeyEvent.KEYCODE_BACK);
         draw(page);
-        assertEquals(TitlePage.BUTTONS, page.part());
+        assertEquals(TitlePage.COVER, page.part());
         assertEquals(0f, page.risen(), 0.5f);
     }
 

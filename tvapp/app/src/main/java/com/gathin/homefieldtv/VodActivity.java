@@ -63,11 +63,14 @@ import java.util.Locale;
  *   Back               closes what is open, then stops and keeps the place (Resume and Continue watching)
  * </pre>
  *
- * <p>Play on a title's page (or an episode chosen) opens on its cover (CoverPage, the family's cover B): the poster
- * popping in, the title's logo, its facts, story and cast, and PLAY FROM with every source, the best first with the
- * remote on it; OK plays the one chosen from where it was left (the others its backups), Back goes back to the page.
- * Resume and Continue watching carry on straight away from the copy it was started on; the next episode starts straight
- * away from its best copy.
+ * <p>A film's own page is its cover (TitleScreen: cover B with every source), so a film chosen there plays straight
+ * away: Resume and From the start from the copy it was started on, a source chosen from that copy (it is kept as the
+ * one started on first). An episode chosen (a series' episodes, Home's row of them, a series' Play and From the start)
+ * opens on its own cover first (choose: CoverPage, the episode's line and story over its series' poster): Resume and
+ * From the start first where it was left part-way, then PLAY FROM with every source, the best first, each one's facts
+ * filled in as they come (CopyFacts); with a single source and nothing to resume it plays at once. Back goes back to
+ * the page. The next episode starts straight away from its best copy, as do a source changed and an episode from the
+ * player's own Episodes.
  *
  * <p>Sources (SourcePicker): every copy it can play from, the best first (Formats: 4K, then 1080p, 720p and the rest;
  * HDR before SDR; Atmos or surround before stereo; the bigger file), each with its mark (TorBox's green, a playlist's
@@ -108,8 +111,15 @@ public final class VodActivity extends Activity implements VodSubs.Listener, Epi
     private VodSubs subs;
     private VodPanels panels;
     private EpisodesPanel episodes;
-    /** The cover Play opens on (null when it carries on straight away: Resume, Continue watching, the next episode). */
+    /** The cover an episode chosen opens on (null when it plays straight away: a film from its page, Resume, the next). */
     private CoverPage cover;
+    /** Where it was left (START): the cover's Resume and its sources carry on from there, From the start from 0. */
+    private long resumeAt;
+    /** A choice made on the cover before its sources were found (CHOSE_RESUME, CHOSE_START), made as they come. */
+    private int pending;
+    static final int CHOSE_NONE = 0, CHOSE_RESUME = 1, CHOSE_START = 2;
+    /** The cover's sources' facts being filled in (stopped as one is chosen). */
+    private com.gathin.homefieldtv.engine.CopyFacts.Look facts;
     private final Handler h = new Handler(Looper.getMainLooper());
     private Catalog.Title title;
     private Catalog.Episode episode, nextUp;
@@ -201,10 +211,15 @@ public final class VodActivity extends Activity implements VodSubs.Listener, Epi
         episodes = new EpisodesPanel(this, this);
         root.addView(episodes, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         if (getIntent().getBooleanExtra(CHOOSE, false)) {
-            // Play on a title's page: its cover first, over everything, until a source is chosen.
+            // An episode chosen: its cover first, over everything, until Resume, From the start or a source is chosen.
             cover = new CoverPage(this, new CoverPage.Host() {
                 @Override public void play(int index) {
                     playChosen(index);
+                }
+
+                @Override public void action(int index) {
+                    if (index == 0) resumeChosen();
+                    else fromStartChosen();
                 }
 
                 @Override public void back() {
@@ -218,6 +233,7 @@ public final class VodActivity extends Activity implements VodSubs.Listener, Epi
         // Films' own sound delay (Settings and the player's Audio), not the last channel's.
         PlayerPrefs.useDelay(this, null);
         startAt = getIntent().getLongExtra(START, 0);
+        resumeAt = startAt;
         choose = getIntent().getBooleanExtra(CHOOSE, false);
         resume = !choose;
         open(getIntent().getStringExtra(TITLE), getIntent().getStringExtra(EPISODE));
@@ -270,12 +286,16 @@ public final class VodActivity extends Activity implements VodSubs.Listener, Epi
             // looked for by) as it comes.
             Catalog.Title t = title;
             if (cover != null) cover.show(t, null, cat.cachedDetails(t));
+            coverActions();
             readCast();
             start();
             cat.details(t, d -> {
                 if (t != title || d == null) return;
                 details = d;
-                if (cover != null && cover.isOpen()) cover.show(t, null, d);
+                if (cover != null && cover.isOpen()) {
+                    cover.show(t, null, d);
+                    coverActions();
+                }
                 readCast();
                 sub = VodPanels.facts(title, details);
                 subFor = -1f;
@@ -289,13 +309,37 @@ public final class VodActivity extends Activity implements VodSubs.Listener, Epi
             episode = d == null ? null : d.episode(episodeId);
             if (episode == null) {
                 error = "That episode isn't in your playlist any more.";
+                if (cover != null) {
+                    cover.show(title, null, d);
+                    cover.status(error);
+                }
                 overlay.invalidate();
                 return;
             }
             if (cover != null) cover.show(title, episode, d);
+            coverActions();
             readCast();
             start();
         });
+    }
+
+    /**
+     * The cover's Resume and From the start, for a film or an episode left part-way (started from where it was left):
+     * Resume's words ("S2 E5  ·  23 min left", "1h 12m left") and how far it was watched, From the start's (its length).
+     */
+    private void coverActions() {
+        if (cover == null || !cover.isOpen() || resumeAt <= 0 || title == null) return;
+        Resume.Point p = Resume.get(this, title.key, episodeId());
+        Catalog.Details d = details != null ? details : Catalog.get(this).cachedDetails(title);
+        int minutes = episode != null ? episode.minutes : d != null && !title.series ? d.minutes : 0;
+        long length = p != null && p.duration > 0 ? p.duration : minutes * 60_000L;
+        String code = episode == null ? "" : "S" + episode.season + " E" + episode.number;
+        List<CoverPage.Action> rows = new ArrayList<>();
+        rows.add(new CoverPage.Action(CoverPage.RESUME_NAME, CoverPage.resumeWords(code, resumeAt, length),
+                length > 0 ? resumeAt / (float) length : 0f, false));
+        rows.add(new CoverPage.Action(CoverPage.FROM_START_NAME, CoverPage.startWords(code, length), 0f, true));
+        cover.actions(rows);
+        if (!plays.isEmpty()) cover.resumeFrom(startedOn());
     }
 
     /**
@@ -332,7 +376,6 @@ public final class VodActivity extends Activity implements VodSubs.Listener, Epi
 
     private void start() {
         Catalog cat = Catalog.get(this);
-        Catalog.Play mine = episode == null ? cat.play(title) : cat.play(title, episode);
         if (details == null) details = cat.cachedDetails(title);
         error = "";
         ended = false;
@@ -341,22 +384,32 @@ public final class VodActivity extends Activity implements VodSubs.Listener, Epi
         plays.clear();
         episodeChanged();
         int token = ++looking;
-        if (!TorBox.on(this)) {
-            begin(token, mine, new ArrayList<>());
-            return;
-        }
         // TorBox's copies all found before anything plays, as they come first: at once from the library read lately.
-        if (!TorBox.fresh(this)) {
+        if (TorBox.on(this) && !TorBox.fresh(this)) {
             error = "Looking in your TorBox…";
             if (cover != null) cover.status(error);
             overlay.invalidate();
         }
-        android.content.Context app = getApplicationContext();
-        Catalog.Title t = title;
-        Catalog.Episode e = episode;
+        copies(this, title, episode, found -> begin(token, found));
+    }
+
+    /**
+     * Every copy of a film or an episode, in the order they are tried (TorBox's first unless Settings put them last, the
+     * playlists' the best first): the playlists' at once without TorBox, else with TorBox's found first (off the main
+     * thread, at once from the library read lately). Answered on the main thread. The title's page shares it.
+     */
+    static void copies(android.content.Context c, Catalog.Title t, Catalog.Episode e, java.util.function.Consumer<List<Catalog.Play>> done) {
+        Catalog cat = Catalog.get(c);
+        Catalog.Play mine = e == null ? cat.play(t) : cat.play(t, e);
+        boolean first = TorBox.first(c);
+        if (!TorBox.on(c)) {
+            done.accept(TorBox.order(new ArrayList<>(), mine, first));
+            return;
+        }
+        android.content.Context app = c.getApplicationContext();
         Exec.io(() -> {
             List<Catalog.Play> found = TorBox.plays(app, t, e);
-            Exec.main(() -> begin(token, mine, found));
+            Exec.main(() -> done.accept(TorBox.order(found, mine, first)));
         });
     }
 
@@ -393,11 +446,11 @@ public final class VodActivity extends Activity implements VodSubs.Listener, Epi
         }
     }
 
-    /** The copies in the order they are tried (TorBox's first unless Settings say last), and the first one started. */
-    private void begin(int token, Catalog.Play mine, List<Catalog.Play> torbox) {
+    /** The copies in the order they are tried, and the first one started (or every one on the cover). */
+    private void begin(int token, List<Catalog.Play> found) {
         if (token != looking || isFinishing() || isDestroyed()) return;
         plays.clear();
-        plays.addAll(TorBox.order(torbox, mine, TorBox.first(this)));
+        plays.addAll(found);
         if (plays.isEmpty()) {
             error = title != null && title.torbox() ? "It isn't in your TorBox any more, or TorBox is turned off."
                     : "Its playlist has gone from this TV.";
@@ -408,9 +461,22 @@ public final class VodActivity extends Activity implements VodSubs.Listener, Epi
         at = 0;
         error = "";
         if (choose && cover != null) {
-            // Every source on the cover before it plays, the best first with the remote on it.
             choose = false;
-            cover.sources(plays);
+            int wanted = pending;
+            pending = CHOSE_NONE;
+            if (wanted == CHOSE_RESUME) {
+                resumeChosen();
+            } else if (wanted == CHOSE_START) {
+                fromStartChosen();
+            } else if (plays.size() == 1 && resumeAt <= 0) {
+                // One source and nothing to carry on from: no choice to make, it plays.
+                playChosen(0);
+            } else {
+                // Every source on the cover before it plays, the best first, its facts filled in as they come.
+                cover.sources(plays);
+                if (resumeAt > 0) cover.resumeFrom(startedOn());
+                facts = com.gathin.homefieldtv.engine.CopyFacts.fill(this, plays, this::factsCame);
+            }
             return;
         }
         if (resume) {
@@ -441,14 +507,56 @@ public final class VodActivity extends Activity implements VodSubs.Listener, Epi
 
     /** A source chosen on the cover: it plays from where it was left, the rest kept as its backups in their order. */
     private void playChosen(int i) {
+        playFrom(i, resumeAt);
+    }
+
+    /** Resume on the cover: on from where it was left, from the copy it was started on (the others its backups). */
+    private void resumeChosen() {
+        if (plays.isEmpty()) {
+            pending = CHOSE_RESUME;
+            return;
+        }
+        playFrom(startedOn(), resumeAt);
+    }
+
+    /** From the start on the cover: from 0, from the copy it was started on. */
+    private void fromStartChosen() {
+        if (plays.isEmpty()) {
+            pending = CHOSE_START;
+            return;
+        }
+        playFrom(startedOn(), 0);
+    }
+
+    /** Where among the copies the one it was started on is (the best, the first, when none was kept). */
+    private int startedOn() {
+        int was = title == null ? -1 : Copies.find(this, title.key, episodeId(), plays);
+        return Math.max(0, was);
+    }
+
+    /** A choice on the cover: that copy first (the rest its backups in their order), from `from` ms in. */
+    private void playFrom(int i, long from) {
         if (i < 0 || i >= plays.size() || title == null) return;
+        if (facts != null) facts.stop();
+        pending = CHOSE_NONE;
         List<Catalog.Play> order = Copies.chosenFirst(plays, i);
         plays.clear();
         plays.addAll(order);
         at = 0;
+        startAt = from;
+        // Tried again after a failure (OK), it carries on from the copy chosen.
+        resume = true;
         Copies.started(this, title.key, episodeId(), plays.get(0));
         cover.close();
         prepare(true);
+    }
+
+    /** More is known of the cover's sources (their picture, HDR, sound, size): their rows again, the best first. */
+    private void factsCame() {
+        if (cover == null || !cover.isOpen()) return;
+        com.gathin.homefieldtv.engine.CopyFacts.rank(plays);
+        cover.sources(plays);
+        if (resumeAt > 0) cover.resumeFrom(startedOn());
     }
 
     /** Tests and previews: the cover (null when it isn't shown). */
@@ -542,6 +650,7 @@ public final class VodActivity extends Activity implements VodSubs.Listener, Epi
     }
 
     @Override protected void onDestroy() {
+        if (facts != null) facts.stop();
         release();
         subs.release();
         super.onDestroy();
@@ -1182,13 +1291,22 @@ public final class VodActivity extends Activity implements VodSubs.Listener, Epi
         prepare(true);
     }
 
-    /** Previews and tests: these copies as if found, on the cover as Play shows them. */
+    /** Previews and tests: these copies as if found, on the cover as an episode chosen shows them. */
     void previewChoose(List<Catalog.Play> copies) {
         plays.clear();
         plays.addAll(copies);
         at = 0;
         error = "";
-        if (cover != null) cover.sources(plays);
+        choose = false;
+        if (cover != null) {
+            // Shown again where its one source had played at once.
+            if (!cover.isOpen() && title != null) {
+                cover.show(title, episode, details);
+                coverActions();
+            }
+            cover.sources(plays);
+            if (resumeAt > 0) cover.resumeFrom(startedOn());
+        }
     }
 
     /** Previews: these copies as if found, the one at now playing; the list of them opened when asked. */

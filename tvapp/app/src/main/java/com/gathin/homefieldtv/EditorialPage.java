@@ -676,20 +676,9 @@ final class EditorialPage implements Editorial.Host, Trailer.Host {
         }
     }
 
-    /** Continue Watching: on at once from where it was (an episode needs its series' page read; else its page). */
+    /** Continue Watching: the title's page (its cover B) with the remote on Resume. */
     private boolean carryOn(Resume.Point p) {
-        Catalog.Title t = Catalog.get(tv).title(p.title);
-        if (t == null) return false;
-        if (!t.series && p.episode.isEmpty()) {
-            tv.play(t, null, p.position, false);
-            return true;
-        }
-        Catalog.get(tv).details(t, d -> {
-            Catalog.Episode e = d == null ? null : d.episode(p.episode);
-            if (e != null) tv.play(t, e, p.position, p.position <= 0);
-            else tv.openTitle(t);
-        });
-        return true;
+        return tv.carryOn(p, false);
     }
 
     @Override public void held(Editorial.Row row, Editorial.Card card) {

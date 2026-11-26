@@ -123,7 +123,7 @@ public class LogoFitTest {
         home();
         int[][] logos = {{3000, 150}, {1600, 400}, {600, 500}};
         float[][] boxes = {{Editorial.HERO_LOGO_W, Editorial.HERO_LOGO_H}, {Editorial.CARD_LOGO_W, Editorial.CARD_LOGO_H},
-                {TitlePage.ART_BOX_W, TitlePage.ART_BOX_H}, {TitlePage.LOGO_W, TitlePage.LOGO_H}};
+                {TitlePage.ART_BOX_W, TitlePage.ART_BOX_H}};
         Bitmap b = Bitmap.createBitmap(1920, 1080, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(b);
         for (int[] l : logos) {

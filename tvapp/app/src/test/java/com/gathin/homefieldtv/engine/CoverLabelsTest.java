@@ -18,23 +18,28 @@ import java.util.List;
  */
 public class CoverLabelsTest {
     @Test public void labelsFromReleaseNames() {
-        assertEquals(Arrays.asList("Dolby Vision", "TrueHD Atmos", "HEVC", "REMUX"),
+        assertEquals(Arrays.asList("Dolby Vision", "Dolby Atmos", "HEVC", "REMUX"),
                 Formats.labels("The.Lantern.House.2025.2160p.UHD.BluRay.REMUX.DV.HDR10.TrueHD.Atmos.7.1.HEVC-MADEUP.mkv", "", ""));
-        assertEquals(Arrays.asList("HDR10+", "DD+ 5.1", "HEVC", "WEB-DL"),
+        assertEquals(Arrays.asList("HDR10+", "Dolby Digital+ 5.1", "HEVC", "WEB-DL"),
                 Formats.labels("The Lantern House 2025 2160p AMZN WEB-DL DDP5.1 HDR10+ H.265-MadeUp.mkv", "", ""));
-        assertEquals(Arrays.asList("DTS-HD MA 5.1", "H.264", "BluRay"),
+        // A release that names no HDR is SDR.
+        assertEquals(Arrays.asList("SDR", "DTS-HD MA 5.1", "H.264", "BluRay"),
                 Formats.labels("The.Lantern.House.2025.1080p.BluRay.DTS-HD.MA.5.1.x264-MADEUP.mkv", "", ""));
-        assertEquals(Arrays.asList("AAC Stereo", "H.264", "WEBRip"),
+        assertEquals(Arrays.asList("SDR", "Stereo", "H.264", "WEBRip"),
                 Formats.labels("The.Lantern.House.2025.720p.WEBRip.AAC2.0.x264-MADEUP.mp4", "", ""));
         assertEquals(Arrays.asList("SDR", "DTS 5.1", "AV1", "WEB"), Formats.labels("the lantern house 2025 2160p sdr web dts 5.1 av1", "", ""));
-        assertEquals(Arrays.asList("DD+ Atmos"), Formats.labels("The.Lantern.House.2025.DDP5.1.Atmos", "", ""));
+        assertEquals(Arrays.asList("Dolby Atmos"), Formats.labels("The.Lantern.House.2025.DDP5.1.Atmos", "", ""));
         assertEquals(Arrays.asList("DTS:X"), Formats.labels("The Lantern House DTS-X", "", ""));
+        assertEquals(Arrays.asList("SDR", "TrueHD 7.1", "HEVC", "REMUX"),
+                Formats.labels("The.Lantern.House.2025.2160p.REMUX.TrueHD.7.1.HEVC-MADEUP.mkv", "", ""));
         // A series pack's episode file: its own name says little, its download's the rest.
-        assertEquals(Arrays.asList("Dolby Vision", "DD+ 5.1", "HEVC", "WEB-DL"),
+        assertEquals(Arrays.asList("Dolby Vision", "Dolby Digital+ 5.1", "HEVC", "WEB-DL"),
                 Formats.labels("The Quiet Coast - S02E04.mkv The.Quiet.Coast.S02.2160p.WEB-DL.DDP5.1.DV.HEVC-MADEUP", "", ""));
-        // A playlist's entry: its name's tags were read already (and taken off the name).
-        assertEquals(Arrays.asList("HDR10", "DD+ 5.1"), Formats.labels("The Lantern House", "HDR10", "Dolby Digital+ 5.1"));
-        assertEquals(Arrays.asList("Atmos"), Formats.labels("The Lantern House", "", "Dolby Atmos"));
+        // A playlist's entry: what its provider's page said (or its name's tags, read already), before the name.
+        assertEquals(Arrays.asList("HDR10", "Dolby Digital+ 5.1"), Formats.labels("The Lantern House", "HDR10", "Dolby Digital+ 5.1"));
+        assertEquals(Arrays.asList("Dolby Atmos"), Formats.labels("The Lantern House", "", "Dolby Atmos"));
+        assertEquals(Arrays.asList("SDR", "5.1"), Formats.labels("The Lantern House", "SDR", "5.1"));
+        assertEquals(Arrays.asList("HLG", "Stereo"), Formats.labels("The Lantern House DD5.1", "HLG", "Stereo"));
         assertEquals(Collections.emptyList(), Formats.labels("The Lantern House", "", ""));
         assertEquals("TrueHD 7.1", Formats.shortSound("Dolby TrueHD 7.1"));
         assertEquals("", Formats.codec("The Lantern House 1080p"));

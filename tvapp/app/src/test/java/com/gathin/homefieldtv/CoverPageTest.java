@@ -12,6 +12,7 @@ import android.os.SystemClock;
 import android.view.KeyEvent;
 
 import com.gathin.homefieldtv.engine.Catalog;
+import com.gathin.homefieldtv.engine.Copies;
 import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Resume;
 import com.gathin.homefieldtv.engine.Source;
@@ -35,10 +36,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The cover a film or an episode opens on when Play is pressed (the family's cover B), on a made-up playlist with
- * invented names: it opens on Play with the best source lit, OK plays the one chosen from where it was left, Back goes
- * back to the title's page, its ground follows Settings › Colour theme and white words stay readable on every one of
- * them (and on a lighter one, darkened), an episode's version shows "S2 E1 · Fog" and its own story; the pop's timing.
+ * The cover an episode chosen opens on before it plays (cover B in the player, VodActivity's choose), on a made-up
+ * playlist with invented names: not started, PLAY FROM with the best lit; left part-way, Resume first with the remote on
+ * it, then From the start, then the sources, OK on each doing its own (the copy it was started on from where it was
+ * left, the same from 0, a source from where it was left); one source and nothing to resume plays at once; Back goes
+ * back; the rows' words (picture, HDR, sound, size); its ground follows Settings › Colour theme with white words
+ * readable on every one; the pop's timing.
  */
 @RunWith(RobolectricTestRunner.class)
 @LooperMode(LooperMode.Mode.PAUSED)
@@ -75,6 +78,7 @@ public class CoverPageTest {
         pages.put(SERIES, Catalog.previewDetails("A made-up series by the sea.", "Drama", "", "", "2022", "", "8.1", "12", 0, eps));
         Catalog.get(app).useForPreview(rows, pages);
         Resume.clear(app);
+        Copies.clear(app);
         CoverPage.previewElapsed = -1;
     }
 
@@ -82,6 +86,8 @@ public class CoverPageTest {
         Theme.save(app, Theme.HOMEFIELD, Theme.AMBER);
         Theme.apply(Theme.HOMEFIELD, Theme.AMBER);
         catalogue().set(null, catalogueWas);
+        Resume.clear(app);
+        Copies.clear(app);
         Exec.inline = false;
     }
 
@@ -97,7 +103,7 @@ public class CoverPageTest {
         idle();
     }
 
-    /** Play pressed on a title's page: the player asked to show every source first, from where it was left. */
+    /** An episode (or a film) chosen: the player asked to show its cover first, from where it was left. */
     private VodActivity play(String key, String episode, long from) {
         Intent i = new Intent(app, VodActivity.class).putExtra(VodActivity.TITLE, key).putExtra(VodActivity.EPISODE, episode)
                 .putExtra(VodActivity.START, from).putExtra(VodActivity.CHOOSE, true);
@@ -122,50 +128,123 @@ public class CoverPageTest {
         return Arrays.asList(torbox, home, spare);
     }
 
-    @Test public void opensOnPlayTheBestLitOkPlaysItFromWhereItWasLeft() {
-        VodActivity v = play(FILM, "", 600_000L);
+    @Test public void notStartedTheBestLitOkPlaysTheOneChosen() {
+        VodActivity v = play(FILM, "", 0);
         CoverPage c = v.cover();
-        assertTrue(c.isOpen());
-        assertFalse(v.overlayOn());
-        assertEquals("The Lantern House", c.titleWords());
-        assertTrue(c.plotWords().startsWith("A widow returns"));
-        // Every source, the best first with the remote on it and marked BEST.
         List<Catalog.Play> all = copies();
         v.previewChoose(all);
+        assertTrue(c.isOpen());
+        assertEquals("The Lantern House", c.titleWords());
+        assertTrue(c.plotWords().startsWith("A widow returns"));
+        // No Resume: every source, the best first with the remote on it and marked BEST.
+        assertEquals(0, c.actionCount());
         assertEquals(0, c.focus());
         assertTrue(c.bestLit());
-        assertEquals(Arrays.asList("T", "4K", "TorBox  ·  Dolby Vision  ·  Atmos", "58.0 GB", ""),
+        assertEquals(Arrays.asList("T", "4K", "TorBox  ·  Dolby Vision  ·  Dolby Atmos", "58.0 GB", ""),
                 Arrays.asList(CoverPage.rowWords(all.get(0), "The Lantern House")));
         assertEquals(Arrays.asList("P", "720p", "Spare  ·  Stereo", "", ""), Arrays.asList(CoverPage.rowWords(all.get(2), "The Lantern House")));
-        // Down and OK: the playlist's 1080p plays, from the place kept, the others its backups.
+        // Down and OK: the playlist's 1080p plays from its start, the others its backups.
         press(v, KeyEvent.KEYCODE_DPAD_DOWN);
         assertEquals(1, c.focus());
         assertFalse(c.bestLit());
         press(v, KeyEvent.KEYCODE_DPAD_CENTER);
         assertFalse(c.isOpen());
         assertEquals(all.get(1), v.source());
-        assertEquals(600_000L, v.startAtForTests());
+        assertEquals(0L, v.startAtForTests());
         assertEquals("1 of 3 sources", v.copiesWords());
         assertTrue(v.overlayOn());
     }
 
-    @Test public void eachSourceLabelledFromItsName() {
+    @Test public void leftPartWayResumeFirstThenFromTheStartThenTheSources() {
+        Resume.save(app, new Resume.Point(SERIES, "e2", "The Quiet Coast", "S2 E1  ·  Fog", "", 23 * 60_000L, 46 * 60_000L,
+                System.currentTimeMillis()));
+        List<Catalog.Play> all = copies();
+        // Started on the playlist's copy last time.
+        Copies.started(app, SERIES, "e2", all.get(1));
+        VodActivity v = play(SERIES, "e2", 23 * 60_000L);
+        CoverPage c = v.cover();
+        assertTrue(c.isOpen());
+        assertEquals("S2 E1  ·  Fog", c.titleWords());
+        assertEquals("The lamp goes dark in the fog.", c.plotWords());
+        v.previewChoose(all);
+        // Resume · S2 E1 · 23 min left, the remote on it; From the start with its length; then the sources.
+        assertEquals(2, c.actionCount());
+        assertEquals("Resume", c.actionName(0));
+        assertEquals("S2 E1  ·  23 min left", c.actionWords(0));
+        assertEquals("From the start", c.actionName(1));
+        assertEquals("S2 E1  ·  46 min", c.actionWords(1));
+        assertEquals("On Home  ·  1080p", c.resumeCopyWords());
+        assertEquals(0, c.focus());
+        assertFalse(c.bestLit());
+        press(v, KeyEvent.KEYCODE_DPAD_DOWN);
+        assertEquals(1, c.focus());
+        press(v, KeyEvent.KEYCODE_DPAD_DOWN);
+        assertTrue("then the best source", c.bestLit());
+        press(v, KeyEvent.KEYCODE_DPAD_UP);
+        press(v, KeyEvent.KEYCODE_DPAD_UP);
+        // OK on Resume: the copy it was started on, from where it was left.
+        press(v, KeyEvent.KEYCODE_DPAD_CENTER);
+        assertFalse(c.isOpen());
+        assertEquals(all.get(1), v.source());
+        assertEquals(23 * 60_000L, v.startAtForTests());
+    }
+
+    @Test public void fromTheStartPlaysItsCopyFromZeroAndASourceFromWhereItWasLeft() {
+        Resume.save(app, new Resume.Point(SERIES, "e2", "The Quiet Coast", "S2 E1  ·  Fog", "", 23 * 60_000L, 46 * 60_000L,
+                System.currentTimeMillis()));
+        List<Catalog.Play> all = copies();
+        Copies.started(app, SERIES, "e2", all.get(2));
+        VodActivity v = play(SERIES, "e2", 23 * 60_000L);
+        v.previewChoose(all);
+        press(v, KeyEvent.KEYCODE_DPAD_DOWN);
+        press(v, KeyEvent.KEYCODE_DPAD_CENTER);
+        assertEquals(all.get(2), v.source());
+        assertEquals(0L, v.startAtForTests());
+        // Again, and the TorBox copy (the best, the third row): from where it was left.
+        VodActivity w = play(SERIES, "e2", 23 * 60_000L);
+        w.previewChoose(all);
+        for (int i = 0; i < 2; i++) press(w, KeyEvent.KEYCODE_DPAD_DOWN);
+        assertTrue(w.cover().bestLit());
+        press(w, KeyEvent.KEYCODE_DPAD_CENTER);
+        assertEquals(all.get(0), w.source());
+        assertEquals(23 * 60_000L, w.startAtForTests());
+    }
+
+    @Test public void oneSourceAndNothingToResumePlaysAtOnce() {
+        VodActivity v = play(SERIES, "e1", 0);
+        assertFalse("no choice to make", v.cover().isOpen());
+        assertEquals("e1", v.episode().id);
+        assertTrue(v.overlayOn());
+    }
+
+    @Test public void eachSourceLabelledWithItsPictureHdrSoundAndSize() {
         // A TorBox file: its own name and its download's say what it is; the file's name under it (a pack's episode).
         Catalog.Play pack = Catalog.previewPlay("torbox:3:4", "");
         pack.picture = Catalog.PICTURE_4K;
         pack.name = "The Quiet Coast - S02E04.mkv";
         pack.item = "The.Quiet.Coast.S02.2160p.WEB-DL.DDP5.1.DV.HEVC-MADEUP";
         pack.size = 9L << 30;
-        assertEquals(Arrays.asList("T", "4K", "TorBox  ·  Dolby Vision  ·  DD+ 5.1  ·  HEVC  ·  WEB-DL", "9.0 GB",
+        assertEquals(Arrays.asList("T", "4K", "TorBox  ·  Dolby Vision  ·  Dolby Digital+ 5.1  ·  HEVC  ·  WEB-DL", "9.0 GB",
                 "The Quiet Coast - S02E04.mkv"), Arrays.asList(CoverPage.rowWords(pack, "The Quiet Coast")));
-        // A playlist's copy: its name's tags read already; its name not repeated when it is the title's.
+        // A release named without HDR is SDR.
+        Catalog.Play plain = Catalog.previewPlay("torbox:5:6", "");
+        plain.picture = Catalog.PICTURE_1080;
+        plain.name = "The.Lantern.House.2025.1080p.BluRay.DTS-HD.MA.5.1.x264-MADEUP.mkv";
+        plain.size = 4400L << 20;
+        assertEquals("TorBox  ·  SDR  ·  DTS-HD MA 5.1  ·  H.264  ·  BluRay", CoverPage.rowWords(plain, "The Lantern House")[2]);
+        assertEquals("4.3 GB", CoverPage.rowWords(plain, "The Lantern House")[3]);
+        // A playlist's copy: what its provider's page said; its name not repeated when it is the title's.
         Catalog.Play iptv = Catalog.previewPlay("http://a.example/2.mkv", "Home");
         iptv.picture = Catalog.PICTURE_1080;
         iptv.name = "The Lantern House";
         iptv.hdr = "HDR10";
         iptv.sound = "Dolby Digital+ 5.1";
-        assertEquals(Arrays.asList("P", "1080p", "Home  ·  HDR10  ·  DD+ 5.1", "", ""),
+        assertEquals(Arrays.asList("P", "1080p", "Home  ·  HDR10  ·  Dolby Digital+ 5.1", "", ""),
                 Arrays.asList(CoverPage.rowWords(iptv, "The Lantern House")));
+        // A size worked out from its bitrate.
+        iptv.size = 4400L << 20;
+        iptv.sizeGuessed = true;
+        assertEquals("≈ 4.3 GB", CoverPage.rowWords(iptv, "The Lantern House")[3]);
     }
 
     @Test public void aLongListScrollsTheBestFirst() {
@@ -213,7 +292,7 @@ public class CoverPageTest {
         assertEquals("The Lantern House", c.titleWords());
     }
 
-    @Test public void backGoesBackToTheTitlesPage() {
+    @Test public void backGoesBackToWhereItWasChosen() {
         VodActivity v = play(FILM, "", 0);
         v.previewChoose(copies());
         press(v, KeyEvent.KEYCODE_BACK);
@@ -267,15 +346,14 @@ public class CoverPageTest {
         assertTrue(Integer.toHexString(vivid), ((vivid >> 16) & 0xFF) > ((vivid & 0xFF) + 60));
     }
 
-    @Test public void anEpisodesCover() {
-        VodActivity v = play(SERIES, "e2", 0);
-        CoverPage c = v.cover();
-        assertTrue(c.isOpen());
-        assertEquals("S2 E1  ·  Fog", c.titleWords());
-        assertEquals("The lamp goes dark in the fog.", c.plotWords());
-        press(v, KeyEvent.KEYCODE_DPAD_CENTER);
-        assertFalse(c.isOpen());
-        assertEquals("e2", v.episode().id);
+    @Test public void resumesWordsAndTheCopy() {
+        assertEquals("1h 12m left", CoverPage.resumeWords("", 53 * 60_000L, 125 * 60_000L));
+        assertEquals("S2 E5  ·  23 min left", CoverPage.resumeWords("S2 E5", 23 * 60_000L, 46 * 60_000L));
+        assertEquals("S2 E5", CoverPage.resumeWords("S2 E5", 23 * 60_000L, 0));
+        assertEquals("2h 5m", CoverPage.startWords("", 125 * 60_000L));
+        assertEquals("S1 E1  ·  46 min", CoverPage.startWords("S1 E1", 46 * 60_000L));
+        assertEquals("On TorBox  ·  4K", CoverPage.copyWords(copies().get(0)));
+        assertEquals("On Spare  ·  720p", CoverPage.copyWords(copies().get(2)));
     }
 
     @Test public void thePop() {

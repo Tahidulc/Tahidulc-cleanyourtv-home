@@ -266,6 +266,8 @@ public final class Catalog {
          */
         public int tmdb;
         public String imdb = "";
+        /** What the provider's page says of a film's stream (its picture, HDR, sound, bitrate, length), or null. */
+        public StreamInfo stream;
 
         Details(String plot, String genre, String cast, String director, String released, String backdrop, String poster,
                 String trailer, String rating, String age, int minutes, List<Season> seasons) {
@@ -326,6 +328,8 @@ public final class Catalog {
         final String ext, url, userAgent, referrer;
         /** Only in the family's TorBox (no playlist has it): played from there alone, marked with its cloud. */
         public boolean torbox;
+        /** What its series' page says of its stream (its picture, HDR, sound, bitrate, length), or null. */
+        public StreamInfo stream;
 
         Episode(String id, int season, int number, String title, String plot, String still, int minutes, String ext, String url,
                 String userAgent, String referrer) {
@@ -366,6 +370,14 @@ public final class Catalog {
         public String hdr = "", sound = "";
         /** A TorBox file's download's name (a series pack's: where its release says what it is), "" otherwise. */
         public String item = "";
+        /** Its size worked out from its bitrate and length (shown "≈ 4.1 GB"), not the file's own. */
+        public boolean sizeGuessed;
+        /** Whether its provider's page said what its stream is (StreamInfo: its picture, HDR and sound as they are). */
+        public boolean info;
+        /** The title it plays (a playlist's copy: its own title's key, whose page says what its stream is), "" else. */
+        public String key = "";
+        /** What its provider's page said of its stream (for a size worked out from its bitrate), or null. */
+        StreamInfo stream;
 
         Play(String url, String userAgent, String referrer) {
             this.url = url;
@@ -1450,6 +1462,7 @@ public final class Catalog {
                 poster, i.optString("youtube_trailer"), first(i.optString("rating"), t == null ? "" : t.rating),
                 first(i.optString("mpaa_rating"), i.optString("age")), mins, null);
         ids(d, i);
+        d.stream = StreamInfo.of(i);
         return d;
     }
 
@@ -1507,10 +1520,12 @@ public final class Catalog {
                 int number = e.optInt("episode_num", k + 1);
                 int secs = Library.number(ei.optString("duration_secs"));
                 int mins = secs > 0 ? Math.round(secs / 60f) : minutes(ei.optString("duration"));
-                eps.add(new Episode(e.optString("id"), season, number, episodeTitle(e.optString("title"), show, season, number),
+                Episode ep = new Episode(e.optString("id"), season, number, episodeTitle(e.optString("title"), show, season, number),
                         ei.optString("plot"), first(ei.optString("movie_image"), ei.optString("cover_big")), mins,
                         aired(first(ei.optString("releasedate"), ei.optString("release_date"), ei.optString("air_date"))),
-                        e.optString("container_extension"), "", "", ""));
+                        e.optString("container_extension"), "", "", "");
+                ep.stream = StreamInfo.of(ei);
+                eps.add(ep);
             }
         }
         eps.sort((a, b) -> a.season != b.season ? Integer.compare(a.season, b.season) : Integer.compare(a.number, b.number));
@@ -1623,6 +1638,11 @@ public final class Catalog {
         p.sound = t.sound;
         p.kind = kindOf(e != null ? e.ext : t.ext);
         if (p.kind.isEmpty()) p.kind = kindOf(e != null ? e.url : t.url);
+        p.key = t.key;
+        // What its provider's page says of its stream, where that page has been read (CopyFacts reads the rest).
+        Details d = e == null ? cachedDetails(t) : null;
+        StreamInfo s = e != null ? e.stream : d == null ? null : d.stream;
+        if (s != null) s.apply(p);
         return p;
     }
 

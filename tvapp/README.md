@@ -23,7 +23,7 @@ wordmark are Homefield; it carries no Sky logo or name.
   on now and Favourites; Left and Right go along a section's cards, the next picture cross-fading into the card as its
   name slides in from that side and the page's colour fades to its own; Up goes to the sections, Down into the
   strip, where the tile the remote is on grows with a white edge and shows its name. OK on a channel watches it, on a
-  film or show opens its page, on Continue watching carries on, on an episode plays it and on a programme later sets a
+  film or show opens its page, on Continue watching opens its page with Resume on, on an episode opens its cover and on a programme later sets a
   reminder; OK held on a channel makes it a favourite and CH+ and CH- change channel. Back goes from the strip to the
   card, then to the sections, then opens the menu, and Back from the menu goes back to the TV. Home doesn't play
   anything itself.
@@ -460,13 +460,11 @@ wordmark are Homefield; it carries no Sky logo or name.
   poster's foot. Where the remote is, the strip takes the focus colour and a thin light edge goes round the card.
   Settings, Appearance, Posters: Landscape makes every card 16:9, with the title's wide backdrop (TMDB's at w780, the
   poster where there is none) and the same strip under it.
-- **A title:** its picture across the whole page, the page in its colour (a series' changing with the season), the
-  title's TMDB logo (or its name in big lettering), a line of facts (★ rating, the years it ran, its age, its seasons
-  or running time, the picture and sound marks, TorBox's cloud), then the red Play pill (Resume, or Resume S2 E4, and
-  From the start where it was left part-way) and grey buttons: My List (a tick once on it), a film's trailer and, once
-  something was started, taking it off Continue watching. A series then has its seasons and episodes as the family's
-  recording of a series page has them: the season tabs and the first episodes peek in under the buttons, and Down from
-  there the page rises to the series section, dark, the picture behind faded right down: the show's title art (TMDB's
+- **A title:** its page opens on the family's cover B (below), in both Home styles, from a row, the carousel, Search,
+  My List and Continue watching alike. A series then has its seasons and episodes as the family's recording of a
+  series page has them: Down from the cover's rows the page rises a screen to the series section, dark, its ground (the
+  page in the title's colour, its season's as the season changes) coming over the cover, the picture behind faded right
+  down: the show's title art (TMDB's
   logo, or its name in big lettering) in the middle at the top, the season tabs under it ("Season 1  Season 2  Season
   3", the season in view bold and white, a white pill behind it while the remote is on the tabs), then ONE row of every
   season's episodes, each a 16:9 still with rounded corners (a thin white line on it as far as it was watched, UP NEXT on
@@ -475,26 +473,37 @@ wordmark are Homefield; it carries no Sky logo or name.
   episodes and the tab changes by itself as the row goes into the next season, or along the tabs and the row jumps to
   that season's first episode; OK on an episode plays it. Under them a Videos row: TMDB's trailers, teasers and extras on
   YouTube as 16:9 stills with their kind on a small badge at the top left (OK opens one in the TV's YouTube app). Down
-  from there the page rises again: Overview and Genres side by side, the cast as round photos with the parts they play
-  (OK searches for someone), and More like this, the poster the remote is on lifted. TMDB's logo, cast photos, seasons'
-  posters and videos come with the key the TV launcher hands over (kept in memory only), and are kept on this TV for a
-  fortnight.
+  from there, a screen further, More like this (a film's a screen under its cover), the poster the remote is on lifted;
+  the cover's More like this button goes straight there. TMDB's logo, cast photos, seasons' posters and videos come
+  with the key the TV launcher hands over (kept in memory only), and are kept on this TV for a fortnight.
 
-- **The cover (Play):** Play on a film's page (and From the start, and an episode chosen) opens its cover, the
-  family's cover B: on the left the poster (an episode's show's), popping in from a little smaller with a slight
-  overshoot and its glow blooming after it; on the right, sliding in one after another, the title as its own logo
-  (TMDB's, in the family's language, else English, else one with no words; the title in words while it comes or
-  without one; an episode's show's logo with "S2 E4 · the episode's name" under it), the rating, year, length and
-  certificate, the story (an episode's own), the cast with their photos (or initials on a tint), and PLAY FROM: every
-  source, every TorBox file of it (none left out), each labelled from its name: TorBox's green tile with its cloud or the
-  playlists' blue one with a television, the picture (4K, 1080p…), where it is from, HDR or Dolby Vision (or SDR), the
-  sound (TrueHD Atmos, DTS-HD MA 7.1, DD+ 5.1, AAC Stereo…), the codec (HEVC, AV1, H.264), the release (REMUX, BluRay,
-  WEB-DL, WEBRip), its size, a series pack's episode file under it. The best is first, marked BEST, with the remote on
-  it (white); a long list scrolls. OK plays the one chosen from where it was left (the rest stay its backups, for
-  Sources while it plays); Back goes back to the page. The page's ground is the colour theme's (Settings › Colour
-  theme), with the poster's own colour glowing over it, kept dark enough for the words to read; on the Lite motion
-  tier it simply fades in. Resume and Continue watching carry on straight away from the copy it was started on (the
-  others after it), and the next episode starts straight away from its best copy, as on the phone.
+- **Cover B, a title's first screen:** on the left the poster (a series' own), popping in from a little smaller
+  with a slight overshoot and its glow blooming after it; on the right, sliding in one after another, the title as its
+  own logo (TMDB's, in the family's language, else English, else one with no words; the title in words while it comes
+  or without one), the rating, year, length (a series' seasons) and certificate with the page's buttons at that line's
+  right (Trailer, My List with a tick once on it, More like this and, once something was started, Remove from Continue
+  watching), the story, the cast with their photos (or initials on a tint), then its rows, the remote's white: a film or
+  series left part-way has Resume first with the remote on it ("1h 12m left", or "S2 E8 · 23 min left", the copy it
+  carries on from under it and a bar of how far it got) and From the start; a series not started has Play S1 E1. A
+  film's rows go on with PLAY FROM: every source, every TorBox file of it (none left out), each with TorBox's green tile
+  and cloud or the playlists' blue one with a television, its picture (4K, 1080p, 720p, SD), where it is from, its HDR
+  (Dolby Vision, HDR10+, HDR10, HLG, SDR), its sound (Dolby Atmos, TrueHD 7.1, DTS-HD MA 7.1, Dolby Digital+ 5.1, 5.1,
+  Stereo), the codec and release, a series pack's episode file under it, and its size (58.2 GB). A TorBox file's come
+  from TorBox and its name; a playlist's from its provider's own page of it (get_vod_info: the picture's width and
+  height, its colour transfer and Dolby Vision's or HDR10+'s data, the sound's codec and channels), its size from one
+  HEAD of its address while nothing plays (one connection, never beside a stream) or else worked out from its bitrate
+  and length (≈ 4.1 GB), its name's tags only without a page; each filled in as it comes, the best first by what they
+  really are, marked BEST, with the remote on it where nothing was started. Up from the first row goes to the buttons,
+  Down past the last on down the page. OK plays straight away, no second cover: Resume and From the start from the copy
+  it was started on, a source from where it was left (the rest its backups, for Sources while it plays); a series'
+  Resume straight away, its Play, From the start and an episode chosen on that episode's own cover (the same look, its
+  sources and Resume) unless it has but one source. Continue watching, the carousel and every row open the page, so
+  Resume is one OK away; the next episode at an episode's end, a source changed while it plays, channels and catch-up
+  start straight away. Its trailer plays in its top card: once the remote has rested on the cover a moment (never while
+  it moves) the poster widens into a 16:9 card and the trailer plays there, on as the remote goes along the rows and
+  buttons, the poster coming back when it ends, as anything plays, as the remote goes down the page, as the page goes or
+  as anything comes over it. The page's ground is the colour theme's (Settings › Colour theme), with the poster's own
+  colour glowing over it, kept dark enough for the words to read; on the Lite motion tier it simply fades in.
 - **Player:** films and episodes in the 07 look of the live player ("improve the player whilst watching movies and TV
   shows to have all the features you'd expect and you can choose different sources, subtitles with open subtitles
   support"). OK brings up the overlay: the title (and S1 E3 · the episode's name, or a film's year, length and kind) and

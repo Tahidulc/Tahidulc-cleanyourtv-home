@@ -30,7 +30,7 @@ import java.util.Map;
  * (as in the playlist, by name, newest first, best rated), the title the remote is on in a big card (its logo, facts,
  * story, cast and director), then the chosen list as a shelf of posters (a series' as wide cards), then Continue
  * watching with how far in, and My List. A long list ends in a card that opens all of it (ListScreen). OK on a poster
- * opens its page; on a Continue watching card it carries on at once. Up from the first shelf goes to the pills, and from
+ * opens its page; on a Continue watching card, its page with Resume on. Up from the first shelf goes to the pills, and from
  * them to the tab bar; Back goes to the pills, then the tab bar.
  *
  * <p>Nothing here goes through every title on the main thread: the shelves are the catalogue's own lists, cut to their
@@ -507,24 +507,8 @@ final class BrowseScreen extends Screen implements CineRows.Host {
             if (!titles.isEmpty()) tv.push(new ListScreen(tv, series, row.title, titles));
             return;
         }
-        Catalog.Title t = row.tiles.get(index).title;
-        if (CONTINUE.equals(row.tag) && carryOn(t)) return;
-        tv.openTitle(t);
-    }
-
-    /** A Continue watching card: on at once from where it was (an episode needs its series' page read; else its page). */
-    private boolean carryOn(Catalog.Title t) {
-        Resume.Point p = t.series ? Resume.latest(tv, t.key) : Resume.get(tv, t.key, "");
-        if (p == null) return false;
-        if (!t.series) {
-            tv.play(t, null, p.position, false);
-            return true;
-        }
-        Catalog.Details d = Catalog.get(tv).cachedDetails(t);
-        Catalog.Episode ep = d == null ? null : d.episode(p.episode);
-        if (ep == null) return false;
-        tv.play(t, ep, p.position, p.position <= 0);
-        return true;
+        // Its page, its cover B (a Continue watching card's with the remote on Resume).
+        tv.openTitle(row.tiles.get(index).title);
     }
 
     @Override public boolean edge(int dir) {

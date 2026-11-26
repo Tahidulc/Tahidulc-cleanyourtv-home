@@ -654,22 +654,9 @@ final class HomeScreen extends Screen implements HomeCard.Host {
         }
     }
 
-    /**
-     * Continue watching: on at once from where it was (fromStart: from its start, every source first); an episode needs
-     * its series' page read, else its page.
-     */
+    /** Continue watching: the title's page (its cover B), the remote on Resume (fromStart, MENU's: on From the start). */
     private void carryOn(Resume.Point p, boolean fromStart) {
-        Catalog.Title t = Catalog.get(tv).title(p.title);
-        if (t == null) return;
-        if (!t.series && p.episode.isEmpty()) {
-            tv.play(t, null, fromStart ? 0 : p.position, fromStart);
-            return;
-        }
-        Catalog.get(tv).details(t, d -> {
-            Catalog.Episode e = d == null ? null : d.episode(p.episode);
-            if (e != null) tv.play(t, e, fromStart ? 0 : p.position, fromStart);
-            else tv.openTitle(t);
-        });
+        tv.carryOn(p, fromStart);
     }
 
     @Override public void chosen(HomeCard.Card card, HomeCard.Tile tile) {

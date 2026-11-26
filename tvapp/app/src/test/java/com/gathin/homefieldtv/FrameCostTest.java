@@ -193,7 +193,9 @@ public class FrameCostTest {
         idle();
         a.openTitle(Catalog.get(app).title("p0|s|1"));
         idle();
-        keys(KeyEvent.KEYCODE_DPAD_DOWN, 1);
+        // Under its cover (Resume or Play, From the start): its episodes.
+        ((TitleScreen) a.top()).page().toPart(TitlePage.EPISODES);
+        idle();
         measure("Title: episodes" + tier, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_LEFT, 8);
 
         // Sports: along today's games.

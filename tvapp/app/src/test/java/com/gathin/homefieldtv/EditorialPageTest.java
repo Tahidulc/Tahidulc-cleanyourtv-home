@@ -277,42 +277,43 @@ public class EditorialPageTest {
         assertTrue(a.top() instanceof TitleScreen);
     }
 
-    @Test public void theTitlePageHasTheMenuDownTheLeft() {
+    @Test public void theTitlePageIsCoverBInBothHomeStyles() {
         TvActivity a = start(true);
         a.openTitle(Catalog.get(app).films().get(0));
         idle();
-        TitlePage page = ((TitleScreen) a.top()).page();
-        assertTrue(page.previewVertical());
-        List<String> labels = page.previewLabels();
-        assertEquals("Play", labels.get(0));
-        assertTrue(labels.contains("Add to My List"));
-        assertEquals("More like this", labels.get(labels.size() - 1));
-        if (a.tabs().active()) a.tabs().leave();
+        CoverPage cover = ((TitleScreen) a.top()).cover();
+        assertTrue(cover.isOpen());
+        // Not started: no Resume, its sources straight away; its buttons beside the facts.
+        assertEquals(0, cover.actionCount());
+        assertEquals("My List", cover.pillWords(0));
+        assertEquals("More like this", cover.pillWords(cover.pillCount() - 1));
+        // Ember Road, left part-way: Resume first, then From the start; and Remove.
+        Catalog.Title ember = Catalog.get(app).title("p0|m|3");
+        a.openTitle(ember);
         idle();
-        press(a, KeyEvent.KEYCODE_DPAD_DOWN);
-        assertEquals(1, page.previewButton());
-        // More like this: down to it.
-        for (int i = 0; i < labels.size(); i++) press(a, KeyEvent.KEYCODE_DPAD_DOWN);
+        CoverPage left = ((TitleScreen) a.top()).cover();
+        assertEquals("Resume", left.actionName(0));
+        assertEquals("1h 20m left", left.actionWords(0));
+        assertEquals("From the start", left.actionName(1));
+        assertEquals(0, left.focus());
+        assertEquals("Remove", left.pillWords(left.pillCount() - 1));
         a.home();
         idle();
-        // A series: More episodes, once its episodes are read.
-        tv.pause().stop().destroy();
-        HomeStyle.set(app, HomeStyle.EDITORIAL);
-        tv = Robolectric.buildActivity(TvActivity.class).setup();
-        idle();
+        // A series: Play S1 E1 and From the start, no sources of its own.
         Catalog.Title show = Catalog.get(app).title("p0|s|1");
-        tv.get().openTitle(show);
+        a.openTitle(show);
         idle();
-        List<String> series = ((TitleScreen) tv.get().top()).page().previewLabels();
-        assertTrue(series.toString(), series.contains("More episodes"));
-        assertTrue(series.get(0).startsWith("Play"));
-        // Classic keeps its buttons in a line.
+        CoverPage series = ((TitleScreen) a.top()).cover();
+        assertEquals("Play", series.actionName(0));
+        assertEquals("S1 E1", series.actionWords(0));
+        assertEquals(0, series.rowCount());
+        // Classic has the same cover.
         tv.pause().stop().destroy();
         HomeStyle.set(app, HomeStyle.CLASSIC);
         tv = Robolectric.buildActivity(TvActivity.class).setup();
         idle();
-        tv.get().openTitle(Catalog.get(app).films().get(0));
+        tv.get().openTitle(ember);
         idle();
-        assertFalse(((TitleScreen) tv.get().top()).page().previewVertical());
+        assertEquals("Resume", ((TitleScreen) tv.get().top()).cover().actionName(0));
     }
 }

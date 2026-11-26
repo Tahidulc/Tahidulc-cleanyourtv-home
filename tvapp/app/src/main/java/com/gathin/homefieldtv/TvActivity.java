@@ -15,6 +15,7 @@ import com.gathin.homefieldtv.engine.Catalog;
 import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Library;
+import com.gathin.homefieldtv.engine.Resume;
 import com.gathin.homefieldtv.prefs.ChannelEdits;
 
 import java.util.ArrayList;
@@ -755,9 +756,21 @@ public final class TvActivity extends Activity {
     }
 
     /**
-     * A film (episode null) or an episode, full screen, from start ms in: on its cover first, every source on it (choose:
-     * Play on a title's page, an episode chosen), or straight away from the copy it was started on (Resume, Continue
-     * watching).
+     * Continue watching (Home's row and big cards, Movies' and TV Shows' rows, the carousel, My List): the title's page,
+     * its cover B with the remote on Resume (fromStart: on From the start), Resume one OK away. False when the title
+     * has gone from the playlists.
+     */
+    boolean carryOn(Resume.Point p, boolean fromStart) {
+        Catalog.Title t = p == null ? null : Catalog.get(this).title(p.title);
+        if (t == null) return false;
+        push(new TitleScreen(this, t, fromStart));
+        return true;
+    }
+
+    /**
+     * A film (episode null) or an episode, full screen, from start ms in: an episode chosen on its own cover first,
+     * every source on it (choose: a series' episodes, Home's row of them, a series' Play and From the start), or straight
+     * away from the copy it was started on (a film from its page, which is its cover; a series' Resume).
      */
     void play(Catalog.Title t, Catalog.Episode e, long startMs, boolean choose) {
         if (t == null) return;

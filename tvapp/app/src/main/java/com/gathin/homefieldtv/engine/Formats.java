@@ -34,7 +34,7 @@ public final class Formats {
                        String kindB, int pictureB, String hdrB, String soundB, long sizeB) {
         int c = Boolean.compare(poor(kindA), poor(kindB));
         if (c == 0) c = Integer.compare(pictureRank(pictureA), pictureRank(pictureB));
-        if (c == 0) c = Boolean.compare(empty(hdrA), empty(hdrB));
+        if (c == 0) c = Boolean.compare(!isHdr(hdrA), !isHdr(hdrB));
         if (c == 0) c = Boolean.compare(!surround(soundA), !surround(soundB));
         if (c == 0) c = Long.compare(sizeB, sizeA);
         return c;
@@ -45,8 +45,9 @@ public final class Formats {
         plays.sort(Formats::compare);
     }
 
-    private static boolean empty(String s) {
-        return s == null || s.isEmpty();
+    /** Pure: an HDR picture as hdr() (or a provider's page) says it: anything but none and SDR. */
+    static boolean isHdr(String s) {
+        return s != null && !s.isEmpty() && !s.equals("SDR");
     }
 
     /** Pure: 4K first, then 1080p, then 720p, then the rest (SD, or a picture not known). */
@@ -113,17 +114,16 @@ public final class Formats {
             WEB = word("web"), HDTV = word("hdtv|pdtv"), DVD = word("dvdrip|dvd-rip|dvd"), DTSMA = word("dts-hd ma|dts hd ma|dts-hdma|dts-ma|dts ma|dtshd-ma");
 
     /**
-     * Pure: what a copy's name says of it, as its row on the cover shows it: its HDR (as hdr(), or "SDR" when the name
-     * says so; hdrKnown when it was read already), its sound in short (sound(), else the words given in audio()'s form
-     * shortened), its codec and its release; those it doesn't say left out.
+     * Pure: what a copy is, as its row on the cover shows it: its HDR (hdrLabel: Dolby Vision, HDR10+, HDR10, HLG, SDR),
+     * its sound (soundLabel: Dolby Atmos, TrueHD 7.1, DTS-HD MA 7.1, Dolby Digital+ 5.1, 5.1, Stereo), its codec and its
+     * release; what is known (a provider's page, read into hdrKnown and soundKnown) before what the name says, and those
+     * not known left out.
      */
     public static java.util.List<String> labels(String name, String hdrKnown, String soundKnown) {
         java.util.List<String> out = new java.util.ArrayList<>(4);
-        String h = hdrKnown != null && !hdrKnown.isEmpty() ? hdrKnown : hdr(name);
-        if (h.isEmpty() && SDR.matcher(norm(name)).find()) h = "SDR";
+        String h = hdrLabel(name, hdrKnown);
         if (!h.isEmpty()) out.add(h);
-        String s = sound(name);
-        if (s.isEmpty()) s = shortSound(soundKnown);
+        String s = soundLabel(name, soundKnown);
         if (!s.isEmpty()) out.add(s);
         String c = codec(name);
         if (!c.isEmpty()) out.add(c);
@@ -155,6 +155,39 @@ public final class Formats {
         String ch = channels(n);
         if (kind.isEmpty()) return ch.equals("Stereo") ? "" : ch;
         return ch.isEmpty() ? kind : kind + " " + ch;
+    }
+
+    /**
+     * Pure: a copy's HDR: as known (a provider's page), else as its name says it (hdr()), else SDR where the name says
+     * so or is a release's (its codec or release named: releases name their HDR); "" when nothing says.
+     */
+    public static String hdrLabel(String name, String known) {
+        if (known != null && !known.isEmpty()) return known;
+        String h = hdr(name);
+        if (!h.isEmpty()) return h;
+        if (SDR.matcher(norm(name)).find() || !codec(name).isEmpty() || !release(name).isEmpty()) return "SDR";
+        return "";
+    }
+
+    /**
+     * Pure: a copy's sound as its row says it: "Dolby Atmos", "TrueHD 7.1", "DTS-HD MA 7.1", "DTS-HD 5.1", "DTS:X", "DTS
+     * 5.1", "Dolby Digital+ 5.1", "Dolby Digital 5.1", and for AAC and the like their channels ("5.1", "Stereo"); from
+     * what is known (audio()'s words: a provider's page, or a TorBox file's name read already), else the name; "" for
+     * none.
+     */
+    public static String soundLabel(String name, String known) {
+        String a = known != null && !known.isEmpty() ? known : audio(name);
+        if (a.isEmpty()) return "";
+        if (a.startsWith("Dolby Atmos")) return "Dolby Atmos";
+        if (a.startsWith("DTS-HD") && !a.startsWith("DTS-HD MA") && DTSMA.matcher(norm(name)).find()) a = "DTS-HD MA" + a.substring(6);
+        if (a.startsWith("Dolby TrueHD")) return "TrueHD" + a.substring("Dolby TrueHD".length());
+        for (String k : new String[]{"AAC", "FLAC", "Opus", "MPEG"}) {
+            if (a.equals(k) || a.startsWith(k + " ")) {
+                String ch = a.substring(k.length()).trim();
+                return ch.isEmpty() ? a : ch;
+            }
+        }
+        return a;
     }
 
     /** Pure: audio()'s words in short ("Dolby Atmos" → "Atmos", "Dolby Digital+ 5.1" → "DD+ 5.1"), "" for none. */

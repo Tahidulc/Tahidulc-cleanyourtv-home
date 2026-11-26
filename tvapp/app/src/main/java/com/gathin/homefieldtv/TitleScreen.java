@@ -2,6 +2,7 @@ package com.gathin.homefieldtv;
 
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
+import android.graphics.RectF;
 import android.net.Uri;
 import android.view.KeyEvent;
 import android.view.View;
@@ -9,39 +10,83 @@ import android.widget.FrameLayout;
 import android.widget.Toast;
 
 import com.gathin.homefieldtv.engine.Catalog;
+import com.gathin.homefieldtv.engine.CopyFacts;
+import com.gathin.homefieldtv.engine.Copies;
 import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.MyList;
 import com.gathin.homefieldtv.engine.Resume;
 import com.gathin.homefieldtv.engine.Tmdb;
 import com.gathin.homefieldtv.engine.TorBox;
+import com.gathin.homefieldtv.engine.Videos;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * A film's or a series' page (TitlePage), in 07's shell with its "‹ Movies" (or "‹ TV Shows") line. A film: Play, or
- * Resume (with the minutes left) and From the Start where it was left part-way. A series: Resume S2 E8 (or Play S1 E1)
- * and From the Start. Then round buttons: My List (a tick once on it), the trailer (in the TV's YouTube app) and, where
- * something was started, Remove from Continue watching. Play opens the title's cover with every source on it, the best
- * first (VodActivity's CoverPage); Resume carries on straight away from the copy it was started on. TMDB's logo, cast and seasons' colours come
- * when it has answered (kept on the TV after, so the page has them at once next time). With Home style Editorial the
- * buttons are a menu down the left, as the family's other film app has them: Play (or Resume), Trailer, More episodes
- * (a series: down to its episodes), Add to My List, More like this (down to it). A series' seasons, episodes and Videos
- * row are its page's series section (TitlePage): OK on an episode plays it here as before; OK on a video opens it in
- * the TV's YouTube app, as the trailer button does.
+ * A film's or a series' page, in 07's shell with its "‹ Movies" (or "‹ TV Shows") line, in both Home styles: its first
+ * screen is the family's cover B (CoverPage, under the rest of the page, TitlePage), what every film and series opens
+ * on, from a row, the carousel, Search, My List or Continue watching:
+ *
+ * <pre>
+ *   a film     Resume ("1h 12m left", the copy it was started on under it) with the remote on it and From the start,
+ *              where it was left part-way; then PLAY FROM, every source the best first (the remote on BEST where it
+ *              wasn't started), each one's picture, HDR, sound and size filled in as they come (CopyFacts). OK plays at
+ *              once, no second cover: Resume and From the start from the copy it was started on, a source from where
+ *              it was left (that copy kept as the one started on)
+ *   a series   Resume S2 E8 ("23 min left") or Play S1 E1 (the episode to carry on with, from its start), and From the
+ *              start (S1 E1); Resume plays at once from the copy it was started on, Play and From the start (and an
+ *              episode chosen below) open that episode's own cover with its sources (VodActivity's), unless it has but
+ *              one; under the cover its seasons, episodes and Videos row as before
+ *   buttons    beside the facts, Up from the first row: Trailer (the trailer in the TV's YouTube app), My List (a tick
+ *              once on it), More like this (down to its row) and, where something was started, Remove from Continue
+ *              watching
+ * </pre>
+ *
+ * Down from the cover's last row the page rises to what is under it (a series' section, then More like this at the
+ * foot); Up comes back; Back from further down comes back up to the cover, and on the cover goes back to wherever the
+ * page was opened from.
+ *
+ * <p>Its trailer plays in the cover's top card ("trailers need to play on the top card when I'm on a movie and tv
+ * show"): once the remote has rested on the cover for Trailer's rest (never while it moves: each move starts the rest
+ * again), the poster widens into a 16:9 card on its own middle and the trailer plays in it (Trailer, its one window over
+ * the card, with the sound as Settings say), playing on while the remote goes along the rows and buttons. It stops and
+ * the poster comes back when it ends, as anything is played, as the remote goes down the page, as the page goes and as
+ * anything comes over it; it starts again only when the page is shown again.
+ *
+ * <p>TMDB's logo, cast and seasons' colours come when it has answered (kept on the TV after, so the page has them at
+ * once next time).
  */
-final class TitleScreen extends Screen implements TitlePage.Host {
+final class TitleScreen extends Screen implements TitlePage.Host, Trailer.Host {
     private Catalog.Title title;
     private Catalog.Details details;
+    private Tmdb.Extras extras;
     private boolean asked, asking;
     private TitlePage page;
+    private CoverPage cover;
+    private Trailer trailer;
+    /** Opened at From the start (Home's MENU on Continue watching): the remote there as the rows first come. */
+    private final boolean fromStart;
+    private boolean placed;
+    /** A film's copies (found as the page opens), their facts being filled in. */
+    private final List<Catalog.Play> copies = new ArrayList<>();
+    private boolean copiesAsked;
+    private CopyFacts.Look facts;
+    /** What OK on each of the cover's rows (above the sources) and buttons does. */
+    private final List<Runnable> rows = new ArrayList<>(), pills = new ArrayList<>();
+    /** The trailer has played in the card since the page was shown: it isn't started again until it is shown again. */
+    private boolean trailerDone;
 
     TitleScreen(TvActivity tv, Catalog.Title t) {
-        super(tv);
-        this.title = t;
+        this(tv, t, false);
     }
 
-    /** Its page draws an opaque ground over the whole screen (the window's own isn't drawn under it). */
+    TitleScreen(TvActivity tv, Catalog.Title t, boolean fromStart) {
+        super(tv);
+        this.title = t;
+        this.fromStart = fromStart;
+    }
+
+    /** Its cover draws an opaque ground over the whole screen (the window's own isn't drawn under it). */
     @Override boolean opaque() {
         return true;
     }
@@ -49,26 +94,66 @@ final class TitleScreen extends Screen implements TitlePage.Host {
     @Override View build() {
         Cine.init(tv);
         FrameLayout f = new FrameLayout(tv);
-        // No background of its own: its page draws its opaque ground first (a full screen of fill saved each frame).
-        page = new TitlePage(tv, this);
-        page.vertical(com.gathin.homefieldtv.prefs.HomeStyle.editorial(tv));
+        cover = new CoverPage(tv, new CoverPage.Host() {
+            @Override public void play(int index) {
+                playCopy(index);
+            }
+
+            @Override public void action(int index) {
+                if (index >= 0 && index < rows.size()) rows.get(index).run();
+            }
+
+            @Override public void button(int index) {
+                if (index >= 0 && index < pills.size()) pills.get(index).run();
+            }
+
+            @Override public void up() {
+                TitleScreen.this.up();
+            }
+
+            @Override public void down() {
+                page.below();
+            }
+        });
+        cover.withSources(!title.series);
+        f.addView(cover, new FrameLayout.LayoutParams(-1, -1));
+        // Over the cover: what is under it (a series' section, More like this), drawn as the page rises to it.
+        page = new TitlePage(tv, this, cover);
         f.addView(page, new FrameLayout.LayoutParams(-1, -1));
+        trailer = new Trailer(tv, f, this);
         details = Catalog.get(tv).cachedDetails(title);
         fill();
         if (details == null) ask();
         // TMDB's logo, cast and seasons: kept ones at once, else asked for (when the launcher gives its key).
         Tmdb.Extras kept = Tmdb.keptExtras(tv, title);
-        if (kept != null) page.extras(kept);
+        if (kept != null) extras(kept);
         Catalog.Title want = title;
         Exec.io(() -> {
             Tmdb.Extras x = Tmdb.extras(tv, want);
             if (x != null && x != kept) Exec.main(() -> {
-                if (page != null && title == want) page.extras(x);
+                if (page != null && title == want) extras(x);
             });
         });
-        // The family's TorBox read meanwhile (when it is in use), so that Play finds its copies at once.
+        // The family's TorBox read meanwhile (when it is in use), so that an episode finds its copies at once.
         TorBox.warm(tv);
+        findCopies();
+        trailer.rest(title.key);
+        trailerKeys();
         return f;
+    }
+
+    /** TMDB's extras: the cover's logo and cast (with their photos), the page's videos and seasons' colours. */
+    private void extras(Tmdb.Extras x) {
+        extras = x;
+        page.extras(x);
+        cover.logo(x.logo);
+        List<String[]> faces = new ArrayList<>();
+        for (String[] p : x.cast) {
+            if (p.length == 0 || p[0].isEmpty() || p[0].endsWith("(director)")) continue;
+            faces.add(new String[]{p[0], p.length > 2 ? p[2] : ""});
+        }
+        if (!faces.isEmpty()) cover.cast(faces);
+        trailerKeys();
     }
 
     /** The title's details asked of its provider (again, after a failure). */
@@ -88,8 +173,19 @@ final class TitleScreen extends Screen implements TitlePage.Host {
         tv.live.stop();
         tv.live.place(null);
         if (page != null) page.setActive(tv.tabs() == null || !tv.tabs().active());
-        // Back from a film: its resume point has moved.
-        if (built()) fill();
+        // Back from a film: its resume point has moved; its trailer may play again, its sources' facts go on.
+        if (built()) {
+            fill();
+            trailerDone = false;
+            trailer.rest(title.key);
+            trailerKeys();
+            if (!copies.isEmpty() && (facts == null || facts.stopped())) facts = CopyFacts.fill(tv, copies, this::factsCame);
+        }
+    }
+
+    @Override void hidden() {
+        if (trailer != null) trailer.hidden();
+        if (facts != null) facts.stop();
     }
 
     @Override boolean shell() {
@@ -101,7 +197,7 @@ final class TitleScreen extends Screen implements TitlePage.Host {
         return title.series ? "TV Shows" : "Movies";
     }
 
-    /** Down from the tab bar: the buttons. */
+    /** Down from the tab bar: the cover. */
     @Override void fromTabs() {
         if (page == null) return;
         page.setActive(true);
@@ -120,49 +216,9 @@ final class TitleScreen extends Screen implements TitlePage.Host {
         return title.series ? Resume.latest(tv, title.key) : Resume.get(tv, title.key, "");
     }
 
+    /** The cover's words, rows and buttons, and the page under it, for what is known now. */
     private void fill() {
         Resume.Point p = point();
-        List<TitlePage.Button> buttons = new ArrayList<>();
-        if (!title.series) {
-            if (p != null && p.position > 0) {
-                TitlePage.Button resume = new TitlePage.Button("Resume", TitlePage.PLAY, true, () -> tv.play(title, null, p.position, false));
-                resume.after = left(p);
-                buttons.add(resume);
-                buttons.add(new TitlePage.Button("From the Start", TitlePage.RESTART, false, () -> tv.play(title, null, 0, true)));
-            } else {
-                buttons.add(new TitlePage.Button("Play", TitlePage.PLAY, true, () -> tv.play(title, null, 0, true)));
-            }
-        } else if (details == null) {
-            buttons.add(new TitlePage.Button(asked && !asking ? "Couldn't get the episodes: try again" : "Finding the episodes…",
-                    TitlePage.PLAY, true, this::ask));
-        } else {
-            List<Catalog.Episode> all = details.episodes();
-            Catalog.Episode resume = p == null ? null : details.episode(p.episode);
-            if (resume != null) {
-                String label = (p.position > 0 ? "Resume" : "Play") + " S" + resume.season + " E" + resume.number;
-                // Resume: straight away from the copy it was started on; an episode from its start (the next one): every source first.
-                TitlePage.Button main = new TitlePage.Button(label, TitlePage.PLAY, true, () -> tv.play(title, resume, p.position, p.position <= 0));
-                if (p.position > 0) main.after = left(p);
-                buttons.add(main);
-                if (!all.isEmpty()) {
-                    Catalog.Episode first = all.get(0);
-                    buttons.add(new TitlePage.Button("From the Start", TitlePage.RESTART, false, () -> tv.play(title, first, 0, true)));
-                }
-            } else if (!all.isEmpty()) {
-                Catalog.Episode first = all.get(0);
-                buttons.add(new TitlePage.Button("Play S" + first.season + " E" + first.number, TitlePage.PLAY, true,
-                        () -> tv.play(title, first, 0, true)));
-            } else {
-                buttons.add(new TitlePage.Button(title.torbox() ? "No episodes in your TorBox" : "No episodes in your playlist",
-                        TitlePage.PLAY, true, () -> { }));
-            }
-        }
-        boolean on = MyList.has(tv, title.key);
-        buttons.add(new TitlePage.Button("My List", on ? TitlePage.TICK : TitlePage.PLUS, false, on, this::toggleList));
-        String trailer = trailerId(details == null ? "" : details.trailer);
-        if (!trailer.isEmpty()) buttons.add(new TitlePage.Button("Trailer", TitlePage.TRAILER, false, () -> trailer(trailer)));
-        if (p != null) buttons.add(new TitlePage.Button("Remove", TitlePage.BIN, false, this::forget));
-
         List<Catalog.Title> more = new ArrayList<>();
         for (Catalog.Category c : Catalog.get(tv).categories(title.series)) {
             if (!c.name.equals(title.category)) continue;
@@ -172,30 +228,151 @@ final class TitleScreen extends Screen implements TitlePage.Host {
                 if (t != title) more.add(t);
             }
         }
-        if (com.gathin.homefieldtv.prefs.HomeStyle.editorial(tv)) buttons = menu(buttons.get(0), on, trailer, more);
-        page.set(title, details, buttons, more, resumeEpisode(p));
+        cover.show(title, null, details);
+        cover.actions(actions(p));
+        cover.buttons(buttons(p, more));
+        if (!placed && cover.actionCount() > 1) {
+            placed = true;
+            if (fromStart) cover.focusRow(1, 0);
+        }
+        resumeCopy(p);
+        page.set(title, details, more, resumeEpisode(p));
     }
 
     /**
-     * Home style Editorial's menu down the left, as the family's other film app has it: Play (or Resume, the main one
-     * as made), Trailer, More episodes (a series with any), Add to My List (or Remove from My List), More like this.
+     * The cover's rows above the sources, and what OK on each does: a film left part-way: Resume and From the start (a
+     * film not started: none, its best source first); a series: Resume S2 E8 (or Play S1 E1) and From the start.
      */
-    private List<TitlePage.Button> menu(TitlePage.Button main, boolean on, String trailer, List<Catalog.Title> more) {
-        List<TitlePage.Button> out = new ArrayList<>();
-        out.add(main);
-        if (!trailer.isEmpty()) out.add(new TitlePage.Button("Trailer", TitlePage.TRAILER, false, () -> trailer(trailer)));
-        if (title.series && details != null && !details.episodes().isEmpty()) {
-            out.add(new TitlePage.Button("More episodes", TitlePage.EPS, false, () -> page.toPart(TitlePage.EPISODES)));
+    private List<CoverPage.Action> actions(Resume.Point p) {
+        List<CoverPage.Action> out = new ArrayList<>();
+        rows.clear();
+        if (!title.series) {
+            if (p != null && p.position > 0) {
+                long length = p.duration > 0 ? p.duration : details == null ? 0 : details.minutes * 60_000L;
+                long at = p.position;
+                out.add(new CoverPage.Action(CoverPage.RESUME_NAME, CoverPage.resumeWords("", at, length), p.progress(), false));
+                rows.add(() -> playing(() -> tv.play(title, null, at, false)));
+                out.add(new CoverPage.Action(CoverPage.FROM_START_NAME, CoverPage.startWords("", length), 0f, true));
+                rows.add(() -> playing(() -> tv.play(title, null, 0, false)));
+            }
+            return out;
         }
-        out.add(new TitlePage.Button(on ? "Remove from My List" : "Add to My List", on ? TitlePage.TICK : TitlePage.PLUS, false, on,
-                this::toggleList));
-        if (!more.isEmpty()) out.add(new TitlePage.Button("More like this", TitlePage.LIKE, false, () -> page.toPart(TitlePage.MORE)));
+        if (details == null) {
+            out.add(new CoverPage.Action(CoverPage.PLAY_NAME, asked && !asking ? "Couldn't get the episodes: OK to try again"
+                    : "Finding the episodes…", 0f, false));
+            rows.add(this::ask);
+            return out;
+        }
+        List<Catalog.Episode> all = details.episodes();
+        Catalog.Episode resume = p == null ? null : details.episode(p.episode);
+        if (resume != null) {
+            String code = "S" + resume.season + " E" + resume.number;
+            if (p.position > 0) {
+                long length = p.duration > 0 ? p.duration : resume.minutes * 60_000L, at = p.position;
+                out.add(new CoverPage.Action(CoverPage.RESUME_NAME, CoverPage.resumeWords(code, at, length), p.progress(), false));
+                // Straight away, from the copy it was started on.
+                rows.add(() -> playing(() -> tv.play(title, resume, at, false)));
+            } else {
+                // The next one, from its start: its own cover with its sources.
+                out.add(new CoverPage.Action(CoverPage.PLAY_NAME, code, 0f, false));
+                rows.add(() -> playing(() -> tv.play(title, resume, 0, true)));
+            }
+        } else if (!all.isEmpty()) {
+            Catalog.Episode first = all.get(0);
+            out.add(new CoverPage.Action(CoverPage.PLAY_NAME, "S" + first.season + " E" + first.number, 0f, false));
+            rows.add(() -> playing(() -> tv.play(title, first, 0, true)));
+            return out;
+        } else {
+            out.add(new CoverPage.Action(CoverPage.PLAY_NAME, title.torbox() ? "No episodes in your TorBox" : "No episodes in your playlist",
+                    0f, false));
+            rows.add(() -> { });
+            return out;
+        }
+        if (!all.isEmpty()) {
+            Catalog.Episode first = all.get(0);
+            out.add(new CoverPage.Action(CoverPage.FROM_START_NAME, "S" + first.season + " E" + first.number, 0f, true));
+            rows.add(() -> playing(() -> tv.play(title, first, 0, true)));
+        }
         return out;
     }
 
-    /** "18 min left" after Resume: how much of it is still to watch ("" when that isn't known). */
-    private static String left(Resume.Point p) {
-        return p != null && p.duration > p.position && p.position > 0 ? LiveText.mins(p.duration - p.position) + " left" : "";
+    /** The buttons beside the facts, and what OK on each does. */
+    private List<CoverPage.Pill> buttons(Resume.Point p, List<Catalog.Title> more) {
+        List<CoverPage.Pill> out = new ArrayList<>();
+        pills.clear();
+        String id = trailerId(details == null ? "" : details.trailer);
+        if (!id.isEmpty()) {
+            out.add(new CoverPage.Pill(Icons07.FILM, "Trailer"));
+            pills.add(() -> {
+                trailer.moved();
+                trailerDone = true;
+                trailer(id);
+            });
+        }
+        boolean on = MyList.has(tv, title.key);
+        out.add(new CoverPage.Pill(on ? Icons07.CHECK : Icons07.PLUS, "My List"));
+        pills.add(this::toggleList);
+        if (!more.isEmpty()) {
+            out.add(new CoverPage.Pill(Icons07.GRID, "More like this"));
+            pills.add(() -> page.toPart(TitlePage.MORE));
+        }
+        if (p != null) {
+            out.add(new CoverPage.Pill(Icons07.BIN, "Remove"));
+            pills.add(this::forget);
+        }
+        return out;
+    }
+
+    /** Something is about to play: the card's trailer and the copies' look stopped first. */
+    private void playing(Runnable start) {
+        trailer.moved();
+        trailerDone = true;
+        if (facts != null) facts.stop();
+        start.run();
+    }
+
+    // ---- a film's copies -------------------------------------------------------------------------------------------
+
+    /** A film's every copy on its cover, the best first, their facts filled in as they come. */
+    private void findCopies() {
+        if (title.series || copiesAsked) return;
+        copiesAsked = true;
+        if (TorBox.on(tv) && !TorBox.fresh(tv)) cover.status("Looking in your TorBox…");
+        Catalog.Title want = title;
+        VodActivity.copies(tv, title, null, found -> {
+            if (page == null || title != want) return;
+            copies.clear();
+            copies.addAll(found);
+            if (copies.isEmpty()) {
+                cover.status(title.torbox() ? "It isn't in your TorBox any more, or TorBox is turned off." : "Its playlist has gone from this TV.");
+                return;
+            }
+            cover.sources(copies);
+            resumeCopy(point());
+            if (facts != null) facts.stop();
+            facts = CopyFacts.fill(tv, copies, this::factsCame);
+        });
+    }
+
+    /** More is known of the copies: their rows again, the best first by what they really are. */
+    private void factsCame() {
+        CopyFacts.rank(copies);
+        cover.sources(copies);
+        resumeCopy(point());
+    }
+
+    /** The copy Resume carries on from, said on its row (a film left part-way). */
+    private void resumeCopy(Resume.Point p) {
+        if (title.series || copies.isEmpty() || p == null || p.position <= 0) return;
+        cover.resumeFrom(Math.max(0, Copies.find(tv, title.key, "", copies)));
+    }
+
+    /** OK on a source: it plays from where it was left, kept as the copy it was started on (the rest its backups). */
+    private void playCopy(int i) {
+        if (i < 0 || i >= copies.size()) return;
+        Resume.Point p = point();
+        Copies.started(tv, title.key, "", copies.get(i));
+        playing(() -> tv.play(title, null, p != null && p.position > 0 ? p.position : 0, false));
     }
 
     private String resumeEpisode(Resume.Point p) {
@@ -213,6 +390,46 @@ final class TitleScreen extends Screen implements TitlePage.Host {
         Resume.remove(tv, title.key);
         Toast.makeText(tv, title.name + " taken off Continue watching", Toast.LENGTH_SHORT).show();
         fill();
+    }
+
+    // ---- the trailer in the top card -----------------------------------------------------------------------------
+
+    /** The title's trailers (TMDB's, the family's language first, then the playlist's own), as they become known. */
+    private void trailerKeys() {
+        if (trailer == null) return;
+        trailer.keys(title.key, Videos.trailers(extras == null ? null : extras.videos, Tmdb.language(tv), details == null ? "" : details.trailer));
+    }
+
+    /** The cover's card for the trailer, once the poster has popped in and the page is at its top with the remote on it. */
+    @Override public boolean spot(RectF out) {
+        return page != null && page.part() == TitlePage.COVER && cover.trailerSpot(out);
+    }
+
+    /** Whether the trailer may play: this page in front (nothing over it, the app in front), the remote on its cover. */
+    @Override public boolean mayPlay() {
+        return page != null && tv.showing(this) && page.part() == TitlePage.COVER;
+    }
+
+    @Override public void showing(boolean on) {
+        if (on) trailerDone = true;
+        cover.trailerShown(on);
+    }
+
+    @Override public void finished(boolean played) {
+        if (played) trailerDone = true;
+    }
+
+    /** The remote moved: down the page, the trailer stops; on the cover, one waiting waits from now, one playing plays on. */
+    @Override public void moved() {
+        if (trailer == null || page == null) return;
+        if (page.part() != TitlePage.COVER) {
+            trailer.moved();
+            return;
+        }
+        if (trailerDone || trailer.busy()) return;
+        trailer.moved();
+        trailer.rest(title.key);
+        trailerKeys();
     }
 
     /** Pure: a trailer's YouTube id from what a provider gives ("dQw4w9WgXcQ", a watch or youtu.be address), else "". */
@@ -253,35 +470,29 @@ final class TitleScreen extends Screen implements TitlePage.Host {
         return page.back();
     }
 
-    /** Up from the buttons: the tab bar comes back over the page, the remote on it. */
+    /** Up from the top of the page: the tab bar comes back over the page, the remote on it. */
     @Override public void up() {
         if (tv.tabs() == null) return;
         tv.tabs().enter();
         page.setActive(false);
     }
 
+    /** An episode chosen: its own cover with its sources first (straight away with one), on from where it was left. */
     @Override public void play(Catalog.Episode ep) {
         Resume.Point p = Resume.get(tv, title.key, ep.id);
-        // An episode chosen: every source shown first, then on from where it was left, if it was.
-        tv.play(title, ep, p == null ? 0 : p.position, true);
-    }
-
-    @Override public void trailer() {
-        String id = trailerId(details == null ? "" : details.trailer);
-        if (!id.isEmpty()) trailer(id);
+        playing(() -> tv.play(title, ep, p == null ? 0 : p.position, true));
     }
 
     @Override public void video(String key) {
         String id = trailerId(key);
-        if (!id.isEmpty()) trailer(id);
+        if (!id.isEmpty()) {
+            trailer.moved();
+            trailer(id);
+        }
     }
 
     @Override public void open(Catalog.Title t) {
         tv.openTitle(t);
-    }
-
-    @Override public void person(String name) {
-        GuideActions.search(tv, name);
     }
 
     @Override public float progress(Catalog.Episode ep) {
@@ -289,18 +500,39 @@ final class TitleScreen extends Screen implements TitlePage.Host {
         return p == null || p.position <= 0 ? -1f : p.progress();
     }
 
-    /** Previews: the remote on a part (TitlePage.BUTTONS…) and along it. */
+    /** Previews: the remote on a part (TitlePage.COVER…) and along it. */
     void previewFocus(int part, int along) {
         page.focus(part, along);
     }
 
-    /** Tests: the page itself. */
+    /** Tests: the page itself, its cover, its copies and its trailer. */
     TitlePage page() {
         return page;
     }
 
+    CoverPage cover() {
+        return cover;
+    }
+
+    List<Catalog.Play> copies() {
+        return copies;
+    }
+
+    Trailer trailerCard() {
+        return trailer;
+    }
+
     /** Previews: TMDB's extras as if it had answered. */
     void previewExtras(Tmdb.Extras x) {
-        page.extras(x);
+        extras(x);
+    }
+
+    /** Previews and tests: these copies as if found (the best first), on the cover as the page shows them. */
+    void previewCopies(List<Catalog.Play> list) {
+        if (facts != null) facts.stop();
+        copies.clear();
+        copies.addAll(list);
+        cover.sources(copies);
+        resumeCopy(point());
     }
 }

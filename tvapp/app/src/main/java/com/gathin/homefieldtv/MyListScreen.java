@@ -39,7 +39,7 @@ import java.util.Locale;
  *
  * <pre>
  *   Continue watching   where each film or episode was left (Resume), its picture, how far in and how long is left;
- *                       OK carries on at once from the copy it was started on; MENU takes it off Continue watching
+ *                       OK opens its page (cover B) with Resume on; MENU takes it off Continue watching
  *   My TV programmes    the programmes added to My list from the guide, each time one is on now or to come, soonest
  *                       first (their pictures, faces whole: PicTile); OK on one on now watches it; MENU takes it off
  *   My reminders        the reminders set, soonest first; OK on one on now watches it; MENU cancels it
@@ -495,19 +495,9 @@ final class MyListScreen extends Screen implements DialogCard.Host {
         }
     }
 
-    /** Continue watching: on at once from where it was (an episode needs its series' page read; else its page). */
+    /** Continue watching: the title's page (its cover B) with the remote on Resume. */
     private void carryOn(Resume.Point p) {
-        Catalog.Title t = Catalog.get(tv).title(p.title);
-        if (t == null) return;
-        if (!t.series && p.episode.isEmpty()) {
-            tv.play(t, null, p.position, false);
-            return;
-        }
-        Catalog.get(tv).details(t, d -> {
-            Catalog.Episode e = d == null ? null : d.episode(p.episode);
-            if (e != null) tv.play(t, e, p.position, false);
-            else tv.openTitle(t);
-        });
+        tv.carryOn(p, false);
     }
 
     /** A recording from the archive (as RecordingsScreen plays one), or why it can't be. */
